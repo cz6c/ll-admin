@@ -1,0 +1,53 @@
+$--colors: (
+  "primary": (
+    "base": #292ae4,
+  ),
+  "success": (
+    "base": #67c23a,
+  ),
+  "warning": (
+    "base": #e6a23c,
+  ),
+  "danger": (
+    "base": #ff4f42,
+  ),
+  "error": (
+    "base": #ff4f42,
+  ),
+  "info": (
+    "base": #979797,
+  ),
+);
+
+@forward "element-plus/theme-chalk/src/common/var.scss" with (
+  $colors: $--colors,
+  $button-padding-horizontal: (
+    "default": 12px,
+  )
+);
+
+// custom dark variables
+// @use "./dark.scss";
+
+:root {
+  // menu
+  --el-menu-text-color: #666f80;
+  --el-menu-item-height: 44px;
+  --el-menu-hover-bg-color: #f2f2f2;
+  --el-menu-active-color: var(--el-black);
+
+  // button
+  --el-border-radius-base: 6px;
+}
+
+// table
+.el-table {
+  --el-table-text-color: var(--el-black);
+  --el-table-header-text-color: var(--el-black);
+  --el-table-header-bg-color: #f7f7fb;
+}
+
+// input
+.el-input {
+  --el-input-border-radius: 6px;
+}

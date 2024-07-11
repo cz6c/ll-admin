@@ -1,0 +1,47 @@
+@import "./transition";
+@import "./element-plus";
+
+/* 灰色模式 */
+.html-grey {
+  filter: grayscale(100%);
+}
+
+html {
+  font-size: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans",
+    "Noto Sans CJK SC", "Microsoft YaHei", "微软雅黑", sans-serif;
+  font-weight: 400;
+  color: #111;
+  line-height: 1.36;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-size: 14px;
+}
+
+html,
+body,
+#app,
+.app-container {
+  min-width: 1024px;
+  height: 100%;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+.app-page {
+  height: calc(100vh - 82px);
+}
+
+.cz-card {
+  border-radius: 8px;
+  background-color: #fff;
+}

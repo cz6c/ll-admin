@@ -2,14 +2,15 @@
   "name": "admin",
   "private": true,
   "version": "0.0.1",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build --mode development",
     "build:prod": "vite build --mode production",
     "preview": "vite preview",
-    "lint:eslint": "eslint --cache --max-warnings 0  \"src/**/*.{vue,ts,tsx}\" --fix",
-    "lint:prettier": "prettier --write  \"src/**/*.{js,json,tsx,css,less,scss,vue,html,md}\"",
+    "lint:eslint": "eslint --cache --max-warnings 0  \"src/**/*.{vue,ts,tsx,js,jsx}\" --fix",
+    "lint:prettier": "prettier --write  \"src/**/*.{vue,ts,tsx,js,jsx,json,tsx,css,less,scss,vue,html,md}\"",
     "svgo": "svgo -f ./src/assets/svg -o ./src/assets/svg"
   },
   "dependencies": {

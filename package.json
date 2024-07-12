@@ -1,9 +1,9 @@
 {
-  "name": "vue-cz-admin",
+  "name": "ll-admin",
   "private": true,
   "version": "0.0.6",
+  "license": "MIT",
   "scripts": {
-    "lint:lint-staged": "lint-staged",
     "prepare": "husky install",
     "cz": "git add . && czg"
   },
@@ -13,28 +13,12 @@
     "@commitlint/config-conventional": "^17.8.1",
     "cz-git": "^1.8.0",
     "czg": "^1.8.0",
-    "husky": "^8.0.3",
-    "lint-staged": "^13.3.0"
+    "husky": "^8.0.3"
   },
   "husky": {
     "hooks": {
-      "pre-commit": "lint-staged"
+      "commit-msg": "commitlint --config .commitlintrc.js -E HUSKY_GIT_PARAMS"
     }
-  },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx,vue}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{scss,less,styl,html,md}": [
-      "prettier --write"
-    ],
-    "package.json": [
-      "prettier --write"
-    ],
-    "{!(package)*.json,*.code-snippets,.!(browserslist)*rc}": [
-      "prettier --write--parser json"
-    ]
   },
   "config": {
     "commitizen": {

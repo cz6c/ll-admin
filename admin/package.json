@@ -24,6 +24,8 @@
     "echarts": "^5.5.1",
     "element-plus": "^2.7.6",
     "gsap": "^3.12.5",
+    "js-cookie": "^3.0.5",
+    "jsencrypt": "^3.3.2",
     "lodash-es": "^4.17.21",
     "mitt": "^3.0.1",
     "normalize.css": "^8.0.1",

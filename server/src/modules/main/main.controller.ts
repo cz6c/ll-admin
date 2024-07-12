@@ -112,9 +112,11 @@ export class MainController {
     return {
       msg: '操作成功',
       code: 200,
-      permissions: user.permissions,
-      roles: user.roles,
-      user: user.user,
+      data: {
+        permissions: user.permissions,
+        roles: user.roles,
+        user: user.user,
+      },
     };
   }
 

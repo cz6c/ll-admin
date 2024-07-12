@@ -8,12 +8,14 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElInput: typeof import('element-plus/es')['ElInput']
     FormView: typeof import('./../src/components/FormView/index.vue')['default']
     Grid: typeof import('./../src/components/Grid/index.vue')['default']
     GridItem: typeof import('./../src/components/Grid/components/GridItem.vue')['default']
+    ParentView: typeof import('./../src/components/ParentView/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SearchForm: typeof import('./../src/components/SearchForm/index.vue')['default']

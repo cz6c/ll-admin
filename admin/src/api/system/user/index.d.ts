@@ -1,6 +1,7 @@
 import { GetListParams, GetListResponse } from "@/api/public/index.d";
 // 详情
 export interface UserItem {
+  userId: number;
   id: string;
   createTime: string;
   updateTime: string;

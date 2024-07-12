@@ -20,7 +20,7 @@ service.interceptors.request.use(
     if (isFileApi) {
       config.responseType = "blob";
     }
-    config.headers.Authorization = config.headers.Authorization || `bearer ${getToken()}`;
+    config.headers.Authorization = config.headers.Authorization || `Bearer ${getToken()}`;
     return config;
   },
   error => {
@@ -37,9 +37,8 @@ service.interceptors.response.use(
       return response;
     }
     const res = response.data;
-    // 当请求不为1时，报错
-    if (res.code !== 0) {
-      console.log(res.message);
+    // 当请求不为200时，报错
+    if (res.code !== 200) {
       $message.error(res.message);
       return Promise.reject(new Error(res.message || "Error"));
     } else {

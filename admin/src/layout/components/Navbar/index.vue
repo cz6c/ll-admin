@@ -11,8 +11,8 @@
       <!-- 退出登录 -->
       <el-dropdown trigger="click">
         <div class="tool navbar-hover">
-          <el-avatar :size="32" fit="cover" :src="useAuthStore().avatar" />
-          <p v-if="useAuthStore().username" class="name">{{ useAuthStore().username }}</p>
+          <el-avatar :size="32" fit="cover" :src="useAuthStore().userInfo.avatar" />
+          <p v-if="useAuthStore().userInfo.username" class="name">{{ useAuthStore().userInfo.username }}</p>
         </div>
         <template #dropdown>
           <el-dropdown-menu class="logout">

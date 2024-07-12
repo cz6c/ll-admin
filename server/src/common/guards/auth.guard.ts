@@ -47,6 +47,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const i = this.globalWhiteList.findIndex((route) => {
       // 请求方法类型相同
       if (req.method.toUpperCase() === route.method.toUpperCase()) {
+        console.log('🚀 ~ JwtAuthGuard ~ checkWhiteList ~ route.path:', route.path);
         // 对比 url
         return !!pathToRegexp(route.path).exec(pathname);
       }

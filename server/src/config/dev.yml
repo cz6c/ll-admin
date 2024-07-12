@@ -66,6 +66,7 @@ perm:
         { path: '/login', method: 'POST' },
         { path: '/logout', method: 'POST' },
         { path: '/common/area/list', method: 'GET' },
+        { path: '/system/config/refreshCache', method: 'Delete' },
         # { path: '/system/user/:userId', method: 'GET' },
       ]
 

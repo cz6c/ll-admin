@@ -65,7 +65,7 @@ export class ConfigController {
   @ApiOperation({
     summary: '参数设置-刷新缓存',
   })
-  @RequirePermission('system:config:remove')
+  // @RequirePermission('system:config:remove')
   @Delete('/refreshCache')
   refreshCache() {
     return this.configService.refreshCache();

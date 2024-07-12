@@ -5,12 +5,13 @@ import type { AppRouteRecordRaw } from "@/router/type";
 
 export const Layout = () => import("@/layout/index.vue");
 export const IFrame = () => import("@/views/iframe/index.vue");
+export const ParentView = () => import("@/views/parentView/index.vue");
 
 export enum RouterEnum {
   // login path
   BASE_LOGIN_PATH = "/login",
   // basic home path
-  BASE_HOME_PATH = "/dashboard",
+  BASE_HOME_PATH = "/index",
   // redirect name
   REDIRECT_NAME = "Redirect",
 }
@@ -25,6 +26,14 @@ const routesList: AppRouteRecordRaw[] = [
     meta: {
       title: "root",
     },
+    children: [
+      {
+        path: "/index",
+        component: () => import("@/views/dashboard/index.vue"),
+        name: "Index",
+        meta: { title: "首页", icon: "dashboard", affix: true },
+      },
+    ],
   },
   // 登录路由
   {
@@ -75,13 +84,13 @@ export const REDIRECT_ROUTE: AppRouteRecordRaw = {
   ],
 };
 
-const routes = [...routesList, PAGE_NOT_FOUND_ROUTE, REDIRECT_ROUTE] as RouteRecordRaw[];
+export const constantRoutes = [...routesList, PAGE_NOT_FOUND_ROUTE, REDIRECT_ROUTE] as RouteRecordRaw[];
 
 // app router
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: () => ({ left: 0, right: 0 }),
-  routes,
+  routes: constantRoutes,
 });
 
 // 白名单应该包含基本静态路由
@@ -91,7 +100,7 @@ const getRouteNames = (array: any[]) =>
     WHITE_NAME_LIST.push(item.name);
     getRouteNames(item.children || []);
   });
-getRouteNames(routes);
+getRouteNames(constantRoutes);
 
 /**
  * @description: 重置路由

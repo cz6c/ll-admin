@@ -1,9 +1,12 @@
 import { RouterEnum } from "@/router";
 import { useAuthStore } from "@/store/modules/auth";
+import { usePermissionStore } from "@/store/modules/permission";
 import { getToken } from "@/utils/auth";
-import type { Router } from "vue-router";
+import type { Router, RouteRecordRaw } from "vue-router";
 import nProgress from "nprogress";
 import { ElMessage, ElNotification } from "element-plus";
+import { productConfig } from "@/config";
+import { getStaticRoutes } from "@/router/utils";
 
 /**
  * @description:  创建项目前置权限
@@ -13,25 +16,35 @@ function createPermissionGuard(router: Router) {
   const whitePathList: string[] = [RouterEnum.BASE_LOGIN_PATH];
 
   router.beforeEach(async (to, from, next) => {
-    const token = getToken();
     const authStore = useAuthStore();
     console.log(to, from);
     // 验证token
-    if (token) {
+    if (getToken()) {
       console.log("有token");
       if (to.path === RouterEnum.BASE_LOGIN_PATH) {
         next((to.query?.redirect as string) || "/");
       } else {
-        // 验证用户信息
-        if (authStore.id) {
-          console.log("用户信息", authStore.id);
-          next();
-        } else {
+        // 验证用户权限
+        if (authStore.roles.length === 0) {
           try {
-            await authStore.getLoginUserInfoAction();
+            await authStore.getLoginUserInfo();
+            let accessRoutes: any = [];
+            if (productConfig.isDynamicAddedRoute) {
+              accessRoutes = await usePermissionStore().generateRoutes();
+            } else {
+              accessRoutes = await getStaticRoutes();
+            }
+            console.log("🚀 ~ router.beforeEach ~ accessRoutes:", accessRoutes);
+            // 根据roles权限生成可访问的路由表
+            // accessRoutes.forEach((route: RouteRecordRaw) => {
+            //   // if (!isHttp(route.path)) {
+            //   router.addRoute(route); // 动态添加可访问路由表
+            //   // }
+            // });
             console.log("动态添加路由");
+            next({ ...to, replace: true }); // hack方法 确保addRoutes已完成
             // 动态添加路由后，此处应当重定向到fullPath，否则会加载404页面内容
-            next({ path: to.fullPath, replace: true, query: to.query });
+            // next({ path: to.fullPath, replace: true, query: to.query });
           } catch (error) {
             console.log("登录过期或登录无效时，前端登出");
             // 登录过期或登录无效时，前端登出
@@ -44,15 +57,15 @@ function createPermissionGuard(router: Router) {
               },
             });
           }
+        } else {
+          next();
         }
       }
     } else {
       // 白名单
       if (whitePathList.includes(to.path)) {
-        console.log("在白名单");
         next();
       } else {
-        console.log("不在白名单");
         next({
           path: RouterEnum.BASE_LOGIN_PATH,
           replace: true,

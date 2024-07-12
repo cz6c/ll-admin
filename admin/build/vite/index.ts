@@ -6,13 +6,14 @@
 import type { PluginOption } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
-import vueSetupExtend from "vite-plugin-vue-setup-extend-plus";
+// import vueSetupExtend from "vite-plugin-vue-setup-extend-plus";
+import vueDevTools from "vite-plugin-vue-devtools";
+import progress from "vite-plugin-progress";
 import { ConfigSvgIconsPlugin } from "./plugins/svgIcons";
 import { AutoRegistryComponents } from "./plugins/component";
 import { AutoImportDeps } from "./plugins/autoImport";
 import { ConfigCompressPlugin } from "./plugins/compress";
 import { ConfigRestartPlugin } from "./plugins/restart";
-import { ConfigProgressPlugin } from "./plugins/progress";
 import { ConfigImageminPlugin } from "./plugins/imagemin";
 import { ConfigVisualizerConfig } from "./plugins/visualizer";
 import { UnoCSSPlugin } from "./plugins/unocss";
@@ -26,26 +27,22 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     // JSX支持
     vueJsx(),
     // setup语法糖组件名支持
-    vueSetupExtend(),
+    // vueSetupExtend(),
+    // 调试工具
+    vueDevTools(),
+    // 构建显示进度条
+    progress(),
+    // 监听配置文件改动重启
+    ConfigRestartPlugin(),
+    // 自动按需注册组件
+    AutoRegistryComponents(),
+    // 自动按需引入依赖
+    AutoImportDeps(),
+    // unocss
+    UnoCSSPlugin(),
+    // vite-plugin-svg-icons
+    ConfigSvgIconsPlugin(isBuild)
   ];
-
-  // 自动按需注册组件
-  vitePlugins.push(AutoRegistryComponents());
-
-  // 自动按需引入依赖
-  vitePlugins.push(AutoImportDeps());
-
-  // 监听配置文件改动重启
-  vitePlugins.push(ConfigRestartPlugin());
-
-  // 构建时显示进度条
-  vitePlugins.push(ConfigProgressPlugin());
-
-  // unocss
-  vitePlugins.push(UnoCSSPlugin());
-
-  // vite-plugin-svg-icons
-  vitePlugins.push(ConfigSvgIconsPlugin(isBuild));
 
   if (isBuild) {
     // 图片压缩 vite-plugin-imagemin

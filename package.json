@@ -1,0 +1,44 @@
+{
+  "name": "vue-cz-admin",
+  "private": true,
+  "version": "0.0.6",
+  "scripts": {
+    "lint:lint-staged": "lint-staged",
+    "prepare": "husky install",
+    "cz": "git add . && czg"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@commitlint/cli": "^17.8.1",
+    "@commitlint/config-conventional": "^17.8.1",
+    "cz-git": "^1.8.0",
+    "czg": "^1.8.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.3.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,vue}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{scss,less,styl,html,md}": [
+      "prettier --write"
+    ],
+    "package.json": [
+      "prettier --write"
+    ],
+    "{!(package)*.json,*.code-snippets,.!(browserslist)*rc}": [
+      "prettier --write--parser json"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "node_modules/cz-git"
+    }
+  }
+}

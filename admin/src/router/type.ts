@@ -11,24 +11,16 @@ export interface AppRouteMeta extends RouteMeta {
   title: string;
   // 菜单图标
   icon?: string;
-  // 是否隐藏该菜单
-  hideMenu?: boolean;
-  // 当前激活的菜单。用于配置hideMenu true时左侧激活的菜单路径
+  // 当路由设置了该属性，则会高亮相对应的侧边栏
   activeMenu?: string;
-  // 是否隐藏该路由在面包屑上面的显示
-  hideBreadcrumb?: boolean;
-  // 菜单排序
-  orderNo?: number;
-  // 需要内嵌的iframe链接地址
-  frameSrc?: string;
+  // 如果设置为false，则不会在breadcrumb面包屑中显示
+  breadcrumb?: boolean;
   // 标签页固定
   affix?: boolean;
-  // 当前菜单名称或自定义信息禁止添加到标签页
-  hideTag?: boolean;
   // 显示在标签页的最大数量
   dynamicLevel?: number;
   // 是否忽略KeepAlive缓存
-  ignoreKeepAlive?: boolean;
+  noCache?: boolean;
 }
 
 export interface AppRouteRecordRaw {
@@ -36,9 +28,16 @@ export interface AppRouteRecordRaw {
   path: string;
   // 路由名字（必须保持唯一）
   name: RouteRecordName;
+  // 当你一个路由下面的 children 声明的路由大于1个时，自动会变成嵌套的模式--如组件页面
+  // 只有一个时，会将那个子路由当做根路由显示在侧边栏--如引导页面
+  // 若你想不管路由下面的 children 声明的个数都显示你的根路由
+  // 你可以设置 alwaysShow: true，这样它就会忽略之前定义的规则，一直显示根路由
+  alwaysShow?: boolean;
+  // 是否隐藏该菜单
+  hidden?: boolean;
   // 路由元信息
   meta: AppRouteMeta;
-  // 路由重定向
+  // 路由重定向  当设置 noRedirect 的时候该路由在面包屑导航中不可被点击
   redirect?: string;
   // 按需加载需要展示的页面
   component?: Component | string;

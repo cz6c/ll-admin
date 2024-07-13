@@ -15,7 +15,7 @@ const route = useRoute();
 const router = useRouter();
 
 const matched = computed(() => {
-  return route.matched.filter(item => !item.meta?.hideBreadcrumb);
+  return route.matched.filter(item => !item.meta?.breadcrumb);
 });
 
 const handleLink = (item: RouteLocationMatched): void => {

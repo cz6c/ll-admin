@@ -22,16 +22,17 @@ const routesList: AppRouteRecordRaw[] = [
   {
     path: "/",
     name: "Root",
+    component: Layout,
     redirect: RouterEnum.BASE_HOME_PATH,
     meta: {
       title: "root",
     },
     children: [
       {
-        path: "/index",
+        path: "index",
         component: () => import("@/views/dashboard/index.vue"),
         name: "Index",
-        meta: { title: "首页", icon: "dashboard", affix: true },
+        meta: { title: "首页", icon: "menu-dashboard", affix: true },
       },
     ],
   },
@@ -40,6 +41,7 @@ const routesList: AppRouteRecordRaw[] = [
     path: "/login",
     name: "Login",
     component: () => import("@/views/public/login.vue"),
+    hidden: true,
     meta: {
       title: "login",
     },
@@ -51,22 +53,20 @@ export const PAGE_NOT_FOUND_ROUTE: AppRouteRecordRaw = {
   path: "/:pathMatch(.*)*",
   name: "PAGE_NOT_FOUND_NAME",
   component: () => import("@/views/public/404.vue"),
+  hidden: true,
   meta: {
     title: "",
-    hideBreadcrumb: true,
-    hideMenu: true,
     hideTag: true,
   },
 };
 // Layout redirect
 export const REDIRECT_ROUTE: AppRouteRecordRaw = {
   path: "/redirect",
-  component: Layout,
   name: "RouterEnum.REDIRECT_NAME",
+  component: Layout,
+  hidden: true,
   meta: {
     title: "",
-    hideBreadcrumb: true,
-    hideMenu: true,
     hideTag: true,
   },
   children: [
@@ -74,10 +74,9 @@ export const REDIRECT_ROUTE: AppRouteRecordRaw = {
       path: "/redirect/:path(.*)/:_redirect_type(.*)/:_origin_params(.*)?",
       name: RouterEnum.REDIRECT_NAME,
       component: () => import("@/views/public/auth-redirect.vue"),
+      hidden: true,
       meta: {
         title: "",
-        hideBreadcrumb: true,
-        hideMenu: true,
         hideTag: true,
       },
     },

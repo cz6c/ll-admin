@@ -13,7 +13,7 @@
 <script lang="ts" setup name="TreeMenu">
 import { ref, computed, watch } from "vue";
 import { ElTree } from "element-plus";
-import { useAuthStore } from "@/store/modules/auth";
+import { usePermissionStore } from "@/store/modules/permission";
 import { eachTree } from "@/utils/tree";
 
 interface Props {
@@ -38,7 +38,7 @@ const defaultProps = {
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
 
-const { getDynamicRoutes } = useAuthStore();
+const { getDynamicRoutes } = usePermissionStore();
 
 /**
  * @description: 计算所有pid
@@ -59,7 +59,7 @@ watch(
     return props.modelValue;
   },
   value => {
-    setCheckedKeys(value as number[]);
+    setCheckedKeys(value as unknown as number[]);
   },
 );
 /**
@@ -71,7 +71,7 @@ function getCheckedKeys() {
 /**
  * @description: 设置目前选中的节点
  */
-function setCheckedKeys(ids: string[]) {
+function setCheckedKeys(ids: number[]) {
   const arr = ids.filter(c => !pids.value.includes(c));
   treeRef.value!.setCheckedKeys(arr);
 }

@@ -12,10 +12,16 @@
           mode="vertical"
           :default-active="getActiveRoutePath"
           :collapse-transition="false"
+          :unique-opened="true"
           :class="{ on: layoutStore.getIsCollapse }"
           :collapse="layoutStore.getIsCollapse"
         >
-          <SubMenu :menu-list="authStore.getDynamicMenu" />
+          <sidebar-item
+            v-for="(route, index) in usePermissionStore().getDynamicMenu"
+            :key="route.path + index"
+            :item="route"
+            :base-path="route.path"
+          />
         </el-menu>
       </el-scrollbar>
     </div>
@@ -33,15 +39,13 @@
   </div>
 </template>
 <script setup lang="ts" name="Sidebar">
-import SubMenu from "./components/SubMenu.vue";
+import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
-import { useAuthStore } from "@/store/modules/auth";
+import { usePermissionStore } from "@/store/modules/permission";
 
 const BASE_TITLE = computed(() => {
   return import.meta.env.VITE_APP_TITLE;
 });
-
-const authStore = useAuthStore();
 
 const layoutStore = useLayoutStore();
 function toggleClick() {

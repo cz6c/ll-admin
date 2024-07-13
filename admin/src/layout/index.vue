@@ -8,6 +8,7 @@
         <Navbar @toggle-click="toggleSideBar" />
       </el-header>
       <el-main>
+        <TagsView />
         <el-scrollbar>
           <AppMain class="app-main" />
         </el-scrollbar>
@@ -18,9 +19,10 @@
 
 <script setup lang="ts" name="Layout">
 import { ref } from "vue";
-import AppMain from "./components/AppMain.vue";
+import AppMain from "./components/AppMain/index.vue";
 import Sidebar from "./components/Sidebar/index.vue";
 import Navbar from "./components/Navbar/index.vue";
+import TagsView from "./components/TagsView/index.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 
 const layoutStore = useLayoutStore();

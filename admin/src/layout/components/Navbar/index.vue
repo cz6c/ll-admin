@@ -11,8 +11,8 @@
       <!-- 退出登录 -->
       <el-dropdown trigger="click">
         <div class="tool navbar-hover">
-          <el-avatar :size="32" fit="cover" :src="useAuthStore().userInfo.avatar" />
-          <p v-if="useAuthStore().userInfo.username" class="name">{{ useAuthStore().userInfo.username }}</p>
+          <el-avatar :size="32" fit="cover" :src="userStore.avatar" />
+          <p v-if="userStore.username" class="name">{{ userStore.username }}</p>
         </div>
         <template #dropdown>
           <el-dropdown-menu class="logout">
@@ -31,6 +31,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import { RouterEnum } from "@/router";
 import { useRouter } from "vue-router";
 
+const userStore = useAuthStore();
 const { webLogout } = useAuthStore();
 const router = useRouter();
 

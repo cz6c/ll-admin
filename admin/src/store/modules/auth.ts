@@ -3,39 +3,28 @@ import store from "@/store";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getInfo, logout } from "@/api/public";
 import { LoginParams } from "@/api/public/index.d";
-import { UserItem } from "@/api/system/user/index.d";
-import { resetRouter } from "@/router";
-import type { AppRouteRecordRaw } from "@/router/type";
-import { useMultiTagsStore } from "./multiTags";
-import { filterTree } from "@/utils/tree";
+import { UserItem } from "@/api/system1/user/index.d";
 
 interface authStoreState {
   userInfo: UserItem;
+  username: string;
+  avatar: string;
   roles: string[];
   permissions: string[];
-  dynamicRoutes: AppRouteRecordRaw[];
 }
 
 export const authStore = defineStore("auth", {
   state: (): authStoreState => ({
     // 用户信息
     userInfo: null,
+    username: "",
+    avatar: "",
     // 角色权限
     roles: [],
     // 按钮级权限
     permissions: [],
-    // 动态菜单
-    dynamicRoutes: [],
   }),
   getters: {
-    getDynamicMenu(): AppRouteRecordRaw[] {
-      return filterTree(this.dynamicRoutes, route => {
-        return !route.meta?.hideMenu;
-      });
-    },
-    getDynamicRoutes(): AppRouteRecordRaw[] {
-      return this.dynamicRoutes;
-    },
     getPermCodeList(): string[] {
       return this.permissions;
     },
@@ -63,6 +52,8 @@ export const authStore = defineStore("auth", {
       try {
         const { data } = await getInfo();
         this.userInfo = data.user;
+        this.username = data.user.username;
+        this.avatar = data.user.avatar;
         this.roles = data.roles;
         this.permissions = data.permissions;
         return data;
@@ -106,9 +97,6 @@ export const authStore = defineStore("auth", {
       await logout();
       this.$reset();
       removeToken();
-      resetRouter();
-      const { resetState } = useMultiTagsStore();
-      resetState();
     },
   },
 });

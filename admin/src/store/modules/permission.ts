@@ -1,7 +1,8 @@
 import auth from "@/utils/router";
-import { constantRoutes, Layout, IFrame, ParentView } from "@/router";
+import router, { constantRoutes, Layout, IFrame, ParentView } from "@/router";
 import { getRouters } from "@/api/public";
-import { isArray } from "@/utils/is";
+import { isArray, isHttp } from "@/utils/is";
+import { filterTree } from "@/utils/tree";
 
 // 匹配views里面所有的.vue文件
 const modules = import.meta.glob("./../../views/**/*.vue");
@@ -10,20 +11,22 @@ export const usePermissionStore = defineStore("permission", {
   state: () => ({
     routes: [],
     addRoutes: [],
-    defaultRoutes: [],
-    topbarRouters: [],
     sidebarRouters: [],
   }),
+  getters: {
+    getDynamicMenu() {
+      return filterTree(this.sidebarRouters, route => {
+        return !route.hidden;
+      });
+    },
+    getDynamicRoutes() {
+      return this.sidebarRouters;
+    },
+  },
   actions: {
     setRoutes(routes) {
       this.addRoutes = routes;
       this.routes = constantRoutes.concat(routes);
-    },
-    setDefaultRoutes(routes) {
-      this.defaultRoutes = constantRoutes.concat(routes);
-    },
-    setTopbarRoutes(routes) {
-      this.topbarRouters = routes;
     },
     setSidebarRouters(routes) {
       this.sidebarRouters = routes;
@@ -34,19 +37,15 @@ export const usePermissionStore = defineStore("permission", {
         getRouters().then(res => {
           const sdata = JSON.parse(JSON.stringify(res.data));
           const rdata = JSON.parse(JSON.stringify(res.data));
-          // const defaultData = JSON.parse(JSON.stringify(res.data));
-          // const sidebarRoutes = filterAsyncRouter(sdata);
-          const rewriteRoutes = filterAsyncRouter(rdata, false, true);
-          console.log("🚀 ~ getRouters ~ rewriteRoutes:", rewriteRoutes);
-          // const defaultRoutes = filterAsyncRouter(defaultData);
-          // const asyncRoutes = filterDynamicRoutes(dynamicRoutes);
-          // asyncRoutes.forEach(route => {
-          //   router.addRoute(route);
-          // });
+          const sidebarRoutes = filterAsyncRouter(sdata);
+          const rewriteRoutes = filterAsyncRouter(rdata, null, true);
+          rewriteRoutes.forEach(route => {
+            if (!isHttp(route.path)) {
+              router.addRoute(route); // 动态添加可访问路由表
+            }
+          });
           this.setRoutes(rewriteRoutes);
-          // this.setSidebarRouters(constantRoutes.concat(sidebarRoutes));
-          // this.setDefaultRoutes(sidebarRoutes);
-          // this.setTopbarRoutes(defaultRoutes);
+          this.setSidebarRouters(constantRoutes.concat(sidebarRoutes));
           resolve(rewriteRoutes);
         });
       });
@@ -55,11 +54,11 @@ export const usePermissionStore = defineStore("permission", {
 });
 
 // 遍历后台传来的路由字符串，转换为组件对象
-function filterAsyncRouter(asyncRouterMap, lastRouter = false, type = false) {
+function filterAsyncRouter(asyncRouterMap, lastRouter = null, type = false) {
   return asyncRouterMap.filter(route => {
-    // if (type && route.children) {
-    //   route.children = filterChildren(route.children, null);
-    // }
+    if (type && route.children) {
+      route.children = filterChildren(route.children, lastRouter);
+    }
     if (route.component) {
       // Layout ParentView 组件特殊处理
       if (route.component === "Layout") {
@@ -98,7 +97,7 @@ function filterChildren(childrenMap, lastRouter) {
         return;
       }
     }
-    if (!!lastRouter) {
+    if (lastRouter) {
       el.path = lastRouter.path + "/" + el.path;
     }
     children = children.concat(el);
@@ -123,15 +122,12 @@ function filterChildren(childrenMap, lastRouter) {
 //   return res;
 // }
 
-const loadView = view => {
-  let res;
-  console.log("🚀 ~ loadView ~ modules:", modules)
+const loadView = (view: string) => {
+  let res = null;
   for (const path in modules) {
     const dir = path.split("views/")[1].split(".vue")[0];
-    console.log("🚀 ~ loadView ~ dir:", dir)
-    console.log("🚀 ~ loadView ~ view:", view)
     if (dir === view) {
-      res = () => modules[path]();
+      res = modules[path];
     }
   }
   return res;

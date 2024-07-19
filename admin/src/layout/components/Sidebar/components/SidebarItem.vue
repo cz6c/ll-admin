@@ -82,18 +82,16 @@ function hasTitle(title) {
       "
     >
       <app-link v-if="onlyOneChild.meta" :to="resolvePath(onlyOneChild.path, onlyOneChild.query)">
-        <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{ 'submenu-title-noDropdown': !isNest }">
+        <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{ noDropdown: !isNest }">
           <SvgIcon :name="onlyOneChild.meta.icon || (item.meta && item.meta.icon)" size="18" />
-          <template #title
-            ><span class="menu-title" :title="hasTitle(onlyOneChild.meta.title)">{{
-              onlyOneChild.meta.title
-            }}</span></template
-          >
+          <template #title>
+            <span class="menu-title" :title="hasTitle(onlyOneChild.meta.title)">{{ onlyOneChild.meta.title }}</span>
+          </template>
         </el-menu-item>
       </app-link>
     </template>
 
-    <el-sub-menu v-else ref="subMenu" :index="resolvePath(item.path)" popper-append-to-body>
+    <el-sub-menu v-else :index="resolvePath(item.path)" popper-append-to-body>
       <template v-if="item.meta" #title>
         <SvgIcon :name="item.meta && item.meta.icon" size="18" />
         <span class="sub-menu-text" :title="hasTitle(item.meta.title)">{{ item.meta.title }}</span>
@@ -112,24 +110,27 @@ function hasTitle(title) {
 </template>
 
 <style lang="scss" scoped>
+:deep(.el-sub-menu) {
+  .el-sub-menu__title {
+    &:hover {
+      color: var(--el-color-primary);
+    }
+  }
+
+  &.is-active {
+    > .el-sub-menu__title {
+      color: var(--el-color-primary);
+    }
+  }
+}
 :deep(.el-menu-item) {
-  margin: 0 6px;
-  border-radius: 8px;
+  &:hover {
+    color: var(--el-color-primary);
+  }
 
   &.is-active {
     background: #ededfa;
-
-    &::before {
-      position: absolute;
-      top: 50%;
-      left: 0;
-      border-radius: 0 2px 2px 0;
-      width: 3px;
-      height: 40%;
-      transform: translateY(-50%);
-      background: var(--el-color-primary);
-      content: "";
-    }
+    color: var(--el-color-primary);
   }
 }
 

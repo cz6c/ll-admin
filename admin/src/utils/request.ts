@@ -1,11 +1,11 @@
 import axios from "axios";
 import type { AxiosRequestConfig } from "axios";
 import { getToken } from "@/utils/auth";
-import { tansParams, blobValidate } from "@/utils";
+import { tansParams } from "@/utils";
 import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
 import { $message } from "@/utils/message";
-import cache from "@/utils/cache";
+import { WebStorage } from "@/utils/storage";
 
 const errorCode = {
   "401": "认证失败，无法访问系统资源",
@@ -45,9 +45,10 @@ service.interceptors.request.use(
         data: typeof config.data === "object" ? JSON.stringify(config.data) : config.data,
         time: new Date().getTime(),
       };
-      const sessionObj = cache.session.getJSON("sessionObj");
+      const cache = new WebStorage("sessionStorage");
+      const sessionObj = cache.getItem("sessionObj");
       if (sessionObj === undefined || sessionObj === null || sessionObj === "") {
-        cache.session.setJSON("sessionObj", requestObj);
+        cache.setItem("sessionObj", requestObj);
       } else {
         const s_url = sessionObj.url; // 请求地址
         const s_data = sessionObj.data; // 请求数据
@@ -58,7 +59,7 @@ service.interceptors.request.use(
           console.warn(`[${s_url}]: ` + message);
           return Promise.reject(new Error(message));
         } else {
-          cache.session.setJSON("sessionObj", requestObj);
+          cache.setItem("sessionObj", requestObj);
         }
       }
     }

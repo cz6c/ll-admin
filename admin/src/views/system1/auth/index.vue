@@ -38,7 +38,7 @@ function handleClick(type: number, value: string) {
     if (codeList.value.includes(value)) return;
     codeList.value.push(value);
   }
-  authStore.setPermCodeList(codeList.value);
+  // authStore.setPermCodeList(codeList.value);
   redo();
 }
 </script>

@@ -1,6 +1,6 @@
 <script lang="ts" setup name="UserFormDrawer">
-import { UserItem, Gender } from "@/api/system/user/index.d";
-import { getUserInfoApi, createUserApi, updateUserApi } from "@/api/system/user";
+import { UserItem, Gender } from "@/api/system1/user/index.d";
+import { getUserInfoApi, createUserApi, updateUserApi } from "@/api/system1/user";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
 import { $message } from "@/utils/message";
 import { enumToOpts } from "@/utils";

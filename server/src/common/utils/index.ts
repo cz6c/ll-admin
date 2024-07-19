@@ -151,3 +151,17 @@ export async function DataScopeFilter<T>(entity: any, dataScope: DataScopeEnum):
   }
   return entity;
 }
+
+/**
+ * @description: 提取url ?后参数
+ * @param {*} url
+ */
+export function getParams(url: string) {
+  const regex = /[?&]+([^=&]+)=([^&]*)/gi;
+  const params = {};
+  url.replace(regex, function (_, key, value) {
+    params[key] = decodeURIComponent(value);
+    return params[key];
+  });
+  return params;
+}

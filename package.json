@@ -5,7 +5,8 @@
   "license": "MIT",
   "scripts": {
     "prepare": "husky install",
-    "cz": "git add . && czg"
+    "cz": "git add . && czg",
+    "pm2": "pm2 start ecosystem.config.js --env development"
   },
   "dependencies": {},
   "devDependencies": {

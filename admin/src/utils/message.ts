@@ -3,7 +3,7 @@ import { MessageHandler, ElMessage } from "element-plus";
 
 type messageTypes = "info" | "success" | "warning" | "error";
 
-interface MessageParams {
+export interface MessageParams {
   /** 自定义图标，该属性会覆盖 `type` 的图标 */
   icon?: any;
   /** 是否将 `message` 属性作为 `HTML` 片段处理，默认 `false` */
@@ -35,7 +35,6 @@ function handleMessage(type: messageTypes, customClass: string) {
       customClass,
       ...params,
     });
-    // }
   };
 }
 

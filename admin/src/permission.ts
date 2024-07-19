@@ -26,11 +26,10 @@ function createPermissionGuard(router: Router) {
         if (useAuthStore().roles.length === 0) {
           try {
             await useAuthStore().getLoginUserInfo();
-            let accessRoutes: any = [];
             if (productConfig.isDynamicAddedRoute) {
-              accessRoutes = await usePermissionStore().generateRoutes();
+              await usePermissionStore().generateRoutes();
             } else {
-              accessRoutes = await getStaticRoutes();
+              await getStaticRoutes();
             }
             next({ ...to, replace: true }); // hack方法 确保addRoutes已完成
           } catch (error) {
@@ -105,7 +104,7 @@ function createMessageGuard(router: Router) {
  * @param {Router} router
  */
 function createTitleGuard(router: Router) {
-  const BASE_TITLE = import.meta.env.VITE_APP_TITLE;
+  const BASE_TITLE = productConfig.title;
   router.beforeEach(async to => {
     document.title = to.meta.title ? `${to.meta.title} | ${BASE_TITLE}` : `${BASE_TITLE}`;
     return true;

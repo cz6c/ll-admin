@@ -8,7 +8,6 @@
         :class="isActive(tag) ? 'active' : ''"
         :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
         class="tags-view-item"
-        :style="activeStyle(tag)"
         @click.middle="!isAffix(tag) ? closeSelectedTag(tag) : ''"
         @contextmenu.prevent="openMenu(tag, $event)"
       >
@@ -35,7 +34,6 @@
 import ScrollPane from "./ScrollPane.vue";
 import { getNormalPath } from "@/utils";
 import { useTagsViewStore } from "@/store/modules/tagsView";
-import { useSettingsStore } from "@/store/modules/settings";
 import { usePermissionStore } from "@/store/modules/permission";
 
 const visible = ref(false);
@@ -51,7 +49,6 @@ const router = useRouter();
 
 const visitedViews = computed(() => useTagsViewStore().visitedViews);
 const routes = computed(() => usePermissionStore().routes);
-const theme = computed(() => useSettingsStore().theme);
 
 watch(route, () => {
   addTags();
@@ -71,13 +68,6 @@ onMounted(() => {
 
 function isActive(r) {
   return r.path === route.path;
-}
-function activeStyle(tag) {
-  if (!isActive(tag)) return {};
-  return {
-    "background-color": theme.value,
-    "border-color": theme.value,
-  };
 }
 function isAffix(tag) {
   return tag.meta && tag.meta.affix;
@@ -261,9 +251,9 @@ function handleScroll() {
         margin-right: 15px;
       }
       &.active {
-        background-color: #42b983;
+        background-color: var(--el-color-primary);
         color: #fff;
-        border-color: #42b983;
+        border-color: var(--el-color-primary);
         &::before {
           content: "";
           background: #fff;

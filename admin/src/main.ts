@@ -5,9 +5,11 @@ import router, { setupRouter } from "@/router";
 import { setupRouterGuard } from "@/permission";
 import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
+import { installPlugins } from "@/utils/plugins";
 
 // css
 import "normalize.css";
+import "element-plus/dist/index.css";
 import "@/assets/style/global.scss";
 
 // 注册svg
@@ -23,13 +25,14 @@ const app = createApp(App);
 
 // 全局方法挂载
 app.config.globalProperties.useDict = useDict;
-// app.config.globalProperties.download = download;
 app.config.globalProperties.parseTime = parseTime;
 app.config.globalProperties.resetForm = resetForm;
 app.config.globalProperties.handleTree = handleTree;
 app.config.globalProperties.addDateRange = addDateRange;
 app.config.globalProperties.selectDictLabel = selectDictLabel;
 app.config.globalProperties.selectDictLabels = selectDictLabels;
+
+installPlugins(app);
 
 // 配置store
 setupStore(app);

@@ -15,7 +15,7 @@ $--colors: (
     "base": #ff4f42,
   ),
   "info": (
-    "base": #979797,
+    "base": #969696,
   ),
 );
 
@@ -31,10 +31,9 @@ $--colors: (
 
 :root {
   // menu
-  --el-menu-text-color: #666f80;
+  --el-menu-text-color: #666f88;
   --el-menu-item-height: 44px;
-  --el-menu-hover-bg-color: #f2f2f2;
-  --el-menu-active-color: var(--el-black);
+  --el-menu-hover-bg-color: transparent;
 
   // button
   --el-border-radius-base: 6px;
@@ -50,4 +49,18 @@ $--colors: (
 // input
 .el-input {
   --el-input-border-radius: 6px;
+}
+
+// 自定义项目 scss 全局公共变量
+$base-sidebar-width: 200px;
+
+// the :export directive is the magic sauce for webpack
+// https://www.bluematador.com/blog/how-to-share-variables-between-js-and-sass
+:export {
+  sideBarWidth: $base-sidebar-width;
+  primaryColor: $--color-primary;
+  successColor: $--color-success;
+  dangerColor: $--color-danger;
+  infoColor: $--color-info;
+  warningColor: $--color-warning;
 }

@@ -1,6 +1,6 @@
 <template>
-  <div class="extra-fold" @click="toggle">
-    <SvgIcon :name="getIcon" />
+  <div class="extra-fold">
+    <SvgIcon :size="18" :name="getIcon" @click.stop="toggle" />
   </div>
 </template>
 <script lang="ts" setup name="FoldButton">

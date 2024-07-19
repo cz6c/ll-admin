@@ -1,5 +1,4 @@
 import { defineStore } from "pinia";
-import store from "@/store";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getInfo, logout } from "@/api/public";
 import { LoginParams } from "@/api/public/index.d";
@@ -13,7 +12,7 @@ interface authStoreState {
   permissions: string[];
 }
 
-export const authStore = defineStore("auth", {
+export const useAuthStore = defineStore("auth", {
   state: (): authStoreState => ({
     // 用户信息
     userInfo: null,
@@ -100,7 +99,3 @@ export const authStore = defineStore("auth", {
     },
   },
 });
-
-export function useAuthStore() {
-  return authStore(store);
-}

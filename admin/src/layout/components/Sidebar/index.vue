@@ -3,7 +3,7 @@
     <div class="logo-container">
       <router-link :key="+new Date()" :title="BASE_TITLE" class="logo-link" to="/">
         <SvgIcon name="logo" size="26" />
-        <div v-if="!layoutStore.getIsCollapse" class="logo-title">{{ BASE_TITLE }}</div>
+        <div v-if="sidebar.opened" class="logo-title">{{ BASE_TITLE }}</div>
       </router-link>
     </div>
     <div class="side-menu">
@@ -13,10 +13,10 @@
           :default-active="getActiveRoutePath"
           :collapse-transition="false"
           :unique-opened="true"
-          :class="{ on: layoutStore.getIsCollapse }"
-          :collapse="layoutStore.getIsCollapse"
+          :class="{ on: !sidebar.opened }"
+          :collapse="!sidebar.opened"
         >
-          <sidebar-item
+          <SidebarItem
             v-for="(route, index) in usePermissionStore().getDynamicMenu"
             :key="route.path + index"
             :item="route"
@@ -26,12 +26,12 @@
       </el-scrollbar>
     </div>
     <div class="code-info">
-      <div v-if="!layoutStore.getIsCollapse" class="des">技术支持：cz6</div>
+      <div v-if="sidebar.opened" class="des">技术支持：cz6</div>
       <div
         class="collapse"
-        :class="{ active: layoutStore.getIsCollapse }"
-        :title="layoutStore.getIsCollapse ? '点击展开' : '点击折叠'"
-        @click="toggleClick"
+        :class="{ active: !sidebar.opened }"
+        :title="!sidebar.opened ? '点击展开' : '点击折叠'"
+        @click="emits('toggleClick')"
       >
         <SvgIcon name="collapse" />
       </div>
@@ -42,15 +42,15 @@
 import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
+import { productConfig } from "@/config";
 
 const BASE_TITLE = computed(() => {
-  return import.meta.env.VITE_APP_TITLE;
+  return productConfig.title;
 });
 
 const layoutStore = useLayoutStore();
-function toggleClick() {
-  layoutStore.setIsCollapse(!layoutStore.getIsCollapse);
-}
+const sidebar = computed(() => layoutStore.sidebar);
+const emits = defineEmits(["toggleClick"]);
 
 const router = useRouter();
 const getActiveRoutePath = computed((): string => {
@@ -67,10 +67,6 @@ const getActiveRoutePath = computed((): string => {
     position: relative;
     overflow: hidden;
     height: 50px;
-
-    a {
-      text-decoration: none;
-    }
 
     .logo-link {
       display: flex;
@@ -102,8 +98,10 @@ const getActiveRoutePath = computed((): string => {
       }
 
       .on {
-        .el-sub-menu__title {
-          padding-right: 0;
+        .el-sub-menu .el-icon,
+        .menu-title,
+        .sub-menu-text {
+          display: none;
         }
       }
     }

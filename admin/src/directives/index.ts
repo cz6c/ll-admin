@@ -1,6 +1,8 @@
 import type { App } from "vue";
-import { setupPermissionDirective } from "./modules/permission";
+import vAuth from "./modules/permission";
+import vClickOutside from "./modules/click-outside";
 
 export function setupGlobDirectives(app: App) {
-  setupPermissionDirective(app);
+  vAuth(app);
+  vClickOutside(app);
 }

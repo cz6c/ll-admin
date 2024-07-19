@@ -11,7 +11,7 @@ export interface RoleItem {
 }
 // 新增/编辑body
 export interface RoleInfo extends Omit<RoleItem, "id" | "status" | "isDel"> {
-  id?: number;
+  id?: string | number;
   status?: 0 | 1;
   isDel?: 0 | 1;
 }

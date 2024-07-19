@@ -89,7 +89,23 @@ export function isMap(val: unknown): val is Map<any, any> {
   return is(val, 'Map');
 }
 
+// https://www  http://www
 export function isUrl(path: string): boolean {
   const reg = /^http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
   return reg.test(path);
+}
+
+// https://  http://
+export function isHttp(url: string): boolean {
+  const reg = /^http(s)?:\/\//;
+  return reg.test(url);
+}
+
+export function isExternal(path: string): boolean {
+  return /^(https?:|mailto:|tel:)/.test(path);
+}
+
+export function isEmail(email: string): boolean {
+  const reg = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+  return reg.test(email);
 }

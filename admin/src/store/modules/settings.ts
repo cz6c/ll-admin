@@ -1,27 +1,27 @@
-import { productConfig } from "@/config";
+import { defineStore } from "pinia";
+import { handleThemeStyle } from "@/utils/theme";
+import { WebStorage } from "@/utils/storage";
 
-const { sideTheme, showSettings, topNav, tagsView, fixedHeader, sidebarLogo, dynamicTitle } = productConfig;
-
-const storageSetting = JSON.parse(localStorage.getItem("layout-setting")) || "";
+const layoutSetting = new WebStorage("localStorage").getItem("layout-setting") || {};
 
 export const useSettingsStore = defineStore("settings", {
   state: () => ({
-    title: "",
-    theme: storageSetting.theme || "#409EFF",
-    sideTheme: storageSetting.sideTheme || sideTheme,
-    showSettings: showSettings,
-    topNav: storageSetting.topNav === undefined ? topNav : storageSetting.topNav,
-    tagsView: storageSetting.tagsView === undefined ? tagsView : storageSetting.tagsView,
-    fixedHeader: storageSetting.fixedHeader === undefined ? fixedHeader : storageSetting.fixedHeader,
-    sidebarLogo: storageSetting.sidebarLogo === undefined ? sidebarLogo : storageSetting.sidebarLogo,
-    dynamicTitle: storageSetting.dynamicTitle === undefined ? dynamicTitle : storageSetting.dynamicTitle,
+    theme: layoutSetting.theme === undefined ? "#292ae4" : layoutSetting.theme, // 主题色
+    tagsView: layoutSetting.tagsView === undefined ? true : layoutSetting.tagsView, // 是否显示 tagsView
+    sidebarLogo: layoutSetting.sidebarLogo === undefined ? true : layoutSetting.sidebarLogo, // 是否显示logo
   }),
   actions: {
     // 修改布局设置
-    changeSetting(data) {
+    changeSetting(data: { key: string; value: string | boolean }) {
       const { key, value } = data;
       if (this.hasOwnProperty(key)) {
         this[key] = value;
+        switch (key) {
+          case "theme":
+            // 设置主题色
+            handleThemeStyle(value);
+            break;
+        }
       }
     },
   },

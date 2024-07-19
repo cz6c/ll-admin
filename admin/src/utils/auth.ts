@@ -1,18 +1,16 @@
 // 控制token
-import { LocalStorage } from "@/utils/storage";
+import { WebStorage } from "@/utils/storage";
 
-const TokenKey = "token";
-
-const tokenStorage = new LocalStorage(TokenKey, "");
+const tokenStorage = new WebStorage("sessionStorage");
 
 export function getToken() {
-  return tokenStorage.getItem();
+  return tokenStorage.getItem("token");
 }
 
 export function setToken(token: string) {
-  return tokenStorage.setItem(token);
+  return tokenStorage.setItem("token", token);
 }
 
 export function removeToken() {
-  return tokenStorage.removeItem();
+  return tokenStorage.removeItem("token");
 }

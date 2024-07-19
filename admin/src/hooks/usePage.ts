@@ -5,7 +5,7 @@ import { useRouter, Router } from "vue-router";
 /**
  * @description: 重新加载页面
  */
-export function useRedo(router: Router) {
+export function useRedo(router?: Router) {
   const { replace, currentRoute } = router || useRouter();
   const { query, params = {}, name, fullPath } = unref(currentRoute);
   function redo(): Promise<boolean> {

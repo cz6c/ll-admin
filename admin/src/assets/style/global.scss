@@ -1,5 +1,7 @@
-@import "./transition";
-@import "./element-plus";
+@import "./mixin.scss";
+@import "./transition.scss";
+@import "./element-plus.scss";
+@import "./sidebar.scss";
 
 /* 灰色模式 */
 .html-grey {
@@ -24,7 +26,7 @@ body {
 html,
 body,
 #app,
-.app-container {
+.app-wrapper {
   min-width: 1024px;
   height: 100%;
 }
@@ -35,6 +37,10 @@ h3,
 h4,
 p {
   margin: 0;
+}
+
+a {
+  text-decoration: none;
 }
 
 .app-page {

@@ -26,8 +26,8 @@
 import { reactive, ref, computed, unref } from "vue";
 import { FormInstance, FormRules } from "element-plus";
 import { useFrom } from "@/hooks/useFrom";
-import { getRoleInfoApi, saveRoleApi, updateRoleApi } from "@/api/system/role";
-import { RoleInfo } from "@/api/system/role/index.d";
+import { getRoleInfoApi, saveRoleApi, updateRoleApi } from "@/api/system1/role";
+import { RoleInfo } from "@/api/system1/role/index.d";
 import TreeMenu from "./TreeMenu.vue";
 
 const props = defineProps({
@@ -103,7 +103,7 @@ async function handleOpen() {
     menuIds: "5",
   };
   if (props.id) {
-    const res = await getRoleInfoApi({ id: props.id });
+    const res = await getRoleInfoApi({ id: props.id as unknown as string });
     data = res.data;
   }
   handleData(data);

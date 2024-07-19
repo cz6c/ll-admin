@@ -1,7 +1,7 @@
 <template>
   <div class="login">
     <div class="login-fl">
-      <SvgIcon name="login" size="368" />
+      <!-- <SvgIcon name="login" size="368" /> -->
     </div>
     <div class="login-fr">
       <div class="login-conten">
@@ -62,9 +62,10 @@ import { $message } from "@/utils/message";
 import { getCodeImg } from "@/api/public";
 import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
+import { productConfig } from "@/config";
 
 const BASE_TITLE = computed(() => {
-  return import.meta.env.VITE_APP_TITLE;
+  return productConfig.title;
 });
 
 const formRef = ref<FormInstance>();

@@ -44,7 +44,7 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     },
     css: {
       preprocessorOptions: {
-        // 配置全局scss文件
+        // 引入配置element plus 主题色scss文件
         scss: {
           additionalData: '@use "@/assets/style/variables.scss" as *;',
         },

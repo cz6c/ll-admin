@@ -1,5 +1,5 @@
 <template>
-  <div class="cz-card"></div>
+  <div class="cz-card" />
 </template>
 
 <script setup lang="ts" name="SpuDetails"></script>

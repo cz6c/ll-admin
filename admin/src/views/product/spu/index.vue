@@ -18,8 +18,8 @@ const searchList = reactive<SearchProps[]>([
   {
     el: "input",
     prop: "name",
-    label: "商品名称",
-  },
+    label: "商品名称"
+  }
   // {
   //   el: "date-picker",
   //   prop: "createTime",
@@ -34,7 +34,7 @@ const apiQuery = reactive({
   page: 1,
   limit: 20,
   total: 0,
-  name: "",
+  name: ""
   // createTime: "",
 });
 
@@ -42,7 +42,7 @@ const tableRef = ref<TableViewInstance>();
 
 const { loading, tableData, reset, search, getList, pagination } = useTable({
   getListApi,
-  apiQuery,
+  apiQuery
 });
 getList();
 
@@ -51,39 +51,39 @@ const tableConfig = reactive<TableConfig<ProductItem>>({
   columns: [
     {
       label: "商品名称",
-      prop: "name",
+      prop: "name"
     },
     {
       label: "商品编码",
-      prop: "spuCode",
+      prop: "spuCode"
     },
     {
       label: "商品主图",
       prop: "mainPictures",
-      render: ({ row: { mainPictures } }) => <el-image src={mainPictures[0]} />,
+      render: ({ row: { mainPictures } }) => <el-image src={mainPictures[0]} />
     },
     {
       label: "商品描述",
-      prop: "desc",
+      prop: "desc"
     },
     {
       label: "商品分类",
-      prop: "categoryName",
+      prop: "categoryName"
     },
     {
       label: "当前价格",
-      prop: "price",
+      prop: "price"
     },
     {
       label: "上架状态",
       prop: "status",
-      render: ({ row }) => <el-switch v-model={row.status} onClick={() => statusChange(row.id)} />,
+      render: ({ row }) => <el-switch v-model={row.status} onClick={() => statusChange(row.id)} />
     },
     {
       label: "创建时间",
       prop: "createTime",
       width: 160,
-      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss"),
+      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss")
     },
     {
       label: "操作",
@@ -102,10 +102,10 @@ const tableConfig = reactive<TableConfig<ProductItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
+      )
+    }
   ],
-  pagination,
+  pagination
 });
 
 /**
@@ -117,16 +117,16 @@ function goForm(id?: string) {
   router.push({
     name: "SpuForm",
     query: {
-      id,
-    },
+      id
+    }
   });
 }
 function goDetails(id: string) {
   router.push({
     name: "SpuDetails",
     query: {
-      id,
-    },
+      id
+    }
   });
 }
 
@@ -149,7 +149,7 @@ async function statusChange(id: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定要删除该商品吗?", "删除商品", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

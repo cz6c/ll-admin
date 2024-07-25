@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<TableProps>(), {
   isSelection: false,
   showHeader: true,
   title: "",
-  pagination: null,
+  pagination: null
 });
 
 const tableRef = ref<InstanceType<typeof ElTable>>();
@@ -43,7 +43,7 @@ function updateColumn(data: TableCol[]) {
  */
 const emits = defineEmits([
   "row-click", // 当某一行被点击时会触发该事件
-  "selection-change", // 当某一行被点击时会触发该事件
+  "selection-change" // 当某一行被点击时会触发该事件
 ]);
 const handleRowClick = (row: any, column: any, event: MouseEvent) => {
   emits("row-click", row, column, event);
@@ -53,7 +53,7 @@ const handleSelectionChange = (selection: any) => {
 };
 
 defineExpose({
-  tableRef,
+  tableRef
 });
 </script>
 <template>
@@ -67,22 +67,22 @@ defineExpose({
       @update-columns="updateColumn"
     >
       <template #tools>
-        <slot name="header-tools"></slot>
+        <slot name="header-tools" />
       </template>
     </TableHeader>
     <!-- 表格主体 -->
     <el-table
       ref="tableRef"
       v-bind="$attrs"
+      v-loading="loading"
       :data="data"
       :rowKey="rowKey"
       :tooltip-options="{
-        'popper-class': 'table-tooltip-popper',
+        'popper-class': 'table-tooltip-popper'
       }"
       showOverflowTooltip
       @selection-change="handleSelectionChange"
       @row-click="handleRowClick"
-      v-loading="loading"
     >
       <!-- selection || index  -->
       <el-table-column
@@ -98,23 +98,23 @@ defineExpose({
       <!-- other -->
       <template v-for="(item, index) in showHeader ? checkedColumns : columns" :key="index">
         <template v-if="!showHeader || (showHeader && item.visible)">
-          <TableColumn :column="item" :key="index">
+          <TableColumn :key="index" :column="item">
             <template v-for="slot in Object.keys($slots)" #[slot]="scope">
-              <slot :name="slot" v-bind="scope"></slot>
+              <slot :name="slot" v-bind="scope" />
             </template>
           </TableColumn>
         </template>
       </template>
       <!-- 默认插槽 -->
-      <slot></slot>
+      <slot />
       <!-- 插入表格最后一行之后的插槽 -->
       <template #append>
-        <slot name="table-append"> </slot>
+        <slot name="table-append" />
       </template>
       <!-- 无数据 -->
       <template #empty>
         <div class="table-empty">
-          <slot name="table-empty"> </slot>
+          <slot name="table-empty" />
         </div>
       </template>
     </el-table>

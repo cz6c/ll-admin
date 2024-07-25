@@ -11,15 +11,15 @@ export function useEcharts(elRef: Ref<HTMLDivElement>, theme: "light" | "dark" |
     chartInstance?.resize({
       animation: {
         duration: 300,
-        easing: "quadraticIn",
-      },
+        easing: "quadraticIn"
+      }
     });
   }, 200);
 
   const getOptions = computed(() => {
     return {
       backgroundColor: "transparent",
-      ...cacheOptions.value,
+      ...cacheOptions.value
     } as EChartsOption;
   });
 
@@ -64,6 +64,6 @@ export function useEcharts(elRef: Ref<HTMLDivElement>, theme: "light" | "dark" |
 
   return {
     setOptions,
-    echarts,
+    echarts
   };
 }

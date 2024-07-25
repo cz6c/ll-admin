@@ -8,7 +8,7 @@ export default {
   meta: {
     title: "产品中心",
     icon: "menu-product",
-    orderNo: 2,
+    orderNo: 2
   },
   redirect: "/product/spu",
   children: [
@@ -17,8 +17,8 @@ export default {
       name: "Spu",
       component: () => import("@/views/product/spu/index.vue"),
       meta: {
-        title: "商品管理",
-      },
+        title: "商品管理"
+      }
     },
     {
       path: "/product/spuForm",
@@ -27,17 +27,17 @@ export default {
       meta: {
         title: "编辑商品",
         activeMenu: "/product/spu",
-        hideMenu: true,
-      },
+        hideMenu: true
+      }
     },
     {
       path: "/product/category",
       name: "Category",
       component: () => import(`@/views/product/category/index.vue`),
       meta: {
-        title: "分类管理",
-      },
-    },
+        title: "分类管理"
+      }
+    }
     // {
     //   path: "/product/specification",
     //   name: "Specification",
@@ -46,5 +46,5 @@ export default {
     //     title: "规格管理",
     //   },
     // },
-  ],
+  ]
 } as AppRouteRecordRaw;

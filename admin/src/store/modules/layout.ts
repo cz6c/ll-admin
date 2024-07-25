@@ -4,9 +4,9 @@ export const useLayoutStore = defineStore("layout", {
   state: () => ({
     sidebar: {
       opened: true,
-      withoutAnimation: false,
+      withoutAnimation: false
     },
-    device: "desktop",
+    device: "desktop"
   }),
   actions: {
     // 切换侧边栏
@@ -21,6 +21,6 @@ export const useLayoutStore = defineStore("layout", {
     // 切换设备类型
     toggleDevice(device: "mobile" | "desktop") {
       this.device = device;
-    },
-  },
+    }
+  }
 });

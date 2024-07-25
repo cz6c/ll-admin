@@ -1,5 +1,5 @@
 import { createGet, createPost } from "@/utils/request";
-import { BannerListParams, BannerListResponse, BannerItem } from "./index.d";
+import type { BannerListParams, BannerListResponse, BannerItem } from "./index.d";
 
 const basePath = `/banner`;
 

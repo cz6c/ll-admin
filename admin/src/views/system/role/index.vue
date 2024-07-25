@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" v-show="showSearch" :inline="true" label-width="68px">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
       <el-form-item label="角色名称" prop="roleName">
         <el-input
           v-model="queryParams.roleName"
@@ -32,7 +32,7 @@
           range-separator="-"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-        ></el-date-picker>
+        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -41,36 +41,36 @@
     </el-form>
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:role:add']">新增</el-button>
+        <el-button v-hasPermi="['system:role:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:role:edit']"
           type="success"
           plain
           icon="Edit"
           :disabled="single"
           @click="handleUpdate"
-          v-hasPermi="['system:role:edit']"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:role:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['system:role:remove']"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['system:role:export']"
+        <el-button v-hasPermi="['system:role:export']" type="warning" plain icon="Download" @click="handleExport"
           >导出</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <!-- 表格数据 -->
@@ -87,7 +87,7 @@
             active-value="0"
             inactive-value="1"
             @change="handleStatusChange(scope.row)"
-          ></el-switch>
+          />
         </template>
       </el-table-column>
       <el-table-column label="创建时间" align="center" prop="createTime">
@@ -97,41 +97,41 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-tooltip content="修改" placement="top" v-if="scope.row.roleId !== 1">
+          <el-tooltip v-if="scope.row.roleId !== 1" content="修改" placement="top">
             <el-button
+              v-hasPermi="['system:role:edit']"
               link
               type="primary"
               icon="Edit"
               @click="handleUpdate(scope.row)"
-              v-hasPermi="['system:role:edit']"
-            ></el-button>
+            />
           </el-tooltip>
-          <el-tooltip content="删除" placement="top" v-if="scope.row.roleId !== 1">
+          <el-tooltip v-if="scope.row.roleId !== 1" content="删除" placement="top">
             <el-button
+              v-hasPermi="['system:role:remove']"
               link
               type="primary"
               icon="Delete"
               @click="handleDelete(scope.row)"
-              v-hasPermi="['system:role:remove']"
-            ></el-button>
+            />
           </el-tooltip>
-          <el-tooltip content="数据权限" placement="top" v-if="scope.row.roleId !== 1">
+          <el-tooltip v-if="scope.row.roleId !== 1" content="数据权限" placement="top">
             <el-button
+              v-hasPermi="['system:role:edit']"
               link
               type="primary"
               icon="CircleCheck"
               @click="handleDataScope(scope.row)"
-              v-hasPermi="['system:role:edit']"
-            ></el-button>
+            />
           </el-tooltip>
-          <el-tooltip content="分配用户" placement="top" v-if="scope.row.roleId !== 1">
+          <el-tooltip v-if="scope.row.roleId !== 1" content="分配用户" placement="top">
             <el-button
+              v-hasPermi="['system:role:edit']"
               link
               type="primary"
               icon="User"
               @click="handleAuthUser(scope.row)"
-              v-hasPermi="['system:role:edit']"
-            ></el-button>
+            />
           </el-tooltip>
         </template>
       </el-table-column>
@@ -139,14 +139,14 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
 
     <!-- 添加或修改角色配置对话框 -->
-    <el-dialog :title="title" v-model="open" width="500px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="500px" append-to-body>
       <el-form ref="roleRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="form.roleName" placeholder="请输入角色名称" />
@@ -181,18 +181,18 @@
             >父子联动</el-checkbox
           >
           <el-tree
+            ref="menuRef"
             class="tree-border"
             :data="menuOptions"
             show-checkbox
-            ref="menuRef"
             node-key="id"
             :check-strictly="!form.menuCheckStrictly"
             empty-text="加载中，请稍候"
             :props="{ label: 'label', children: 'children' }"
-          ></el-tree>
+          />
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容"></el-input>
+          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -204,7 +204,7 @@
     </el-dialog>
 
     <!-- 分配角色数据权限对话框 -->
-    <el-dialog :title="title" v-model="openDataScope" width="500px" append-to-body>
+    <el-dialog v-model="openDataScope" :title="title" width="500px" append-to-body>
       <el-form :model="form" label-width="80px">
         <el-form-item label="角色名称">
           <el-input v-model="form.roleName" :disabled="true" />
@@ -214,15 +214,10 @@
         </el-form-item>
         <el-form-item label="权限范围">
           <el-select v-model="form.dataScope" @change="dataScopeSelectChange">
-            <el-option
-              v-for="item in dataScopeOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            ></el-option>
+            <el-option v-for="item in dataScopeOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="数据权限" v-show="form.dataScope == 2">
+        <el-form-item v-show="form.dataScope == 2" label="数据权限">
           <el-checkbox v-model="deptExpand" @change="handleCheckedTreeExpand($event, 'dept')">展开/折叠</el-checkbox>
           <el-checkbox v-model="deptNodeAll" @change="handleCheckedTreeNodeAll($event, 'dept')"
             >全选/全不选</el-checkbox
@@ -231,16 +226,16 @@
             >父子联动</el-checkbox
           >
           <el-tree
+            ref="deptRef"
             class="tree-border"
             :data="deptOptions"
             show-checkbox
             default-expand-all
-            ref="deptRef"
             node-key="id"
             :check-strictly="!form.deptCheckStrictly"
             empty-text="加载中，请稍候"
             :props="{ label: 'label', children: 'children' }"
-          ></el-tree>
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -262,7 +257,7 @@ import {
   getRole,
   listRole,
   updateRole,
-  deptTreeSelect,
+  deptTreeSelect
 } from "@/api/system/role";
 import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu";
 
@@ -296,7 +291,7 @@ const dataScopeOptions = ref([
   { value: "2", label: "自定数据权限" },
   { value: "3", label: "本部门数据权限" },
   { value: "4", label: "本部门及以下数据权限" },
-  { value: "5", label: "仅本人数据权限" },
+  { value: "5", label: "仅本人数据权限" }
 ]);
 
 const data = reactive({
@@ -306,13 +301,13 @@ const data = reactive({
     pageSize: 10,
     roleName: undefined,
     roleKey: undefined,
-    status: undefined,
+    status: undefined
   },
   rules: {
     roleName: [{ required: true, message: "角色名称不能为空", trigger: "blur" }],
     roleKey: [{ required: true, message: "权限字符不能为空", trigger: "blur" }],
-    roleSort: [{ required: true, message: "角色顺序不能为空", trigger: "blur" }],
-  },
+    roleSort: [{ required: true, message: "角色顺序不能为空", trigger: "blur" }]
+  }
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -356,9 +351,9 @@ function handleExport() {
   proxy.download(
     "system/role/export",
     {
-      ...queryParams.value,
+      ...queryParams.value
     },
-    `role_${new Date().getTime()}.xlsx`,
+    `role_${new Date().getTime()}.xlsx`
   );
 }
 /** 多选框选中数据 */
@@ -433,7 +428,7 @@ function reset() {
     deptIds: [],
     menuCheckStrictly: true,
     deptCheckStrictly: true,
-    remark: undefined,
+    remark: undefined
   };
   proxy.resetForm("roleRef");
 }

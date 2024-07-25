@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="岗位编码" prop="postCode">
         <el-input
           v-model="queryParams.postCode"
@@ -32,36 +32,36 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:post:add']">新增</el-button>
+        <el-button v-hasPermi="['system:post:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:post:edit']"
           type="success"
           plain
           icon="Edit"
           :disabled="single"
           @click="handleUpdate"
-          v-hasPermi="['system:post:edit']"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:post:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['system:post:remove']"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['system:post:export']"
+        <el-button v-hasPermi="['system:post:export']" type="warning" plain icon="Download" @click="handleExport"
           >导出</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="postList" @selection-change="handleSelectionChange">
@@ -82,15 +82,15 @@
       </el-table-column>
       <el-table-column label="操作" width="180" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['system:post:edit']"
+          <el-button v-hasPermi="['system:post:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
             >修改</el-button
           >
           <el-button
+            v-hasPermi="['system:post:remove']"
             link
             type="primary"
             icon="Delete"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['system:post:remove']"
             >删除</el-button
           >
         </template>
@@ -99,14 +99,14 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
 
     <!-- 添加或修改岗位对话框 -->
-    <el-dialog :title="title" v-model="open" width="500px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="500px" append-to-body>
       <el-form ref="postRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="岗位名称" prop="postName">
           <el-input v-model="form.postName" placeholder="请输入岗位名称" />
@@ -161,13 +161,13 @@ const data = reactive({
     pageSize: 10,
     postCode: undefined,
     postName: undefined,
-    status: undefined,
+    status: undefined
   },
   rules: {
     postName: [{ required: true, message: "岗位名称不能为空", trigger: "blur" }],
     postCode: [{ required: true, message: "岗位编码不能为空", trigger: "blur" }],
-    postSort: [{ required: true, message: "岗位顺序不能为空", trigger: "blur" }],
-  },
+    postSort: [{ required: true, message: "岗位顺序不能为空", trigger: "blur" }]
+  }
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -194,7 +194,7 @@ function reset() {
     postName: undefined,
     postSort: 0,
     status: "0",
-    remark: undefined,
+    remark: undefined
   };
   proxy.resetForm("postRef");
 }
@@ -269,9 +269,9 @@ function handleExport() {
   proxy.download(
     "system/post/export",
     {
-      ...queryParams.value,
+      ...queryParams.value
     },
-    `post_${new Date().getTime()}.xlsx`,
+    `post_${new Date().getTime()}.xlsx`
   );
 }
 

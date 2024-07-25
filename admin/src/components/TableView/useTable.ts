@@ -1,4 +1,4 @@
-import { GetListParams } from "@/api/public/index.d";
+import type { GetListParams } from "@/api/public/index.d";
 import { isFunction } from "@/utils/is";
 import { $message } from "@/utils/message";
 import { cloneDeep } from "lodash-es";
@@ -13,7 +13,7 @@ export interface Params {
 export function useTable({ getListApi, apiQuery, beforeFetch, afterFetch }: Params) {
   const state = reactive({
     loading: false,
-    tableData: [],
+    tableData: []
   });
   const apiQueryDefault = cloneDeep(apiQuery);
 
@@ -89,7 +89,7 @@ export function useTable({ getListApi, apiQuery, beforeFetch, afterFetch }: Para
     pagination: {
       pageQuery: apiQuery,
       handleSizeChange,
-      handleCurrentChange,
-    },
+      handleCurrentChange
+    }
   };
 }

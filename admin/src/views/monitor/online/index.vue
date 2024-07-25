@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true">
+    <el-form ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="登录地址" prop="ipaddr">
         <el-input
           v-model="queryParams.ipaddr"
@@ -49,18 +49,18 @@
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button
+            v-hasPermi="['monitor:online:forceLogout']"
             link
             type="primary"
             icon="Delete"
             @click="handleForceLogout(scope.row)"
-            v-hasPermi="['monitor:online:forceLogout']"
             >强退</el-button
           >
         </template>
       </el-table-column>
     </el-table>
 
-    <pagination v-show="total > 0" :total="total" v-model:page="pageNum" v-model:limit="pageSize" />
+    <pagination v-show="total > 0" v-model:page="pageNum" v-model:limit="pageSize" :total="total" />
   </div>
 </template>
 
@@ -77,13 +77,17 @@ const pageSize = ref(10);
 
 const queryParams = ref({
   ipaddr: undefined,
-  userName: undefined,
+  userName: undefined
 });
 
 /** 查询登录日志列表 */
 function getList() {
   loading.value = true;
-  initData({ ...queryParams.value, pageNum: pageNum.value, pageSize: pageSize.value }).then(response => {
+  initData({
+    ...queryParams.value,
+    pageNum: pageNum.value,
+    pageSize: pageSize.value
+  }).then(response => {
     onlineList.value = response.data.list;
     total.value = response.data.total;
     loading.value = false;

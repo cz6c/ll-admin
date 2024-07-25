@@ -1,4 +1,4 @@
-import { GetListParams, GetListResponse } from "@/api/public/index.d";
+import type { GetListParams, GetListResponse } from "@/api/public/index.d";
 // 详情
 export interface OrderItem {
   id: string;
@@ -77,7 +77,7 @@ export enum OrderState {
   /** 已完成 */
   已完成 = 5,
   /** 已取消 */
-  已取消 = 6,
+  已取消 = 6
 }
 
 /** 订单状态枚举 */
@@ -85,5 +85,5 @@ export enum PayChannel {
   /** 支付宝 */
   支付宝 = 1,
   /** 微信 */
-  微信 = 2,
+  微信 = 2
 }

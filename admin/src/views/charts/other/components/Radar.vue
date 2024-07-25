@@ -9,8 +9,8 @@ withDefaults(
   }>(),
   {
     width: "100%",
-    height: "100%",
-  },
+    height: "100%"
+  }
 );
 const chartRef = ref<HTMLDivElement | null>(null);
 const { setOptions } = useEcharts(chartRef as Ref<HTMLDivElement>);
@@ -21,10 +21,10 @@ onMounted(() => {
       text: "Proportion of Browsers",
       subtext: "Fake Data",
       top: 10,
-      left: 10,
+      left: 10
     },
     tooltip: {
-      trigger: "item",
+      trigger: "item"
     },
     legend: {
       type: "scroll",
@@ -35,13 +35,13 @@ onMounted(() => {
           list.push(i + 2000 + "");
         }
         return list;
-      })(),
+      })()
     },
     visualMap: {
       top: "middle",
       right: 10,
       color: ["red", "yellow"],
-      calculable: true,
+      calculable: true
     },
     radar: {
       indicator: [
@@ -49,8 +49,8 @@ onMounted(() => {
         { text: "IE9+", max: 400 },
         { text: "Safari", max: 400 },
         { text: "Firefox", max: 400 },
-        { text: "Chrome", max: 400 },
-      ],
+        { text: "Chrome", max: 400 }
+      ]
     },
     series: (function () {
       var series = [];
@@ -59,29 +59,29 @@ onMounted(() => {
           type: "radar",
           symbol: "none",
           lineStyle: {
-            width: 1,
+            width: 1
           },
           emphasis: {
             areaStyle: {
-              color: "rgba(0,250,0,0.3)",
-            },
+              color: "rgba(0,250,0,0.3)"
+            }
           },
           data: [
             {
               value: [(40 - i) * 10, (38 - i) * 4 + 60, i * 5 + 10, i * 9, (i * i) / 2],
-              name: i + 2000 + "",
-            },
-          ],
+              name: i + 2000 + ""
+            }
+          ]
         });
       }
       return series;
-    })(),
+    })()
   });
 });
 </script>
 
 <template>
-  <div ref="chartRef" :style="{ height, width }" class="chart-view"></div>
+  <div ref="chartRef" :style="{ height, width }" class="chart-view" />
 </template>
 
 <style lang="scss" scoped></style>

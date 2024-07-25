@@ -1,7 +1,7 @@
 import { createGet, createPost } from "@/utils/request";
-import { LoginParams } from "#/api";
+import type { LoginParams } from "#/api";
 import type { AppRouteRecordRaw } from "#/utils";
-import { UserItem } from "../system1/user/index.d";
+import type { UserItem } from "../system1/user/index.d";
 
 // 登录
 export const login = createPost<LoginParams, { token: string }>("/login");

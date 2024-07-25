@@ -8,7 +8,7 @@ interface TreeHelperConfig {
 const DEFAULT_CONFIG: TreeHelperConfig = {
   id: "id",
   children: "children",
-  pid: "pid",
+  pid: "pid"
 };
 
 // 获取配置。  Object.assign 从一个或多个源对象复制到目标对象
@@ -145,13 +145,13 @@ export function treeMap(tree: any[], opt: { children?: string; conversion: Funct
         [children]: data[children].map((i: number) =>
           treeMapEach(i, {
             children,
-            conversion,
-          }),
-        ),
+            conversion
+          })
+        )
       };
     } else {
       return {
-        ...conversionData,
+        ...conversionData
       };
     }
   }

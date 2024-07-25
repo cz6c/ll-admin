@@ -1,7 +1,7 @@
-import { RouterEnum } from "@/router";
-import { useAuthStore } from "@/store/modules/auth";
+// import { RouterEnum } from "@/router";
+// import { useAuthStore } from "@/store/modules/auth";
 import { usePermissionStore } from "@/store/modules/permission";
-import { getToken } from "@/utils/auth";
+// import { getToken } from "@/utils/auth";
 import type { Router } from "vue-router";
 import nProgress from "nprogress";
 import { ElMessage, ElNotification } from "element-plus";
@@ -12,7 +12,7 @@ import { productConfig } from "@/config";
  * @param {Router} router
  */
 function createPermissionGuard(router: Router) {
-  const whitePathList: string[] = [RouterEnum.BASE_LOGIN_PATH];
+  // const whitePathList: string[] = [RouterEnum.BASE_LOGIN_PATH];
 
   router.beforeEach(async (to, from, next) => {
     console.log(to, from);

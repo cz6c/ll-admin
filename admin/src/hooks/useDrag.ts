@@ -22,11 +22,11 @@ export function useDrag(opt: UseDragOptions) {
   const data = {
     currentX: 0,
     currentY: 0,
-    flag: false,
+    flag: false
   };
   const position = opt.initialValue || {
     x: 0,
-    y: 0,
+    y: 0
   };
   const dragEl = unref(opt.dragElRef);
   if (!dragEl) return;

@@ -5,7 +5,7 @@ import endImg from "@/assets/images/map/end.png";
 import carImg from "@/assets/images/map/car.png";
 import AMapLoader from "@amap/amap-jsapi-loader";
 window._AMapSecurityConfig = {
-  securityJsCode: "7513b68945f8cd5d80e9f2a447e8a5cb",
+  securityJsCode: "7513b68945f8cd5d80e9f2a447e8a5cb"
 };
 
 const wrapRef = ref<HTMLDivElement | null>(null);
@@ -18,13 +18,13 @@ async function initMap() {
   if (!wrapEl) return;
   AMapLoader.load({
     key: "58661ea5b0ac9dfba2c3d58c7418d508", // 申请好的Web端开发者Key，首次调用 load 时必填
-    version: "2.0", // 指定要加载的 JSAPI 的版本，缺省时默认为 1.4.15
+    version: "2.0" // 指定要加载的 JSAPI 的版本，缺省时默认为 1.4.15
   })
     .then(AMap => {
       const map = new AMap.Map(wrapEl, {
         // 设置地图容器id
         // viewMode: '3D', //是否为3D地图模式
-        zoom: 4, //初始化地图级别 一般12
+        zoom: 4 //初始化地图级别 一般12
         // center: [105.602725, 37.076636] //初始化地图中心点位置 不设置默认是北京
         // mapStyle: 'amap://styles/whitesmoke' // 设置地图样式 远山黛
       });
@@ -57,7 +57,10 @@ function setDriving(
     Marker: new (arg0: { position: number[]; icon: any; offset: any }) => any;
     Pixel: new (arg0: number, arg1: number) => any;
   },
-  map: { add: (arg0: any) => void; setFitView: (arg0: any[], arg1: boolean, arg2: number[], arg3: number) => void },
+  map: {
+    add: (arg0: any) => void;
+    setFitView: (arg0: any[], arg1: boolean, arg2: number[], arg3: number) => void;
+  }
 ) {
   // 加载路线规划插件
   AMap.plugin("AMap.Driving", function () {
@@ -68,7 +71,7 @@ function setDriving(
       policy: AMap.DrivingPolicy.LEAST_TIME,
       map: map, //AMap.Map对象,
       showTraffic: true, // 设置是否显示实时路况信息，默认设置为true。 显示绿色代表畅通，黄色代表轻微拥堵，红色代表比较拥堵，灰色表示无路况信息。
-      hideMarkers: true, //设置隐藏路径规划的起始点图标 设置为true
+      hideMarkers: true //设置隐藏路径规划的起始点图标 设置为true
     });
 
     // 创建标记函数
@@ -76,12 +79,12 @@ function setDriving(
       const icon = new AMap.Icon({
         size: new AMap.Size(width, height),
         image,
-        imageSize: new AMap.Size(width, height),
+        imageSize: new AMap.Size(width, height)
       });
       const marker = new AMap.Marker({
         position: point,
         icon: icon,
-        offset: new AMap.Pixel(-width / 2, -height), // AMap.Pixel 像素坐标，确定地图上的一个像素点。
+        offset: new AMap.Pixel(-width / 2, -height) // AMap.Pixel 像素坐标，确定地图上的一个像素点。
       });
       return marker;
     };
@@ -105,8 +108,8 @@ function setDriving(
           [113.658097, 34.745795],
           [114.304569, 30.593354],
           [112.938882, 28.228304],
-          [113.015517, 25.770117],
-        ],
+          [113.015517, 25.770117]
+        ]
       },
       function (status: string, result: object) {
         console.log(status, result);
@@ -121,10 +124,10 @@ function setDriving(
             [currMarker], // 覆盖物数组
             false, // 动画过渡到制定位置
             [60, 60, 60, 60], // 周围边距，上、下、左、右
-            10, // 最大 zoom 级别
+            10 // 最大 zoom 级别
           );
         }, 3000);
-      },
+      }
     );
   });
 }
@@ -135,7 +138,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div ref="wrapRef" class="amap-page"></div>
+  <div ref="wrapRef" class="amap-page" />
 </template>
 
 <style lang="scss" scoped>

@@ -12,33 +12,33 @@ const columns: TableCol<SkuItem>[] = [
   {
     label: "sku名称",
     prop: "skuName",
-    render: ({ row }) => <el-input style="height: 30px" v-model={row.skuName} />,
+    render: ({ row }) => <el-input style="height: 30px" v-model={row.skuName} />
   },
   {
     label: "sku编码",
     prop: "skuCode",
-    render: ({ row }) => <el-input style="height: 30px" v-model={row.skuCode} />,
+    render: ({ row }) => <el-input style="height: 30px" v-model={row.skuCode} />
   },
   {
     label: "sku图片",
     prop: "picture",
     // render: ({ row }) => <el-image src={row.picture} />,
-    render: ({ row }) => <UploadImg v-model={row.picture} width="80px" height="80px" />,
+    render: ({ row }) => <UploadImg v-model={row.picture} width="80px" height="80px" />
   },
   {
     label: "销售价",
     prop: "price",
     render: ({ row }) => (
       <el-input-number style={"width: 100%; height: 30px"} v-model={row.price} min={0} precision={2} controls={false} />
-    ),
+    )
   },
   {
     label: "库存",
     prop: "inventory",
     render: ({ row }) => (
       <el-input-number style={"width: 100%; height: 30px"} v-model={row.inventory} min={0} controls={false} />
-    ),
-  },
+    )
+  }
 ];
 const columnss = computed(() => {
   const list = specList.value
@@ -46,7 +46,7 @@ const columnss = computed(() => {
     .map((x, index) => ({
       prop: x.name,
       label: x.name,
-      render: ({ row }) => row.specVals[index],
+      render: ({ row }) => row.specVals[index]
     }));
   return [...list, ...columns];
 });
@@ -71,7 +71,7 @@ function handleGenerate() {
         skuName: specs.map((spec, i) => `${specList.value[i].name}:${spec}`).join(";"),
         picture: "",
         skuCode: "",
-        specVals: specs,
+        specVals: specs
       }
     );
   });
@@ -83,7 +83,7 @@ function addSpecItem() {
   specList.value.push({
     id: undefined,
     name: "",
-    options: [],
+    options: []
   });
 }
 
@@ -147,7 +147,7 @@ function specValInputChange(val: string, idx: number) {
 <template>
   <div class="generate-sku">
     <!-- 规格 -->
-    <div class="mt-12" v-for="(item, idx) in specList" :key="idx">
+    <div v-for="(item, idx) in specList" :key="idx" class="mt-12">
       <div>
         <div class="flex-y-center justify-between bg-#F5F7FA p-10">
           <div class="flex-y-center">
@@ -158,31 +158,31 @@ function specValInputChange(val: string, idx: number) {
         </div>
         <div class="flex-y-center flex-wrap p-10">
           <span class="flex-60px">规格值：</span>
-          <el-popover placement="bottom" trigger="hover" v-for="(value, index) in item.options" :key="index">
+          <el-popover v-for="(value, index) in item.options" :key="index" placement="bottom" trigger="hover">
             <template #reference>
               <el-tag style="height: 30px" class="mr-8" closable @close="delSpecOptVal(item, index)">
                 {{ value }}
               </el-tag>
             </template>
             <el-input
-              style="width: 126px; height: 30px"
               v-model="item.options[index]"
+              style="width: 126px; height: 30px"
               placeholder="请输入规格值"
               @focus="() => (oldVal = item.options[index])"
               @change="val => specValInputChange(val, idx)"
             />
           </el-popover>
           <el-input
-            style="width: 126px; height: 30px"
             v-model="optionsInputVal[idx]"
-            @change="() => addSpecOptVal(item, idx)"
+            style="width: 126px; height: 30px"
             placeholder="请输入规格值"
+            @change="() => addSpecOptVal(item, idx)"
           />
         </div>
       </div>
     </div>
     <div class="flex-y-center bg-#F5F7FA p-10 mt-12">
-      <el-button link type="primary" @click="addSpecItem" :disabled="specList.length > 2"> + 新增规格 </el-button>
+      <el-button link type="primary" :disabled="specList.length > 2" @click="addSpecItem"> + 新增规格 </el-button>
     </div>
     <!-- sku列表 -->
     <div class="flex-y-center justify-between mt-20 mb-10 px-10">

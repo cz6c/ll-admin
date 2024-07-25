@@ -9,8 +9,8 @@ withDefaults(
   }>(),
   {
     width: "100%",
-    height: "100%",
-  },
+    height: "100%"
+  }
 );
 const chartRef = ref<HTMLDivElement | null>(null);
 const { setOptions, echarts } = useEcharts(chartRef as Ref<HTMLDivElement>);
@@ -31,7 +31,7 @@ onMounted(() => {
     title: {
       top: 30,
       left: "center",
-      text: "Daily Step Count",
+      text: "Daily Step Count"
     },
     tooltip: {},
     visualMap: {
@@ -40,7 +40,7 @@ onMounted(() => {
       type: "piecewise",
       orient: "horizontal",
       left: "center",
-      top: 65,
+      top: 65
     },
     calendar: {
       top: 120,
@@ -49,21 +49,21 @@ onMounted(() => {
       cellSize: ["auto", 13],
       range: "2016",
       itemStyle: {
-        borderWidth: 0.5,
+        borderWidth: 0.5
       },
-      yearLabel: { show: false },
+      yearLabel: { show: false }
     },
     series: {
       type: "heatmap",
       coordinateSystem: "calendar",
-      data: getVirtualData("2016"),
-    },
+      data: getVirtualData("2016")
+    }
   });
 });
 </script>
 
 <template>
-  <div ref="chartRef" :style="{ height, width }" class="chart-view"></div>
+  <div ref="chartRef" :style="{ height, width }" class="chart-view" />
 </template>
 
 <style lang="scss" scoped>

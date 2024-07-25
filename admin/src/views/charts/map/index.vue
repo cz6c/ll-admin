@@ -12,8 +12,8 @@ withDefaults(
   }>(),
   {
     width: "100%",
-    height: "100%",
-  },
+    height: "100%"
+  }
 );
 const chartRef = ref<HTMLDivElement | null>(null);
 const { setOptions } = useEcharts(chartRef as Ref<HTMLDivElement>);
@@ -32,17 +32,17 @@ onMounted(async () => {
         orient: "horizontal",
         inRange: {
           color: ["#e0ffff", "#006edd"],
-          symbolSize: [30, 100],
-        },
-      },
+          symbolSize: [30, 100]
+        }
+      }
     ],
     tooltip: {
       trigger: "item",
       backgroundColor: "rgba(0, 0, 0, .6)",
       textStyle: {
         color: "#fff",
-        fontSize: 12,
-      },
+        fontSize: 12
+      }
     },
     series: [
       {
@@ -52,21 +52,21 @@ onMounted(async () => {
         label: {
           show: true,
           color: "rgb(249, 249, 249)",
-          fontSize: 10,
+          fontSize: 10
         },
         itemStyle: {
           areaColor: "#2f82ce",
-          borderColor: "#0DAAC1",
+          borderColor: "#0DAAC1"
         },
-        data: mapData,
-      },
-    ],
+        data: mapData
+      }
+    ]
   });
 });
 </script>
 
 <template>
-  <div ref="chartRef" :style="{ height, width }" class="chart-view"></div>
+  <div ref="chartRef" :style="{ height, width }" class="chart-view" />
 </template>
 
 <style lang="scss" scoped>

@@ -16,8 +16,8 @@ const searchList = reactive<SearchProps[]>([
   {
     el: "input",
     prop: "nickname",
-    label: "用户昵称",
-  },
+    label: "用户昵称"
+  }
   // {
   //   el: "date-picker",
   //   prop: "createTime",
@@ -32,7 +32,7 @@ const apiQuery = reactive({
   page: 1,
   limit: 20,
   total: 0,
-  name: "",
+  name: ""
   // createTime: "",
 });
 
@@ -40,7 +40,7 @@ const tableRef = ref<TableViewInstance>();
 
 const { loading, tableData, reset, search, getList, pagination } = useTable({
   getListApi,
-  apiQuery,
+  apiQuery
 });
 getList();
 
@@ -49,35 +49,35 @@ const tableConfig = reactive<TableConfig<UserItem>>({
   columns: [
     {
       label: "用户账户",
-      prop: "username",
+      prop: "username"
     },
     {
       label: "用户昵称",
-      prop: "nickname",
+      prop: "nickname"
     },
     {
       label: "用户头像",
       prop: "avatar",
-      render: ({ row: { avatar } }) => <el-image src={avatar} />,
+      render: ({ row: { avatar } }) => <el-image src={avatar} />
     },
     {
       label: "用户生日",
-      prop: "birthday",
+      prop: "birthday"
     },
     {
       label: "用户性别",
       prop: "gender",
-      formatter: ({ row: { gender } }) => Gender[gender],
+      formatter: ({ row: { gender } }) => Gender[gender]
     },
     {
       label: "用户职位",
-      prop: "profession",
+      prop: "profession"
     },
     {
       label: "创建时间",
       prop: "createTime",
       width: 165,
-      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss"),
+      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss")
     },
     {
       label: "操作",
@@ -93,10 +93,10 @@ const tableConfig = reactive<TableConfig<UserItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
+      )
+    }
   ],
-  pagination,
+  pagination
 });
 
 /**
@@ -116,7 +116,7 @@ function goForm(id?: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定要删除该用户吗?", "删除用户", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

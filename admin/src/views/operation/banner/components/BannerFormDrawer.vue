@@ -17,7 +17,7 @@ const formData = reactive({
   imgUrl: "",
   sortNum: undefined,
   status: true,
-  remark: "",
+  remark: ""
 });
 const columns = reactive<FormItem[]>([
   {
@@ -28,20 +28,20 @@ const columns = reactive<FormItem[]>([
     span: 24,
     props: {
       width: "80px",
-      height: "80px",
-    },
+      height: "80px"
+    }
   },
   {
     prop: "hrefUrl",
     label: "跳转地址",
     type: "input",
-    span: 24,
+    span: 24
   },
   {
     prop: "sortNum",
     label: "排序",
     type: "input-number",
-    span: 24,
+    span: 24
   },
   {
     prop: "status",
@@ -50,18 +50,18 @@ const columns = reactive<FormItem[]>([
     span: 24,
     props: {
       activeText: "启用",
-      inactiveText: "禁用",
-    },
+      inactiveText: "禁用"
+    }
   },
   {
     prop: "remark",
     label: "备注",
     type: "input",
     props: {
-      type: "textarea",
+      type: "textarea"
     },
-    span: 24,
-  },
+    span: 24
+  }
 ]);
 const formView = ref<FormViewInstance>();
 
@@ -71,7 +71,7 @@ const sumbit = () => {
     if (loading.value) return;
     loading.value = true;
     const json: Partial<BannerItem> = {
-      ...formData,
+      ...formData
     };
     let api = createBannerApi;
     if (props.id) {

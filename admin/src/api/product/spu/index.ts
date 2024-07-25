@@ -1,5 +1,5 @@
 import { createGet, createPost } from "@/utils/request";
-import { ProductListParams, ProductListResponse, ProductItem } from "./index.d";
+import type { ProductListParams, ProductListResponse, ProductItem } from "./index.d";
 
 const basePath = `/product`;
 

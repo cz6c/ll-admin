@@ -29,7 +29,7 @@ const RenderTableColumn = (item: TableCol) => {
             header: (scope: HeaderRenderScope<any>) => {
               if (item.headerRender) return item.headerRender(scope);
               return item.label;
-            },
+            }
           }}
         </el-table-column>
       }

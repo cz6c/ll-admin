@@ -43,7 +43,7 @@ const needTagsView = computed(() => settingsStore.tagsView);
 const classObj = computed(() => ({
   collapseSidebar: !sidebar.value.opened,
   withoutAnimation: sidebar.value.withoutAnimation,
-  mobile: device.value === "mobile",
+  mobile: device.value === "mobile"
 }));
 
 const { width } = useWindowSize();

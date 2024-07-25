@@ -14,6 +14,6 @@ export default function vClickOutside(app: App) {
     },
     unmounted(el) {
       document.removeEventListener("click", el.clickOutsideEvent);
-    },
+    }
   });
 }

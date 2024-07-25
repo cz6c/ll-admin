@@ -11,7 +11,7 @@ const delApi = delCategoryApi;
 
 const { loading, tableData, getList } = useTable({
   getListApi,
-  apiQuery: {},
+  apiQuery: {}
 });
 getList();
 
@@ -22,11 +22,11 @@ const tableConfig = reactive<TableConfig<CategoryItem>>({
   columns: [
     {
       label: "分类名称",
-      prop: "name",
+      prop: "name"
     },
     {
       label: "创建时间",
-      prop: "createTime",
+      prop: "createTime"
     },
     {
       label: "操作",
@@ -42,9 +42,9 @@ const tableConfig = reactive<TableConfig<CategoryItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
-  ],
+      )
+    }
+  ]
 });
 
 /**
@@ -64,7 +64,7 @@ function goForm(id?: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定删除该分类吗?", "删除分类", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {
@@ -88,6 +88,6 @@ async function del(id: string) {
         <el-button type="primary" @click="goForm()">新增分类</el-button>
       </template>
     </TableView>
-    <CategoryFormDrawer v-model="isEdit" :id="nowId" @update-list="getList" />
+    <CategoryFormDrawer :id="nowId" v-model="isEdit" @update-list="getList" />
   </div>
 </template>

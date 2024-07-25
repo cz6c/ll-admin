@@ -27,7 +27,7 @@
               </li>
               <li class="list-group-item">
                 <svg-icon icon-class="tree" />所属部门
-                <div class="pull-right" v-if="state.user.dept">
+                <div v-if="state.user.dept" class="pull-right">
                   {{ state.user.dept.deptName }} / {{ state.postGroup }}
                 </div>
               </li>
@@ -52,7 +52,7 @@
           </template>
           <el-tabs v-model="activeTab">
             <el-tab-pane label="基本资料" name="userinfo">
-              <userInfo :user="state.user" />
+              <userInfo v-model:user="state.user" />
             </el-tab-pane>
             <el-tab-pane label="修改密码" name="resetPwd">
               <resetPwd />
@@ -74,7 +74,7 @@ const activeTab = ref("userinfo");
 const state = reactive({
   user: {},
   roleGroup: {},
-  postGroup: {},
+  postGroup: {}
 });
 
 function getUser() {

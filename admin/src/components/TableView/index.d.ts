@@ -1,7 +1,7 @@
-import { VNode, ComponentPublicInstance } from "vue";
-import { TableColumnCtx } from "element-plus/es/components/table/src/table-column/defaults";
-import { TableProps } from "./index.vue";
-import TableView from "./index.vue";
+import type { VNode, ComponentPublicInstance } from "vue";
+import type { TableColumnCtx } from "element-plus/es/components/table/src/table-column/defaults";
+import type { TableProps } from "./index.vue";
+import type TableView from "./index.vue";
 
 export type RenderScope<T> = {
   row: T;

@@ -1,14 +1,12 @@
 <template>
-  <div class="app-container home">
-    nest-admin vue3  
-  </div>
+  <div class="app-container home">nest-admin vue3</div>
 </template>
 
 <script setup name="Index">
-const version = ref('3.8.6')
+const version = ref("3.8.6");
 
 function goTarget(url) {
-  window.open(url, '__blank')
+  window.open(url, "__blank");
 }
 </script>
 
@@ -75,4 +73,3 @@ function goTarget(url) {
   }
 }
 </style>
-

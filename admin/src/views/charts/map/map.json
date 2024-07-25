@@ -145,7 +145,12 @@
     {
       "type": "Feature",
       "id": "220000",
-      "properties": { "id": "220000", "cp": [125.3245, 43.886841], "name": "吉林", "childNum": 1 },
+      "properties": {
+        "id": "220000",
+        "cp": [125.3245, 43.886841],
+        "name": "吉林",
+        "childNum": 1
+      },
       "geometry": {
         "type": "Polygon",
         "coordinates": [
@@ -302,7 +307,12 @@
     {
       "type": "Feature",
       "id": "340000",
-      "properties": { "id": "340000", "cp": [117.283042, 31.26119], "name": "安徽", "childNum": 3 },
+      "properties": {
+        "id": "340000",
+        "cp": [117.283042, 31.26119],
+        "name": "安徽",
+        "childNum": 3
+      },
       "geometry": {
         "type": "MultiPolygon",
         "coordinates": [
@@ -473,7 +483,12 @@
     {
       "type": "Feature",
       "id": "430000",
-      "properties": { "id": "430000", "cp": [111.782279, 28.09409], "name": "湖南", "childNum": 3 },
+      "properties": {
+        "id": "430000",
+        "cp": [111.782279, 28.09409],
+        "name": "湖南",
+        "childNum": 3
+      },
       "geometry": {
         "type": "MultiPolygon",
         "coordinates": [
@@ -556,7 +571,12 @@
     {
       "type": "Feature",
       "id": "450000",
-      "properties": { "id": "450000", "cp": [108.320004, 22.82402], "name": "广西", "childNum": 2 },
+      "properties": {
+        "id": "450000",
+        "cp": [108.320004, 22.82402],
+        "name": "广西",
+        "childNum": 2
+      },
       "geometry": {
         "type": "MultiPolygon",
         "coordinates": [
@@ -571,7 +591,12 @@
     {
       "type": "Feature",
       "id": "460000",
-      "properties": { "id": "460000", "cp": [109.83119, 19.031971], "name": "海南", "childNum": 1 },
+      "properties": {
+        "id": "460000",
+        "cp": [109.83119, 19.031971],
+        "name": "海南",
+        "childNum": 1
+      },
       "geometry": {
         "type": "Polygon",
         "coordinates": [
@@ -641,7 +666,12 @@
     {
       "type": "Feature",
       "id": "540000",
-      "properties": { "id": "540000", "cp": [89.132212, 30.860361], "name": "西藏", "childNum": 1 },
+      "properties": {
+        "id": "540000",
+        "cp": [89.132212, 30.860361],
+        "name": "西藏",
+        "childNum": 1
+      },
       "geometry": {
         "type": "Polygon",
         "coordinates": [
@@ -690,7 +720,12 @@
     {
       "type": "Feature",
       "id": "630000",
-      "properties": { "id": "630000", "cp": [96.778916, 35.623178], "name": "青海", "childNum": 2 },
+      "properties": {
+        "id": "630000",
+        "cp": [96.778916, 35.623178],
+        "name": "青海",
+        "childNum": 2
+      },
       "geometry": {
         "type": "MultiPolygon",
         "coordinates": [
@@ -705,7 +740,12 @@
     {
       "type": "Feature",
       "id": "640000",
-      "properties": { "id": "640000", "cp": [106.278179, 37.26637], "name": "宁夏", "childNum": 2 },
+      "properties": {
+        "id": "640000",
+        "cp": [106.278179, 37.26637],
+        "name": "宁夏",
+        "childNum": 2
+      },
       "geometry": {
         "type": "MultiPolygon",
         "coordinates": [
@@ -720,7 +760,12 @@
     {
       "type": "Feature",
       "id": "650000",
-      "properties": { "id": "650000", "cp": [85.617733, 40.792818], "name": "新疆", "childNum": 1 },
+      "properties": {
+        "id": "650000",
+        "cp": [85.617733, 40.792818],
+        "name": "新疆",
+        "childNum": 1
+      },
       "geometry": {
         "type": "Polygon",
         "coordinates": [
@@ -836,7 +881,12 @@
     {
       "type": "Feature",
       "id": "820000",
-      "properties": { "id": "820000", "cp": [113.54909, 22.198951], "name": "澳门", "childNum": 1 },
+      "properties": {
+        "id": "820000",
+        "cp": [113.54909, 22.198951],
+        "name": "澳门",
+        "childNum": 1
+      },
       "geometry": {
         "type": "Polygon",
         "coordinates": ["@@kÊd°å§s"],

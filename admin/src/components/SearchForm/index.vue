@@ -17,7 +17,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   columns: () => [],
   searchParam: () => ({}),
-  searchCol: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 }),
+  searchCol: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 })
 });
 
 defineEmits(["search", "reset"]);
@@ -45,7 +45,7 @@ const showCollapse = computed(() => {
 });
 </script>
 <template>
-  <el-form ref="formRef" v-if="columns.length" :model="searchParam">
+  <el-form v-if="columns.length" ref="formRef" :model="searchParam">
     <Grid ref="gridRef" :collapsed="collapsed" :gap="[20, 0]" :cols="searchCol">
       <GridItem v-for="(item, index) in columns" :key="item.prop" v-bind="item" :index="index">
         <el-form-item :label="`${item.label} :`">

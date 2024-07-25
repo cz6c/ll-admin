@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<UploadFileProps>(), {
   fileType: () => ["image/jpeg", "image/png", "image/gif"],
   height: "150px",
   width: "150px",
-  borderRadius: "8px",
+  borderRadius: "8px"
 });
 
 const modelValue = defineModel<string>({ required: true }); //  图片地址 ==> 必传
@@ -85,14 +85,14 @@ const beforeUpload: UploadProps["beforeUpload"] = rawFile => {
     ElNotification({
       title: "温馨提示",
       message: "上传图片不符合所需的格式！",
-      type: "warning",
+      type: "warning"
     });
   if (!imgSize)
     setTimeout(() => {
       ElNotification({
         title: "温馨提示",
         message: `上传图片大小不能超过 ${props.fileSize}M！`,
-        type: "warning",
+        type: "warning"
       });
     }, 0);
   return imgType && imgSize;
@@ -105,7 +105,7 @@ const uploadSuccess = () => {
   ElNotification({
     title: "温馨提示",
     message: "图片上传成功！",
-    type: "success",
+    type: "success"
   });
 };
 
@@ -116,7 +116,7 @@ const uploadError = () => {
   ElNotification({
     title: "温馨提示",
     message: "图片上传失败，请您重新上传！",
-    type: "error",
+    type: "error"
   });
 };
 </script>
@@ -124,8 +124,8 @@ const uploadError = () => {
 <template>
   <div class="upload-box">
     <el-upload
-      action="#"
       :id="uuid"
+      action="#"
       :class="['upload', self_disabled ? 'disabled' : '', drag ? 'no-border' : '']"
       :multiple="false"
       :disabled="self_disabled"
@@ -140,13 +140,13 @@ const uploadError = () => {
       <template v-if="modelValue">
         <img :src="modelValue" class="upload-image" />
         <div class="upload-handle" @click.stop>
-          <div class="handle-icon" @click="editImg" v-if="!self_disabled">
+          <div v-if="!self_disabled" class="handle-icon" @click="editImg">
             <el-icon><Edit /></el-icon>
           </div>
           <div class="handle-icon" @click="imgViewVisible = true">
             <el-icon><ZoomIn /></el-icon>
           </div>
-          <div class="handle-icon" @click="deleteImg" v-if="!self_disabled">
+          <div v-if="!self_disabled" class="handle-icon" @click="deleteImg">
             <el-icon><Delete /></el-icon>
           </div>
         </div>
@@ -160,9 +160,9 @@ const uploadError = () => {
       </template>
     </el-upload>
     <div class="el-upload__tip">
-      <slot name="tip"></slot>
+      <slot name="tip" />
     </div>
-    <el-image-viewer v-if="imgViewVisible" @close="imgViewVisible = false" :url-list="[modelValue]" />
+    <el-image-viewer v-if="imgViewVisible" :url-list="[modelValue]" @close="imgViewVisible = false" />
   </div>
 </template>
 

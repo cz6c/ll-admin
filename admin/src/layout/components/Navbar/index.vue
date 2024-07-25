@@ -63,7 +63,7 @@ async function logout() {
   ElMessageBox.confirm("确定注销并退出系统吗？", "提示", {
     confirmButtonText: "确定",
     cancelButtonText: "取消",
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       await userStore.webLogout();
@@ -71,8 +71,8 @@ async function logout() {
         path: RouterEnum.BASE_LOGIN_PATH,
         replace: true,
         query: {
-          redirect: `${router.currentRoute.value.fullPath}`,
-        },
+          redirect: `${router.currentRoute.value.fullPath}`
+        }
       });
     })
     .catch(() => {});

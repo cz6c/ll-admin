@@ -8,7 +8,7 @@ export const useSettingsStore = defineStore("settings", {
   state: () => ({
     theme: layoutSetting.theme === undefined ? "#292ae4" : layoutSetting.theme, // 主题色
     tagsView: layoutSetting.tagsView === undefined ? true : layoutSetting.tagsView, // 是否显示 tagsView
-    sidebarLogo: layoutSetting.sidebarLogo === undefined ? true : layoutSetting.sidebarLogo, // 是否显示logo
+    sidebarLogo: layoutSetting.sidebarLogo === undefined ? true : layoutSetting.sidebarLogo // 是否显示logo
   }),
   actions: {
     // 修改布局设置
@@ -23,6 +23,6 @@ export const useSettingsStore = defineStore("settings", {
             break;
         }
       }
-    },
-  },
+    }
+  }
 });

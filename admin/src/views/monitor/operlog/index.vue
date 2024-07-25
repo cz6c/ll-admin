@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch" label-width="68px">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
       <el-form-item label="系统模块" prop="title">
         <el-input
           v-model="queryParams.title"
@@ -38,7 +38,7 @@
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :default-time="[new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]"
-        ></el-date-picker>
+        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -49,34 +49,34 @@
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['monitor:operlog:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['monitor:operlog:remove']"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="danger" plain icon="Delete" @click="handleClean" v-hasPermi="['monitor:operlog:remove']"
+        <el-button v-hasPermi="['monitor:operlog:remove']" type="danger" plain icon="Delete" @click="handleClean"
           >清空</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['monitor:operlog:export']"
+        <el-button v-hasPermi="['monitor:operlog:export']" type="warning" plain icon="Download" @click="handleExport"
           >导出</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
       ref="operlogRef"
       v-loading="loading"
       :data="operlogList"
-      @selection-change="handleSelectionChange"
       :default-sort="defaultSort"
+      @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
     >
       <el-table-column type="selection" width="50" align="center" />
@@ -130,11 +130,11 @@
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button
+            v-hasPermi="['monitor:operlog:query']"
             link
             type="primary"
             icon="View"
             @click="handleView(scope.row, scope.index)"
-            v-hasPermi="['monitor:operlog:query']"
             >详细</el-button
           >
         </template>
@@ -143,14 +143,14 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
 
     <!-- 操作日志详细 -->
-    <el-dialog title="操作日志详细" v-model="open" width="700px" append-to-body>
+    <el-dialog v-model="open" title="操作日志详细" width="700px" append-to-body>
       <el-form :model="form" label-width="100px">
         <el-row>
           <el-col :span="12">
@@ -185,7 +185,7 @@
             <el-form-item label="操作时间：">{{ parseTime(form.operTime) }}</el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="异常信息：" v-if="form.status === 1">{{ form.errorMsg }}</el-form-item>
+            <el-form-item v-if="form.status === 1" label="异常信息：">{{ form.errorMsg }}</el-form-item>
           </el-col>
         </el-row>
       </el-form>
@@ -224,8 +224,8 @@ const data = reactive({
     title: undefined,
     operName: undefined,
     businessType: undefined,
-    status: undefined,
-  },
+    status: undefined
+  }
 });
 
 const { queryParams, form } = toRefs(data);
@@ -304,9 +304,9 @@ function handleExport() {
   proxy.download(
     "monitor/operlog/export",
     {
-      ...queryParams.value,
+      ...queryParams.value
     },
-    `config_${new Date().getTime()}.xlsx`,
+    `config_${new Date().getTime()}.xlsx`
   );
 }
 

@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="公告标题" prop="noticeTitle">
         <el-input
           v-model="queryParams.noticeTitle"
@@ -32,33 +32,33 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:notice:add']"
+        <el-button v-hasPermi="['system:notice:add']" type="primary" plain icon="Plus" @click="handleAdd"
           >新增</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:notice:edit']"
           type="success"
           plain
           icon="Edit"
           :disabled="single"
           @click="handleUpdate"
-          v-hasPermi="['system:notice:edit']"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:notice:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['system:notice:remove']"
           >删除</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="noticeList" @selection-change="handleSelectionChange">
@@ -84,19 +84,19 @@
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button
+            v-hasPermi="['system:notice:edit']"
             link
             type="primary"
             icon="Edit"
             @click="handleUpdate(scope.row)"
-            v-hasPermi="['system:notice:edit']"
             >修改</el-button
           >
           <el-button
+            v-hasPermi="['system:notice:remove']"
             link
             type="primary"
             icon="Delete"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['system:notice:remove']"
             >删除</el-button
           >
         </template>
@@ -105,14 +105,14 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
 
     <!-- 添加或修改公告对话框 -->
-    <el-dialog :title="title" v-model="open" width="780px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="780px" append-to-body>
       <el-form ref="noticeRef" :model="form" :rules="rules" label-width="80px">
         <el-row>
           <el-col :span="12">
@@ -123,12 +123,7 @@
           <el-col :span="12">
             <el-form-item label="公告类型" prop="noticeType">
               <el-select v-model="form.noticeType" placeholder="请选择">
-                <el-option
-                  v-for="dict in sys_notice_type"
-                  :key="dict.value"
-                  :label="dict.label"
-                  :value="dict.value"
-                ></el-option>
+                <el-option v-for="dict in sys_notice_type" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -181,12 +176,12 @@ const data = reactive({
     pageSize: 10,
     noticeTitle: undefined,
     createBy: undefined,
-    status: undefined,
+    status: undefined
   },
   rules: {
     noticeTitle: [{ required: true, message: "公告标题不能为空", trigger: "blur" }],
-    noticeType: [{ required: true, message: "公告类型不能为空", trigger: "change" }],
-  },
+    noticeType: [{ required: true, message: "公告类型不能为空", trigger: "change" }]
+  }
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -212,7 +207,7 @@ function reset() {
     noticeTitle: undefined,
     noticeType: undefined,
     noticeContent: undefined,
-    status: "0",
+    status: "0"
   };
   proxy.resetForm("noticeRef");
 }

@@ -1,10 +1,11 @@
 <template>
   <div class="user-info-head" @click="editCropper()">
     <img :src="options.img" title="点击上传头像" class="img-circle img-lg" />
-    <el-dialog :title="title" v-model="open" width="800px" append-to-body @opened="modalOpened" @close="closeDialog">
+    <el-dialog v-model="open" :title="title" width="800px" append-to-body @opened="modalOpened" @close="closeDialog">
       <el-row>
         <el-col :xs="24" :md="12" :style="{ height: '350px' }">
           <vue-cropper
+            v-if="visible"
             ref="cropper"
             :img="options.img"
             :info="true"
@@ -14,7 +15,6 @@
             :fixedBox="options.fixedBox"
             :outputType="options.outputType"
             @realTime="realTime"
-            v-if="visible"
           />
         </el-col>
         <el-col :xs="24" :md="12" :style="{ height: '350px' }">
@@ -34,16 +34,16 @@
           </el-upload>
         </el-col>
         <el-col :lg="{ span: 1, offset: 2 }" :md="2">
-          <el-button icon="Plus" @click="changeScale(1)"></el-button>
+          <el-button icon="Plus" @click="changeScale(1)" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="Minus" @click="changeScale(-1)"></el-button>
+          <el-button icon="Minus" @click="changeScale(-1)" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshLeft" @click="rotateLeft()"></el-button>
+          <el-button icon="RefreshLeft" @click="rotateLeft()" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshRight" @click="rotateRight()"></el-button>
+          <el-button icon="RefreshRight" @click="rotateRight()" />
         </el-col>
         <el-col :lg="{ span: 2, offset: 6 }" :md="2">
           <el-button type="primary" @click="uploadImg()">提 交</el-button>
@@ -74,7 +74,7 @@ const options = reactive({
   autoCropHeight: 200, // 默认生成截图框高度
   fixedBox: true, // 固定截图框大小 不允许改变
   outputType: "png", // 默认生成截图为PNG格式
-  previews: {}, //预览数据
+  previews: {} //预览数据
 });
 
 /** 编辑头像 */

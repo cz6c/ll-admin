@@ -28,18 +28,17 @@ const checkedKeys = computed({
   get: () => props.modelValue,
   set: value => {
     emits("update:modelValue", value);
-  },
+  }
 });
 
 const defaultProps = {
   children: "children",
-  label: "path",
+  label: "path"
 };
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
 
 const routes = computed(() => usePermissionStore().routes);
-
 
 /**
  * @description: 计算所有pid
@@ -61,7 +60,7 @@ watch(
   },
   value => {
     setCheckedKeys(value as unknown as number[]);
-  },
+  }
 );
 /**
  * @description: 获取当前选中节点 key 的数组

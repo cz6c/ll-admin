@@ -7,7 +7,7 @@ import { getDicts } from "@/api/system/dict/data";
 export function useDict(...args) {
   const res = ref({});
   return (() => {
-    args.forEach((dictType, index) => {
+    args.forEach(dictType => {
       res.value[dictType] = [];
       const dicts = useDictStore().getDict(dictType);
       if (dicts) {
@@ -18,7 +18,7 @@ export function useDict(...args) {
             label: p.dictLabel,
             value: p.dictValue,
             elTagType: p.listClass,
-            elTagClass: p.cssClass,
+            elTagClass: p.cssClass
           }));
           useDictStore().setDict(dictType, res.value[dictType]);
         });

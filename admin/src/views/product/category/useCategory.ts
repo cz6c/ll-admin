@@ -1,4 +1,4 @@
-import { CategoryItem } from "@/api/product/category/index.d";
+import type { CategoryItem } from "@/api/product/category/index.d";
 import { getCategoryTreesApi } from "@/api/product/category";
 
 export function useCategory() {
@@ -10,6 +10,6 @@ export function useCategory() {
   }
   return {
     options,
-    getCategoryTrees,
+    getCategoryTrees
   };
 }

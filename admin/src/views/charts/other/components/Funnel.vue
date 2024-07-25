@@ -9,8 +9,8 @@ withDefaults(
   }>(),
   {
     width: "100%",
-    height: "100%",
-  },
+    height: "100%"
+  }
 );
 const chartRef = ref<HTMLDivElement | null>(null);
 const { setOptions } = useEcharts(chartRef as Ref<HTMLDivElement>);
@@ -18,14 +18,14 @@ const { setOptions } = useEcharts(chartRef as Ref<HTMLDivElement>);
 onMounted(() => {
   setOptions({
     title: {
-      text: "Funnel",
+      text: "Funnel"
     },
     tooltip: {
       trigger: "item",
-      formatter: "{a} <br/>{b} : {c}%",
+      formatter: "{a} <br/>{b} : {c}%"
     },
     legend: {
-      data: ["Show", "Click", "Visit", "Inquiry", "Order"],
+      data: ["Show", "Click", "Visit", "Inquiry", "Order"]
     },
     series: [
       {
@@ -43,39 +43,39 @@ onMounted(() => {
         gap: 2,
         label: {
           show: true,
-          position: "inside",
+          position: "inside"
         },
         labelLine: {
           length: 10,
           lineStyle: {
             width: 1,
-            type: "solid",
-          },
+            type: "solid"
+          }
         },
         itemStyle: {
           borderColor: "#fff",
-          borderWidth: 1,
+          borderWidth: 1
         },
         emphasis: {
           label: {
-            fontSize: 20,
-          },
+            fontSize: 20
+          }
         },
         data: [
           { value: 60, name: "Visit" },
           { value: 40, name: "Inquiry" },
           { value: 20, name: "Order" },
           { value: 80, name: "Click" },
-          { value: 100, name: "Show" },
-        ],
-      },
-    ],
+          { value: 100, name: "Show" }
+        ]
+      }
+    ]
   });
 });
 </script>
 
 <template>
-  <div ref="chartRef" :style="{ height, width }" class="chart-view"></div>
+  <div ref="chartRef" :style="{ height, width }" class="chart-view" />
 </template>
 
 <style lang="scss" scoped></style>

@@ -1,6 +1,6 @@
 <template>
-  <div :style="style" v-show="isShow">
-    <slot></slot>
+  <div v-show="isShow" :style="style">
+    <slot />
   </div>
 </template>
 <script setup lang="ts" name="GridItem">
@@ -16,7 +16,7 @@ type Props = {
 const props = withDefaults(defineProps<Props>(), {
   offset: 0,
   span: 1,
-  suffix: false,
+  suffix: false
 });
 
 const attrs = useAttrs() as { index: string };
@@ -32,7 +32,7 @@ watch(
       isShow.value = !(n[0] !== -1 && parseInt(attrs.index) >= Number(n[0]));
     }
   },
-  { immediate: true },
+  { immediate: true }
 );
 
 const gap = inject("gap", 0);
@@ -44,14 +44,14 @@ const style = computed(() => {
     return {
       gridColumnStart: cols.value - span - offset + 1,
       gridColumnEnd: `span ${span + offset}`,
-      marginLeft: offset !== 0 ? `calc(((100% + ${gap}px) / ${span + offset}) * ${offset})` : "unset",
+      marginLeft: offset !== 0 ? `calc(((100% + ${gap}px) / ${span + offset}) * ${offset})` : "unset"
     };
   } else {
     return {
       gridColumn: `span ${span + offset > cols.value ? cols.value : span + offset}/span ${
         span + offset > cols.value ? cols.value : span + offset
       }`,
-      marginLeft: offset !== 0 ? `calc(((100% + ${gap}px) / ${span + offset}) * ${offset})` : "unset",
+      marginLeft: offset !== 0 ? `calc(((100% + ${gap}px) / ${span + offset}) * ${offset})` : "unset"
     };
   }
 });

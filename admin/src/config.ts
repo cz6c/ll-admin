@@ -3,5 +3,5 @@ export const productConfig = {
   isDynamicAddedRoute: false,
 
   // 标题
-  title: import.meta.env.VITE_APP_TITLE,
+  title: import.meta.env.VITE_APP_TITLE
 };

@@ -1,5 +1,5 @@
-import { VNode } from "vue";
-import { MessageHandler, ElMessage } from "element-plus";
+import type { VNode } from "vue";
+import { type MessageHandler, ElMessage } from "element-plus";
 
 type messageTypes = "info" | "success" | "warning" | "error";
 
@@ -33,7 +33,7 @@ function handleMessage(type: messageTypes, customClass: string) {
       type,
       message,
       customClass,
-      ...params,
+      ...params
     });
   };
 }
@@ -43,5 +43,5 @@ export const $message = {
   info: handleMessage("info", "diy-message"),
   warning: handleMessage("warning", "diy-message"),
   error: handleMessage("error", "diy-message"),
-  closeAll: ElMessage.closeAll,
+  closeAll: ElMessage.closeAll
 };

@@ -19,27 +19,30 @@ const formData = reactive({
   pictures: [],
   status: false,
   specs: [],
-  skus: [],
+  skus: []
 });
 const columns = reactive<FormItem[]>([
   {
     prop: "name",
     label: "商品名称",
     required: true,
-    type: "input",
+    type: "input"
   },
   {
     prop: "spuCode",
     label: "商品编码",
     required: true,
-    type: "input",
+    type: "input"
   },
   {
     prop: "categoryIds",
     label: "商品分类",
     required: true,
     type: "cascader",
-    props: { options, props: { value: "id", label: "name", checkStrictly: true } },
+    props: {
+      options,
+      props: { value: "id", label: "name", checkStrictly: true }
+    }
   },
   {
     prop: "price",
@@ -48,8 +51,8 @@ const columns = reactive<FormItem[]>([
     type: "input-number",
     props: {
       min: 0.01,
-      precision: 2,
-    },
+      precision: 2
+    }
   },
   {
     prop: "status",
@@ -60,8 +63,8 @@ const columns = reactive<FormItem[]>([
       // activeValue: 1,
       // inactiveValue: 0,
       activeText: "已上架",
-      inactiveText: "已下架",
-    },
+      inactiveText: "已下架"
+    }
   },
   {
     prop: "desc",
@@ -69,9 +72,9 @@ const columns = reactive<FormItem[]>([
     required: true,
     type: "input",
     props: {
-      type: "textarea",
+      type: "textarea"
     },
-    span: 16,
+    span: 16
   },
   {
     prop: "mainPictures",
@@ -80,9 +83,9 @@ const columns = reactive<FormItem[]>([
     type: "uploads",
     props: {
       width: "100px",
-      height: "100px",
+      height: "100px"
     },
-    span: 24,
+    span: 24
   },
   {
     prop: "pictures",
@@ -91,10 +94,10 @@ const columns = reactive<FormItem[]>([
     type: "uploads",
     props: {
       width: "100px",
-      height: "100px",
+      height: "100px"
     },
-    span: 24,
-  },
+    span: 24
+  }
 ]);
 const formView = ref<FormViewInstance>();
 
@@ -111,7 +114,7 @@ const sumbit = () => {
       ...formData,
       categoryId: formData.categoryIds[formData.categoryIds.length - 1] || 0,
       mainPictures: formData.mainPictures.map(({ url }) => url),
-      pictures: formData.pictures.map(({ url }) => url),
+      pictures: formData.pictures.map(({ url }) => url)
     };
     let api = createProductApi;
     if (id.value) {

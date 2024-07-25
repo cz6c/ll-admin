@@ -10,16 +10,16 @@ import { computed } from "vue";
 const props = defineProps({
   prefix: {
     type: String,
-    default: "icon",
+    default: "icon"
   },
   name: {
     type: String,
-    required: true,
+    required: true
   },
   size: {
     type: [Number, String],
-    default: 16,
-  },
+    default: 16
+  }
 });
 const symbolId = computed(() => `#${props.prefix}-${props.name}`);
 
@@ -29,7 +29,7 @@ const getStyle = computed((): CSSProperties => {
   s = `${s.replace("px", "")}px`;
   return {
     width: s,
-    height: s,
+    height: s
   };
 });
 </script>

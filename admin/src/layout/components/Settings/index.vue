@@ -48,14 +48,14 @@ const tagsView = computed({
   get: () => storeSettings.value.tagsView,
   set: val => {
     settingsStore.changeSetting({ key: "tagsView", value: val });
-  },
+  }
 });
 /**是否需要侧边栏的logo */
 const sidebarLogo = computed({
   get: () => storeSettings.value.sidebarLogo,
   set: val => {
     settingsStore.changeSetting({ key: "sidebarLogo", value: val });
-  },
+  }
 });
 
 function themeChange(val) {
@@ -67,7 +67,7 @@ function saveSetting() {
   let layoutSetting = {
     tagsView: storeSettings.value.tagsView,
     sidebarLogo: storeSettings.value.sidebarLogo,
-    theme: storeSettings.value.theme,
+    theme: storeSettings.value.theme
   };
   new WebStorage("localStorage").setItem("layout-setting", layoutSetting);
   setTimeout(proxy.$modal.closeLoading(), 1000);
@@ -82,7 +82,7 @@ function openSetting() {
 }
 
 defineExpose({
-  openSetting,
+  openSetting
 });
 </script>
 

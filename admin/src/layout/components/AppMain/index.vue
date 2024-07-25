@@ -3,7 +3,7 @@
     <template #default="{ Component, route }">
       <Transition name="fade-transform" mode="out-in" appear>
         <keep-alive :include="tagsViewStore.cachedViews">
-          <component v-if="!route.meta.link" :is="Component" :key="route.fullPath" />
+          <component :is="Component" v-if="!route.meta.link" :key="route.fullPath" />
         </keep-alive>
       </Transition>
     </template>

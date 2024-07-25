@@ -5,7 +5,7 @@ import { getRouters } from "@/api/public";
 import { isArray, isHttp } from "@/utils/is";
 import { productConfig } from "@/config";
 import constRoutes from "@/router/local";
-import { AppRouteRecordRaw } from "#/utils";
+import type { AppRouteRecordRaw } from "#/utils";
 
 // 匹配views里面所有的.vue文件
 const modules = import.meta.glob("./../../views/**/*.vue");
@@ -18,7 +18,7 @@ interface permissionState {
 export const usePermissionStore = defineStore("permission", {
   state: (): permissionState => ({
     routes: [],
-    addRoutes: [],
+    addRoutes: []
   }),
   actions: {
     setRoutes(routes) {
@@ -43,8 +43,8 @@ export const usePermissionStore = defineStore("permission", {
         this.setRoutes(asyncRoutes);
         resolve(asyncRoutes);
       });
-    },
-  },
+    }
+  }
 });
 
 function menuToRoute(routeList) {
@@ -113,7 +113,7 @@ function promoteRouteLevel(routeModule) {
   // createRouter 创建一个可以被 Vue 应用程序使用的路由实例
   let router = createRouter({
     routes: [routeModule],
-    history: createWebHashHistory(),
+    history: createWebHashHistory()
   });
   // getRoutes： 获取所有 路由记录的完整列表。
   const routes = router.getRoutes();

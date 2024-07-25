@@ -1,5 +1,5 @@
 import * as qiniu from "qiniu-js";
-import { Config, Extra } from "qiniu-js/esm/upload";
+import type { Config, Extra } from "qiniu-js/esm/upload";
 import { getQiniuToken } from "@/api/public";
 
 /**
@@ -11,16 +11,16 @@ export function qiniuUpload(file: File): Promise<string> {
   return new Promise(async (resolve, reject) => {
     // 获取上传信息
     const {
-      data: { token, key, domain },
+      data: { token, key, domain }
     } = await getQiniuToken();
     // 上传任务的配置信息
     const config: Config = {
       useCdnDomain: true,
-      region: qiniu.region.z2,
+      region: qiniu.region.z2
     };
     // 上传文件的资源信息配置
     const putExtra: Extra = {
-      fname: file.name,
+      fname: file.name
     };
 
     const observable = qiniu.upload(file, key, token, putExtra, config);
@@ -38,7 +38,7 @@ export function qiniuUpload(file: File): Promise<string> {
         // 地址
         const url = `${domain}${res.key}`;
         resolve(url);
-      },
+      }
     });
   });
 }

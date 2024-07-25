@@ -74,7 +74,7 @@ nextTick(() => {
       }
       plainSortOptions.value = columns;
       setColumns(columns.filter(item => checkedKeys.value.includes(item.prop!)));
-    },
+    }
   });
   initSortable();
 });
@@ -107,7 +107,7 @@ function setColumns(columns: TableCol[] | string[]) {
   <div class="table-header">
     <div class="text-16 font-600">{{ props.title }}</div>
     <div class="flex-y-center">
-      <slot name="tools"> </slot>
+      <slot name="tools" />
       <div class="flex pl8">
         <!-- <span class="icon-wrap" @click="emits('update-list')">
           <el-icon><Refresh /></el-icon>
@@ -127,7 +127,7 @@ function setColumns(columns: TableCol[] | string[]) {
             </div>
             <el-divider />
             <el-checkbox-group v-model="checkedKeys" @change="handleCheckedChange">
-              <div class="flex-y-center" v-for="item in plainSortOptions" :key="item.prop">
+              <div v-for="item in plainSortOptions" :key="item.prop" class="flex-y-center">
                 <el-icon size="16" class="cursor-move mr-8"><Rank /></el-icon>
                 <el-checkbox :label="item.prop">{{ item.label }}</el-checkbox>
                 <div class="flex-y-center">

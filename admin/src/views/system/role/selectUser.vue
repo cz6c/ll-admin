@@ -1,7 +1,7 @@
 <template>
   <!-- 授权用户 -->
-  <el-dialog title="选择用户" v-model="visible" width="800px" top="5vh" append-to-body>
-    <el-form :model="queryParams" ref="queryRef" :inline="true">
+  <el-dialog v-model="visible" title="选择用户" width="800px" top="5vh" append-to-body>
+    <el-form ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="用户名称" prop="userName">
         <el-input
           v-model="queryParams.userName"
@@ -27,13 +27,13 @@
     </el-form>
     <el-row>
       <el-table
-        @row-click="clickRow"
         ref="refTable"
         :data="userList"
-        @selection-change="handleSelectionChange"
         height="260px"
+        @row-click="clickRow"
+        @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="55"></el-table-column>
+        <el-table-column type="selection" width="55" />
         <el-table-column label="用户名称" prop="userName" :show-overflow-tooltip="true" />
         <el-table-column label="用户昵称" prop="nickName" :show-overflow-tooltip="true" />
         <el-table-column label="邮箱" prop="email" :show-overflow-tooltip="true" />
@@ -51,9 +51,9 @@
       </el-table>
       <pagination
         v-show="total > 0"
-        :total="total"
         v-model:page="queryParams.pageNum"
         v-model:limit="queryParams.pageSize"
+        :total="total"
         @pagination="getList"
       />
     </el-row>
@@ -71,8 +71,8 @@ import { authUserSelectAll, unallocatedUserList } from "@/api/system/role";
 
 const props = defineProps({
   roleId: {
-    type: [Number, String],
-  },
+    type: [Number, String]
+  }
 });
 
 const { proxy } = getCurrentInstance();
@@ -88,7 +88,7 @@ const queryParams = reactive({
   pageSize: 10,
   roleId: undefined,
   userName: undefined,
-  phonenumber: undefined,
+  phonenumber: undefined
 });
 
 // 显示弹框
@@ -141,6 +141,6 @@ function handleSelectUser() {
 }
 
 defineExpose({
-  show,
+  show
 });
 </script>

@@ -25,7 +25,7 @@
         <el-button link type="primary" size="small" @click="edit(row.id)">Edit</el-button>
       </template>
     </TableView>
-    <RoleDrawerEdit v-model="_isEdit" :id="_id" @update-list="tableRef?.getList" />
+    <RoleDrawerEdit :id="_id" v-model="_isEdit" @update-list="tableRef?.getList" />
   </div>
 </template>
 <script setup lang="ts" name="Role">
@@ -45,31 +45,31 @@ const statusApi = statusChangeApi;
 const columns: TableCol<RoleItem>[] = [
   {
     label: "角色名称",
-    prop: "roleName",
+    prop: "roleName"
   },
   {
     label: "菜单",
-    prop: "menuIds",
+    prop: "menuIds"
   },
   {
     label: "状态",
-    prop: "status",
+    prop: "status"
   },
   {
     label: "创建时间",
-    prop: "createTime",
+    prop: "createTime"
   },
   {
     label: "备注",
-    prop: "remark",
-  },
+    prop: "remark"
+  }
 ];
 const searchList = reactive<SearchProps[]>([
   {
     el: "input",
     prop: "roleName",
     label: "roleName",
-    defaultValue: "",
+    defaultValue: ""
   },
   {
     el: "date-picker",
@@ -77,14 +77,14 @@ const searchList = reactive<SearchProps[]>([
     prop: "createTime",
     label: "createTime",
     props: {
-      type: "date",
-    },
+      type: "date"
+    }
   },
   {
     el: "switch",
     prop: "delivery",
     label: "Instant delivery",
-    defaultValue: 0,
+    defaultValue: 0
   },
   {
     prop: "desc",
@@ -92,9 +92,9 @@ const searchList = reactive<SearchProps[]>([
     el: "input",
     defaultValue: "",
     props: {
-      type: "textarea",
-    },
-  },
+      type: "textarea"
+    }
+  }
 ]);
 
 const tableRef = ref<TableViewInstance>();
@@ -148,7 +148,7 @@ async function del(id: string) {
   ElMessageBox.confirm("proxy will permanently delete the file. Continue?", "Warning", {
     confirmButtonText: "OK",
     cancelButtonText: "Cancel",
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

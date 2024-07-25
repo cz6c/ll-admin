@@ -1,28 +1,28 @@
 $--colors: (
   "primary": (
-    "base": #292ae4,
+    "base": #292ae4
   ),
   "success": (
-    "base": #67c23a,
+    "base": #67c23a
   ),
   "warning": (
-    "base": #e6a23c,
+    "base": #e6a23c
   ),
   "danger": (
-    "base": #ff4f42,
+    "base": #ff4f42
   ),
   "error": (
-    "base": #ff4f42,
+    "base": #ff4f42
   ),
   "info": (
-    "base": #969696,
-  ),
+    "base": #969696
+  )
 );
 
 @forward "element-plus/theme-chalk/src/common/var.scss" with (
   $colors: $--colors,
   $button-padding-horizontal: (
-    "default": 12px,
+    "default": 12px
   )
 );
 

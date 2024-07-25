@@ -20,10 +20,10 @@ const props = withDefaults(defineProps<FormViewProps>(), {
     lg: 8, // >=1200px
     md: 12, // >=992px
     sm: 24, // >=768px
-    xs: 24, // <768px
+    xs: 24 // <768px
   }),
   labelWidth: 120,
-  labelPosition: "right",
+  labelPosition: "right"
 });
 
 const modelValue = defineModel<{ [key: string]: any }>({ required: true }); // 表单参数
@@ -48,7 +48,11 @@ const rules = computed(() => {
 // 处理默认 placeholder
 const getPlaceholder = (item: FormItem) => {
   if (["datetimerange", "daterange", "monthrange"].includes(item?.props?.type) || item?.props?.isRange) {
-    return { rangeSeparator: "至", startPlaceholder: "开始时间", endPlaceholder: "结束时间" };
+    return {
+      rangeSeparator: "至",
+      startPlaceholder: "开始时间",
+      endPlaceholder: "结束时间"
+    };
   }
   const placeholder = item?.props?.placeholder ?? `${item.type.includes("input") ? "请输入" : "请选择"}${item.label}`;
   return { placeholder };
@@ -82,7 +86,7 @@ const initData = () => {
 
 defineExpose({
   submitForm,
-  initData,
+  initData
 });
 </script>
 
@@ -115,7 +119,7 @@ defineExpose({
               <el-color-picker
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
-                  ...(item?.props || {}),
+                  ...(item?.props || {})
                 }"
               />
             </template>
@@ -125,7 +129,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
               />
             </template>
@@ -135,7 +139,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
               />
             </template>
@@ -145,7 +149,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
               />
             </template>
@@ -155,7 +159,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
               />
             </template>
@@ -165,7 +169,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
               />
             </template>
@@ -174,7 +178,7 @@ defineExpose({
               <el-slider
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
-                  ...(item?.props || {}),
+                  ...(item?.props || {})
                 }"
               />
             </template>
@@ -184,7 +188,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
                 :disabled="item.disabled"
               />
@@ -195,7 +199,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
                 :disabled="item.disabled"
               >
@@ -208,7 +212,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
                 :disabled="item.disabled"
               />
@@ -266,7 +270,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
                 :disabled="item.disabled"
               />
@@ -277,7 +281,7 @@ defineExpose({
                 v-model="modelValue[handleProp(item.prop)]"
                 v-bind="{
                   ...(item?.props || {}),
-                  ...getPlaceholder(item),
+                  ...getPlaceholder(item)
                 }"
                 :disabled="item.disabled"
               />

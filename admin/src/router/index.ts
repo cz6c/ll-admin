@@ -12,7 +12,7 @@ export enum RouterEnum {
   // basic home path
   BASE_HOME_PATH = "/index",
   // redirect name
-  REDIRECT_NAME = "Redirect",
+  REDIRECT_NAME = "Redirect"
 }
 
 // 公共菜单
@@ -24,16 +24,16 @@ const routesList: AppRouteRecordRaw[] = [
     component: Layout,
     redirect: RouterEnum.BASE_HOME_PATH,
     meta: {
-      title: "root",
+      title: "root"
     },
     children: [
       {
         path: "index",
         component: () => import("@/views/dashboard/index.vue"),
         name: "Index",
-        meta: { title: "首页", icon: "menu-iframe", affix: true },
-      },
-    ],
+        meta: { title: "首页", icon: "menu-iframe", affix: true }
+      }
+    ]
   },
   // 登录路由
   {
@@ -42,9 +42,9 @@ const routesList: AppRouteRecordRaw[] = [
     component: () => import("@/views/public/login.vue"),
     hidden: true,
     meta: {
-      title: "login",
-    },
-  },
+      title: "login"
+    }
+  }
 ];
 
 // Layout  404
@@ -55,8 +55,8 @@ export const PAGE_NOT_FOUND_ROUTE: AppRouteRecordRaw = {
   hidden: true,
   meta: {
     title: "",
-    hideTag: true,
-  },
+    hideTag: true
+  }
 };
 // Layout redirect
 export const REDIRECT_ROUTE: AppRouteRecordRaw = {
@@ -66,7 +66,7 @@ export const REDIRECT_ROUTE: AppRouteRecordRaw = {
   hidden: true,
   meta: {
     title: "",
-    hideTag: true,
+    hideTag: true
   },
   children: [
     {
@@ -76,10 +76,10 @@ export const REDIRECT_ROUTE: AppRouteRecordRaw = {
       hidden: true,
       meta: {
         title: "",
-        hideTag: true,
-      },
-    },
-  ],
+        hideTag: true
+      }
+    }
+  ]
 };
 
 export const constantRoutes = [...routesList, PAGE_NOT_FOUND_ROUTE, REDIRECT_ROUTE] as RouteRecordRaw[];
@@ -88,7 +88,7 @@ export const constantRoutes = [...routesList, PAGE_NOT_FOUND_ROUTE, REDIRECT_ROU
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: () => ({ left: 0, right: 0 }),
-  routes: constantRoutes,
+  routes: constantRoutes
 });
 
 // 白名单应该包含基本静态路由

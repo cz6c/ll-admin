@@ -1,5 +1,5 @@
 import { createGet, createPost } from "@/utils/request";
-import { RoleListParams, RoleListResponse, RoleItem, RoleInfo } from "./index.d";
+import type { RoleListParams, RoleListResponse, RoleItem, RoleInfo } from "./index.d";
 
 // 获取列表
 export const getRoleListApi = createGet<RoleListParams, RoleListResponse>("/role/list");

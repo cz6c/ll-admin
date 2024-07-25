@@ -1,4 +1,4 @@
-import { AppRouteRecordRaw } from "#/utils";
+import type { AppRouteRecordRaw } from "#/utils";
 
 export default [
   {
@@ -10,7 +10,7 @@ export default [
       title: "系统管理",
       icon: "system",
       noCache: false,
-      link: null,
+      link: null
     },
     alwaysShow: true,
     redirect: "noRedirect",
@@ -24,8 +24,8 @@ export default [
           title: "用户管理",
           icon: "user",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Role",
@@ -36,8 +36,8 @@ export default [
           title: "角色管理",
           icon: "peoples",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Menu",
@@ -48,8 +48,8 @@ export default [
           title: "菜单管理",
           icon: "tree-table",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Dept",
@@ -60,8 +60,8 @@ export default [
           title: "部门管理",
           icon: "tree",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Post",
@@ -72,8 +72,8 @@ export default [
           title: "岗位管理",
           icon: "post",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Dict",
@@ -84,8 +84,8 @@ export default [
           title: "字典管理",
           icon: "dict",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Config",
@@ -96,8 +96,8 @@ export default [
           title: "参数设置",
           icon: "edit",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Notice",
@@ -108,7 +108,7 @@ export default [
           title: "通知公告",
           icon: "message",
           noCache: false,
-          link: null,
+          link: null
         },
         children: [
           {
@@ -120,12 +120,12 @@ export default [
               title: "通知公告1",
               icon: "message",
               noCache: false,
-              link: null,
-            },
-          },
-        ],
-      },
-    ],
+              link: null
+            }
+          }
+        ]
+      }
+    ]
   },
   {
     name: "Monitor",
@@ -136,7 +136,7 @@ export default [
       title: "系统监控",
       icon: "monitor",
       noCache: false,
-      link: null,
+      link: null
     },
     alwaysShow: true,
     redirect: "noRedirect",
@@ -150,8 +150,8 @@ export default [
           title: "在线用户",
           icon: "online",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Server",
@@ -162,8 +162,8 @@ export default [
           title: "服务监控",
           icon: "server",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Cache",
@@ -174,8 +174,8 @@ export default [
           title: "缓存监控",
           icon: "redis",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "CacheList",
@@ -186,10 +186,10 @@ export default [
           title: "缓存列表",
           icon: "redis-list",
           noCache: false,
-          link: null,
-        },
-      },
-    ],
+          link: null
+        }
+      }
+    ]
   },
   {
     name: "Tool",
@@ -200,7 +200,7 @@ export default [
       title: "系统工具",
       icon: "tool",
       noCache: false,
-      link: null,
+      link: null
     },
     alwaysShow: true,
     redirect: "noRedirect",
@@ -214,8 +214,8 @@ export default [
           title: "表单构建",
           icon: "build",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Gen",
@@ -226,8 +226,8 @@ export default [
           title: "代码生成",
           icon: "code",
           noCache: false,
-          link: null,
-        },
+          link: null
+        }
       },
       {
         name: "Swagger",
@@ -238,10 +238,10 @@ export default [
           title: "系统接口",
           icon: "swagger",
           noCache: false,
-          link: null,
-        },
-      },
-    ],
+          link: null
+        }
+      }
+    ]
   },
   {
     name: "Https://nest-admin.dooring.vip",
@@ -252,8 +252,8 @@ export default [
       title: "nest-admin官网1",
       icon: "guide",
       noCache: false,
-      link: "https://nest-admin.dooring.vip",
-    },
+      link: "https://nest-admin.dooring.vip"
+    }
   },
   {
     name: "Mobile",
@@ -264,7 +264,7 @@ export default [
       title: "移动端系统管理",
       icon: "wechat",
       noCache: false,
-      link: null,
-    },
-  },
+      link: null
+    }
+  }
 ] as AppRouteRecordRaw[];

@@ -18,19 +18,19 @@
 
     <h4 class="form-header h4">角色信息</h4>
     <el-table
+      ref="roleRef"
       v-loading="loading"
       :row-key="getRowKey"
-      @row-click="clickRow"
-      ref="roleRef"
-      @selection-change="handleSelectionChange"
       :data="roles.slice((pageNum - 1) * pageSize, pageNum * pageSize)"
+      @row-click="clickRow"
+      @selection-change="handleSelectionChange"
     >
       <el-table-column label="序号" width="55" type="index" align="center">
         <template #default="scope">
           <span>{{ (pageNum - 1) * pageSize + scope.$index + 1 }}</span>
         </template>
       </el-table-column>
-      <el-table-column type="selection" :reserve-selection="true" width="55"></el-table-column>
+      <el-table-column type="selection" :reserve-selection="true" width="55" />
       <el-table-column label="角色编号" align="center" prop="roleId" />
       <el-table-column label="角色名称" align="center" prop="roleName" />
       <el-table-column label="权限字符" align="center" prop="roleKey" />
@@ -41,7 +41,7 @@
       </el-table-column>
     </el-table>
 
-    <pagination v-show="total > 0" :total="total" v-model:page="pageNum" v-model:limit="pageSize" />
+    <pagination v-show="total > 0" v-model:page="pageNum" v-model:limit="pageSize" :total="total" />
 
     <el-form label-width="100px">
       <div style="text-align: center; margin-left: -120px; margin-top: 30px">
@@ -67,7 +67,7 @@ const roles = ref([]);
 const form = ref({
   nickName: undefined,
   userName: undefined,
-  userId: undefined,
+  userId: undefined
 });
 
 /** 单击选中行数据 */

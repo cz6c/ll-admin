@@ -16,24 +16,24 @@ const searchList = reactive<SearchProps[]>([
   {
     el: "input",
     prop: "orderNo",
-    label: "订单编号",
+    label: "订单编号"
   },
   {
     el: "select",
     prop: "orderState",
     label: "订单状态",
-    options: enumToOpts(OrderState),
+    options: enumToOpts(OrderState)
   },
   {
     el: "select",
     prop: "payChannel",
     label: "支付渠道",
-    options: enumToOpts(PayChannel),
+    options: enumToOpts(PayChannel)
   },
   {
     el: "input",
     prop: "receiverMobile",
-    label: "收货人手机",
+    label: "收货人手机"
   },
   {
     el: "date-picker",
@@ -42,9 +42,9 @@ const searchList = reactive<SearchProps[]>([
     props: {
       type: "datetimerange",
       startPlaceholder: "Start date",
-      endPlaceholder: "End date",
-    },
-  },
+      endPlaceholder: "End date"
+    }
+  }
 ]);
 
 const apiQuery = reactive({
@@ -55,7 +55,7 @@ const apiQuery = reactive({
   orderState: "",
   payChannel: "",
   receiverMobile: "",
-  createTime: [],
+  createTime: []
 });
 
 const { loading, tableData, reset, search, getList, pagination } = useTable({
@@ -68,7 +68,7 @@ const { loading, tableData, reset, search, getList, pagination } = useTable({
       delete params.createTime;
     }
     return params;
-  },
+  }
 });
 getList();
 
@@ -79,53 +79,53 @@ const tableConfig = reactive<TableConfig<OrderItem>>({
   columns: [
     {
       label: "订单编号",
-      prop: "username",
+      prop: "username"
     },
     {
       label: "订单状态",
       prop: "orderState",
-      formatter: ({ row: { orderState } }) => OrderState[orderState],
+      formatter: ({ row: { orderState } }) => OrderState[orderState]
     },
     {
       label: "收货人",
-      prop: "receiver",
+      prop: "receiver"
     },
     {
       label: "收货人手机",
       width: 165,
-      prop: "receiverMobile",
+      prop: "receiverMobile"
     },
     {
       label: "收货人完整地址",
       width: 165,
-      prop: "receiverAddress",
+      prop: "receiverAddress"
     },
     {
       label: "商品总价",
-      prop: "totalMoney",
+      prop: "totalMoney"
     },
     {
       label: "运费",
-      prop: "postFee",
+      prop: "postFee"
     },
     {
       label: "应付金额",
-      prop: "payMoney",
+      prop: "payMoney"
     },
     {
       label: "订单备注",
-      prop: "buyerMessage",
+      prop: "buyerMessage"
     },
     {
       label: "支付渠道",
       prop: "payChannel",
-      formatter: ({ row: { payChannel } }) => PayChannel[payChannel],
+      formatter: ({ row: { payChannel } }) => PayChannel[payChannel]
     },
     {
       label: "下单时间",
       prop: "createTime",
       width: 165,
-      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss"),
+      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss")
     },
     {
       label: "操作",
@@ -141,11 +141,11 @@ const tableConfig = reactive<TableConfig<OrderItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
+      )
+    }
   ],
   pagination,
-  isSelection: true,
+  isSelection: true
 });
 
 /**
@@ -172,7 +172,7 @@ function goDetails(id: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定要删除该订单吗?", "删除订单", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

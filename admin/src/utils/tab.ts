@@ -20,7 +20,7 @@ export default {
         const { path, query } = obj;
         router.replace({
           path: "/redirect" + path,
-          query: query,
+          query: query
         });
       });
   },
@@ -69,5 +69,5 @@ export default {
   // 修改tab页签
   updatePage(obj) {
     return useTagsViewStore().updateVisitedView(obj);
-  },
+  }
 };

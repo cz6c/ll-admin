@@ -16,13 +16,13 @@ const apiQuery = reactive({
   page: 1,
   limit: 20,
   total: 0,
-  name: "",
+  name: ""
   // createTime: "",
 });
 
 const { loading, tableData, getList, pagination } = useTable({
   getListApi,
-  apiQuery,
+  apiQuery
 });
 getList();
 
@@ -33,31 +33,31 @@ const tableConfig = reactive<TableConfig<BannerItem>>({
   columns: [
     {
       label: "跳转地址",
-      prop: "hrefUrl",
+      prop: "hrefUrl"
     },
     {
       label: "轮播图片",
       prop: "imgUrl",
-      render: ({ row: { imgUrl } }) => <el-image src={imgUrl} />,
+      render: ({ row: { imgUrl } }) => <el-image src={imgUrl} />
     },
     {
       label: "备注",
-      prop: "remark",
+      prop: "remark"
     },
     {
       label: "排序",
-      prop: "sortNum",
+      prop: "sortNum"
     },
     {
       label: "创建时间",
       prop: "createTime",
       width: 165,
-      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss"),
+      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss")
     },
     {
       label: "上架状态",
       prop: "status",
-      render: ({ row }) => <el-switch v-model={row.status} onClick={() => statusChange(row.id)} />,
+      render: ({ row }) => <el-switch v-model={row.status} onClick={() => statusChange(row.id)} />
     },
     {
       label: "操作",
@@ -73,10 +73,10 @@ const tableConfig = reactive<TableConfig<BannerItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
+      )
+    }
   ],
-  pagination,
+  pagination
 });
 
 /**
@@ -96,7 +96,7 @@ function goForm(id?: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定要删除该轮播图吗?", "删除轮播图", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

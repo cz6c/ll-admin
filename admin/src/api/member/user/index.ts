@@ -1,5 +1,5 @@
 import { createGet, createPost } from "@/utils/request";
-import { MemberListParams, MemberListResponse, MemberItem } from "./index.d";
+import type { MemberListParams, MemberListResponse, MemberItem } from "./index.d";
 
 const basePath = "/member";
 

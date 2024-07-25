@@ -11,8 +11,8 @@ import BaseImage from "@/components/BaseImage/index.vue";
 const components = [
   {
     name: "BaseImage",
-    component: BaseImage,
-  },
+    component: BaseImage
+  }
 ];
 
 function install(app: App<Element>) {

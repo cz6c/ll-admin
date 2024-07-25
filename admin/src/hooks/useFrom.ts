@@ -1,4 +1,4 @@
-import { FormInstance } from "element-plus";
+import type { FormInstance } from "element-plus";
 import { isFunction } from "@/utils/is";
 
 export function useFrom(handleSubmit: Function) {
@@ -25,6 +25,6 @@ export function useFrom(handleSubmit: Function) {
 
   return {
     resetForm,
-    submitForm,
+    submitForm
   };
 }

@@ -27,7 +27,7 @@
               <template #prefix><SvgIcon name="password" size="20" /></template>
             </el-input>
           </el-form-item>
-          <el-form-item prop="code" v-if="captchaEnabled">
+          <el-form-item v-if="captchaEnabled" prop="code">
             <div class="login-code">
               <el-input
                 v-model="loginForm.code"
@@ -39,7 +39,7 @@
               >
                 <template #prefix><SvgIcon name="validCode" size="20" /></template>
               </el-input>
-              <div class="code" v-html="codeUrl" @click="getCode"></div>
+              <div class="code" @click="getCode" v-html="codeUrl" />
             </div>
           </el-form-item>
           <el-form-item prop="rememberMe">
@@ -80,12 +80,12 @@ const loginForm = reactive({
   username: "admin",
   rememberMe: false,
   code: "",
-  uuid: "",
+  uuid: ""
 });
 const rules: FormRules = {
   password: [{ required: true, message: "请输入密码", trigger: "blur" }],
   username: [{ required: true, message: "请输入账号", trigger: "blur" }],
-  code: [{ required: true, trigger: "change", message: "请输入验证码" }],
+  code: [{ required: true, trigger: "change", message: "请输入验证码" }]
 };
 
 watch(
@@ -96,7 +96,7 @@ watch(
       redirect.value = String(query.redirect);
     }
   },
-  { immediate: true },
+  { immediate: true }
 );
 
 /**
@@ -121,7 +121,7 @@ function handleLogin() {
         }
         await useAuthStore().login(loginForm);
         router.push({
-          path: redirect.value || "/",
+          path: redirect.value || "/"
         });
         loading.value = false;
       } catch (error: any) {

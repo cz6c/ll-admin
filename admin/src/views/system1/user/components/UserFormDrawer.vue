@@ -20,7 +20,7 @@ const formData = reactive({
   avatar: "",
   birthday: undefined,
   gender: 1,
-  profession: "",
+  profession: ""
 });
 const columns = reactive<FormItem[]>([
   {
@@ -28,7 +28,7 @@ const columns = reactive<FormItem[]>([
     label: "用户账户",
     required: true,
     type: "input",
-    span: 24,
+    span: 24
   },
   {
     prop: "password",
@@ -36,15 +36,15 @@ const columns = reactive<FormItem[]>([
     required: true,
     type: "input",
     props: {
-      type: "password",
+      type: "password"
     },
-    span: 24,
+    span: 24
   },
   {
     prop: "nickname",
     label: "用户昵称",
     type: "input",
-    span: 24,
+    span: 24
   },
   {
     prop: "avatar",
@@ -53,14 +53,14 @@ const columns = reactive<FormItem[]>([
     span: 24,
     props: {
       width: "80px",
-      height: "80px",
-    },
+      height: "80px"
+    }
   },
   {
     prop: "birthday",
     label: "用户生日",
     type: "date-picker",
-    span: 24,
+    span: 24
   },
   {
     prop: "gender",
@@ -68,15 +68,15 @@ const columns = reactive<FormItem[]>([
     type: "select",
     span: 24,
     props: {
-      options: enumToOpts(Gender),
-    },
+      options: enumToOpts(Gender)
+    }
   },
   {
     prop: "profession",
     label: "用户职位",
     type: "input",
-    span: 24,
-  },
+    span: 24
+  }
 ]);
 const formView = ref<FormViewInstance>();
 
@@ -86,7 +86,7 @@ const sumbit = () => {
     if (loading.value) return;
     loading.value = true;
     const json: Partial<UserItem> = {
-      ...formData,
+      ...formData
     };
     let api = createUserApi;
     if (props.id) {

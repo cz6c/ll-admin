@@ -11,14 +11,14 @@ const errorCode = {
   "401": "认证失败，无法访问系统资源",
   "403": "当前操作没有权限",
   "404": "访问资源不存在",
-  default: "系统未知错误，请反馈给管理员",
+  default: "系统未知错误，请反馈给管理员"
 };
 
 // 封装axios
 const service = axios.create({
   baseURL: import.meta.env.VITE_BASE_URL,
   withCredentials: false, // 设置跨域cookie上传
-  timeout: 10000, // 请求超时
+  timeout: 10000 // 请求超时
 });
 
 // request 拦截器 ==> 对请求参数做处理
@@ -43,7 +43,7 @@ service.interceptors.request.use(
       const requestObj = {
         url: config.url,
         data: typeof config.data === "object" ? JSON.stringify(config.data) : config.data,
-        time: new Date().getTime(),
+        time: new Date().getTime()
       };
       const cache = new WebStorage("sessionStorage");
       const sessionObj = cache.getItem("sessionObj");
@@ -68,7 +68,7 @@ service.interceptors.request.use(
   error => {
     console.log(error); // for debug
     return Promise.reject(error);
-  },
+  }
 );
 // response 拦截器 ==> 对响应做处理
 service.interceptors.response.use(
@@ -115,7 +115,7 @@ service.interceptors.response.use(
     $message.error(message);
     console.log("err" + message); // for debug
     return Promise.reject(new Error(message || "Error"));
-  },
+  }
 );
 export default service;
 
@@ -131,7 +131,7 @@ export const createGet = <P extends Record<string, any>, R>(url: string, config:
       method: "get",
       url,
       params,
-      ...config,
+      ...config
     });
   };
 };
@@ -141,7 +141,7 @@ export const createPost = <P extends Record<string, any>, R>(url: string, config
       method: "post",
       url,
       data,
-      ...config,
+      ...config
     });
   };
 };

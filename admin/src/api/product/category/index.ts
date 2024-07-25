@@ -1,5 +1,5 @@
 import { createGet, createPost } from "@/utils/request";
-import { CategoryItem } from "./index.d";
+import type { CategoryItem } from "./index.d";
 
 const basePath = `/category`;
 

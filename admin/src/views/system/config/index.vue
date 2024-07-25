@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch" label-width="68px">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
       <el-form-item label="参数名称" prop="configName">
         <el-input
           v-model="queryParams.configName"
@@ -32,7 +32,7 @@
           range-separator="-"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-        ></el-date-picker>
+        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -42,43 +42,43 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:config:add']"
+        <el-button v-hasPermi="['system:config:add']" type="primary" plain icon="Plus" @click="handleAdd"
           >新增</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:config:edit']"
           type="success"
           plain
           icon="Edit"
           :disabled="single"
           @click="handleUpdate"
-          v-hasPermi="['system:config:edit']"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:config:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['system:config:remove']"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['system:config:export']"
+        <el-button v-hasPermi="['system:config:export']" type="warning" plain icon="Download" @click="handleExport"
           >导出</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="danger" plain icon="Refresh" @click="handleRefreshCache" v-hasPermi="['system:config:remove']"
+        <el-button v-hasPermi="['system:config:remove']" type="danger" plain icon="Refresh" @click="handleRefreshCache"
           >刷新缓存</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="configList" @selection-change="handleSelectionChange">
@@ -101,19 +101,19 @@
       <el-table-column label="操作" align="center" width="150" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button
+            v-hasPermi="['system:config:edit']"
             link
             type="primary"
             icon="Edit"
             @click="handleUpdate(scope.row)"
-            v-hasPermi="['system:config:edit']"
             >修改</el-button
           >
           <el-button
+            v-hasPermi="['system:config:remove']"
             link
             type="primary"
             icon="Delete"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['system:config:remove']"
             >删除</el-button
           >
         </template>
@@ -122,14 +122,14 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
 
     <!-- 添加或修改参数配置对话框 -->
-    <el-dialog :title="title" v-model="open" width="500px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="500px" append-to-body>
       <el-form ref="configRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="参数名称" prop="configName">
           <el-input v-model="form.configName" placeholder="请输入参数名称" />
@@ -183,13 +183,13 @@ const data = reactive({
     pageSize: 10,
     configName: undefined,
     configKey: undefined,
-    configType: undefined,
+    configType: undefined
   },
   rules: {
     configName: [{ required: true, message: "参数名称不能为空", trigger: "blur" }],
     configKey: [{ required: true, message: "参数键名不能为空", trigger: "blur" }],
-    configValue: [{ required: true, message: "参数键值不能为空", trigger: "blur" }],
-  },
+    configValue: [{ required: true, message: "参数键值不能为空", trigger: "blur" }]
+  }
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -216,7 +216,7 @@ function reset() {
     configKey: undefined,
     configValue: undefined,
     configType: "Y",
-    remark: undefined,
+    remark: undefined
   };
   proxy.resetForm("configRef");
 }
@@ -292,9 +292,9 @@ function handleExport() {
   proxy.download(
     "system/config/export",
     {
-      ...queryParams.value,
+      ...queryParams.value
     },
-    `config_${new Date().getTime()}.xlsx`,
+    `config_${new Date().getTime()}.xlsx`
   );
 }
 /** 刷新缓存按钮操作 */

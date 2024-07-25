@@ -1,7 +1,7 @@
 <template>
   <el-drawer v-model="dialog" title="新增角色" direction="ltr" class="cz-drawer" size="36%" @open="handleOpen">
     <div class="drawer__content">
-      <el-form :model="formData" status-icon ref="ruleFormRef" :rules="rules" label-width="90px">
+      <el-form ref="ruleFormRef" :model="formData" status-icon :rules="rules" label-width="90px">
         <el-form-item label="roleName" prop="roleName">
           <el-input v-model="formData.roleName" autocomplete="off" />
         </el-form-item>
@@ -32,11 +32,11 @@ import TreeMenu from "./TreeMenu.vue";
 
 const props = defineProps({
   modelValue: {
-    type: Boolean,
+    type: Boolean
   },
   id: {
-    type: Number,
-  },
+    type: Number
+  }
 });
 const emits = defineEmits(["update:modelValue", "updateList"]);
 
@@ -44,7 +44,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: value => {
     emits("update:modelValue", value);
-  },
+  }
 });
 
 const loading = ref(false);
@@ -53,15 +53,15 @@ const ruleFormRef = ref<FormInstance>();
 const formData = reactive<RoleInfo>({
   roleName: "",
   remark: "",
-  menuIds: [],
+  menuIds: []
 });
 const rules = reactive<FormRules>({
   roleName: [
     { required: true, message: "Please input Activity name", trigger: "blur" },
-    { min: 3, max: 5, message: "Length should be 3 to 5", trigger: "blur" },
+    { min: 3, max: 5, message: "Length should be 3 to 5", trigger: "blur" }
   ],
   remark: [{ required: true, message: "Please input activity form", trigger: "blur" }],
-  menuIds: [{ required: true, message: "Please input activity form", trigger: "change" }],
+  menuIds: [{ required: true, message: "Please input activity form", trigger: "change" }]
 });
 /**
  * @description: 表单提交
@@ -69,7 +69,7 @@ const rules = reactive<FormRules>({
 async function handleSubmit() {
   loading.value = true;
   const json: RoleInfo = {
-    ...formData,
+    ...formData
   };
   json.menuIds = (json.menuIds as number[]).join(",");
   console.log(json);
@@ -100,7 +100,7 @@ async function handleOpen() {
   let data: RoleInfo = {
     roleName: "",
     remark: "",
-    menuIds: "5",
+    menuIds: "5"
   };
   if (props.id) {
     const res = await getRoleInfoApi({ id: props.id as unknown as string });

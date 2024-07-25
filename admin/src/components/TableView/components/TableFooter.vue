@@ -12,7 +12,7 @@ const props = defineProps<Pagination>();
 <template>
   <div class="table-footer">
     <div>
-      <slot></slot>
+      <slot />
     </div>
     <!-- 分页组件 -->
     <el-pagination

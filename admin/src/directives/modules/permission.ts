@@ -24,6 +24,6 @@ export default function vAuth(app: App) {
       if (!hasPermission(value)) {
         el.parentNode?.removeChild(el);
       }
-    },
+    }
   });
 }

@@ -1,6 +1,6 @@
 import { RouterEnum } from "@/router";
 import { unref } from "vue";
-import { useRouter, Router } from "vue-router";
+import { useRouter, type Router } from "vue-router";
 
 /**
  * @description: 重新加载页面

@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="菜单名称" prop="menuName">
         <el-input
           v-model="queryParams.menuName"
@@ -23,12 +23,12 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['system:menu:add']">新增</el-button>
+        <el-button v-hasPermi="['system:menu:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button type="info" plain icon="Sort" @click="toggleExpandAll">展开/折叠</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
@@ -39,14 +39,14 @@
       :default-expand-all="isExpandAll"
       :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
     >
-      <el-table-column prop="menuName" label="菜单名称" :show-overflow-tooltip="true" width="160"></el-table-column>
+      <el-table-column prop="menuName" label="菜单名称" :show-overflow-tooltip="true" width="160" />
       <el-table-column prop="icon" label="图标" align="center" width="100">
         <template #default="scope">
           <svg-icon :name="scope.row.icon" />
         </template>
       </el-table-column>
-      <el-table-column prop="orderNum" label="排序" width="60"></el-table-column>
-      <el-table-column prop="component" label="组件路径" :show-overflow-tooltip="true"></el-table-column>
+      <el-table-column prop="orderNum" label="排序" width="60" />
+      <el-table-column prop="component" label="组件路径" :show-overflow-tooltip="true" />
       <el-table-column prop="status" label="状态" width="80">
         <template #default="scope">
           <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
@@ -59,18 +59,18 @@
       </el-table-column>
       <el-table-column label="操作" align="center" width="210" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['system:menu:edit']"
+          <el-button v-hasPermi="['system:menu:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
             >修改</el-button
           >
-          <el-button link type="primary" icon="Plus" @click="handleAdd(scope.row)" v-hasPermi="['system:menu:add']"
+          <el-button v-hasPermi="['system:menu:add']" link type="primary" icon="Plus" @click="handleAdd(scope.row)"
             >新增</el-button
           >
           <el-button
+            v-hasPermi="['system:menu:remove']"
             link
             type="primary"
             icon="Delete"
             @click="handleDelete(scope.row)"
-            v-hasPermi="['system:menu:remove']"
             >删除</el-button
           >
         </template>
@@ -78,7 +78,7 @@
     </el-table>
 
     <!-- 添加或修改菜单对话框 -->
-    <el-dialog :title="title" v-model="open" width="680px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="680px" append-to-body>
       <el-form ref="menuRef" :model="form" :rules="rules" label-width="100px">
         <el-row>
           <el-col :span="24">
@@ -86,7 +86,11 @@
               <el-tree-select
                 v-model="form.parentId"
                 :data="menuOptions"
-                :props="{ value: 'menuId', label: 'menuName', children: 'children' }"
+                :props="{
+                  value: 'menuId',
+                  label: 'menuName',
+                  children: 'children'
+                }"
                 value-key="menuId"
                 placeholder="选择上级菜单"
                 check-strictly
@@ -101,22 +105,22 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="24" v-if="form.menuType != 'F'">
+          <el-col v-if="form.menuType != 'F'" :span="24">
             <el-form-item label="菜单图标" prop="icon">
               <el-popover
+                v-model:visible="showChooseIcon"
                 placement="bottom-start"
                 :width="540"
-                v-model:visible="showChooseIcon"
                 trigger="click"
                 @show="showSelectIcon"
               >
                 <template #reference>
                   <el-input
                     v-model="form.icon"
-                    placeholder="点击选择图标"
-                    @blur="showSelectIcon"
                     v-click-outside="hideSelectIcon"
+                    placeholder="点击选择图标"
                     readonly
+                    @blur="showSelectIcon"
                   >
                     <template #prefix>
                       <svg-icon
@@ -129,7 +133,7 @@
                     </template>
                   </el-input>
                 </template>
-                <icon-select ref="iconSelectRef" @selected="selected" :active-icon="form.icon" />
+                <icon-select ref="iconSelectRef" :active-icon="form.icon" @selected="selected" />
               </el-popover>
             </el-form-item>
           </el-col>
@@ -143,7 +147,7 @@
               <el-input-number v-model="form.orderNum" controls-position="right" :min="0" />
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType != 'F'">
+          <el-col v-if="form.menuType != 'F'" :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -158,7 +162,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType != 'F'">
+          <el-col v-if="form.menuType != 'F'" :span="12">
             <el-form-item prop="path">
               <template #label>
                 <span>
@@ -174,7 +178,7 @@
               <el-input v-model="form.path" placeholder="请输入路由地址" />
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType == 'C'">
+          <el-col v-if="form.menuType == 'C'" :span="12">
             <el-form-item prop="component">
               <template #label>
                 <span>
@@ -187,7 +191,7 @@
               <el-input v-model="form.component" placeholder="请输入组件路径" />
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType == 'C'">
+          <el-col v-if="form.menuType == 'C'" :span="12">
             <el-form-item>
               <el-input v-model="form.query" placeholder="请输入路由参数" maxlength="255" />
               <template #label>
@@ -200,7 +204,7 @@
               </template>
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType == 'C'">
+          <el-col v-if="form.menuType == 'C'" :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -219,7 +223,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType != 'F'">
+          <el-col v-if="form.menuType != 'F'" :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -236,7 +240,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="12" v-if="form.menuType != 'F'">
+          <el-col v-if="form.menuType != 'F'" :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -288,13 +292,13 @@ const data = reactive({
   form: {},
   queryParams: {
     menuName: undefined,
-    visible: undefined,
+    visible: undefined
   },
   rules: {
     menuName: [{ required: true, message: "菜单名称不能为空", trigger: "blur" }],
     orderNum: [{ required: true, message: "菜单顺序不能为空", trigger: "blur" }],
-    path: [{ required: true, message: "路由地址不能为空", trigger: "blur" }],
-  },
+    path: [{ required: true, message: "路由地址不能为空", trigger: "blur" }]
+  }
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -333,7 +337,7 @@ function reset() {
     isFrame: "1",
     isCache: "0",
     visible: "0",
-    status: "0",
+    status: "0"
   };
   proxy.resetForm("menuRef");
 }

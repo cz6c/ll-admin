@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" v-show="showSearch" :inline="true">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="用户名称" prop="userName">
         <el-input
           v-model="queryParams.userName"
@@ -27,25 +27,25 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button type="primary" plain icon="Plus" @click="openSelectUser" v-hasPermi="['system:role:add']"
+        <el-button v-hasPermi="['system:role:add']" type="primary" plain icon="Plus" @click="openSelectUser"
           >添加用户</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['system:role:remove']"
           type="danger"
           plain
           icon="CircleClose"
           :disabled="multiple"
           @click="cancelAuthUserAll"
-          v-hasPermi="['system:role:remove']"
           >批量取消授权</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button type="warning" plain icon="Close" @click="handleClose">关闭</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
@@ -67,11 +67,11 @@
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button
+            v-hasPermi="['system:role:remove']"
             link
             type="primary"
             icon="CircleClose"
             @click="cancelAuthUser(scope.row)"
-            v-hasPermi="['system:role:remove']"
             >取消授权</el-button
           >
         </template>
@@ -80,9 +80,9 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
     <select-user ref="selectRef" :roleId="queryParams.roleId" @ok="handleQuery" />
@@ -109,7 +109,7 @@ const queryParams = reactive({
   pageSize: 10,
   roleId: route.params.roleId,
   userName: undefined,
-  phonenumber: undefined,
+  phonenumber: undefined
 });
 
 /** 查询授权用户列表 */

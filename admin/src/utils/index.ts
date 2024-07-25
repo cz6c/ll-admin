@@ -79,7 +79,11 @@ export function handleProp(prop: string): string {
  */
 export function openWindow(
   url: string,
-  opt?: { target?: TargetContext | string; noopener?: boolean; noreferrer?: boolean },
+  opt?: {
+    target?: TargetContext | string;
+    noopener?: boolean;
+    noreferrer?: boolean;
+  }
 ) {
   const { target = "__blank", noopener = true, noreferrer = true } = opt || {};
   const feature: string[] = [];
@@ -146,7 +150,7 @@ export function parseTime(time, pattern) {
     h: date.getHours(),
     i: date.getMinutes(),
     s: date.getSeconds(),
-    a: date.getDay(),
+    a: date.getDay()
   };
   const time_str = format.replace(/{(y|m|d|h|i|s|a)+}/g, (result, key) => {
     let value = formatObj[key];
@@ -280,7 +284,7 @@ export function handleTree(data, id, parentId, children) {
   let config = {
     id: id || "id",
     parentId: parentId || "parentId",
-    childrenList: children || "children",
+    childrenList: children || "children"
   };
 
   var childrenListMap = {};

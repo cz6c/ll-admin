@@ -1,6 +1,6 @@
-import { ElMessageBox, ElLoading, ElMessageBoxOptions } from "element-plus";
+import { ElMessageBox, ElLoading, type ElMessageBoxOptions } from "element-plus";
 import type { LoadingInstance } from "element-plus/es/components/loading/src/loading.d.ts";
-import { $message, MessageParams } from "@/utils/message";
+import { $message, type MessageParams } from "@/utils/message";
 
 let loadingInstance: LoadingInstance;
 
@@ -26,7 +26,7 @@ export default {
     return ElMessageBox.confirm(content, "系统提示", {
       confirmButtonText: "确定",
       cancelButtonText: "取消",
-      type: "warning",
+      type: "warning"
     });
   },
   // 打开遮罩层
@@ -34,11 +34,11 @@ export default {
     loadingInstance = ElLoading.service({
       lock: true,
       text: content,
-      background: "rgba(0, 0, 0, 0.7)",
+      background: "rgba(0, 0, 0, 0.7)"
     });
   },
   // 关闭遮罩层
   closeLoading() {
     loadingInstance.close();
-  },
+  }
 };

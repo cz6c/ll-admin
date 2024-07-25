@@ -8,7 +8,7 @@ export default {
   meta: {
     title: "运营中心",
     icon: "menu-operation",
-    orderNo: 5,
+    orderNo: 5
   },
   redirect: "/operation/banner",
   children: [
@@ -17,8 +17,8 @@ export default {
       name: "Banner",
       component: () => import("@/views/operation/banner/index.vue"),
       meta: {
-        title: "轮播图管理",
-      },
-    },
-  ],
+        title: "轮播图管理"
+      }
+    }
+  ]
 } as AppRouteRecordRaw;

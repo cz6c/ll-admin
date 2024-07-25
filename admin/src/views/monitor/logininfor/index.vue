@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch" label-width="68px">
+    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
       <el-form-item label="登录地址" prop="ipaddr">
         <el-input
           v-model="queryParams.ipaddr"
@@ -33,7 +33,7 @@
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           :default-time="[new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]"
-        ></el-date-picker>
+        />
       </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -44,45 +44,45 @@
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['monitor:logininfor:remove']"
           type="danger"
           plain
           icon="Delete"
           :disabled="multiple"
           @click="handleDelete"
-          v-hasPermi="['monitor:logininfor:remove']"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="danger" plain icon="Delete" @click="handleClean" v-hasPermi="['monitor:logininfor:remove']"
+        <el-button v-hasPermi="['monitor:logininfor:remove']" type="danger" plain icon="Delete" @click="handleClean"
           >清空</el-button
         >
       </el-col>
       <el-col :span="1.5">
         <el-button
+          v-hasPermi="['monitor:logininfor:unlock']"
           type="primary"
           plain
           icon="Unlock"
           :disabled="single"
           @click="handleUnlock"
-          v-hasPermi="['monitor:logininfor:unlock']"
           >解锁</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['monitor:logininfor:export']"
+        <el-button v-hasPermi="['monitor:logininfor:export']" type="warning" plain icon="Download" @click="handleExport"
           >导出</el-button
         >
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
+      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
       ref="logininforRef"
       v-loading="loading"
       :data="logininforList"
-      @selection-change="handleSelectionChange"
       :default-sort="defaultSort"
+      @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
     >
       <el-table-column type="selection" width="55" align="center" />
@@ -121,9 +121,9 @@
 
     <pagination
       v-show="total > 0"
-      :total="total"
       v-model:page="queryParams.pageNum"
       v-model:limit="queryParams.pageSize"
+      :total="total"
       @pagination="getList"
     />
   </div>
@@ -154,7 +154,7 @@ const queryParams = ref({
   userName: undefined,
   status: undefined,
   orderByColumn: undefined,
-  isAsc: undefined,
+  isAsc: undefined
 });
 
 /** 查询登录日志列表 */
@@ -236,9 +236,9 @@ function handleExport() {
   proxy.download(
     "monitor/logininfor/export",
     {
-      ...queryParams.value,
+      ...queryParams.value
     },
-    `config_${new Date().getTime()}.xlsx`,
+    `config_${new Date().getTime()}.xlsx`
   );
 }
 

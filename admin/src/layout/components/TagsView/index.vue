@@ -95,7 +95,7 @@ function filterAffixTags(routes, basePath = "") {
         fullPath: tagPath,
         path: tagPath,
         name: route.name,
-        meta: { ...route.meta },
+        meta: { ...route.meta }
       });
     }
     if (route.children) {

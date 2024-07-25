@@ -8,7 +8,7 @@ export default {
   meta: {
     title: "订单中心",
     icon: "menu-order",
-    orderNo: 3,
+    orderNo: 3
   },
   redirect: "/order/list",
   children: [
@@ -17,8 +17,8 @@ export default {
       name: "OrderList",
       component: () => import("@/views/order/list/index.vue"),
       meta: {
-        title: "订单管理",
-      },
+        title: "订单管理"
+      }
     },
     {
       path: "/order/details",
@@ -27,8 +27,8 @@ export default {
       meta: {
         title: "订单详情",
         activeMenu: "/order/list",
-        hideMenu: true,
-      },
-    },
-  ],
+        hideMenu: true
+      }
+    }
+  ]
 } as AppRouteRecordRaw;

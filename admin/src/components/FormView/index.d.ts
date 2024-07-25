@@ -1,5 +1,6 @@
-import { FormItemRule } from "element-plus";
-import FormView, { FormViewProps } from "./index.vue";
+import type { FormItemRule } from "element-plus";
+import type { FormViewProps } from "./index.vue";
+import type FormView from "./index.vue";
 import type { CSSProperties } from "vue";
 
 export type FormItemType =

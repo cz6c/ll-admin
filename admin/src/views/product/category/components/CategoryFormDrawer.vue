@@ -9,7 +9,7 @@ const { options, getCategoryTrees } = useCategory();
 
 const formData = reactive({
   name: "",
-  parentIds: [],
+  parentIds: []
 });
 const columns = reactive<FormItem[]>([
   {
@@ -17,15 +17,18 @@ const columns = reactive<FormItem[]>([
     label: "分类名称",
     required: true,
     type: "input",
-    span: 24,
+    span: 24
   },
   {
     prop: "parentIds",
     label: "上级分类",
     type: "cascader",
-    props: { options, props: { value: "id", label: "name", checkStrictly: true } },
-    span: 24,
-  },
+    props: {
+      options,
+      props: { value: "id", label: "name", checkStrictly: true }
+    },
+    span: 24
+  }
 ]);
 const formView = ref<FormViewInstance>();
 
@@ -36,7 +39,7 @@ const sumbit = () => {
     loading.value = true;
     const json: Partial<CategoryItem> = {
       ...formData,
-      parentId: formData.parentIds[formData.parentIds.length - 1] || 0,
+      parentId: formData.parentIds[formData.parentIds.length - 1] || 0
     };
     let api = createCategoryApi;
     if (props.id) {

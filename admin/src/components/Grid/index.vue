@@ -1,6 +1,6 @@
 <template>
   <div :style="style">
-    <slot></slot>
+    <slot />
   </div>
 </template>
 
@@ -17,7 +17,7 @@ import {
   onDeactivated,
   onActivated,
   VNodeArrayChildren,
-  VNode,
+  VNode
 } from "vue";
 import type { BreakPoint } from "./type";
 
@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
   cols: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 }),
   collapsed: false,
   collapsedRows: 1,
-  gap: 0,
+  gap: 0
 });
 
 onBeforeMount(() => props.collapsed && findIndex());
@@ -136,7 +136,7 @@ watch(
   () => breakPoint.value,
   () => {
     if (props.collapsed) findIndex();
-  },
+  }
 );
 
 // 监听 collapsed
@@ -145,7 +145,7 @@ watch(
   value => {
     if (value) return findIndex();
     hiddenIndex.value = -1;
-  },
+  }
 );
 
 // 设置间距
@@ -160,7 +160,7 @@ const style = computed(() => {
   return {
     display: "grid",
     gridGap: gridGap.value,
-    gridTemplateColumns: `repeat(${gridCols.value}, minmax(0, 1fr))`,
+    gridTemplateColumns: `repeat(${gridCols.value}, minmax(0, 1fr))`
   };
 });
 

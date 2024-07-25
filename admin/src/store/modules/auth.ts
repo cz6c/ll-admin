@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getInfo, logout } from "@/api/public";
-import { LoginParams } from "#/api";
-import { UserItem } from "@/api/system1/user/index.d";
+import type { LoginParams } from "#/api";
+import type { UserItem } from "@/api/system1/user/index.d";
 
 interface authStoreState {
   userInfo: UserItem;
@@ -21,12 +21,12 @@ export const useAuthStore = defineStore("auth", {
     // 角色权限
     roles: [],
     // 按钮级权限
-    permissions: [],
+    permissions: []
   }),
   getters: {
     getPermCodeList(): string[] {
       return this.permissions;
-    },
+    }
   },
   actions: {
     /**
@@ -96,6 +96,6 @@ export const useAuthStore = defineStore("auth", {
       await logout();
       this.$reset();
       removeToken();
-    },
-  },
+    }
+  }
 });

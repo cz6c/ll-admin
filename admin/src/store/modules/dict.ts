@@ -1,6 +1,6 @@
 export const useDictStore = defineStore("dict", {
   state: () => ({
-    dict: new Array(),
+    dict: []
   }),
   actions: {
     // 获取字典
@@ -23,7 +23,7 @@ export const useDictStore = defineStore("dict", {
       if (_key !== null && _key !== "") {
         this.dict.push({
           key: _key,
-          value: value,
+          value: value
         });
       }
     },
@@ -44,9 +44,9 @@ export const useDictStore = defineStore("dict", {
     },
     // 清空字典
     cleanDict() {
-      this.dict = new Array();
+      this.dict = [];
     },
     // 初始字典
-    initDict() {},
-  },
+    initDict() {}
+  }
 });

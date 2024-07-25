@@ -17,8 +17,8 @@ const searchList = reactive<SearchProps[]>([
   {
     el: "input",
     prop: "nickname",
-    label: "会员昵称",
-  },
+    label: "会员昵称"
+  }
   // {
   //   el: "date-picker",
   //   prop: "createTime",
@@ -33,13 +33,13 @@ const apiQuery = reactive({
   page: 1,
   limit: 20,
   total: 0,
-  nickname: "",
+  nickname: ""
   // createTime: "",
 });
 
 const { loading, tableData, reset, search, getList, pagination } = useTable({
   getListApi,
-  apiQuery,
+  apiQuery
 });
 getList();
 
@@ -50,35 +50,35 @@ const tableConfig = reactive<TableConfig<MemberItem>>({
   columns: [
     {
       label: "会员账户",
-      prop: "username",
+      prop: "username"
     },
     {
       label: "会员昵称",
-      prop: "nickname",
+      prop: "nickname"
     },
     {
       label: "会员头像",
       prop: "avatar",
-      render: ({ row: { avatar } }) => <el-image src={avatar} />,
+      render: ({ row: { avatar } }) => <el-image src={avatar} />
     },
     {
       label: "会员生日",
-      prop: "birthday",
+      prop: "birthday"
     },
     {
       label: "会员性别",
       prop: "gender",
-      formatter: ({ row: { gender } }) => Gender[gender],
+      formatter: ({ row: { gender } }) => Gender[gender]
     },
     {
       label: "会员职位",
-      prop: "profession",
+      prop: "profession"
     },
     {
       label: "创建时间",
       prop: "createTime",
       width: 165,
-      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss"),
+      formatter: ({ row }) => dayjs(row.createTime).format("YYYY/MM/DD HH:mm:ss")
     },
     {
       label: "操作",
@@ -94,10 +94,10 @@ const tableConfig = reactive<TableConfig<MemberItem>>({
             删除
           </el-button>
         </>
-      ),
-    },
+      )
+    }
   ],
-  pagination,
+  pagination
 });
 
 /**
@@ -117,7 +117,7 @@ function goForm(id?: string) {
  */
 async function del(id: string) {
   ElMessageBox.confirm("确定要删除该会员吗?", "删除会员", {
-    type: "warning",
+    type: "warning"
   })
     .then(async () => {
       try {

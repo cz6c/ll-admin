@@ -8,7 +8,7 @@ export default {
   meta: {
     title: "会员中心",
     icon: "menu-member",
-    orderNo: 4,
+    orderNo: 4
   },
   redirect: "/member/user",
   children: [
@@ -17,8 +17,8 @@ export default {
       name: "MemberUser",
       component: () => import("@/views/member/user/index.vue"),
       meta: {
-        title: "会员管理",
-      },
-    },
-  ],
+        title: "会员管理"
+      }
+    }
+  ]
 } as AppRouteRecordRaw;

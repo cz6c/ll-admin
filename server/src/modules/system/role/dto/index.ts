@@ -9,7 +9,6 @@ export enum StatusEnum {
 
 //菜单类型
 export enum RoleTypeEnum {
-  M = 'M',
   C = 'C',
   F = 'F',
 }

@@ -1,7 +1,7 @@
 <template>
   <el-tree
     ref="treeRef"
-    :data="getDynamicRoutes"
+    :data="routes"
     show-checkbox
     default-expand-all
     node-key="id"
@@ -38,14 +38,15 @@ const defaultProps = {
 
 const treeRef = ref<InstanceType<typeof ElTree>>();
 
-const { getDynamicRoutes } = usePermissionStore();
+const routes = computed(() => usePermissionStore().routes);
+
 
 /**
  * @description: 计算所有pid
  */
 const pids = computed(() => {
   let pids: number[] = [];
-  eachTree(getDynamicRoutes, (element: any) => {
+  eachTree(routes.value, (element: any) => {
     element.pid && pids.push(element.pid);
   });
   return [...new Set(pids)];

@@ -12,8 +12,6 @@
     left: 0;
     z-index: 1001;
     overflow: hidden;
-    -webkit-box-shadow: 2px 0 6px rgba(0, 21, 41, 0.35);
-    box-shadow: 2px 0 6px rgba(0, 21, 41, 0.35);
     border-right: 1px solid #f2f2f2;
 
     // reset element-ui css
@@ -36,14 +34,14 @@
       height: 100%;
     }
 
-    &.has-logo {
-      .el-scrollbar {
-        height: calc(100% - 50px);
-      }
+    .el-menu {
+      border: none;
+      height: 100%;
+      width: 100% !important;
     }
 
-    .is-horizontal {
-      display: none;
+    .el-menu--collapse .el-menu .el-sub-menu {
+      min-width: $base-sidebar-width !important;
     }
 
     a {
@@ -53,13 +51,7 @@
     }
 
     .svg-icon {
-      margin-right: 16px;
-    }
-
-    .el-menu {
-      border: none;
-      height: 100%;
-      width: 100% !important;
+      margin-right: 12px;
     }
 
     .el-menu-item,
@@ -78,11 +70,8 @@
     .el-sub-menu__title {
       &:hover {
         background-color: rgba(0, 0, 0, 0.06) !important;
+        color: var(--el-color-primary);
       }
-    }
-
-    & .theme-dark .is-active > .el-sub-menu__title {
-      color: $base-menu-color-active !important;
     }
 
     & .nest-menu .el-sub-menu > .el-sub-menu__title,
@@ -91,20 +80,28 @@
 
       &:hover {
         background-color: rgba(0, 0, 0, 0.06) !important;
+        color: var(--el-color-primary);
       }
     }
 
-    & .theme-dark .nest-menu .el-sub-menu > .el-sub-menu__title,
-    & .theme-dark .el-sub-menu .el-menu-item {
-      background-color: $base-sub-menu-background !important;
-
-      &:hover {
-        background-color: $base-sub-menu-hover !important;
+    // menu active
+    .el-sub-menu {
+      &.is-active {
+        > .el-sub-menu__title {
+          color: var(--el-color-primary);
+        }
+      }
+    }
+    .el-menu-item {
+      &.is-active {
+        background: #ededfa;
+        color: var(--el-color-primary);
       }
     }
   }
 
-  .hideSidebar {
+  // 收起菜单
+  .collapseSidebar {
     .sidebar-container {
       width: 64px !important;
     }
@@ -160,14 +157,10 @@
     }
   }
 
-  .el-menu--collapse .el-menu .el-sub-menu {
-    min-width: $base-sidebar-width !important;
-  }
-
   // mobile responsive
   .mobile {
     .main-container {
-      margin-left: 0px;
+      margin-left: $base-sidebar-width;
     }
 
     .sidebar-container {
@@ -175,7 +168,10 @@
       width: $base-sidebar-width !important;
     }
 
-    &.hideSidebar {
+    &.collapseSidebar {
+      .main-container {
+        margin-left: 0;
+      }
       .sidebar-container {
         pointer-events: none;
         transition-duration: 0.3s;

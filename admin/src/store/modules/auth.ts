@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getInfo, logout } from "@/api/public";
-import { LoginParams } from "@/api/public/index.d";
+import { LoginParams } from "#/api";
 import { UserItem } from "@/api/system1/user/index.d";
 
 interface authStoreState {

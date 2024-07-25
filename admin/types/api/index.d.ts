@@ -1,14 +1,11 @@
 // 列表请求
 export interface GetListParams {
-  page?: number;
-  limit?: number;
-  total?: number;
+  page: number;
+  limit: number;
 }
 // 列表响应
 export interface GetListResponse<T> {
   list: Array<T>;
-  limit: number;
-  page: number;
   total: number;
 }
 

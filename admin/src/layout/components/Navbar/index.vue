@@ -1,6 +1,14 @@
 <template>
   <div class="navbar">
     <div class="navbar-left">
+      <div
+        class="collapse"
+        :class="{ active: !sidebar.opened }"
+        :title="!sidebar.opened ? '点击展开' : '点击折叠'"
+        @click="emits('toggleClick')"
+      >
+        <SvgIcon name="collapse" />
+      </div>
       <Breadcrumb class="breadcrumb-container" />
     </div>
     <!-- 右侧功能 -->
@@ -41,11 +49,13 @@ import HeaderSearch from "@/components/HeaderSearch/index.vue";
 import { useAuthStore } from "@/store/modules/auth";
 import { RouterEnum } from "@/router";
 import { useRouter } from "vue-router";
+import { useLayoutStore } from "@/store/modules/layout";
 
 const userStore = useAuthStore();
-const { webLogout } = useAuthStore();
+const layoutStore = useLayoutStore();
+const sidebar = computed(() => layoutStore.sidebar);
 const router = useRouter();
-const emits = defineEmits(["setLayout"]);
+const emits = defineEmits(["setLayout", "toggleClick"]);
 /**
  * @description: 登出
  */
@@ -56,7 +66,7 @@ async function logout() {
     type: "warning",
   })
     .then(async () => {
-      await webLogout();
+      await userStore.webLogout();
       router.replace({
         path: RouterEnum.BASE_LOGIN_PATH,
         replace: true,
@@ -93,6 +103,20 @@ function handleCommand(command: string) {
     display: flex;
     align-items: center;
     height: 100%;
+  }
+
+  &-left {
+    .collapse {
+      margin-right: 20px;
+      cursor: pointer;
+      transition: 0.3s all;
+      transform-style: preserve-3d;
+
+      &.active {
+        transform: scaleX(-1);
+        transform-origin: center center;
+      }
+    }
   }
 
   &-right {

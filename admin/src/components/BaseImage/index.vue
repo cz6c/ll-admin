@@ -1,4 +1,4 @@
-<script setup name="BaseImage">
+<script setup lang="ts" name="BaseImage">
 const props = defineProps({
   src: {
     type: String,

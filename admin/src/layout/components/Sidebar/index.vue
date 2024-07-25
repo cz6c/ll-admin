@@ -13,11 +13,10 @@
           :default-active="getActiveRoutePath"
           :collapse-transition="false"
           :unique-opened="true"
-          :class="{ on: !sidebar.opened }"
           :collapse="!sidebar.opened"
         >
           <SidebarItem
-            v-for="(route, index) in usePermissionStore().getDynamicMenu"
+            v-for="(route, index) in routes"
             :key="route.path + index"
             :item="route"
             :base-path="route.path"
@@ -27,14 +26,6 @@
     </div>
     <div class="code-info">
       <div v-if="sidebar.opened" class="des">技术支持：cz6</div>
-      <div
-        class="collapse"
-        :class="{ active: !sidebar.opened }"
-        :title="!sidebar.opened ? '点击展开' : '点击折叠'"
-        @click="emits('toggleClick')"
-      >
-        <SvgIcon name="collapse" />
-      </div>
     </div>
   </div>
 </template>
@@ -48,9 +39,8 @@ const BASE_TITLE = computed(() => {
   return productConfig.title;
 });
 
-const layoutStore = useLayoutStore();
-const sidebar = computed(() => layoutStore.sidebar);
-const emits = defineEmits(["toggleClick"]);
+const routes = computed(() => usePermissionStore().routes);
+const sidebar = computed(() => useLayoutStore().sidebar);
 
 const router = useRouter();
 const getActiveRoutePath = computed((): string => {
@@ -91,43 +81,15 @@ const getActiveRoutePath = computed((): string => {
 
   .side-menu {
     height: calc(100% - 94px);
-
-    :deep(.scrollbar-wrapper) {
-      .el-menu {
-        border: none;
-      }
-
-      .on {
-        .el-sub-menu .el-icon,
-        .menu-title,
-        .sub-menu-text {
-          display: none;
-        }
-      }
-    }
   }
 
   .code-info {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     height: 44px;
     font-size: 12px;
-
-    .des {
-      padding-left: 12px;
-      color: var(--el-color-info);
-    }
-
-    .collapse {
-      width: 64px;
-      text-align: center;
-      cursor: pointer;
-
-      &.active {
-        transform: rotate(180deg);
-      }
-    }
+    color: var(--el-color-info);
   }
 }
 </style>

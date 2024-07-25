@@ -1,11 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
 import type { App } from "vue";
-import type { AppRouteRecordRaw } from "@/router/type";
+import type { AppRouteRecordRaw } from "#/utils";
 
 export const Layout = () => import("@/layout/index.vue");
 export const IFrame = () => import("@/views/iframe/index.vue");
-export const ParentView = () => import("@/views/parentView/index.vue");
 
 export enum RouterEnum {
   // login path
@@ -32,7 +31,7 @@ const routesList: AppRouteRecordRaw[] = [
         path: "index",
         component: () => import("@/views/dashboard/index.vue"),
         name: "Index",
-        meta: { title: "首页", icon: "menu-dashboard", affix: true },
+        meta: { title: "首页", icon: "menu-iframe", affix: true },
       },
     ],
   },

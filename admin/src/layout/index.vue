@@ -1,12 +1,12 @@
 <template>
   <div :class="classObj" class="app-wrapper">
     <div v-if="device === 'mobile' && sidebar.opened" class="drawer-bg" @click="handleClickOutside" />
-    <el-aside v-if="!sidebar.hide" class="sidebar-container">
-      <Sidebar @toggleClick="toggleSideBar" />
+    <el-aside class="sidebar-container">
+      <Sidebar />
     </el-aside>
-    <div :class="{ hasTagsView: needTagsView, sidebarHide: sidebar.hide }" class="main-container">
+    <div :class="{ hasTagsView: needTagsView }" class="main-container">
       <el-header height="50px">
-        <Navbar @setLayout="setLayout" />
+        <Navbar @setLayout="setLayout" @toggleClick="toggleSideBar" />
       </el-header>
       <TagsView v-if="needTagsView" />
       <section class="app-main">
@@ -41,8 +41,7 @@ const device = computed(() => layoutStore.device);
 const needTagsView = computed(() => settingsStore.tagsView);
 
 const classObj = computed(() => ({
-  hideSidebar: !sidebar.value.opened,
-  openSidebar: sidebar.value.opened,
+  collapseSidebar: !sidebar.value.opened,
   withoutAnimation: sidebar.value.withoutAnimation,
   mobile: device.value === "mobile",
 }));
@@ -51,9 +50,6 @@ const { width } = useWindowSize();
 const WIDTH = 992; // refer to Bootstrap's responsive design
 
 watchEffect(() => {
-  if (device.value === "mobile" && sidebar.value.opened) {
-    layoutStore.closeSideBar({ withoutAnimation: false });
-  }
   if (width.value - 1 < WIDTH) {
     layoutStore.toggleDevice("mobile");
     layoutStore.closeSideBar({ withoutAnimation: true });
@@ -72,18 +68,14 @@ function handleClickOutside() {
 </script>
 
 <style scoped lang="scss">
-@import "@/assets/styles/sidebar.scss";
+@import "@/assets/style/mixin.scss";
+@import "@/assets/style/sidebar.scss";
 .app-wrapper {
   @include clearfix;
   position: relative;
   height: 100%;
   width: 100%;
   background: #f7f7fb;
-
-  &.mobile.openSidebar {
-    position: fixed;
-    top: 0;
-  }
 
   .drawer-bg {
     background: #000;
@@ -100,10 +92,6 @@ function handleClickOutside() {
     transition: margin-left 0.28s;
     margin-left: $base-sidebar-width;
     position: relative;
-
-    &.sidebarHide {
-      margin-left: 0 !important;
-    }
 
     .el-header {
       background-color: var(--el-color-primary);

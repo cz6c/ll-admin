@@ -58,9 +58,9 @@ $base-sidebar-width: 200px;
 // https://www.bluematador.com/blog/how-to-share-variables-between-js-and-sass
 :export {
   sideBarWidth: $base-sidebar-width;
-  primaryColor: $--color-primary;
-  successColor: $--color-success;
-  dangerColor: $--color-danger;
-  infoColor: $--color-info;
-  warningColor: $--color-warning;
+  primaryColor: --primary-color;
+  successColor: --success-color;
+  dangerColor: --danger-color;
+  infoColor: --info-color;
+  warningColor: --warning-color;
 }

@@ -23,3 +23,9 @@ declare interface ComponentElRef<T extends HTMLElement = HTMLDivElement> {
 }
 
 declare type ComponentRef<T extends HTMLElement = HTMLDivElement> = ComponentElRef<T> | null;
+
+// declare module "*.vue" {
+//   import { DefineComponent } from "vue";
+//   const Component: DefineComponent<{}, {}, any>;
+//   export default Component;
+// }

@@ -1,4 +1,4 @@
-import type { AppRouteRecordRaw } from "@/router/type";
+import type { AppRouteRecordRaw } from "@/router";
 import { Layout } from "@/router";
 
 export default {

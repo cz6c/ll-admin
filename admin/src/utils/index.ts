@@ -101,10 +101,11 @@ export function enumToOpts(data: unknown) {
 }
 
 /**
- * 通用js方法封装处理
- * Copyright (c) 2019 ruoyi
+ * @description: 处理路由路劲  /system/user
+ * @param {string} p
+ * @return {*}
  */
-export function getNormalPath(p: string) {
+export function getNormalPath(p: string): string {
   if (p.length === 0 || !p || p == "undefined") {
     return p;
   }

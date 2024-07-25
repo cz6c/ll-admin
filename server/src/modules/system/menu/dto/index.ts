@@ -8,7 +8,6 @@ export enum StatusEnum {
 
 //菜单类型
 export enum MenuTypeEnum {
-  M = 'M',
   C = 'C',
   F = 'F',
 }

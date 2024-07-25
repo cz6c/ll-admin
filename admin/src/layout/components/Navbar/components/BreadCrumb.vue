@@ -1,29 +1,68 @@
-<template>
-  <el-breadcrumb separator="/">
-    <el-breadcrumb-item v-for="item in matched" :key="item.path">
-      <a @click.prevent="handleLink(item)">
-        {{ item.meta.title }}
-      </a>
-    </el-breadcrumb-item>
-  </el-breadcrumb>
-</template>
 <script setup lang="ts" name="BreadCrumb">
-import { computed } from "vue";
-import { useRoute, useRouter, RouteLocationMatched } from "vue-router";
+import { RouteLocationMatched, useRoute, useRouter } from "vue-router";
 
 const route = useRoute();
 const router = useRouter();
+const levelList = ref([]);
 
-const matched = computed(() => {
-  return route.matched.filter(item => !item.meta?.breadcrumb);
-});
+function getBreadcrumb() {
+  // 仅显示带有标题的路由
+  let matched = route.matched.filter(item => item.meta && item.meta.title);
+  const first = matched[0];
+  // 判断是否为首页
+  if (!isDashboard(first)) {
+    matched = [{ path: "/index", meta: { title: "首页" } } as unknown as RouteLocationMatched].concat(matched);
+  }
 
-const handleLink = (item: RouteLocationMatched): void => {
+  levelList.value = matched.filter(item => item.meta && item.meta.title && item.meta.breadcrumb !== false);
+}
+function isDashboard(route: RouteLocationMatched) {
+  const name = route && route.name;
+  if (!name) {
+    return false;
+  }
+  return (name as string).trim() === "Index";
+}
+function handleLink(item: RouteLocationMatched) {
   const { redirect, path } = item;
   if (redirect) {
-    router.push(redirect as any);
-  } else {
-    router.push(path);
+    router.push(redirect as string);
+    return;
   }
-};
+  router.push(path);
+}
+
+watchEffect(() => {
+  // 如果转到重定向页面，不进行更新
+  if (route.path.startsWith("/redirect/")) return;
+  getBreadcrumb();
+});
+getBreadcrumb();
 </script>
+
+<template>
+  <el-breadcrumb class="app-breadcrumb" separator="/">
+    <transition-group name="breadcrumb">
+      <el-breadcrumb-item v-for="(item, index) in levelList" :key="item.path">
+        <span v-if="item.redirect === 'noRedirect' || index == levelList.length - 1" class="no-redirect">{{
+          item.meta.title
+        }}</span>
+        <a v-else @click.prevent="handleLink(item)">{{ item.meta.title }}</a>
+      </el-breadcrumb-item>
+    </transition-group>
+  </el-breadcrumb>
+</template>
+
+<style lang="scss" scoped>
+.app-breadcrumb.el-breadcrumb {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 50px;
+  margin-left: 8px;
+
+  .no-redirect {
+    color: #97a8be;
+    cursor: text;
+  }
+}
+</style>

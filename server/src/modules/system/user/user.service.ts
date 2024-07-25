@@ -345,7 +345,6 @@ export class UserService {
 
     const uuid = GenerateUUID();
     const token = this.createToken({ uuid: uuid, userId: userData.userId });
-    const permissions = await this.getUserPermissions(userData.userId);
     const deptData = await this.sysDeptEntityRep.findOne({
       where: {
         deptId: userData.deptId,
@@ -361,7 +360,6 @@ export class UserService {
       loginLocation: clientInfo.loginLocation,
       loginTime: loginDate,
       os: clientInfo.os,
-      permissions: permissions,
       roles: roles,
       token: uuid,
       user: userData,
@@ -392,22 +390,6 @@ export class UserService {
     });
     const roleIds = roleList.map((item) => item.roleId);
     return Uniq(roleIds);
-  }
-
-  /**
-   * 获取权限列表
-   * @param userId
-   * @returns
-   */
-  async getUserPermissions(userId: number) {
-    // 超级管理员
-    if (userId === 1) {
-      return ['*:*:*'];
-    }
-    const roleIds = await this.getRoleIds([userId]);
-    const list = await this.roleService.getPermissionsByRoleIds(roleIds as number[]);
-    const permissions = Uniq(list.map((item) => item.perms)).filter((item: string) => item.trim());
-    return permissions;
   }
 
   /**

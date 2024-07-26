@@ -5,6 +5,7 @@ import { UpdateOperlogDto } from './dto/update-operlog.dto';
 @Injectable()
 export class OperlogService {
   create(createOperlogDto: CreateOperlogDto) {
+    console.log('🚀 ~ OperlogService ~ create ~ createOperlogDto:', createOperlogDto);
     return 'This action adds a new operlog';
   }
 
@@ -17,6 +18,7 @@ export class OperlogService {
   }
 
   update(id: number, updateOperlogDto: UpdateOperlogDto) {
+    console.log('🚀 ~ OperlogService ~ update ~ updateOperlogDto:', updateOperlogDto);
     return `This action updates a #${id} operlog`;
   }
 

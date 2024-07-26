@@ -12,7 +12,7 @@ export const ConfigCompressPlugin = () => {
     deleteOriginFile: false, //删除源文件
     threshold: 10240, //压缩前最小文件大小
     algorithm: "gzip", //压缩算法
-    ext: ".gz", //文件类型
+    ext: ".gz" //文件类型
   });
 
   return [];

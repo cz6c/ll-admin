@@ -6,7 +6,7 @@
 import type { PluginOption } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
-import vueSetupExtend from "unplugin-vue-setup-extend-plus";
+// import vueSetupExtend from "unplugin-vue-setup-extend-plus";
 import vueDevTools from "vite-plugin-vue-devtools";
 import progress from "vite-plugin-progress";
 import { ConfigSvgIconsPlugin } from "./plugins/svgIcons";
@@ -41,7 +41,7 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     // unocss
     UnoCSSPlugin(),
     // vite-plugin-svg-icons
-    ConfigSvgIconsPlugin(isBuild),
+    ConfigSvgIconsPlugin(isBuild)
   ];
 
   if (isBuild) {

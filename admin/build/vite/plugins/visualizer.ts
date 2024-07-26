@@ -10,6 +10,6 @@ export function ConfigVisualizerConfig() {
     filename: "./node_modules/.cache/visualizer/stats.html",
     open: true,
     gzipSize: true,
-    brotliSize: true,
+    brotliSize: true
   });
 }

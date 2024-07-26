@@ -1,4 +1,4 @@
-import { UserConfigExport, ConfigEnv, loadEnv } from "vite";
+import { type UserConfigExport, type ConfigEnv, loadEnv } from "vite";
 import { resolve } from "path";
 import { createVitePlugins } from "./build/vite";
 import { wrapperEnv } from "./build/utils";
@@ -33,29 +33,29 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
         // @/xxxx => src/xxxx
         {
           find: /@\//,
-          replacement: pathResolve("src") + "/",
+          replacement: pathResolve("src") + "/"
         },
         // /#/xxxx => types/xxxx
         {
           find: /#\//,
-          replacement: pathResolve("types") + "/",
-        },
-      ],
+          replacement: pathResolve("types") + "/"
+        }
+      ]
     },
     css: {
       preprocessorOptions: {
         // 引入配置element plus 主题色scss文件
         scss: {
-          additionalData: '@use "@/assets/style/variables.scss" as *;',
-        },
-      },
+          additionalData: '@use "@/assets/style/variables.scss" as *;'
+        }
+      }
     },
     /*  https://cn.vitejs.dev/config/server-options.html#server-proxy */
     server: {
       host: true,
       hmr: true,
       port: viteEnv.VITE_PORT,
-      proxy: createProxy(viteEnv.VITE_PROXY),
+      proxy: createProxy(viteEnv.VITE_PROXY)
     },
     plugins: createVitePlugins(viteEnv, isProduction),
     build: {
@@ -64,13 +64,13 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
         compress: {
           //生产环境时移除console
           drop_console: true,
-          drop_debugger: true,
-        },
-      },
+          drop_debugger: true
+        }
+      }
     },
     // 预构建配置
     optimizeDeps: {
-      include: optimizeDepsElementPlusIncludes,
-    },
+      include: optimizeDepsElementPlusIncludes
+    }
   };
 };

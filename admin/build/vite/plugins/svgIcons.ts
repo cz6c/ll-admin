@@ -12,6 +12,6 @@ export const ConfigSvgIconsPlugin = (isBuild: boolean) => {
     iconDirs: [path.resolve(process.cwd(), "src/assets/svg")],
     // 指定symbolId格式
     symbolId: "icon-[dir]-[name]",
-    svgoOptions: isBuild,
+    svgoOptions: isBuild
   });
 };

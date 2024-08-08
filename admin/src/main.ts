@@ -9,7 +9,6 @@ import { installPlugins } from "@/utils/plugins";
 
 // css
 import "normalize.css";
-import "element-plus/dist/index.css";
 import "@/assets/style/global.scss";
 
 // 注册svg

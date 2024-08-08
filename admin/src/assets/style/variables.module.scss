@@ -1,0 +1,21 @@
+// 自定义项目 scss 全局公共变量
+$--color-primary: #409eff;
+$--color-success: #67c23a;
+$--color-warning: #e6a23c;
+$--color-danger: #f56c6c;
+$--color-info: #909399;
+$base-sidebar-width: 200px;
+
+/**
+ * @description: 这里导出的变量可在vue,js中获取
+ * https://www.bluematador.com/blog/how-to-share-variables-between-js-and-sass
+ * 如何使用：import variables from "@/assets/styles/variables.scss"; console.log("🚀 ~ variables:", variables);
+ */
+:export {
+  primaryColor: $--color-primary;
+  successColor: $--color-success;
+  dangerColor: $--color-danger;
+  infoColor: $--color-info;
+  warningColor: $--color-warning;
+  sideBarWidth: $base-sidebar-width;
+}

@@ -1,10 +1,12 @@
 <template>
   <div class="side-bar">
     <div class="logo-container">
-      <router-link :key="+new Date()" :title="BASE_TITLE" class="logo-link" to="/">
-        <SvgIcon name="logo" size="26" />
-        <div v-if="sidebar.opened" class="logo-title">{{ BASE_TITLE }}</div>
-      </router-link>
+      <div class="logo-link">
+        <Transition name="fade" mode="out-in">
+          <SvgIcon v-if="sidebar.opened" name="logo" size="26" />
+          <SvgIcon v-else name="logo" size="26" />
+        </Transition>
+      </div>
     </div>
     <div class="side-menu">
       <el-scrollbar wrap-class="scrollbar-wrapper">
@@ -33,11 +35,6 @@
 import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
-import { productConfig } from "@/config";
-
-const BASE_TITLE = computed(() => {
-  return productConfig.title;
-});
 
 const routes = computed(() => usePermissionStore().routes);
 const sidebar = computed(() => useLayoutStore().sidebar);
@@ -68,13 +65,6 @@ const getActiveRoutePath = computed((): string => {
 
       :deep(.svg-icon) {
         margin: 0 14px;
-      }
-
-      .logo-title {
-        display: block;
-        width: 136px;
-        font-size: 20px;
-        font-weight: 600;
       }
     }
   }

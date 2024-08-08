@@ -28,6 +28,8 @@ import Settings from "./components/Settings/index.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { useSettingsStore } from "@/store/modules/settings";
 import { useWindowSize } from "@vueuse/core";
+import variables from "@/assets/style/variables.module.scss";
+console.log("🚀 ~ variables:", variables);
 
 const settingRef = ref(null);
 function setLayout() {
@@ -68,8 +70,8 @@ function handleClickOutside() {
 </script>
 
 <style scoped lang="scss">
+@import "@/assets/style/variables.module.scss";
 @import "@/assets/style/mixin.scss";
-@import "@/assets/style/sidebar.scss";
 .app-wrapper {
   @include clearfix;
   position: relative;

@@ -54,7 +54,7 @@
 </template>
 
 <script setup>
-import "vue-cropper/dist/index.css";
+// import "vue-cropper/dist/index.css";
 import { VueCropper } from "vue-cropper";
 import { uploadAvatar } from "@/api/system/user";
 import { useUserStore } from "@/store/modules/user";

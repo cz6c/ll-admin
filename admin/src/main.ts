@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { setupStore } from "@/store";
 import router, { setupRouter } from "@/router";
-import { setupRouterGuard } from "@/permission";
+import { setupRouterGuard } from "@/router/guard";
 import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
 import { installPlugins } from "@/utils/plugins";

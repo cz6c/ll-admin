@@ -1,10 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import router, { constantRoutes, Layout, IFrame } from "@/router";
 import { cloneDeep, omit } from "lodash-es";
-import { getRouters } from "@/api/public";
 import { isArray, isHttp } from "@/utils/is";
-import { productConfig } from "@/config";
-import constRoutes from "@/router/local";
 import type { AppRouteRecordRaw } from "#/utils";
 
 // 匹配views里面所有的.vue文件
@@ -25,25 +22,19 @@ export const usePermissionStore = defineStore("permission", {
       this.addRoutes = routes;
       this.routes = constantRoutes.concat(routes);
     },
-    generateRoutes() {
-      return new Promise(async resolve => {
-        let data = constRoutes;
-        if (productConfig.isDynamicAddedRoute) {
-          // 向后端请求路由数据
-          const res = await getRouters();
-          data = res.data;
+    generateRoutes(data) {
+      const sdata = JSON.parse(JSON.stringify(data));
+      const asyncRoutes = menuToRoute(sdata);
+      asyncRoutes.forEach(route => {
+        if (!isHttp(route.path)) {
+          router.addRoute(route); // 动态添加可访问路由表
         }
-        const sdata = JSON.parse(JSON.stringify(data));
-        const asyncRoutes = menuToRoute(sdata);
-        asyncRoutes.forEach(route => {
-          if (!isHttp(route.path)) {
-            router.addRoute(route); // 动态添加可访问路由表
-          }
-        });
-        this.setRoutes(asyncRoutes);
-        resolve(asyncRoutes);
       });
+      this.setRoutes(asyncRoutes);
     }
+  },
+  persist: {
+    storage: sessionStorage
   }
 });
 

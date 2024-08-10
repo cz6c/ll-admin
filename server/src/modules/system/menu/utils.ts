@@ -42,40 +42,19 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
     formattedNode.path = getRouterPath(menu);
     formattedNode.hidden = menu.visible === '1';
     formattedNode.component = getComponent(menu);
-    switch (menu.menuType) {
-      // case 'M': //目录
-      //   formattedNode.meta = {
-      //     title: menu.menuName,
-      //     icon: menu.icon,
-      //     noCache: menu.isCache === '1',
-      //     link: menu.isFrame === '0' ? menu.path : null,
-      //   };
-      //   if (menu.children) {
-      //     formattedNode.alwaysShow = true;
-      //     formattedNode.redirect = 'noRedirect';
-      //     formattedNode.children = menu.children;
-      //   }
-      //   break;
-      case 'C': //菜单
-        if (menu.query) {
-          formattedNode.query = menu.query;
-        }
-        formattedNode.meta = {
-          title: menu.menuName,
-          icon: menu.icon,
-          noCache: menu.isCache === '1',
-          link: menu.isFrame === '0' ? menu.path : null,
-        };
-        if (menu.children) {
-          formattedNode.alwaysShow = true;
-          formattedNode.redirect = 'noRedirect';
-          formattedNode.children = menu.children;
-        }
-        break;
-      case 'F': //按钮
-        break;
-      default:
-        break;
+    if (menu.query) {
+      formattedNode.query = menu.query;
+    }
+    formattedNode.meta = {
+      title: menu.menuName,
+      icon: menu.icon,
+      noCache: menu.isCache === '1',
+      link: menu.isFrame === '0' ? menu.path : null,
+    };
+    if (menu.children) {
+      formattedNode.alwaysShow = true;
+      formattedNode.redirect = 'noRedirect';
+      formattedNode.children = menu.children;
     }
     // 如果节点有子节点，递归处理它们
     if (formattedNode.children) {
@@ -93,11 +72,7 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
  * @return 路由名称
  */
 const getRouteName = (menu) => {
-  let routerName = menu.path.replace(/^\w/, (c) => c.toUpperCase());
-  // 非外链并且是一级目录（类型为目录）
-  if (isMenuFrame(menu)) {
-    routerName = '';
-  }
+  const routerName = menu.path.replace(/^\w/, (c) => c.toUpperCase());
   return routerName;
 };
 /**
@@ -107,7 +82,7 @@ const getRouteName = (menu) => {
  * @return 结果
  */
 const isMenuFrame = (menu): boolean => {
-  return menu.parentId === 0 && menu.menuType === 'C' && menu.isFrame === '1';
+  return menu.parentId === 0 && menu.isFrame === '1';
 };
 
 /**
@@ -163,7 +138,7 @@ const getRouterPath = (menu): string => {
   }
   // 非外链并且是一级目录（类型为菜单）
   else if (isMenuFrame(menu)) {
-    routerPath = '/';
+    routerPath = `/${menu.path}`;
   }
   return routerPath;
 };

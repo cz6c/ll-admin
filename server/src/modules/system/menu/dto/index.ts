@@ -6,12 +6,6 @@ export enum StatusEnum {
   DYNAMIC = '1',
 }
 
-//菜单类型
-export enum MenuTypeEnum {
-  C = 'C',
-  F = 'F',
-}
-
 export class CreateMenuDto {
   @ApiProperty({ required: true })
   @IsString()
@@ -50,12 +44,6 @@ export class CreateMenuDto {
   @IsString()
   @Length(0, 100)
   icon?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @IsEnum(MenuTypeEnum)
-  menuType: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

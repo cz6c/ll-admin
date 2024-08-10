@@ -98,14 +98,6 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="菜单类型" prop="menuType">
-              <el-radio-group v-model="form.menuType">
-                <el-radio label="C">菜单</el-radio>
-                <el-radio label="F">按钮</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="form.menuType != 'F'" :span="24">
             <el-form-item label="菜单图标" prop="icon">
               <el-popover
                 v-model:visible="showChooseIcon"
@@ -147,7 +139,7 @@
               <el-input-number v-model="form.orderNum" controls-position="right" :min="0" />
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType != 'F'" :span="12">
+          <el-col :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -162,7 +154,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType != 'F'" :span="12">
+          <el-col :span="12">
             <el-form-item prop="path">
               <template #label>
                 <span>
@@ -178,7 +170,7 @@
               <el-input v-model="form.path" placeholder="请输入路由地址" />
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType == 'C'" :span="12">
+          <el-col :span="12">
             <el-form-item prop="component">
               <template #label>
                 <span>
@@ -191,7 +183,7 @@
               <el-input v-model="form.component" placeholder="请输入组件路径" />
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType == 'C'" :span="12">
+          <el-col :span="12">
             <el-form-item>
               <el-input v-model="form.query" placeholder="请输入路由参数" maxlength="255" />
               <template #label>
@@ -204,7 +196,7 @@
               </template>
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType == 'C'" :span="12">
+          <el-col :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -223,7 +215,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType != 'F'" :span="12">
+          <el-col :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -240,7 +232,7 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col v-if="form.menuType != 'F'" :span="12">
+          <el-col :span="12">
             <el-form-item>
               <template #label>
                 <span>
@@ -332,7 +324,6 @@ function reset() {
     parentId: 0,
     menuName: undefined,
     icon: undefined,
-    menuType: "C",
     orderNum: undefined,
     isFrame: "1",
     isCache: "0",

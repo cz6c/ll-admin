@@ -1,4 +1,4 @@
-import type { GetListParams, GetListResponse } from "@/api/public/index.d";
+import type { GetListParams, GetListResponse } from "#/api/index.d";
 // 登录日志
 export interface LoginLogInfo {
   country: string; //  ip下的城市信息

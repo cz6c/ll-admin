@@ -6,6 +6,7 @@ import type { UserItem } from "@/api/system1/user/index.d";
 
 interface authStoreState {
   userInfo: UserItem;
+  userId: number;
   username: string;
   avatar: string;
   roles: string[];
@@ -16,6 +17,7 @@ export const useAuthStore = defineStore("auth", {
   state: (): authStoreState => ({
     // 用户信息
     userInfo: null,
+    userId: 0,
     username: "",
     avatar: "",
     // 角色权限
@@ -51,6 +53,7 @@ export const useAuthStore = defineStore("auth", {
       try {
         const { data } = await getInfo();
         this.userInfo = data.user;
+        this.userId = data.user.userId;
         this.username = data.user.username;
         this.avatar = data.user.avatar;
         this.roles = data.roles;
@@ -60,40 +63,12 @@ export const useAuthStore = defineStore("auth", {
         return Promise.reject(error);
       }
     },
-    /**
-     * @description: 获取菜单
-     * @return {*}
-     */
-    // async getMenuListAction(): Promise<AppRouteRecordRaw[] | unknown> {
-    //   try {
-    //     let routeList: AppRouteRecordRaw[] = [];
-    //     // if (productConfig.isDynamicAddedRoute) {
-    //     //   const { data } = await getMenuList();
-    //     //   routeList = menuToRoute(data.list);
-    //     // } else {
-    //     //   routeList = await getStaticRoutes();
-    //     // }
-    //     // 重置路由
-    //     resetRouter();
-    //     routeList.forEach(route => {
-    //       router.addRoute(route as RouteRecordRaw);
-    //     });
-    //     // 对菜单进行排序
-    //     routeList.sort((a, b) => {
-    //       return (a.meta?.orderNo || 0) - (b.meta?.orderNo || 0);
-    //     });
-    //     this.dynamicRoutes = routeList;
-    //     return routeList;
-    //   } catch (error) {
-    //     return Promise.reject(error);
-    //   }
-    // },
 
     /**
      * @description: 前端登出
      */
     async webLogout() {
-      await logout();
+      this.userId && (await logout());
       this.$reset();
       removeToken();
     }

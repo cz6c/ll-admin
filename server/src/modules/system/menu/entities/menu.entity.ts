@@ -46,10 +46,6 @@ export class SysMenuEntity extends NewBaseEntity {
   @Column({ type: 'char', name: 'visible', default: '0', comment: '是否显示' })
   public visible: string;
 
-  //菜单类型（C菜单 F按钮）
-  @Column({ type: 'char', name: 'menu_type', length: 1, default: 'C', comment: '菜单类型' })
-  public menuType: string;
-
   @Column({ type: 'varchar', name: 'icon', length: 100, default: '', comment: '菜单图标' })
   public icon: string;
 }

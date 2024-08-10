@@ -3,7 +3,6 @@ import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { Response } from 'express';
 import { LoginlogService } from './loginlog.service';
 import { ListLoginlogDto } from './dto/index';
-import { RequirePermission } from '@/common/decorator/require-premission.decorator';
 
 @ApiTags('登录日志')
 @Controller('monitor/logininfor')
@@ -16,7 +15,6 @@ export class LoginlogController {
     type: ListLoginlogDto,
     required: true,
   })
-  @RequirePermission('monitor:logininfor:query')
   @Get('/list')
   findAll(@Query() query: ListLoginlogDto) {
     return this.loginlogService.findAll(query);
@@ -25,7 +23,6 @@ export class LoginlogController {
   @ApiOperation({
     summary: '登录日志-清除全部日志',
   })
-  @RequirePermission('monitor:logininfor:remove')
   @Delete('/clean')
   removeAll() {
     return this.loginlogService.removeAll();
@@ -34,7 +31,6 @@ export class LoginlogController {
   @ApiOperation({
     summary: '登录日志-删除日志',
   })
-  @RequirePermission('monitor:logininfor:remove')
   @Delete(':id')
   remove(@Param('id') ids: string) {
     const infoIds = ids.split(',').map((id) => id);
@@ -42,7 +38,6 @@ export class LoginlogController {
   }
 
   @ApiOperation({ summary: '导出登录日志为xlsx文件' })
-  @RequirePermission('system:config:export')
   @Post('/export')
   async export(@Res() res: Response, @Body() body: ListLoginlogDto): Promise<void> {
     return this.loginlogService.export(res, body);

@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Put, Param, Delete, Res, Query } from '@ne
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { PostService } from './post.service';
 import { CreatePostDto, UpdatePostDto, ListPostDto } from './dto/index';
-import { RequirePermission } from '@/common/decorator/require-premission.decorator';
 import { Response } from 'express';
 
 @ApiTags('岗位管理')
@@ -17,7 +16,6 @@ export class PostController {
     type: CreatePostDto,
     required: true,
   })
-  @RequirePermission('system:post:add')
   @Post('/')
   create(@Body() createPostDto: CreatePostDto) {
     return this.postService.create(createPostDto);
@@ -30,7 +28,6 @@ export class PostController {
     type: ListPostDto,
     required: true,
   })
-  @RequirePermission('system:post:query')
   @Get('/list')
   findAll(@Query() query: ListPostDto) {
     return this.postService.findAll(query);
@@ -39,7 +36,6 @@ export class PostController {
   @ApiOperation({
     summary: '岗位管理-详情',
   })
-  @RequirePermission('system:post:query')
   @Get('/:id')
   findOne(@Param('id') id: string) {
     return this.postService.findOne(+id);
@@ -52,7 +48,6 @@ export class PostController {
     type: UpdatePostDto,
     required: true,
   })
-  @RequirePermission('system:post:edit')
   @Put('/')
   update(@Body() updatePostDto: UpdatePostDto) {
     return this.postService.update(updatePostDto);
@@ -61,7 +56,6 @@ export class PostController {
   @ApiOperation({
     summary: '岗位管理-删除',
   })
-  @RequirePermission('system:post:remove')
   @Delete('/:ids')
   remove(@Param('ids') ids: string) {
     const menuIds = ids.split(',').map((id) => id);
@@ -69,7 +63,6 @@ export class PostController {
   }
 
   @ApiOperation({ summary: '导出岗位管理xlsx文件' })
-  @RequirePermission('system:post:export')
   @Post('/export')
   async export(@Res() res: Response, @Body() body: ListPostDto): Promise<void> {
     return this.postService.export(res, body);

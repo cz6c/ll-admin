@@ -7,7 +7,6 @@ import { RedisClientOptions } from '@liaoliaots/nestjs-redis';
 import { RedisModule } from './modules/redis/redis.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from 'src/common/guards/auth.guard';
-import { PermissionGuard } from 'src/common/guards/permission.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AreaModule } from './modules/area/area.module';
 import { UploadModule } from './modules/upload/upload.module';
@@ -95,10 +94,6 @@ import { ServerModule } from './modules/monitor/server/server.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: PermissionGuard,
     },
   ],
 })

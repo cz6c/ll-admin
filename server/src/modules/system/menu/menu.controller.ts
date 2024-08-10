@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Query, Put, Param, Delete } from '@nestjs/
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { MenuService } from './menu.service';
 import { CreateMenuDto, UpdateMenuDto, ListDeptDto } from './dto/index';
-import { RequirePermission } from '@/common/decorator/require-premission.decorator';
 
 @ApiTags('菜单管理')
 @Controller('system/menu')
@@ -16,7 +15,6 @@ export class MenuController {
     type: CreateMenuDto,
     required: true,
   })
-  @RequirePermission('system:menu:add')
   @Post()
   create(@Body() createMenuDto: CreateMenuDto) {
     return this.menuService.create(createMenuDto);
@@ -25,7 +23,6 @@ export class MenuController {
   @ApiOperation({
     summary: '菜单管理-列表',
   })
-  @RequirePermission('system:menu:query')
   @Get('/list')
   findAll(@Query() query: ListDeptDto) {
     return this.menuService.findAll(query);
@@ -34,7 +31,6 @@ export class MenuController {
   @ApiOperation({
     summary: '菜单管理-树表',
   })
-  @RequirePermission('system:menu:query')
   @Get('/treeselect')
   treeSelect() {
     return this.menuService.treeSelect();
@@ -43,7 +39,6 @@ export class MenuController {
   @ApiOperation({
     summary: '菜单管理-角色-树表',
   })
-  @RequirePermission('system:menu:query')
   @Get('/roleMenuTreeselect/:menuId')
   roleMenuTreeselect(@Param('menuId') menuId: string) {
     return this.menuService.roleMenuTreeselect(+menuId);
@@ -52,7 +47,6 @@ export class MenuController {
   @ApiOperation({
     summary: '菜单管理-详情',
   })
-  @RequirePermission('system:menu:query')
   @Get(':menuId')
   findOne(@Param('menuId') menuId: string) {
     return this.menuService.findOne(+menuId);
@@ -65,7 +59,6 @@ export class MenuController {
     type: UpdateMenuDto,
     required: true,
   })
-  @RequirePermission('system:menu:edit')
   @Put()
   update(@Body() updateMenuDto: UpdateMenuDto) {
     return this.menuService.update(updateMenuDto);
@@ -74,7 +67,6 @@ export class MenuController {
   @ApiOperation({
     summary: '菜单管理-删除',
   })
-  @RequirePermission('system:menu:remove')
   @Delete(':menuId')
   remove(@Param('menuId') menuId: string) {
     return this.menuService.remove(+menuId);

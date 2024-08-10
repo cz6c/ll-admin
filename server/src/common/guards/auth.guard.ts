@@ -43,13 +43,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   checkWhiteList(ctx: ExecutionContext): boolean {
     const req = ctx.switchToHttp().getRequest();
     const pathname = url.parse(req.url).pathname;
-    console.log('🚀 ~ JwtAuthGuard ~ checkWhiteList ~ pathname:', pathname);
     const i = this.globalWhiteList.findIndex((route) => {
       // 请求方法类型相同
       if (req.method.toUpperCase() === route.method.toUpperCase()) {
-        console.log('🚀 ~ JwtAuthGuard ~ checkWhiteList ~ route.path:', route.path);
-        // 对比 url
-        return !!pathToRegexp(route.path).exec(pathname);
+        if (route.path === pathname) return true;
+        // 处理url带params参数 :userId
+        const match = pathToRegexp(route.path).exec(pathname);
+        return match && !isNaN(Number(match[1]));
       }
       return false;
     });

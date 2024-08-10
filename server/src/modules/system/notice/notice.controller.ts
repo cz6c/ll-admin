@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { NoticeService } from './notice.service';
 import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from './dto/index';
-import { RequirePermission } from '@/common/decorator/require-premission.decorator';
 
 @ApiTags('通知公告')
 @Controller('system/notice')
@@ -15,7 +14,6 @@ export class NoticeController {
   @ApiBody({
     type: CreateNoticeDto,
   })
-  @RequirePermission('system:notice:add')
   @Post()
   create(@Body() createConfigDto: CreateNoticeDto) {
     return this.noticeService.create(createConfigDto);
@@ -28,7 +26,6 @@ export class NoticeController {
     type: ListNoticeDto,
     required: true,
   })
-  @RequirePermission('system:notice:query')
   @Get('/list')
   findAll(@Query() query: ListNoticeDto) {
     return this.noticeService.findAll(query);
@@ -37,7 +34,6 @@ export class NoticeController {
   @ApiOperation({
     summary: '通知公告-详情',
   })
-  @RequirePermission('system:notice:query')
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.noticeService.findOne(+id);
@@ -46,7 +42,6 @@ export class NoticeController {
   @ApiOperation({
     summary: '通知公告-更新',
   })
-  @RequirePermission('system:notice:edit')
   @Put()
   update(@Body() updateNoticeDto: UpdateNoticeDto) {
     return this.noticeService.update(updateNoticeDto);
@@ -55,7 +50,6 @@ export class NoticeController {
   @ApiOperation({
     summary: '通知公告-删除',
   })
-  @RequirePermission('system:notice:remove')
   @Delete(':id')
   remove(@Param('id') ids: string) {
     const noticeIds = ids.split(',').map((id) => +id);

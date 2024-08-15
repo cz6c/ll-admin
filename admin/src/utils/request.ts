@@ -93,7 +93,7 @@ service.interceptors.response.use(
         // 登录过期或权限变更处理
         const { webLogout } = useAuthStore();
         webLogout();
-        router.replace(RouterEnum.BASE_LOGIN_PATH);
+        router.replace({ name: RouterEnum.BASE_LOGIN_NAME });
       }
       $message.error(msg);
       return Promise.reject(new Error(msg || "Error"));
@@ -107,7 +107,7 @@ service.interceptors.response.use(
       // 登录过期或权限变更处理
       const { webLogout } = useAuthStore();
       webLogout();
-      router.replace(RouterEnum.BASE_LOGIN_PATH);
+      router.replace({ name: RouterEnum.BASE_LOGIN_NAME });
       $message.error("登录超时");
       return;
     }

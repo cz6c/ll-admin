@@ -35,7 +35,7 @@ export interface AppRouteRecordRaw {
   // 是否隐藏该菜单
   hidden?: boolean;
   // 路由元信息
-  meta: AppRouteMeta;
+  meta?: AppRouteMeta;
   // 路由重定向  当设置 noRedirect 的时候该路由在面包屑导航中不可被点击
   redirect?: string;
   // 按需加载需要展示的页面

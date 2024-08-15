@@ -20,7 +20,7 @@
         <FoldButton />
       </div>
       <!-- 退出登录 -->
-      <el-dropdown trigger="hover" @command="handleCommand">
+      <el-dropdown trigger="click" @command="handleCommand">
         <div class="tool">
           <div class="img-wrap">
             <BaseImage :src="userStore.avatar" fit="cover" border-radius="50%" />
@@ -68,7 +68,7 @@ async function logout() {
     .then(async () => {
       await userStore.webLogout();
       router.replace({
-        path: RouterEnum.BASE_LOGIN_PATH,
+        name: RouterEnum.BASE_LOGIN_NAME,
         replace: true,
         query: {
           redirect: `${router.currentRoute.value.fullPath}`

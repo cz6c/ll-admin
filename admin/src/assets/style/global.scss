@@ -14,7 +14,7 @@ html {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans",
     "Noto Sans CJK SC", "Microsoft YaHei", "微软雅黑", sans-serif;
   font-weight: 400;
-  color: #111;
+  color: #333;
   line-height: 1.36;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -44,11 +44,31 @@ a {
   text-decoration: none;
 }
 
-.app-page {
-  height: calc(100vh - 82px);
-}
-
 .cz-card {
   border-radius: 8px;
   background-color: #fff;
+}
+
+.main-container {
+  // 页面样式
+  .app-page {
+    border-radius: 8px;
+    background-color: #fff;
+    margin: 16px;
+    padding: 16px;
+    box-sizing: border-box;
+    /* 50= navbar  50  */
+    height: calc(100vh - 50px - 36px); 
+    // 内容区高度-自动
+    &.auto-height {
+      height: auto;
+    }
+  }
+
+  &.hasTagsView {
+    .app-page {
+      /* 84 = navbar + tags-view = 50 + 35 */
+      height: calc(100vh - 85px - 36px);
+    }
+  }
 }

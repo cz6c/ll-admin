@@ -21,12 +21,9 @@
 <script setup lang="ts" name="Auth">
 import { computed } from "vue";
 import { useAuthStore } from "@/store/modules/auth";
-import { useRedo } from "@/hooks/usePage";
 
 const authStore = useAuthStore();
-
-const { redo } = useRedo();
-
+const router = useRouter();
 const codeList = computed(() => authStore.getPermCodeList);
 
 function handleClick(type: number, value: string) {
@@ -39,7 +36,11 @@ function handleClick(type: number, value: string) {
     codeList.value.push(value);
   }
   // authStore.setPermCodeList(codeList.value);
-  redo();
+  const { path, query } = router.currentRoute.value;
+  router.replace({
+    path: "/redirect" + path,
+    query: query
+  });
 }
 </script>
 

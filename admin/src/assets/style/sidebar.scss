@@ -40,10 +40,6 @@
       width: 100% !important;
     }
 
-    .el-menu--collapse .el-menu .el-sub-menu {
-      min-width: $base-sidebar-width !important;
-    }
-
     a {
       display: inline-block;
       width: 100%;
@@ -51,6 +47,7 @@
     }
 
     .svg-icon {
+      flex-shrink: 0;
       margin-right: 12px;
     }
 
@@ -61,41 +58,39 @@
       white-space: nowrap !important;
     }
 
-    .el-menu-item .el-menu-tooltip__trigger {
-      display: inline-block !important;
-    }
-
-    // menu hover
+    // 不包含子集的一级菜单
     .sub-menu-title-noDropdown,
     .el-sub-menu__title {
-      &:hover {
-        background-color: rgba(0, 0, 0, 0.06) !important;
-        color: var(--el-color-primary);
-      }
-    }
-
-    & .nest-menu .el-sub-menu > .el-sub-menu__title,
-    & .el-sub-menu .el-menu-item {
-      min-width: $base-sidebar-width !important;
+      margin: 0px 8px 4px;
+      border-radius: 8px;
 
       &:hover {
         background-color: rgba(0, 0, 0, 0.06) !important;
-        color: var(--el-color-primary);
-      }
-    }
-
-    // menu active
-    .el-sub-menu {
-      &.is-active {
-        > .el-sub-menu__title {
-          color: var(--el-color-primary);
+        .svg-icon {
+          transform: scale(1.2);
+          transition-duration: 0.6s;
         }
       }
     }
+
+    // 包含子集的一级菜单
+    & .nest-menu .el-sub-menu > .el-sub-menu__title,
+    & .el-sub-menu .el-menu-item {
+      margin: 0px 8px 4px;
+      border-radius: 8px;
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.06) !important;
+        .svg-icon {
+          transform: scale(1.2);
+          transition-duration: 0.6s;
+        }
+      }
+    }
+
     .el-menu-item {
       &.is-active {
-        background: #ededfa;
-        color: var(--el-color-primary);
+        background: rgba(0, 0, 0, 0.06);
       }
     }
   }
@@ -110,27 +105,28 @@
       margin-left: 64px;
     }
 
+    // 不包含子集的一级菜单
     .sub-menu-title-noDropdown {
       padding: 0 !important;
       position: relative;
 
-      .el-tooltip {
+      .el-menu-tooltip__trigger {
         padding: 0 !important;
 
         .svg-icon {
-          margin-left: 20px;
+          margin-left: 15px;
         }
       }
     }
 
+    // 包含子集的一级菜单
     .el-sub-menu {
-      overflow: hidden;
 
       & > .el-sub-menu__title {
         padding: 0 !important;
 
         .svg-icon {
-          margin-left: 20px;
+          margin-left: 15px;
         }
       }
     }
@@ -185,12 +181,5 @@
     .sidebar-container {
       transition: none;
     }
-  }
-}
-
-// 折叠后的菜单
-.nest-menu {
-  .svg-icon {
-    margin-right: 12px;
   }
 }

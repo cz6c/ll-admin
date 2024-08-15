@@ -96,7 +96,8 @@ function handleClickOutside() {
     position: relative;
 
     .el-header {
-      background-color: var(--el-color-primary);
+      background-color: #fff;
+      border-bottom: 1px solid #d8dce5;
     }
     .app-main {
       /* 50= navbar  50  */
@@ -108,8 +109,8 @@ function handleClickOutside() {
 
     &.hasTagsView {
       .app-main {
-        /* 84 = navbar + tags-view = 50 + 34 */
-        min-height: calc(100vh - 84px);
+        /* 84 = navbar + tags-view = 50 + 35 */
+        min-height: calc(100vh - 85px);
       }
     }
   }

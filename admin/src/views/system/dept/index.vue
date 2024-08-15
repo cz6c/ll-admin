@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-page">
     <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="部门名称" prop="deptName">
         <el-input

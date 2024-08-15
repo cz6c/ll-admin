@@ -15,7 +15,7 @@ import { getRouters } from "@/api/public";
  */
 function setupPermissionGuard(router: Router) {
   // 不需要token的白名单
-  const whitePathList: string[] = [RouterEnum.BASE_LOGIN_PATH];
+  const whitePathList: string[] = ["/login"];
 
   router.beforeEach(async (to, from, next) => {
     console.log(to, from);
@@ -39,8 +39,8 @@ function setupPermissionGuard(router: Router) {
 
     // 验证token
     if (token) {
-      if (to.path === RouterEnum.BASE_LOGIN_PATH) {
-        return next((to.query?.redirect as string) || RouterEnum.BASE_HOME_PATH);
+      if (to.name === RouterEnum.BASE_LOGIN_NAME) {
+        return next({ path: (to.query?.redirect as string) || "/" });
       }
       // 验证用户权限
       if (!authStore.userId) {
@@ -63,7 +63,7 @@ function setupPermissionGuard(router: Router) {
           // 登录过期或登录无效，前端登出
           await useAuthStore().webLogout();
           next({
-            path: RouterEnum.BASE_LOGIN_PATH,
+            name: RouterEnum.BASE_LOGIN_NAME,
             query: { redirect: to.fullPath },
             replace: true
           });
@@ -78,7 +78,7 @@ function setupPermissionGuard(router: Router) {
         // 无权限，前端登出
         await useAuthStore().webLogout();
         next({
-          path: RouterEnum.BASE_LOGIN_PATH,
+          name: RouterEnum.BASE_LOGIN_NAME,
           query: { redirect: to.fullPath },
           replace: true
         });

@@ -1,5 +1,6 @@
 <script setup lang="ts" name="BreadCrumb">
 import { RouteLocationMatched, useRoute, useRouter } from "vue-router";
+import { RouterEnum } from "@/router";
 
 const route = useRoute();
 const router = useRouter();
@@ -7,27 +8,9 @@ const levelList = ref([]);
 
 function getBreadcrumb() {
   // 仅显示带有标题的路由
-  let matched = route.matched.filter(item => item.meta && item.meta.title);
-  const first = matched[0];
-  // 判断是否为首页
-  if (!isDashboard(first)) {
-    matched = [
-      {
-        path: "/index",
-        meta: { title: "首页" }
-      } as unknown as RouteLocationMatched
-    ].concat(matched);
-  }
+  levelList.value = route.matched.filter(item => item.meta && item.meta.title && item.meta.breadcrumb !== false);
+}
 
-  levelList.value = matched.filter(item => item.meta && item.meta.title && item.meta.breadcrumb !== false);
-}
-function isDashboard(route: RouteLocationMatched) {
-  const name = route && route.name;
-  if (!name) {
-    return false;
-  }
-  return (name as string).trim() === "Index";
-}
 function handleLink(item: RouteLocationMatched) {
   const { redirect, path } = item;
   if (redirect) {
@@ -39,7 +22,7 @@ function handleLink(item: RouteLocationMatched) {
 
 watchEffect(() => {
   // 如果转到重定向页面，不进行更新
-  if (route.path.startsWith("/redirect/")) return;
+  if (route.name === RouterEnum.BASE_REDIRECT_NAME) return;
   getBreadcrumb();
 });
 getBreadcrumb();

@@ -1,8 +1,8 @@
 export const useTagsViewStore = defineStore("tags-view", {
   state: () => ({
-    visitedViews: [],
-    cachedViews: [],
-    iframeViews: []
+    visitedViews: [], // 已浏览页签
+    cachedViews: [], // 已缓存页签
+    iframeViews: [] // iframe页签
   }),
   actions: {
     addView(view) {

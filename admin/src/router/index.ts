@@ -2,17 +2,17 @@ import { createRouter, createWebHistory } from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
-
+import { dynamicRoutes } from "./dynamicRoutes";
 export const Layout = () => import("@/layout/index.vue");
 export const IFrame = () => import("@/views/iframe/index.vue");
 
 export enum RouterEnum {
-  // login path
-  BASE_LOGIN_PATH = "/login",
-  // basic home path
-  BASE_HOME_PATH = "/index",
+  // login name
+  BASE_LOGIN_NAME = "Login",
+  // basic home name
+  BASE_HOME_NAME = "Index",
   // redirect name
-  REDIRECT_NAME = "Redirect"
+  BASE_REDIRECT_NAME = "Redirect"
 }
 
 // 公共菜单
@@ -22,15 +22,16 @@ const routesList: AppRouteRecordRaw[] = [
     path: "/",
     name: "Root",
     component: Layout,
-    redirect: RouterEnum.BASE_HOME_PATH,
+    redirect: "/index",
     meta: {
-      title: "root"
+      title: "首页",
+      breadcrumb: false
     },
     children: [
       {
         path: "index",
         component: () => import("@/views/dashboard/index.vue"),
-        name: "Index",
+        name: RouterEnum.BASE_HOME_NAME,
         meta: { title: "首页", icon: "menu-iframe", affix: true }
       }
     ]
@@ -38,51 +39,36 @@ const routesList: AppRouteRecordRaw[] = [
   // 登录路由
   {
     path: "/login",
-    name: "Login",
+    name: RouterEnum.BASE_LOGIN_NAME,
     component: () => import("@/views/public/login.vue"),
     hidden: true,
     meta: {
       title: "login"
     }
+  },
+  {
+    path: "/redirect",
+    name: "RouterEnum.BASE_REDIRECT_NAME",
+    component: Layout,
+    hidden: true,
+    children: [
+      {
+        path: "/redirect/:path(.*)",
+        name: RouterEnum.BASE_REDIRECT_NAME,
+        component: () => import("@/views/public/redirect.vue"),
+        hidden: true
+      }
+    ]
+  },
+  {
+    path: "/:pathMatch(.*)*",
+    name: "PAGE_NOT_FOUND_NAME",
+    component: () => import("@/views/public/404.vue"),
+    hidden: true
   }
 ];
 
-// Layout  404
-export const PAGE_NOT_FOUND_ROUTE: AppRouteRecordRaw = {
-  path: "/:pathMatch(.*)*",
-  name: "PAGE_NOT_FOUND_NAME",
-  component: () => import("@/views/public/404.vue"),
-  hidden: true,
-  meta: {
-    title: "",
-    hideTag: true
-  }
-};
-// Layout redirect
-export const REDIRECT_ROUTE: AppRouteRecordRaw = {
-  path: "/redirect",
-  name: "RouterEnum.REDIRECT_NAME",
-  component: Layout,
-  hidden: true,
-  meta: {
-    title: "",
-    hideTag: true
-  },
-  children: [
-    {
-      path: "/redirect/:path(.*)/:_redirect_type(.*)/:_origin_params(.*)?",
-      name: RouterEnum.REDIRECT_NAME,
-      component: () => import("@/views/public/auth-redirect.vue"),
-      hidden: true,
-      meta: {
-        title: "",
-        hideTag: true
-      }
-    }
-  ]
-};
-
-export const constantRoutes = [...routesList, PAGE_NOT_FOUND_ROUTE, REDIRECT_ROUTE] as RouteRecordRaw[];
+export const constantRoutes = [...routesList, ...dynamicRoutes] as RouteRecordRaw[];
 
 // app router
 const router = createRouter({

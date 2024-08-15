@@ -35,6 +35,7 @@ import ScrollPane from "./ScrollPane.vue";
 import { getNormalPath } from "@/utils";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 import { usePermissionStore } from "@/store/modules/permission";
+import { RouterEnum } from "@/router";
 
 const visible = ref(false);
 const top = ref(0);
@@ -47,7 +48,9 @@ const { proxy } = getCurrentInstance();
 const route = useRoute();
 const router = useRouter();
 
-const visitedViews = computed(() => useTagsViewStore().visitedViews);
+const visitedViews = computed(() =>
+  useTagsViewStore().visitedViews.filter(item => item.name !== RouterEnum.BASE_REDIRECT_NAME)
+);
 const routes = computed(() => usePermissionStore().routes);
 
 watch(route, () => {
@@ -188,7 +191,7 @@ function toLastView(visitedViews, view) {
   } else {
     // now the default is to redirect to the home page if there is no tags-view,
     // you can adjust it according to your needs.
-    if (view.name === "Dashboard") {
+    if (view.name === RouterEnum.BASE_HOME_NAME) {
       // to reload home page
       router.replace({ path: "/redirect" + view.fullPath });
     } else {
@@ -227,9 +230,7 @@ function handleScroll() {
   width: 100%;
   background: #fff;
   border-bottom: 1px solid #d8dce5;
-  box-shadow:
-    0 1px 3px 0 rgba(0, 0, 0, 0.12),
-    0 0 3px 0 rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
   .tags-view-wrapper {
     .tags-view-item {
       display: inline-block;
@@ -238,17 +239,18 @@ function handleScroll() {
       height: 26px;
       line-height: 26px;
       border: 1px solid #d8dce5;
+      border-bottom: none;
       color: #495060;
       background: #fff;
       padding: 0 8px;
-      font-size: 12px;
-      margin-left: 5px;
-      margin-top: 4px;
+      margin-left: 6px;
+      margin-top: 6px;
+      border-radius: 6px 6px 0 0;
       &:first-of-type {
-        margin-left: 15px;
+        margin-left: 16px;
       }
       &:last-of-type {
-        margin-right: 15px;
+        margin-right: 16px;
       }
       &.active {
         background-color: var(--el-color-primary);
@@ -262,7 +264,7 @@ function handleScroll() {
           height: 8px;
           border-radius: 50%;
           position: relative;
-          margin-right: 2px;
+          margin-right: 6px;
         }
       }
     }
@@ -298,22 +300,7 @@ function handleScroll() {
     .el-icon-close {
       width: 16px;
       height: 16px;
-      vertical-align: 2px;
-      border-radius: 50%;
-      text-align: center;
-      transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
-      transform-origin: 100% 50%;
-      &:before {
-        transform: scale(0.6);
-        display: inline-block;
-        vertical-align: -3px;
-      }
-      &:hover {
-        background-color: #b4bccc;
-        color: #fff;
-        width: 12px !important;
-        height: 12px !important;
-      }
+      vertical-align: -2px !important;
     }
   }
 }

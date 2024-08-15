@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container">
+  <div class="app-page">
     <el-row :gutter="10">
       <el-col :span="8">
         <el-card style="height: calc(100vh - 125px)">

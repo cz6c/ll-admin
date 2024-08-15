@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container home">nest-admin vue3</div>
+  <div class="app-page home">nest-admin vue3</div>
 </template>
 
 <script setup name="Index">

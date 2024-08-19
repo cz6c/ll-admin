@@ -81,6 +81,9 @@ importers:
       vue:
         specifier: ^3.4.31
         version: 3.4.33(typescript@5.5.3)
+      vue-cropper:
+        specifier: ^0.6.5
+        version: 0.6.5
       vue-router:
         specifier: ^4.4.0
         version: 4.4.0(vue@3.4.33(typescript@5.5.3))
@@ -4213,6 +4216,9 @@ packages:
 
   vscode-uri@3.0.8:
     resolution: {integrity: sha512-AyFQ0EVmsOZOlAnxoFOGOq1SQDWAB7C6aqMGS23svWAllfOaxbuFvcT8D1i8z3Gyn8fraVeZNNmN6e9bxxXkKw==}
+
+  vue-cropper@0.6.5:
+    resolution: {integrity: sha512-lSvY6IpeA/Tv/iPZ/FOkMHVRBPSlm7t57nuHEZFBMRNOH8ElvfqVlnHGDOAMlvPhh9gHiddiQoASS+fY0MFX0g==}
 
   vue-demi@0.14.8:
     resolution: {integrity: sha512-Uuqnk9YE9SsWeReYqK2alDI5YzciATE0r2SkA6iMAtuXvNTMNACJLJEXNXaEy94ECuBe4Sk6RzRU80kjdbIo1Q==}
@@ -8828,6 +8834,8 @@ snapshots:
       terser: 5.31.3
 
   vscode-uri@3.0.8: {}
+
+  vue-cropper@0.6.5: {}
 
   vue-demi@0.14.8(vue@3.4.33(typescript@5.5.3)):
     dependencies:

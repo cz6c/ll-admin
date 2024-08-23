@@ -62,7 +62,13 @@
           <el-button v-hasPermi="['system:menu:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
             >修改</el-button
           >
-          <el-button v-hasPermi="['system:menu:add']" link type="primary" icon="Plus" @click="handleAdd(scope.row)"
+          <el-button
+            v-if="scope.row.parentId === 0"
+            v-hasPermi="['system:menu:add']"
+            link
+            type="primary"
+            icon="Plus"
+            @click="handleAdd(scope.row)"
             >新增</el-button
           >
           <el-button
@@ -140,28 +146,10 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item>
-              <template #label>
-                <span>
-                  <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
-                    <el-icon><question-filled /></el-icon> </el-tooltip
-                  >是否外链
-                </span>
-              </template>
-              <el-radio-group v-model="form.isFrame">
-                <el-radio label="0">是</el-radio>
-                <el-radio label="1">否</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item prop="path">
               <template #label>
                 <span>
-                  <el-tooltip
-                    content="访问的路由地址，如：`user`，如外网地址需内链访问则以`http(s)://`开头"
-                    placement="top"
-                  >
+                  <el-tooltip content="访问的路由地址，如：`user`，如外网地址需以`http(s)://`开头" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
                   路由地址
@@ -185,15 +173,17 @@
           </el-col>
           <el-col :span="12">
             <el-form-item>
-              <el-input v-model="form.query" placeholder="请输入路由参数" maxlength="255" />
               <template #label>
                 <span>
-                  <el-tooltip content='访问路由的默认传递参数，如：`{"id": 1, "name": "ry"}`' placement="top">
-                    <el-icon><question-filled /></el-icon>
-                  </el-tooltip>
-                  路由参数
+                  <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
+                    <el-icon><question-filled /></el-icon> </el-tooltip
+                  >是否外链
                 </span>
               </template>
+              <el-radio-group v-model="form.isFrame">
+                <el-radio label="0">是</el-radio>
+                <el-radio label="1">否</el-radio>
+              </el-radio-group>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -234,9 +224,22 @@
           </el-col>
           <el-col :span="12">
             <el-form-item>
+              <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
               <template #label>
                 <span>
-                  <el-tooltip content="选择停用则路由将不会出现在侧边栏，也不能被访问" placement="top">
+                  <el-tooltip content="当路由隐藏时，则会高亮设置的菜单路由侧边栏" placement="top">
+                    <el-icon><question-filled /></el-icon>
+                  </el-tooltip>
+                  高亮菜单
+                </span>
+              </template>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item>
+              <template #label>
+                <span>
+                  <el-tooltip content="选择停用则路由不能被访问" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
                   菜单状态
@@ -306,7 +309,7 @@ function getList() {
 /** 查询菜单下拉树结构 */
 function getTreeselect() {
   menuOptions.value = [];
-  listMenu().then(response => {
+  listMenu({ parentId: 0 }).then(response => {
     const menu = { menuId: 0, menuName: "主类目", children: [] };
     menu.children = proxy.handleTree(response.data, "menuId");
     menuOptions.value.push(menu);
@@ -328,6 +331,7 @@ function reset() {
     isFrame: "1",
     isCache: "0",
     visible: "0",
+    activeMenu: "",
     status: "0"
   };
   proxy.resetForm("menuRef");

@@ -31,8 +31,8 @@ export class SysMenuEntity extends NewBaseEntity {
   @Column({ type: 'varchar', name: 'component', length: 255, nullable: true, comment: '组件路径' })
   public component: string;
 
-  @Column({ type: 'varchar', name: 'query', length: 255, default: '', comment: '路由参数' })
-  public query: string;
+  @Column({ type: 'varchar', name: 'active_menu', length: 255, default: '', comment: '高亮菜单' })
+  public activeMenu: string;
 
   //是否为外链（0是 1否）
   @Column({ type: 'char', name: 'is_frame', default: '1', comment: '是否为外链' })

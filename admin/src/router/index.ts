@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from "vue-router";
 import type { RouteRecordRaw } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
-import { dynamicRoutes } from "./dynamicRoutes";
 export const Layout = () => import("@/layout/index.vue");
 export const IFrame = () => import("@/views/iframe/index.vue");
 
@@ -68,7 +67,7 @@ const routesList: AppRouteRecordRaw[] = [
   }
 ];
 
-export const constantRoutes = [...routesList, ...dynamicRoutes] as RouteRecordRaw[];
+export const constantRoutes = [...routesList] as RouteRecordRaw[];
 
 // app router
 const router = createRouter({

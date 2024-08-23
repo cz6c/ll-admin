@@ -50,6 +50,7 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
       icon: menu.icon,
       noCache: menu.isCache === '1',
       link: menu.isFrame === '0' ? menu.path : null,
+      activeMenu: menu.activeMenu,
     };
     if (menu.children) {
       formattedNode.alwaysShow = true;

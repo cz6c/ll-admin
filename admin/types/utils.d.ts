@@ -16,10 +16,10 @@ export interface AppRouteMeta extends RouteMeta {
   breadcrumb?: boolean;
   // 标签页固定
   affix?: boolean;
-  // 显示在标签页的最大数量
-  dynamicLevel?: number;
   // 是否忽略KeepAlive缓存
   noCache?: boolean;
+  // 是否外链
+  link?: string;
 }
 
 export interface AppRouteRecordRaw {

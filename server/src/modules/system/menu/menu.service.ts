@@ -34,6 +34,9 @@ export class MenuService {
     if (query.status) {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
+    if (query.parentId || query.parentId === 0) {
+      entity.andWhere('entity.parentId = :parentId', { parentId: query.parentId });
+    }
     const res = await entity.getMany();
     return ResultData.ok(res);
   }

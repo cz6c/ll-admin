@@ -93,4 +93,11 @@ export class ListDeptDto {
   @IsString()
   @IsEnum(StatusEnum)
   status?: string;
+
+  @ApiProperty({
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  parentId?: number;
 }

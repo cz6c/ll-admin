@@ -139,7 +139,7 @@ create table sys_menu (
   order_num         int(4)          default 0                  comment '显示顺序',
   path              varchar(200)    default ''                 comment '路由地址',
   component         varchar(255)    default null               comment '组件路径',
-  query             varchar(255)    default null               comment '路由参数',
+  active_menu       varchar(255)    default null               comment '高亮菜单',
   is_frame          char(1)         default 1                  comment '是否为外链（0是 1否）',
   is_cache          char(1)         default 0                  comment '是否缓存（0缓存 1不缓存）',
   visible           char(1)         default '0'                comment '菜单状态（0显示 1隐藏）',

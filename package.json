@@ -8,9 +8,6 @@
     "cz": "git add . && czg",
     "pm2": "pm2 start ecosystem.config.js --env development"
   },
-  "dependencies": {
-    "vue-cropper": "^0.6.5"
-  },
   "devDependencies": {
     "@commitlint/cli": "^17.8.1",
     "@commitlint/config-conventional": "^17.8.1",

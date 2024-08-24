@@ -31,6 +31,9 @@ export class SysMenuEntity extends NewBaseEntity {
   @Column({ type: 'varchar', name: 'component', length: 255, nullable: true, comment: '组件路径' })
   public component: string;
 
+  @Column({ type: 'varchar', name: 'name', length: 50, default: '', comment: '组件name' })
+  public name: string;
+
   @Column({ type: 'varchar', name: 'active_menu', length: 255, default: '', comment: '高亮菜单' })
   public activeMenu: string;
 
@@ -48,4 +51,11 @@ export class SysMenuEntity extends NewBaseEntity {
 
   @Column({ type: 'varchar', name: 'icon', length: 100, default: '', comment: '菜单图标' })
   public icon: string;
+
+  @Column({ type: 'varchar', name: 'perm', length: 50, comment: '功能权限标识' })
+  public perm: string;
+
+  //菜单类型（C菜单 F按钮）
+  @Column({ type: 'char', name: 'menu_type', length: 1, default: 'C', comment: '菜单类型' })
+  public menuType: string;
 }

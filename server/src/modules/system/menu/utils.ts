@@ -5,6 +5,7 @@ import { isURL } from 'class-validator';
  * @param arr
  */
 export const buildMenus = (arr) => {
+  arr.sort((a, b) => a.parentId - b.parentId);
   const kData = {}; // 以id做key的对象 暂时储存数据
   const lData = []; // 最终的数据 arr
   arr.forEach((m) => {
@@ -38,13 +39,10 @@ export const buildMenus = (arr) => {
 const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
   return menus.map((menu) => {
     const formattedNode: any = {};
-    formattedNode.name = getRouteName(menu);
+    formattedNode.name = menu.name;
     formattedNode.path = getRouterPath(menu);
     formattedNode.hidden = menu.visible === '1';
     formattedNode.component = getComponent(menu);
-    if (menu.query) {
-      formattedNode.query = menu.query;
-    }
     formattedNode.meta = {
       title: menu.menuName,
       icon: menu.icon,
@@ -53,9 +51,9 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
       activeMenu: menu.activeMenu,
     };
     if (menu.children) {
-      formattedNode.alwaysShow = true;
       formattedNode.redirect = 'noRedirect';
-      formattedNode.children = menu.children;
+      formattedNode.children = menu.children.filter((child) => child.menuType === 'C');
+      formattedNode.meta.perms = menu.children.filter((child) => child.menuType === 'F');
     }
     // 如果节点有子节点，递归处理它们
     if (formattedNode.children) {
@@ -66,16 +64,6 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
   });
 };
 
-/**
- * 获取路由名称
- *
- * @param menu 菜单信息
- * @return 路由名称
- */
-const getRouteName = (menu) => {
-  const routerName = menu.path.replace(/^\w/, (c) => c.toUpperCase());
-  return routerName;
-};
 /**
  * 是否为菜单内部跳转
  *

@@ -37,6 +37,7 @@ export class MenuService {
     if (query.parentId || query.parentId === 0) {
       entity.andWhere('entity.parentId = :parentId', { parentId: query.parentId });
     }
+    entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
     return ResultData.ok(res);
   }
@@ -45,6 +46,9 @@ export class MenuService {
     const res = await this.sysMenuEntityRep.find({
       where: {
         delFlag: '0',
+      },
+      order: {
+        orderNum: 'ASC',
       },
     });
     const tree = ListToTree(
@@ -59,6 +63,9 @@ export class MenuService {
     const res = await this.sysMenuEntityRep.find({
       where: {
         delFlag: '0',
+      },
+      order: {
+        orderNum: 'ASC',
       },
     });
     const tree = ListToTree(
@@ -141,6 +148,9 @@ export class MenuService {
         delFlag: '0',
         status: '0',
         menuId: In(menuIds),
+      },
+      order: {
+        orderNum: 'ASC',
       },
     });
     // 构建前端需要的菜单树

@@ -20,6 +20,8 @@ export interface AppRouteMeta extends RouteMeta {
   noCache?: boolean;
   // 是否外链
   link?: string;
+  // 页面功能权限
+  perms?: string[];
 }
 
 export interface AppRouteRecordRaw {
@@ -27,11 +29,6 @@ export interface AppRouteRecordRaw {
   path: string;
   // 路由名字（必须保持唯一）
   name: RouteRecordName;
-  // 当你一个路由下面的 children 声明的路由大于1个时，自动会变成嵌套的模式--如组件页面
-  // 只有一个时，会将那个子路由当做根路由显示在侧边栏--如引导页面
-  // 若你想不管路由下面的 children 声明的个数都显示你的根路由
-  // 你可以设置 alwaysShow: true，这样它就会忽略之前定义的规则，一直显示根路由
-  alwaysShow?: boolean;
   // 是否隐藏该菜单
   hidden?: boolean;
   // 路由元信息

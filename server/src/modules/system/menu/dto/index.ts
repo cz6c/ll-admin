@@ -1,4 +1,4 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsEnum, Length, IsOptional, IsNumber, IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum StatusEnum {
@@ -31,13 +31,19 @@ export class CreateMenuDto {
   @IsOptional()
   @IsString()
   @Length(0, 200)
-  query: string;
+  activeMenu: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   @Length(0, 255)
   component?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @Length(0, 50)
+  name?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -58,6 +64,12 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  perms: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
   @IsEnum(StatusEnum)
   status: string;
@@ -71,9 +83,6 @@ export class CreateMenuDto {
 
 export class UpdateMenuDto extends CreateMenuDto {
   @ApiProperty({ required: true })
-  @ApiProperty({
-    required: false,
-  })
   @IsNumber()
   menuId: number;
 }

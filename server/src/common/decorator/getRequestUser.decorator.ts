@@ -6,7 +6,6 @@ export interface RequestUserPayload {
   loginLocation: string;
   loginTime: Date;
   os: string;
-  permissions: string[];
   roles: string[];
   token: string;
   user: any;

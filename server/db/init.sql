@@ -160,7 +160,7 @@ create table sys_menu (
 -- 一级菜单
 insert into sys_menu values('1', '系统管理', '0', '1', 'system',           null, '', 1, 0, '0', '0', 'system',   'admin', sysdate(), '', null, '系统管理目录', '0');
 insert into sys_menu values('2', '系统监控', '0', '2', 'monitor',          null, '', 1, 0, '0', '0', 'monitor',  'admin', sysdate(), '', null, '系统监控目录', '0');
-insert into sys_menu values('4', 'nest-admin官网', '0', '4', 'https://nest-admin.dooring.vip', null, '', 0, 0, 'C', '0', '0', 'guide',    'admin', sysdate(), '', null, 'nest-admin官网地址', '0');
+insert into sys_menu values('3', 'nest-admin官网', '0', '3', 'https://nest-admin.dooring.vip', null, '', 0, 0, 'C', '0', '0', 'guide',    'admin', sysdate(), '', null, 'nest-admin官网地址', '0');
 -- 二级菜单
 insert into sys_menu values('100',  '用户管理', '1',   '1', 'user',       'system/user/index',        '', 1, 0, '0', '0',    'user',          'admin', sysdate(), '', null, '用户管理菜单', '0');
 insert into sys_menu values('101',  '角色管理', '1',   '2', 'role',       'system/role/index',        '', 1, 0, '0', '0',    'peoples',       'admin', sysdate(), '', null, '角色管理菜单', '0');
@@ -174,10 +174,8 @@ insert into sys_menu values('109',  '在线用户', '2',   '1', 'online',     'm
 insert into sys_menu values('112',  '服务监控', '2',   '4', 'server',     'monitor/server/index',     '', 1, 0, '0', '0',    'server',        'admin', sysdate(), '', null, '服务监控菜单', '0');
 insert into sys_menu values('113',  '缓存监控', '2',   '5', 'cache',      'monitor/cache/index',      '', 1, 0, '0', '0',    'redis',         'admin', sysdate(), '', null, '缓存监控菜单', '0');
 insert into sys_menu values('114',  '缓存列表', '2',   '6', 'cacheList',  'monitor/cache/list',       '', 1, 0, '0', '0',    'redis-list',    'admin', sysdate(), '', null, '缓存列表菜单', '0');
-insert into sys_menu values('500',  '操作日志', '108', '1', 'operlog',    'monitor/operlog/index',    '', 1, 0, '0', '0',    'form',          'admin', sysdate(), '', null, '操作日志菜单', '0');
-insert into sys_menu values('501',  '登录日志', '108', '2', 'logininfor', 'monitor/logininfor/index', '', 1, 0, '0', '0',    'logininfor',    'admin', sysdate(), '', null, '登录日志菜单', '0');
-insert into sys_menu values('117',  '系统接口', '3',   '3', 'swagger',    'tool/swagger/index',       '', 1, 0, '0', '0',    'swagger',       'admin', sysdate(), '', null, '系统接口菜单', '0');
-
+insert into sys_menu values('500',  '操作日志', '2',   '1', 'operlog',    'monitor/operlog/index',    '', 1, 0, '0', '0',    'form',          'admin', sysdate(), '', null, '操作日志菜单', '0');
+insert into sys_menu values('501',  '登录日志', '2',   '2', 'logininfor', 'monitor/logininfor/index', '', 1, 0, '0', '0',    'logininfor',    'admin', sysdate(), '', null, '登录日志菜单', '0');
 
 -- ----------------------------
 -- 6、用户和角色关联表  用户N-1角色

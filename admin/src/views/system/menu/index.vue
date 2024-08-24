@@ -23,12 +23,12 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:menu:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+        <el-button v-auth="'system:menu:add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button type="info" plain icon="Sort" @click="toggleExpandAll">展开/折叠</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
+      <!-- <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" /> -->
     </el-row>
 
     <el-table
@@ -59,24 +59,19 @@
       </el-table-column>
       <el-table-column label="操作" align="center" width="210" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button v-hasPermi="['system:menu:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
+          <el-button v-auth="'system:menu:edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
             >修改</el-button
           >
           <el-button
             v-if="scope.row.parentId === 0"
-            v-hasPermi="['system:menu:add']"
+            v-auth="'system:menu:add'"
             link
             type="primary"
             icon="Plus"
             @click="handleAdd(scope.row)"
             >新增</el-button
           >
-          <el-button
-            v-hasPermi="['system:menu:remove']"
-            link
-            type="primary"
-            icon="Delete"
-            @click="handleDelete(scope.row)"
+          <el-button v-auth="'system:menu:remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)"
             >删除</el-button
           >
         </template>
@@ -146,6 +141,22 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
+            <el-form-item prop="isFrame">
+              <template #label>
+                <span>
+                  <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
+                    <el-icon><question-filled /></el-icon>
+                  </el-tooltip>
+                  是否外链
+                </span>
+              </template>
+              <el-radio-group v-model="form.isFrame">
+                <el-radio label="0">是</el-radio>
+                <el-radio label="1">否</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
             <el-form-item prop="path">
               <template #label>
                 <span>
@@ -158,11 +169,11 @@
               <el-input v-model="form.path" placeholder="请输入路由地址" />
             </el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :span="24">
             <el-form-item prop="component">
               <template #label>
                 <span>
-                  <el-tooltip content="访问的组件路径，如：`system/user/index`，默认在`views`目录下" placement="top">
+                  <el-tooltip content="组件路径，如：`system/user/index`，默认在`views`目录下" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
                   组件路径
@@ -172,31 +183,26 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item>
+            <el-form-item prop="name">
               <template #label>
                 <span>
-                  <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
-                    <el-icon><question-filled /></el-icon> </el-tooltip
-                  >是否外链
+                  <el-tooltip content="组件名称，需与页面组件name一致，使用大驼峰命名，如：`User`" placement="top">
+                    <el-icon><question-filled /></el-icon>
+                  </el-tooltip>
+                  组件名称
                 </span>
               </template>
-              <el-radio-group v-model="form.isFrame">
-                <el-radio label="0">是</el-radio>
-                <el-radio label="1">否</el-radio>
-              </el-radio-group>
+              <el-input v-model="form.name" placeholder="请输入组件名称" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item>
+            <el-form-item prop="isCache">
               <template #label>
                 <span>
-                  <el-tooltip
-                    content="选择是则会被`keep-alive`缓存，需要匹配组件的`name`和地址保持一致"
-                    placement="top"
-                  >
+                  <el-tooltip content="选择缓存则会被`keep-alive`缓存，需与组件名称匹配" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
-                  是否缓存
+                  缓存状态
                 </span>
               </template>
               <el-radio-group v-model="form.isCache">
@@ -206,7 +212,20 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item>
+            <el-form-item prop="activeMenu">
+              <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
+              <template #label>
+                <span>
+                  <el-tooltip content="路由隐藏时，则会高亮设置的菜单路由侧边栏" placement="top">
+                    <el-icon><question-filled /></el-icon>
+                  </el-tooltip>
+                  高亮菜单
+                </span>
+              </template>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item prop="visible">
               <template #label>
                 <span>
                   <el-tooltip content="选择隐藏则路由将不会出现在侧边栏，但仍然可以访问" placement="top">
@@ -222,21 +241,21 @@
               </el-radio-group>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item>
-              <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
+          <el-col :span="24">
+            <el-form-item prop="perms">
               <template #label>
                 <span>
-                  <el-tooltip content="当路由隐藏时，则会高亮设置的菜单路由侧边栏" placement="top">
+                  <el-tooltip content="页面功能权限配置，以`,`进行分隔，如`add,edit,delete`" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
-                  高亮菜单
+                  功能权限
                 </span>
               </template>
+              <el-input v-model="form.perms" placeholder="请输入页面功能权限" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item>
+            <el-form-item prop="status">
               <template #label>
                 <span>
                   <el-tooltip content="选择停用则路由不能被访问" placement="top">
@@ -264,10 +283,14 @@
   </div>
 </template>
 
-<script setup name="Menu">
+<script setup>
 import { addMenu, delMenu, getMenu, listMenu, updateMenu } from "@/api/system/menu";
 import IconSelect from "@/components/IconSelect/index.vue";
 import { ClickOutside as vClickOutside } from "element-plus";
+
+defineOptions({
+  name: "MenuIndex"
+});
 
 const { proxy } = getCurrentInstance();
 const { sys_show_hide, sys_normal_disable } = proxy.useDict("sys_show_hide", "sys_normal_disable");
@@ -292,11 +315,21 @@ const data = reactive({
   rules: {
     menuName: [{ required: true, message: "菜单名称不能为空", trigger: "blur" }],
     orderNum: [{ required: true, message: "菜单顺序不能为空", trigger: "blur" }],
-    path: [{ required: true, message: "路由地址不能为空", trigger: "blur" }]
+    path: [{ required: true, message: "路由地址不能为空", trigger: "blur" }],
+    name: [{ required: true, message: "组件名称不能为空", trigger: "blur" }],
+    component: [{ required: true, message: "组件路径不能为空", trigger: "blur" }]
   }
 });
 
 const { queryParams, form, rules } = toRefs(data);
+
+watch(
+  () => data.form.isFrame,
+  val => {
+    data.rules.name[0].required = val !== "0";
+    data.rules.component[0].required = val !== "0";
+  }
+);
 
 /** 查询菜单列表 */
 function getList() {
@@ -325,14 +358,16 @@ function reset() {
   form.value = {
     menuId: undefined,
     parentId: 0,
-    menuName: undefined,
+    menuName: "",
     icon: undefined,
     orderNum: undefined,
     isFrame: "1",
     isCache: "0",
     visible: "0",
     activeMenu: "",
-    status: "0"
+    status: "0",
+    name: "",
+    perms: ""
   };
   proxy.resetForm("menuRef");
 }
@@ -389,6 +424,7 @@ async function handleUpdate(row) {
   await getTreeselect();
   getMenu(row.menuId).then(response => {
     form.value = response.data;
+    form.value.perms = form.value.perms ? form.value.perms.join(",") : "";
     open.value = true;
     title.value = "修改菜单";
   });
@@ -397,14 +433,16 @@ async function handleUpdate(row) {
 function submitForm() {
   proxy.$refs["menuRef"].validate(valid => {
     if (valid) {
+      const params = { ...form.value };
+      params.perms = params.perms ? params.perms.split(",") : [];
       if (form.value.menuId != undefined) {
-        updateMenu(form.value).then(response => {
+        updateMenu(params).then(response => {
           proxy.$modal.msgSuccess("修改成功");
           open.value = false;
           getList();
         });
       } else {
-        addMenu(form.value).then(response => {
+        addMenu(params).then(response => {
           proxy.$modal.msgSuccess("新增成功");
           open.value = false;
           getList();

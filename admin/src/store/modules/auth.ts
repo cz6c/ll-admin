@@ -10,7 +10,6 @@ interface authStoreState {
   username: string;
   avatar: string;
   roles: string[];
-  permissions: string[];
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -21,15 +20,8 @@ export const useAuthStore = defineStore("auth", {
     username: "",
     avatar: "",
     // 角色权限
-    roles: [],
-    // 按钮级权限
-    permissions: []
+    roles: []
   }),
-  getters: {
-    getPermCodeList(): string[] {
-      return this.permissions;
-    }
-  },
   actions: {
     /**
      * @description: 登录
@@ -57,7 +49,6 @@ export const useAuthStore = defineStore("auth", {
         this.username = data.user.username;
         this.avatar = data.user.avatar;
         this.roles = data.roles;
-        this.permissions = data.permissions;
         return data;
       } catch (error) {
         return Promise.reject(error);

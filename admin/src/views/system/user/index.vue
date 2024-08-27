@@ -16,10 +16,10 @@
           <el-tree
             ref="deptTreeRef"
             :data="deptOptions"
-            :props="{ label: 'label', children: 'children' }"
+            :props="{ label: 'deptName', children: 'children' }"
             :expand-on-click-node="false"
             :filter-node-method="filterNode"
-            node-key="id"
+            node-key="deptId"
             highlight-current
             default-expand-all
             @node-click="handleNodeClick"
@@ -224,8 +224,8 @@
               <el-tree-select
                 v-model="form.deptId"
                 :data="deptOptions"
-                :props="{ value: 'id', label: 'label', children: 'children' }"
-                value-key="id"
+                :props="{ label: 'deptName', children: 'children' }"
+                value-key="deptId"
                 placeholder="请选择归属部门"
                 check-strictly
               />

@@ -4,7 +4,7 @@ import { Repository, SelectQueryBuilder } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
-import { ListToTree } from '@/common/utils/index';
+import { listToTree } from '@/common/utils/tree';
 import { DataScopeEnum } from '@/common/enum/index';
 
 @Injectable()
@@ -164,11 +164,9 @@ export class DeptService {
         delFlag: '0',
       },
     });
-    const tree = ListToTree(
-      res,
-      (m) => m.deptId,
-      (m) => m.deptName,
-    );
+    const tree = listToTree(res, {
+      id: 'deptId',
+    });
     return tree;
   }
 }

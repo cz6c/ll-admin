@@ -5,9 +5,10 @@ import { ResultData } from '@/common/utils/result';
 import { SysMenuEntity } from './entities/menu.entity';
 import { SysRoleWithMenuEntity } from '../role/entities/role-menu.entity';
 import { CreateMenuDto, UpdateMenuDto, ListDeptDto } from './dto/index';
-import { ListToTree, Uniq } from '@/common/utils/index';
+import { Uniq } from '@/common/utils/index';
 import { UserService } from '../user/user.service';
 import { buildMenus } from './utils';
+import { listToTree } from '@/common/utils/tree';
 @Injectable()
 export class MenuService {
   constructor(
@@ -51,14 +52,17 @@ export class MenuService {
         orderNum: 'ASC',
       },
     });
-    const tree = ListToTree(
-      res,
-      (m) => m.menuId,
-      (m) => m.menuName,
-    );
+    const tree = listToTree(res, {
+      id: 'menuId',
+    });
     return ResultData.ok(tree);
   }
 
+  /**
+   * @description: 根据角色ID查询菜单
+   * @param {number} roleId
+   * @return {*}
+   */
   async roleMenuTreeselect(roleId: number): Promise<any> {
     const res = await this.sysMenuEntityRep.find({
       where: {
@@ -68,11 +72,9 @@ export class MenuService {
         orderNum: 'ASC',
       },
     });
-    const tree = ListToTree(
-      res,
-      (m) => m.menuId,
-      (m) => m.menuName,
-    );
+    const tree = listToTree(res, {
+      id: 'menuId',
+    });
     const menuIds = await this.sysRoleWithMenuEntityRep.find({
       where: { roleId: roleId },
       select: ['menuId'],
@@ -117,7 +119,6 @@ export class MenuService {
 
   /**
    * 根据用户ID查询菜单
-   *
    * @param userId 用户ID
    * @return 菜单列表
    */

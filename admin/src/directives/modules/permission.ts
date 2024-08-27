@@ -4,12 +4,11 @@ import { isArray } from "@/utils/is";
 import router from "@/router";
 
 /**
- * @description: 判断是否有按钮权限
+ * @description: 判断是否有按钮级权限
  * @param {string} value
  */
 function hasPermission(value: string | string[]): boolean {
   const perms = router.currentRoute.value.meta.perms as string[];
-  console.log("🚀 ~ hasPermission ~ perms:", perms);
   if (!isArray(value)) {
     return perms.includes(value);
   }
@@ -25,7 +24,7 @@ export default function vAuth(app: App) {
           el.parentNode && el.parentNode.removeChild(el);
         }
       } else {
-        throw new Error(`请设置操作权限标签值`);
+        throw new Error(`请设置功能权限标识`);
       }
     }
   });

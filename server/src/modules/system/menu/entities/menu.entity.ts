@@ -1,16 +1,10 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from '@/common/entities/base';
-class NewBaseEntity extends BaseEntity {
-  constructor() {
-    super();
-    delete this.delFlag;
-  }
-}
 
 // comment: '菜单权限表',
 @Entity('sys_menu')
-export class SysMenuEntity extends NewBaseEntity {
+export class SysMenuEntity extends BaseEntity {
   @ApiProperty({ type: String, description: '菜单ID' })
   @PrimaryGeneratedColumn({ type: 'int', name: 'menu_id', comment: '菜单ID' })
   public menuId: number;
@@ -55,7 +49,7 @@ export class SysMenuEntity extends NewBaseEntity {
   @Column({ type: 'varchar', name: 'perm', length: 50, comment: '功能权限标识' })
   public perm: string;
 
-  //菜单类型（C菜单 F按钮）
-  @Column({ type: 'char', name: 'menu_type', length: 1, default: 'C', comment: '菜单类型' })
+  //菜单类型（M菜单 F按钮）
+  @Column({ type: 'char', name: 'menu_type', length: 1, default: 'M', comment: '菜单类型' })
   public menuType: string;
 }

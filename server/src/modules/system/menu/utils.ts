@@ -52,8 +52,8 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
     };
     if (menu.children) {
       formattedNode.redirect = 'noRedirect';
-      formattedNode.children = menu.children.filter((child) => child.menuType === 'C');
-      formattedNode.meta.perms = menu.children.filter((child) => child.menuType === 'F');
+      formattedNode.children = menu.children.filter((child) => child.menuType === 'M');
+      formattedNode.meta.perms = menu.children.filter((child) => child.menuType === 'F').map((child) => child.perm);
     }
     // 如果节点有子节点，递归处理它们
     if (formattedNode.children) {

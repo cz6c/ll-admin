@@ -1,9 +1,14 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber, IsArray } from 'class-validator';
+import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum StatusEnum {
   STATIC = '0',
   DYNAMIC = '1',
+}
+
+export enum MenuTypeEnum {
+  M = 'M',
+  F = 'F',
 }
 
 export class CreateMenuDto {
@@ -12,26 +17,20 @@ export class CreateMenuDto {
   @Length(0, 50)
   menuName: string;
 
+  @ApiProperty({ required: true })
+  @IsOptional()
+  @IsNumber()
+  parentId: number;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsNumber()
   orderNum: number;
 
   @ApiProperty({ required: true })
-  @IsOptional()
-  @IsNumber()
-  parentId: number;
-
-  @ApiProperty({ required: true })
   @IsString()
   @Length(0, 200)
   path: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @Length(0, 200)
-  activeMenu: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -48,8 +47,8 @@ export class CreateMenuDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @Length(0, 100)
-  icon?: string;
+  @Length(0, 200)
+  activeMenu: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -64,9 +63,20 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  perms: string[];
+  @IsString()
+  @Length(0, 100)
+  icon?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  perm: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @IsEnum(MenuTypeEnum)
+  menuType: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

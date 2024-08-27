@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, FindManyOptions } from 'typeorm';
 import { Response } from 'express';
 import { ResultData } from '@/common/utils/result';
-import { ListToTree } from '@/common/utils/index';
+import { listToTree } from '@/common/utils/tree';
 import { ExportTable } from '@/common/utils/export';
 
 import { DataScopeEnum } from '@/common/enum/index';
@@ -171,11 +171,9 @@ export class RoleService {
         delFlag: '0',
       },
     });
-    const tree = ListToTree(
-      res,
-      (m) => +m.deptId,
-      (m) => m.deptName,
-    );
+    const tree = listToTree(res, {
+      id: 'deptId',
+    });
     const deptIds = await this.sysRoleWithDeptEntityRep.find({
       where: { roleId: roleId },
       select: ['deptId'],

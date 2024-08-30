@@ -194,13 +194,19 @@
   </div>
 </template>
 
-<script setup name="Role">
+<script setup lang="ts" name="Role">
 import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
 import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu";
+import { parseTime, addDateRange } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const router = useRouter();
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const roleList = ref([]);
 const open = ref(false);
@@ -217,8 +223,19 @@ const menuExpand = ref(false);
 const menuNodeAll = ref(false);
 const menuRef = ref(null);
 
+const queryRef = ref(null);
+const roleRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    roleId: undefined,
+    roleName: undefined,
+    roleKey: undefined,
+    roleSort: 0,
+    status: "0",
+    menuIds: [],
+    menuCheckStrictly: true,
+    remark: undefined
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
@@ -238,7 +255,7 @@ const { queryParams, form, rules } = toRefs(data);
 /** 查询角色列表 */
 function getList() {
   loading.value = true;
-  listRole(proxy.addDateRange(queryParams.value, dateRange.value)).then(response => {
+  listRole(addDateRange(queryParams.value, dateRange.value)).then(response => {
     roleList.value = response.data.list;
     total.value = response.data.total;
     loading.value = false;
@@ -252,7 +269,7 @@ function handleQuery() {
 /** 重置按钮操作 */
 function resetQuery() {
   dateRange.value = [];
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   handleQuery();
 }
 /** 删除按钮操作 */
@@ -265,19 +282,19 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "system/role/export",
-    {
-      ...queryParams.value
-    },
-    `role_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "system/role/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `role_${new Date().getTime()}.xlsx`
+  // );
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -294,7 +311,7 @@ function handleStatusChange(row) {
       return changeRoleStatus(row.roleId, row.status);
     })
     .then(() => {
-      proxy.$modal.msgSuccess(text + "成功");
+      proxy.$message.success(text + "成功");
     })
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";
@@ -327,7 +344,10 @@ function reset() {
     menuCheckStrictly: true,
     remark: undefined
   };
-  proxy.resetForm("roleRef");
+  resetForm(roleRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 添加角色 */
 function handleAdd() {
@@ -381,19 +401,19 @@ function getMenuAllCheckedKeys() {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["roleRef"].validate(valid => {
+  unref(roleRef).validate(valid => {
     if (valid) {
       if (form.value.roleId != undefined) {
         form.value.menuIds = getMenuAllCheckedKeys();
         updateRole(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         form.value.menuIds = getMenuAllCheckedKeys();
         addRole(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });

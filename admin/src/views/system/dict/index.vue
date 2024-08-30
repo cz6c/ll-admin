@@ -156,12 +156,18 @@
   </div>
 </template>
 
-<script setup name="Dict">
+<script setup lang="ts" name="Dict">
 import { useDictStore } from "@/store/modules/dict";
 import { listType, getType, delType, addType, updateType, refreshCache } from "@/api/system/dict/type";
+import { parseTime, addDateRange } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const typeList = ref([]);
 const open = ref(false);
@@ -174,8 +180,16 @@ const total = ref(0);
 const title = ref("");
 const dateRange = ref([]);
 
+const queryRef = ref(null);
+const dictRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    dictId: undefined,
+    dictName: undefined,
+    dictType: undefined,
+    status: "0",
+    remark: undefined
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
@@ -194,7 +208,7 @@ const { queryParams, form, rules } = toRefs(data);
 /** 查询字典类型列表 */
 function getList() {
   loading.value = true;
-  listType(proxy.addDateRange(queryParams.value, dateRange.value)).then(response => {
+  listType(addDateRange(queryParams.value, dateRange.value)).then(response => {
     typeList.value = response.data.list;
     total.value = response.data.total;
     loading.value = false;
@@ -214,7 +228,10 @@ function reset() {
     status: "0",
     remark: undefined
   };
-  proxy.resetForm("dictRef");
+  resetForm(dictRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -224,7 +241,7 @@ function handleQuery() {
 /** 重置按钮操作 */
 function resetQuery() {
   dateRange.value = [];
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   handleQuery();
 }
 /** 新增按钮操作 */
@@ -251,17 +268,17 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["dictRef"].validate(valid => {
+  unref(dictRef).validate(valid => {
     if (valid) {
       if (form.value.dictId != undefined) {
         updateType(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addType(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -279,24 +296,24 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "system/dict/type/export",
-    {
-      ...queryParams.value
-    },
-    `dict_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "system/dict/type/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `dict_${new Date().getTime()}.xlsx`
+  // );
 }
 /** 刷新缓存按钮操作 */
 function handleRefreshCache() {
   refreshCache().then(() => {
-    proxy.$modal.msgSuccess("刷新成功");
+    proxy.$message.success("刷新成功");
     useDictStore().cleanDict();
   });
 }

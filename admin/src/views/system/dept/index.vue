@@ -138,11 +138,18 @@
   </div>
 </template>
 
-<script setup name="Dept">
+<script setup lang="ts" name="Dept">
 import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild } from "@/api/system/dept";
+import { listToTree } from "@/utils/tree";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const deptList = ref([]);
 const open = ref(false);
@@ -153,8 +160,19 @@ const deptOptions = ref([]);
 const isExpandAll = ref(true);
 const refreshTable = ref(true);
 
+const queryRef = ref(null);
+const deptRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    deptId: undefined,
+    parentId: undefined,
+    deptName: undefined,
+    orderNum: 0,
+    leader: undefined,
+    phone: undefined,
+    email: undefined,
+    status: "0"
+  },
   queryParams: {
     deptName: undefined,
     status: undefined
@@ -186,7 +204,7 @@ const { queryParams, form, rules } = toRefs(data);
 function getList() {
   loading.value = true;
   listDept(queryParams.value).then(response => {
-    deptList.value = proxy.handleTree(response.data, "deptId");
+    deptList.value = listToTree(response.data, { id: "deptId" });
     loading.value = false;
   });
 }
@@ -207,7 +225,10 @@ function reset() {
     email: undefined,
     status: "0"
   };
-  proxy.resetForm("deptRef");
+  resetForm(unref(deptRef));
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -215,14 +236,14 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  resetForm(unref(queryRef));
   handleQuery();
 }
 /** 新增按钮操作 */
 function handleAdd(row) {
   reset();
   listDept().then(response => {
-    deptOptions.value = proxy.handleTree(response.data, "deptId");
+    deptOptions.value = listToTree(response.data, { id: "deptId" });
   });
   if (row != undefined) {
     form.value.parentId = row.deptId;
@@ -242,7 +263,7 @@ function toggleExpandAll() {
 function handleUpdate(row) {
   reset();
   listDeptExcludeChild(row.deptId).then(response => {
-    deptOptions.value = proxy.handleTree(response.data, "deptId");
+    deptOptions.value = listToTree(response.data, { id: "deptId" });
   });
   getDept(row.deptId).then(response => {
     form.value = response.data;
@@ -252,17 +273,17 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["deptRef"].validate(valid => {
+  unref(deptRef).validate(valid => {
     if (valid) {
       if (form.value.deptId != undefined) {
         updateDept(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addDept(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -279,7 +300,7 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }

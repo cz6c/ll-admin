@@ -1,45 +1,47 @@
 import request from "@/utils/request";
 import { parseStrEmpty } from "@/utils";
+import { $http } from "@/utils/request";
+import type { SysUserData, SysUserResponse, SysUserListParams, SysUserListResponse } from "#/api/system/user";
 
 // 查询用户列表
-export function listUser(query) {
-  return request({
-    url: "/system/user/list",
+export function listUser(params: SysUserListParams) {
+  return $http<never, SysUserListResponse>({
+    url: `/system/user/list`,
     method: "get",
-    params: query
+    params
   });
 }
 
 // 查询用户详细
-export function getUser(userId) {
-  return request({
-    url: "/system/user/" + parseStrEmpty(userId),
+export function getUser(userId?: number) {
+  return $http<never, SysUserResponse>({
+    url: `/system/user/${parseStrEmpty(userId + "")}`,
     method: "get"
   });
 }
 
 // 新增用户
-export function addUser(data) {
-  return request({
-    url: "/system/user",
+export function addUser(data: SysUserData) {
+  return $http<SysUserData, never>({
+    url: `/system/user`,
     method: "post",
     data: data
   });
 }
 
 // 修改用户
-export function updateUser(data) {
-  return request({
-    url: "/system/user",
+export function updateUser(data: SysUserData) {
+  return $http<SysUserData, never>({
+    url: `/system/user`,
     method: "put",
     data: data
   });
 }
 
 // 删除用户
-export function delUser(userId) {
-  return request({
-    url: "/system/user/" + userId,
+export function delUser(userIds: string) {
+  return $http<never, SysUserResponse>({
+    url: `/system/user/${userIds}`,
     method: "delete"
   });
 }

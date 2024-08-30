@@ -36,13 +36,13 @@ export class CreateMenuDto {
   @IsOptional()
   @IsString()
   @Length(0, 255)
-  component?: string;
+  component: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   @Length(0, 50)
-  name?: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -65,7 +65,7 @@ export class CreateMenuDto {
   @IsOptional()
   @IsString()
   @Length(0, 100)
-  icon?: string;
+  icon: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

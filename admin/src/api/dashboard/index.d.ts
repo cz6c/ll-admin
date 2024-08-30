@@ -1,4 +1,4 @@
-import type { GetListParams, GetListResponse } from "#/api/index.d";
+import type { ListParams, ListResponse } from "#/api/index.d";
 // 登录日志
 export interface LoginLogInfo {
   country: string; //  ip下的城市信息
@@ -11,7 +11,7 @@ export interface LoginLogInfo {
   userName: string; // 账号
   useragent: string; // 浏览器agent信息
 }
-export type ResponseLoginLogList = GetListResponse<LoginLogInfo>;
-export interface ParamsLoginLogList extends GetListParams {
+export type ResponseLoginLogList = ListResponse<LoginLogInfo>;
+export interface ParamsLoginLogList extends ListParams {
   createTime?: number;
 }

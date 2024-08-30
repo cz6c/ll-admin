@@ -5,9 +5,10 @@ import { useTable } from "@/components/TableView/useTable";
 import { SearchProps } from "@/components/SearchForm/type";
 import { getOrderListApi, delOrderApi } from "@/api/order";
 import { OrderItem, OrderState, PayChannel } from "@/api/order/index.d";
-import { $message } from "@/utils/message";
 import { dayjs } from "element-plus";
 import { enumToOpts } from "@/utils";
+
+const { proxy } = getCurrentInstance();
 
 const getListApi = getOrderListApi;
 const delApi = delOrderApi;
@@ -178,9 +179,9 @@ async function del(id: string) {
       try {
         await delApi({ id });
         getList();
-        $message.success(`删除成功`);
+        proxy.$message.success(`删除成功`);
       } catch (error: any) {
-        $message.error(error.message);
+        proxy.$message.error(error.message);
       }
     })
     .catch();

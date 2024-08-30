@@ -1,4 +1,4 @@
-import type { GetListParams, GetListResponse } from "#/api/index.d";
+import type { ListParams, ListResponse } from "#/api/index.d";
 
 // 详情
 export interface RoleItem {
@@ -16,7 +16,7 @@ export interface RoleInfo extends Omit<RoleItem, "id" | "status" | "isDel"> {
   isDel?: 0 | 1;
 }
 // 列表
-export type RoleListResponse = GetListResponse<RoleItem>;
-export interface RoleListParams extends GetListParams {
+export type RoleListResponse = ListResponse<RoleItem>;
+export interface RoleListParams extends ListParams {
   roleName?: number;
 }

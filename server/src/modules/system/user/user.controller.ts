@@ -142,8 +142,7 @@ export class UserController {
   @RequireRole('admin')
   @Delete(':id')
   remove(@Param('id') ids: string) {
-    const menuIds = ids.split(',').map((id) => +id);
-    return this.userService.remove(menuIds);
+    return this.userService.remove(ids.split(',').map((id) => +id));
   }
 
   @ApiOperation({ summary: '导出用户信息数据为xlsx' })

@@ -138,11 +138,17 @@
   </div>
 </template>
 
-<script setup name="Post">
+<script setup lang="ts" name="Post">
 import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const postList = ref([]);
 const open = ref(false);
@@ -154,8 +160,17 @@ const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
 
+const postRef = ref(null);
+const queryRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    postId: undefined,
+    postCode: undefined,
+    postName: undefined,
+    postSort: 0,
+    status: "0",
+    remark: undefined
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
@@ -196,7 +211,10 @@ function reset() {
     status: "0",
     remark: undefined
   };
-  proxy.resetForm("postRef");
+  resetForm(postRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -205,7 +223,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   handleQuery();
 }
 /** 多选框选中数据 */
@@ -232,17 +250,17 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["postRef"].validate(valid => {
+  unref(postRef).validate(valid => {
     if (valid) {
       if (form.value.postId != undefined) {
         updatePost(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addPost(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -260,19 +278,19 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "system/post/export",
-    {
-      ...queryParams.value
-    },
-    `post_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "system/post/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `post_${new Date().getTime()}.xlsx`
+  // );
 }
 
 getList();

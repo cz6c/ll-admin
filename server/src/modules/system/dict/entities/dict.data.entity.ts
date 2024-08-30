@@ -9,6 +9,9 @@ export class SysDictDataEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'dict_code', comment: '字典主键' })
   public dictCode: number;
 
+  @Column({ type: 'varchar', name: 'dict_type', length: 100, comment: '字典类型' })
+  public dictType: string;
+
   @Column({ type: 'int', name: 'dict_sort', default: 0, comment: '字典排序' })
   public dictSort: number;
 
@@ -17,13 +20,6 @@ export class SysDictDataEntity extends BaseEntity {
 
   @Column({ type: 'varchar', name: 'dict_value', length: 100, comment: '字典键值' })
   public dictValue: string;
-
-  @Column({ type: 'varchar', name: 'dict_type', length: 100, comment: '字典类型' })
-  public dictType: string;
-
-  //样式属性（其他样式扩展）
-  @Column({ type: 'varchar', name: 'css_class', length: 100, default: '', comment: '样式属性' })
-  public cssClass: string;
 
   //样式属性（其他样式扩展）
   @Column({ type: 'varchar', name: 'list_class', length: 100, comment: '表格回显样式' })

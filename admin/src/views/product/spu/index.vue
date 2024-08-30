@@ -5,8 +5,9 @@ import { useTable } from "@/components/TableView/useTable";
 import { SearchProps } from "@/components/SearchForm/type";
 import { getProductListApi, statusChangeApi, delProductApi } from "@/api/product/spu";
 import { ProductItem } from "@/api/product/spu/index.d";
-import { $message } from "@/utils/message";
 import { dayjs } from "element-plus";
+
+const { proxy } = getCurrentInstance();
 
 const getListApi = getProductListApi;
 const delApi = delProductApi;
@@ -137,10 +138,10 @@ function goDetails(id: string) {
 async function statusChange(id: string) {
   try {
     await statusApi({ id });
-    $message.success("切换成功");
+    proxy.$message.success("切换成功");
     getList();
   } catch (error: any) {
-    $message.error(error.message);
+    proxy.$message.error(error.message);
   }
 }
 /**
@@ -155,9 +156,9 @@ async function del(id: string) {
       try {
         await delApi({ id });
         getList();
-        $message.success(`删除成功`);
+        proxy.$message.success(`删除成功`);
       } catch (error: any) {
-        $message.error(error.message);
+        proxy.$message.error(error.message);
       }
     })
     .catch();

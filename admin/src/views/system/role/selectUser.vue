@@ -66,8 +66,10 @@
   </el-dialog>
 </template>
 
-<script setup name="SelectUser">
+<script setup lang="ts" name="SelectUser">
 import { authUserSelectAll, unallocatedUserList } from "@/api/system/role";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
 
 const props = defineProps({
   roleId: {
@@ -76,13 +78,19 @@ const props = defineProps({
 });
 
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const userList = ref([]);
 const visible = ref(false);
 const total = ref(0);
 const userIds = ref([]);
 
+const refTable = ref(null);
+
+const queryRef = ref(null);
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
@@ -99,7 +107,7 @@ function show() {
 }
 /**选择行 */
 function clickRow(row) {
-  proxy.$refs["refTable"].toggleRowSelection(row);
+  unref(refTable).toggleRowSelection(row);
 }
 // 多选框选中数据
 function handleSelectionChange(selection) {
@@ -119,7 +127,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  unref(queryRef) && unref(queryRef).resetFields();
   handleQuery();
 }
 const emit = defineEmits(["ok"]);
@@ -128,11 +136,11 @@ function handleSelectUser() {
   const roleId = queryParams.roleId;
   const uIds = userIds.value.join(",");
   if (uIds == "") {
-    proxy.$modal.msgError("请选择要分配的用户");
+    proxy.$message.error("请选择要分配的用户");
     return;
   }
   authUserSelectAll({ roleId: roleId, userIds: uIds }).then(res => {
-    proxy.$modal.msgSuccess(res.msg);
+    proxy.$message.success(res.msg);
     if (res.code === 200) {
       visible.value = false;
       emit("ok");

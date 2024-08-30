@@ -89,13 +89,18 @@
   </div>
 </template>
 
-<script setup name="AuthUser">
-import selectUser from "./selectUser";
+<script setup lang="ts" name="AuthUser">
+import selectUser from "./selectUser.vue";
 import { allocatedUserList, authUserCancel, authUserCancelAll } from "@/api/system/role";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
 
 const route = useRoute();
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const userList = ref([]);
 const loading = ref(true);
@@ -104,10 +109,12 @@ const multiple = ref(true);
 const total = ref(0);
 const userIds = ref([]);
 
+const selectRef = ref(null);
+const queryRef = ref(null);
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
-  roleId: route.params.roleId,
+  roleId: Number(route.params.roleId),
   userName: undefined,
   phonenumber: undefined
 });
@@ -133,7 +140,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  unref(queryRef) && unref(queryRef).resetFields();
   handleQuery();
 }
 // 多选框选中数据
@@ -143,7 +150,7 @@ function handleSelectionChange(selection) {
 }
 /** 打开授权用户表弹窗 */
 function openSelectUser() {
-  proxy.$refs["selectRef"].show();
+  unref(selectRef).show();
 }
 /** 取消授权按钮操作 */
 function cancelAuthUser(row) {
@@ -154,7 +161,7 @@ function cancelAuthUser(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("取消授权成功");
+      proxy.$message.success("取消授权成功");
     })
     .catch(() => {});
 }
@@ -169,7 +176,7 @@ function cancelAuthUserAll(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("取消授权成功");
+      proxy.$message.success("取消授权成功");
     })
     .catch(() => {});
 }

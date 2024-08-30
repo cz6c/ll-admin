@@ -1,11 +1,11 @@
-import type { GetListParams } from "@/api/public/index.d";
+import type { ListParams } from "#/api/index.d";
 import { isFunction } from "@/utils/is";
-import { $message } from "@/utils/message";
+import $message from "@/utils/message";
 import { cloneDeep } from "lodash-es";
 
 export interface Params {
   getListApi: Fn;
-  apiQuery: Record<string, any> & GetListParams;
+  apiQuery: Record<string, any> & ListParams;
   beforeFetch?: Fn;
   afterFetch?: Fn;
 }

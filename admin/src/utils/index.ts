@@ -121,11 +121,11 @@ export function getNormalPath(p: string): string {
 }
 
 // 日期格式化
-export function parseTime(time, pattern) {
+export function parseTime(time, pattern = "{y}-{m}-{d} {h}:{i}:{s}") {
   if (arguments.length === 0 || !time) {
     return null;
   }
-  const format = pattern || "{y}-{m}-{d} {h}:{i}:{s}";
+  const format = pattern;
   let date;
   if (typeof time === "object") {
     date = time;
@@ -166,26 +166,16 @@ export function parseTime(time, pattern) {
   return time_str;
 }
 
-// 表单重置
-export function resetForm(refName) {
-  if (this.$refs[refName]) {
-    this.$refs[refName].resetFields();
-  }
-}
-
-// 添加日期范围
-export function addDateRange(params, dateRange, propName) {
+/**
+ * @description: 日期范围处理
+ */
+export function addDateRange(params, dateRange) {
   let search = params;
   search.params =
     typeof search.params === "object" && search.params !== null && !Array.isArray(search.params) ? search.params : {};
   dateRange = Array.isArray(dateRange) ? dateRange : [];
-  if (typeof propName === "undefined") {
-    search.params["beginTime"] = dateRange[0];
-    search.params["endTime"] = dateRange[1];
-  } else {
-    search.params["begin" + propName] = dateRange[0];
-    search.params["end" + propName] = dateRange[1];
-  }
+  search.params["beginTime"] = dateRange[0];
+  search.params["endTime"] = dateRange[1];
   return search;
 }
 
@@ -249,8 +239,10 @@ export function sprintf(str) {
   return flag ? str : "";
 }
 
-// 转换字符串，undefined,null等转化为""
-export function parseStrEmpty(str) {
+/**
+ * @description: 转换字符串，undefined,null等转化为""
+ */
+export function parseStrEmpty(str: string): string {
   if (!str || str == "undefined" || str == "null") {
     return "";
   }
@@ -274,59 +266,7 @@ export function mergeRecursive(source, target) {
 }
 
 /**
- * 构造树型结构数据
- * @param {*} data 数据源
- * @param {*} id id字段 默认 'id'
- * @param {*} parentId 父节点字段 默认 'parentId'
- * @param {*} children 孩子节点字段 默认 'children'
- */
-export function handleTree(data, id, parentId, children) {
-  let config = {
-    id: id || "id",
-    parentId: parentId || "parentId",
-    childrenList: children || "children"
-  };
-
-  var childrenListMap = {};
-  var nodeIds = {};
-  var tree = [];
-
-  for (let d of data) {
-    let parentId = d[config.parentId];
-    if (childrenListMap[parentId] == null) {
-      childrenListMap[parentId] = [];
-    }
-    nodeIds[d[config.id]] = d;
-    childrenListMap[parentId].push(d);
-  }
-
-  for (let d of data) {
-    let parentId = d[config.parentId];
-    if (nodeIds[parentId] == null) {
-      tree.push(d);
-    }
-  }
-
-  for (let t of tree) {
-    adaptToChildrenList(t);
-  }
-
-  function adaptToChildrenList(o) {
-    if (childrenListMap[o[config.id]] !== null) {
-      o[config.childrenList] = childrenListMap[o[config.id]];
-    }
-    if (o[config.childrenList]) {
-      for (let c of o[config.childrenList]) {
-        adaptToChildrenList(c);
-      }
-    }
-  }
-  return tree;
-}
-
-/**
- * 参数处理
- * @param {*} params  参数
+ * @description: get请求参数处理
  */
 export function tansParams(params) {
   let result = "";

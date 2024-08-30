@@ -129,11 +129,16 @@
   </div>
 </template>
 
-<script setup name="Logininfor">
+<script setup lang="ts" name="Logininfor">
 import { list, delLogininfor, cleanLogininfor, unlockLogininfor } from "@/api/monitor/logininfor";
+import { parseTime, addDateRange } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
 
 const { proxy } = getCurrentInstance();
-const { sys_common_status } = proxy.useDict("sys_common_status");
+
+const { sys_common_status } = useDict<{
+  sys_common_status: DictData[];
+}>("sys_common_status");
 
 const logininforList = ref([]);
 const loading = ref(true);
@@ -146,6 +151,8 @@ const total = ref(0);
 const dateRange = ref([]);
 const defaultSort = ref({ prop: "loginTime", order: "descending" });
 
+const queryRef = ref(null);
+const logininforRef = ref(null);
 // 查询参数
 const queryParams = ref({
   pageNum: 1,
@@ -160,7 +167,7 @@ const queryParams = ref({
 /** 查询登录日志列表 */
 function getList() {
   loading.value = true;
-  list(proxy.addDateRange(queryParams.value, dateRange.value)).then(response => {
+  list(addDateRange(queryParams.value, dateRange.value)).then(response => {
     logininforList.value = response.data.list;
     total.value = response.data.total;
     loading.value = false;
@@ -174,9 +181,9 @@ function handleQuery() {
 /** 重置按钮操作 */
 function resetQuery() {
   dateRange.value = [];
-  proxy.resetForm("queryRef");
+  unref(queryRef) && unref(queryRef).resetFields();
   queryParams.value.pageNum = 1;
-  proxy.$refs["logininforRef"].sort(defaultSort.value.prop, defaultSort.value.order);
+  unref(logininforRef).sort(defaultSort.value.prop, defaultSort.value.order);
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -201,7 +208,7 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
@@ -214,7 +221,7 @@ function handleClean() {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("清空成功");
+      proxy.$message.success("清空成功");
     })
     .catch(() => {});
 }
@@ -227,19 +234,19 @@ function handleUnlock() {
       return unlockLogininfor(username);
     })
     .then(() => {
-      proxy.$modal.msgSuccess("用户" + username + "解锁成功");
+      proxy.$message.success("用户" + username + "解锁成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "monitor/logininfor/export",
-    {
-      ...queryParams.value
-    },
-    `config_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "monitor/logininfor/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `config_${new Date().getTime()}.xlsx`
+  // );
 }
 
 getList();

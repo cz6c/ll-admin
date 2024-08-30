@@ -8,7 +8,7 @@ interface TreeHelperConfig {
 const DEFAULT_CONFIG: TreeHelperConfig = {
   id: "id",
   children: "children",
-  pid: "pid"
+  pid: "parentId"
 };
 
 // 获取配置。  Object.assign 从一个或多个源对象复制到目标对象
@@ -16,14 +16,14 @@ const getConfig = (config: Partial<TreeHelperConfig>) => Object.assign({}, DEFAU
 
 /**
  * @description: 数组转树
- * @param {any[]} list
- * @param {Partial} config 树节点属性配置
- * @return {*}
+ * @param list 数组
+ * @param config 树节点属性配置
+ * @return 树
  */
 export function listToTree(list: any[], config: Partial<TreeHelperConfig> = {}): any[] {
   const conf = getConfig(config) as TreeHelperConfig;
   const nodeMap = new Map();
-  const result: any[] = [];
+  const result = [];
   const { id, children, pid } = conf;
 
   for (const node of list) {
@@ -39,14 +39,14 @@ export function listToTree(list: any[], config: Partial<TreeHelperConfig> = {}):
 
 /**
  * @description: 树转数组
- * @param {any[]} tree 树
- * @param {Partial} config 树节点属性配置
- * @return {*}
+ * @param tree 树
+ * @param config 树节点属性配置
+ * @return 数组
  */
 export function treeToList(tree: any[], config: Partial<TreeHelperConfig> = {}): any[] {
   config = getConfig(config);
   const { children } = config;
-  const result: any[] = [...tree];
+  const result = [...tree];
   for (let i = 0; i < result.length; i++) {
     if (!result[i][children!]) continue;
     result.splice(i + 1, 0, ...result[i][children!]);
@@ -56,12 +56,16 @@ export function treeToList(tree: any[], config: Partial<TreeHelperConfig> = {}):
 
 /**
  * @description: 查找树节点
- * @param {any[]} tree 树
- * @param {Function} callBack 回调
- * @param {Partial} config 树节点属性配置
- * @return {*}
+ * @param tree 树
+ * @param callBack 回调
+ * @param config 树节点属性配置
+ * @return
  */
-export function findNode(tree: any[], callBack: Function, config: Partial<TreeHelperConfig> = {}): any | null {
+export function findNode(
+  tree: any[],
+  callBack: (n: any) => boolean,
+  config: Partial<TreeHelperConfig> = {}
+): any | null {
   config = getConfig(config);
   const { children } = config;
   const list = [...tree];
@@ -74,15 +78,14 @@ export function findNode(tree: any[], callBack: Function, config: Partial<TreeHe
 
 /**
  * @description: 过滤树结构
- * @param {any[]} tree 树
- * @param {function} callBack 回调 过滤节点处理
- * @param {Partial} config 树节点属性配置
- * @return {*}
+ * @param tree 树
+ * @param callBack 回调 过滤节点处理
+ * @param config 树节点属性配置
+ * @return
  */
 export function filterTree(tree: any[], callBack: (n: any) => boolean, config: Partial<TreeHelperConfig> = {}): any[] {
-  // 获取配置
   config = getConfig(config);
-  const children = config.children as string;
+  const { children } = config;
   function listFilter(list: any[]) {
     return list
       .map((node: any) => ({ ...node }))
@@ -98,13 +101,13 @@ export function filterTree(tree: any[], callBack: (n: any) => boolean, config: P
 
 /**
  * @description: 深度遍历树结构
- * @param {any[]} tree 树
- * @param {function} callBack 回调 返回true就终止遍历,避免大量节点场景下无意义循环，引起浏览器卡顿
- * @param {Partial} config 树节点属性配置
+ * @param tree 树
+ * @param callBack 回调 用于判断何时终止遍历，返回true就终止,避免大量节点场景下无意义循环，引起浏览器卡顿
+ * @param config 树节点属性配置
  */
 export function forEachTree(tree: any[], callBack: (n: any) => any, config: Partial<TreeHelperConfig> = {}) {
   config = getConfig(config);
-  const list: any[] = [...tree];
+  const list = [...tree];
   const { children } = config;
   for (let i = 0; i < list.length; i++) {
     if (callBack(list[i])) {
@@ -115,39 +118,22 @@ export function forEachTree(tree: any[], callBack: (n: any) => any, config: Part
 }
 
 /**
- * @description: 递归遍历树结构
- * @param {any[]} tree 树
- * @param {Function} callBack 回调
- * @param {*} parentNode 父节点
- */
-export function eachTree(tree: any[], callBack: Function, parentNode: any = {}) {
-  tree.forEach(element => {
-    const newNode = callBack(element, parentNode) || element;
-    if (element.children) {
-      eachTree(element.children, callBack, newNode);
-    }
-  });
-}
-
-/**
  * @description: 提取树指定结构
- * @param {any[]} tree
- * @param {object} opt
- * @return {*}
+ * @param tree 树
+ * @param conversion 提取方法
+ * @param config 树节点属性配置
+ * @return 指定结构树
  */
-export function treeMap(tree: any[], opt: { children?: string; conversion: Function }): any[] {
-  function treeMapEach(data: any, { children = "children", conversion }: { children?: string; conversion: Function }) {
+export function treeMap(tree: any[], conversion: (n: any) => any, config: Partial<TreeHelperConfig> = {}): any[] {
+  config = getConfig(config);
+  const { children } = config;
+  function treeMapEach(data: any, conversion: (n: any) => any, children: string) {
     const haveChildren = Array.isArray(data[children]) && data[children].length > 0;
     const conversionData = conversion(data) || {};
     if (haveChildren) {
       return {
         ...conversionData,
-        [children]: data[children].map((i: number) =>
-          treeMapEach(i, {
-            children,
-            conversion
-          })
-        )
+        [children]: data[children].map((i: number) => treeMapEach(i, conversion, children))
       };
     } else {
       return {
@@ -155,12 +141,19 @@ export function treeMap(tree: any[], opt: { children?: string; conversion: Funct
       };
     }
   }
-  return tree.map(item => treeMapEach(item, opt));
+  return tree.map(item => treeMapEach(item, conversion, children));
 }
 
-export function findPath<T = any>(tree: any, func: Function, config: Partial<TreeHelperConfig> = {}): T | T[] | null {
+/**
+ * @description: 在树结构中查找树某个节点在树中的路径
+ * @param tree 树
+ * @param callBack 回调 用于判断节点是否符合条件，返回true就终止遍历,代表已找到
+ * @param config 树节点属性配置
+ * @return 第一个满足条件节点路径数组
+ */
+export function findPath(tree: any[], callBack: (n: any) => any, config: Partial<TreeHelperConfig> = {}): any[] | null {
   config = getConfig(config);
-  const path: T[] = [];
+  const path = [];
   const list = [...tree];
   const visitedSet = new Set();
   const { children } = config;
@@ -173,7 +166,7 @@ export function findPath<T = any>(tree: any, func: Function, config: Partial<Tre
       visitedSet.add(node);
       node[children!] && list.unshift(...node[children!]);
       path.push(node);
-      if (func(node)) {
+      if (callBack(node)) {
         return path;
       }
     }
@@ -181,11 +174,18 @@ export function findPath<T = any>(tree: any, func: Function, config: Partial<Tre
   return null;
 }
 
-export function findPathAll(tree: any, func: Function, config: Partial<TreeHelperConfig> = {}) {
+/**
+ * @description: 在树结构中查找所有满足特定条件的路径
+ * @param tree 树
+ * @param callBack 回调，用于判断当前节点是否符合条件
+ * @param config 树节点属性配置
+ * @return 所有满足条件节点所在路径，二维数组
+ */
+export function findPathAll(tree: any, callBack: (n: any) => any, config: Partial<TreeHelperConfig> = {}) {
   config = getConfig(config);
-  const path: any[] = [];
+  const path = [];
   const list = [...tree];
-  const result: any[] = [];
+  const result = [];
   const visitedSet = new Set(),
     { children } = config;
   while (list.length) {
@@ -197,8 +197,23 @@ export function findPathAll(tree: any, func: Function, config: Partial<TreeHelpe
       visitedSet.add(node);
       node[children!] && list.unshift(...node[children!]);
       path.push(node);
-      func(node) && result.push([...path]);
+      callBack(node) && result.push([...path]);
     }
   }
   return result;
+}
+
+/**
+ * @description: 递归遍历树结构
+ * @param tree 树
+ * @param callBack 回调 用于节点处理
+ * @param parentNode 父节点
+ */
+export function eachTree(tree: any[], callBack: (n: any, p: any) => any, parentNode: any = {}) {
+  tree.forEach(element => {
+    const newNode = callBack(element, parentNode) || element;
+    if (element.children) {
+      eachTree(element.children, callBack, newNode);
+    }
+  });
 }

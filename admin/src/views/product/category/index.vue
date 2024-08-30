@@ -3,8 +3,9 @@ import { TableConfig, TableViewInstance } from "@/components/TableView";
 import { getCategoryTreesApi, delCategoryApi } from "@/api/product/category";
 import { CategoryItem } from "@/api/product/category/index.d";
 import CategoryFormDrawer from "./components/CategoryFormDrawer.vue";
-import { $message } from "@/utils/message";
 import { useTable } from "@/components/TableView/useTable";
+
+const { proxy } = getCurrentInstance();
 
 const getListApi = getCategoryTreesApi;
 const delApi = delCategoryApi;
@@ -70,13 +71,13 @@ async function del(id: string) {
       try {
         await delApi({ id });
         getList();
-        $message.success(`删除成功`);
+        proxy.$message.success(`删除成功`);
       } catch (error: any) {
-        $message.error(error.message);
+        proxy.$message.error(error.message);
       }
     })
     .catch(() => {
-      $message.info(`Delete canceled`);
+      proxy.$message.info(`Delete canceled`);
     });
 }
 </script>

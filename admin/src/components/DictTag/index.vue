@@ -2,27 +2,17 @@
   <div>
     <template v-for="(item, index) in options">
       <template v-if="values.includes(item.value)">
-        <span
-          v-if="item.elTagType == 'default' || item.elTagType == ''"
-          :key="item.value"
-          :index="index"
-          :class="item.elTagClass"
-          >{{ item.label + " " }}</span
-        >
-        <el-tag
-          v-else
-          :key="item.value + ''"
-          :disable-transitions="true"
-          :index="index"
-          :type="item.elTagType"
-          :class="item.elTagClass"
-          >{{ item.label + " " }}</el-tag
-        >
+        <span v-if="item.elTagType == 'default' || item.elTagType == ''" :key="item.value" :index="index">
+          {{ item.label + " " }}
+        </span>
+        <el-tag v-else :key="item.value + ''" :disable-transitions="true" :index="index" :type="item.elTagType">
+          {{ item.label + " " }}
+        </el-tag>
       </template>
     </template>
-    <!-- <template v-if="unmatch && showValue">
-      {{ unmatchArray | handleArray }}
-    </template> -->
+    <template v-if="unmatch && showValue">
+      {{ handleArray(unmatchArray) }}
+    </template>
   </div>
 </template>
 

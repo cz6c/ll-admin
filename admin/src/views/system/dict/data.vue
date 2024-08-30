@@ -124,9 +124,6 @@
         <el-form-item label="数据键值" prop="dictValue">
           <el-input v-model="form.dictValue" placeholder="请输入数据键值" />
         </el-form-item>
-        <el-form-item label="样式属性" prop="cssClass">
-          <el-input v-model="form.cssClass" placeholder="请输入样式属性" />
-        </el-form-item>
         <el-form-item label="显示排序" prop="dictSort">
           <el-input-number v-model="form.dictSort" controls-position="right" :min="0" />
         </el-form-item>
@@ -161,13 +158,19 @@
   </div>
 </template>
 
-<script setup name="Data">
+<script setup lang="ts" name="Data">
 import { useDictStore } from "@/store/modules/dict";
 import { optionselect as getDictOptionselect, getType } from "@/api/system/dict/type";
 import { listData, getData, delData, addData, updateData } from "@/api/system/dict/data";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
-const { sys_normal_disable } = proxy.useDict("sys_normal_disable");
+
+const { sys_normal_disable } = useDict<{
+  sys_normal_disable: DictData[];
+}>("sys_normal_disable");
 
 const dataList = ref([]);
 const open = ref(false);
@@ -191,14 +194,26 @@ const listClassOptions = ref([
   { value: "danger", label: "危险" }
 ]);
 
+const queryRef = ref(null);
+const dataRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    dictType: undefined,
+    dictCode: undefined,
+    dictLabel: undefined,
+    dictValue: undefined,
+    listClass: "default",
+    dictSort: 0,
+    status: "0",
+    remark: undefined
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
     dictName: undefined,
     dictType: undefined,
-    status: undefined
+    status: undefined,
+    dictLabel: undefined
   },
   rules: {
     dictLabel: [{ required: true, message: "数据标签不能为空", trigger: "blur" }],
@@ -241,16 +256,19 @@ function cancel() {
 /** 表单重置 */
 function reset() {
   form.value = {
+    dictType: undefined,
     dictCode: undefined,
     dictLabel: undefined,
     dictValue: undefined,
-    cssClass: undefined,
     listClass: "default",
     dictSort: 0,
     status: "0",
     remark: undefined
   };
-  proxy.resetForm("dataRef");
+  resetForm(dataRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -264,7 +282,7 @@ function handleClose() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   queryParams.value.dictType = defaultDictType;
   handleQuery();
 }
@@ -293,19 +311,19 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["dataRef"].validate(valid => {
+  unref(dataRef).validate(valid => {
     if (valid) {
       if (form.value.dictCode != undefined) {
         updateData(form.value).then(response => {
           useDictStore().removeDict(queryParams.value.dictType);
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addData(form.value).then(response => {
           useDictStore().removeDict(queryParams.value.dictType);
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -323,20 +341,20 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
       useDictStore().removeDict(queryParams.value.dictType);
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "system/dict/data/export",
-    {
-      ...queryParams.value
-    },
-    `dict_data_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "system/dict/data/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `dict_data_${new Date().getTime()}.xlsx`
+  // );
 }
 
 getTypes(route.params && route.params.dictId);

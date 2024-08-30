@@ -54,6 +54,7 @@
 
 <script setup name="AuthRole">
 import { getAuthRole, updateAuthRole } from "@/api/system/user";
+import { parseTime } from "@/utils";
 
 const route = useRoute();
 const { proxy } = getCurrentInstance();

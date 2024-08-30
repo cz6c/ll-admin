@@ -66,6 +66,7 @@
 
 <script setup name="Online">
 import { forceLogout, list as initData } from "@/api/monitor/online";
+import { parseTime } from "@/utils";
 
 const { proxy } = getCurrentInstance();
 
@@ -75,6 +76,7 @@ const total = ref(0);
 const pageNum = ref(1);
 const pageSize = ref(10);
 
+const queryRef = ref(null);
 const queryParams = ref({
   ipaddr: undefined,
   userName: undefined
@@ -100,7 +102,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  unref(queryRef) && unref(queryRef).resetFields();
   handleQuery();
 }
 /** 强退按钮操作 */

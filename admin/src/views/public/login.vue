@@ -58,11 +58,12 @@
 <script setup lang="ts" name="Login">
 import { useAuthStore } from "@/store/modules/auth";
 import type { FormInstance, FormRules } from "element-plus";
-import { $message } from "@/utils/message";
 import { getCodeImg } from "@/api/public";
 import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
 import { productConfig } from "@/config";
+
+const { proxy } = getCurrentInstance();
 
 const BASE_TITLE = computed(() => {
   return productConfig.title;
@@ -125,7 +126,7 @@ function handleLogin() {
         });
         loading.value = false;
       } catch (error: any) {
-        $message.warning(error.message);
+        proxy.$message.warning(error.message);
         loading.value = false;
         // 重新获取验证码
         if (captchaEnabled.value) getCode();

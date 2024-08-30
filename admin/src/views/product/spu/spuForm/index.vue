@@ -4,7 +4,8 @@ import { ProductItem } from "@/api/product/spu/index.d";
 import GenerateSku from "./components/GenerateSku.vue";
 import { useCategory } from "@/views/product/category/useCategory";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
-import { $message } from "@/utils/message";
+
+const { proxy } = getCurrentInstance();
 
 const { options, getCategoryTrees } = useCategory();
 getCategoryTrees();
@@ -124,7 +125,7 @@ const sumbit = () => {
     try {
       await api(json);
       loading.value = false;
-      $message.success("提交成功");
+      proxy.$message.success("提交成功");
       router.go(-1);
     } catch (error) {
       loading.value = false;

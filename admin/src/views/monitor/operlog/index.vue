@@ -134,7 +134,7 @@
             link
             type="primary"
             icon="View"
-            @click="handleView(scope.row, scope.index)"
+            @click="handleView(scope.row)"
             >详细</el-button
           >
         </template>
@@ -198,26 +198,47 @@
   </div>
 </template>
 
-<script setup name="Operlog">
+<script setup lang="ts" name="Operlog">
 import { list, delOperlog, cleanOperlog } from "@/api/monitor/operlog";
+import { parseTime, addDateRange, selectDictLabel } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
 
 const { proxy } = getCurrentInstance();
-const { sys_oper_type, sys_common_status } = proxy.useDict("sys_oper_type", "sys_common_status");
+
+const { sys_oper_type, sys_common_status } = useDict<{
+  sys_oper_type: DictData[];
+  sys_common_status: DictData[];
+}>("sys_oper_type", "sys_common_status");
 
 const operlogList = ref([]);
 const open = ref(false);
 const loading = ref(true);
 const showSearch = ref(true);
 const ids = ref([]);
-const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
-const title = ref("");
 const dateRange = ref([]);
 const defaultSort = ref({ prop: "operTime", order: "descending" });
 
+const queryRef = ref(null);
+const operlogRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    title: "",
+    operName: "",
+    status: 1,
+    operTime: "",
+    errorMsg: "",
+    costTime: "",
+    jsonResult: "",
+    method: "",
+    requestMethod: "",
+    operParam: "",
+    operIp: "",
+    operLocation: "",
+    operUrl: "",
+    businessType: ""
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
@@ -233,7 +254,7 @@ const { queryParams, form } = toRefs(data);
 /** 查询登录日志 */
 function getList() {
   loading.value = true;
-  list(proxy.addDateRange(queryParams.value, dateRange.value)).then(response => {
+  list(addDateRange(queryParams.value, dateRange.value)).then(response => {
     console.log("response", response);
     operlogList.value = response.data.list;
     total.value = response.total;
@@ -241,8 +262,8 @@ function getList() {
   });
 }
 /** 操作日志类型字典翻译 */
-function typeFormat(row, column) {
-  return proxy.selectDictLabel(sys_oper_type.value, row.businessType);
+function typeFormat(row) {
+  return selectDictLabel(sys_oper_type.value, row.businessType);
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -252,9 +273,9 @@ function handleQuery() {
 /** 重置按钮操作 */
 function resetQuery() {
   dateRange.value = [];
-  proxy.resetForm("queryRef");
+  unref(queryRef) && unref(queryRef).resetFields();
   queryParams.value.pageNum = 1;
-  proxy.$refs["operlogRef"].sort(defaultSort.value.prop, defaultSort.value.order);
+  unref(operlogRef).sort(defaultSort.value.prop, defaultSort.value.order);
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -263,8 +284,8 @@ function handleSelectionChange(selection) {
 }
 /** 排序触发事件 */
 function handleSortChange(column, prop, order) {
-  queryParams.value.orderByColumn = column.prop;
-  queryParams.value.isAsc = column.order;
+  // queryParams.value.orderByColumn = column.prop;
+  // queryParams.value.isAsc = column.order;
   getList();
 }
 /** 详细按钮操作 */
@@ -282,7 +303,7 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
@@ -295,19 +316,19 @@ function handleClean() {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("清空成功");
+      proxy.$message.success("清空成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.download(
-    "monitor/operlog/export",
-    {
-      ...queryParams.value
-    },
-    `config_${new Date().getTime()}.xlsx`
-  );
+  // proxy.download(
+  //   "monitor/operlog/export",
+  //   {
+  //     ...queryParams.value
+  //   },
+  //   `config_${new Date().getTime()}.xlsx`
+  // );
 }
 
 getList();

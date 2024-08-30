@@ -153,11 +153,18 @@
   </div>
 </template>
 
-<script setup name="Notice">
+<script setup lang="ts" name="Notice">
 import { listNotice, getNotice, delNotice, addNotice, updateNotice } from "@/api/system/notice";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
-const { sys_notice_status, sys_notice_type } = proxy.useDict("sys_notice_status", "sys_notice_type");
+
+const { sys_notice_status, sys_notice_type } = useDict<{
+  sys_notice_status: DictData[];
+  sys_notice_type: DictData[];
+}>("sys_notice_status", "sys_notice_type");
 
 const noticeList = ref([]);
 const open = ref(false);
@@ -169,14 +176,23 @@ const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
 
+const noticeRef = ref(null);
+const queryRef = ref(null);
 const data = reactive({
-  form: {},
+  form: {
+    noticeId: undefined,
+    noticeTitle: undefined,
+    noticeType: undefined,
+    noticeContent: undefined,
+    status: "0"
+  },
   queryParams: {
     pageNum: 1,
     pageSize: 10,
     noticeTitle: undefined,
     createBy: undefined,
-    status: undefined
+    status: undefined,
+    noticeType: undefined
   },
   rules: {
     noticeTitle: [{ required: true, message: "公告标题不能为空", trigger: "blur" }],
@@ -209,7 +225,10 @@ function reset() {
     noticeContent: undefined,
     status: "0"
   };
-  proxy.resetForm("noticeRef");
+  resetForm(noticeRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -218,7 +237,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   handleQuery();
 }
 /** 多选框选中数据 */
@@ -245,17 +264,17 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["noticeRef"].validate(valid => {
+  unref(noticeRef).validate(valid => {
     if (valid) {
       if (form.value.noticeId != undefined) {
         updateNotice(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addNotice(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -273,7 +292,7 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }

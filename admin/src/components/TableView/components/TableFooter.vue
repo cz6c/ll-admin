@@ -1,8 +1,8 @@
 <script setup lang="ts" name="TableFooter">
-import { GetListParams } from "@/api/public/index.d";
+import { ListParams } from "@/api/public/index.d";
 
 export interface Pagination {
-  pageQuery: GetListParams;
+  pageQuery: ListParams;
   handleSizeChange: (size: number) => void;
   handleCurrentChange: (currentPage: number) => void;
 }

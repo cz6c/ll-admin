@@ -4,7 +4,7 @@ import { getToken } from "@/utils/auth";
 import { tansParams } from "@/utils";
 import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
-import { $message } from "@/utils/message";
+import $message from "@/utils/message";
 import { WebStorage } from "@/utils/storage";
 
 const errorCode = {
@@ -144,4 +144,8 @@ export const createPost = <P extends Record<string, any>, R>(url: string, config
       ...config
     });
   };
+};
+
+export const $http = <P extends Record<string, any>, R>(config: AxiosRequestConfig<P>): Promise<Response<R>> => {
+  return service.request(config);
 };

@@ -1,4 +1,4 @@
-import type { GetListParams, GetListResponse } from "#/api/index.d";
+import type { ListParams, ListResponse } from "#/api/index.d";
 // 详情
 export interface BannerItem {
   id: string;
@@ -11,5 +11,5 @@ export interface BannerItem {
 }
 
 // 列表
-export type BannerListResponse = GetListResponse<BannerItem>;
-export type BannerListParams = GetListParams;
+export type BannerListResponse = ListResponse<BannerItem>;
+export type BannerListParams = ListParams;

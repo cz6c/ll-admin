@@ -3,7 +3,8 @@ import { CategoryItem } from "@/api/product/category/index.d";
 import { getCategoryInfoApi, createCategoryApi, updateCategoryApi } from "@/api/product/category";
 import { useCategory } from "../useCategory";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
-import { $message } from "@/utils/message";
+
+const { proxy } = getCurrentInstance();
 
 const { options, getCategoryTrees } = useCategory();
 
@@ -49,7 +50,7 @@ const sumbit = () => {
     try {
       await api(json);
       loading.value = false;
-      $message.success("提交成功");
+      proxy.$message.success("提交成功");
       emit("updateList");
       modelValue.value = false;
     } catch (error) {

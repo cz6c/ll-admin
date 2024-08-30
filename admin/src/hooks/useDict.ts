@@ -1,29 +1,34 @@
 import { useDictStore } from "@/store/modules/dict";
 import { getDicts } from "@/api/system/dict/data";
 
+export interface DictData {
+  label: string;
+  value: string;
+  elTagType: string;
+}
+
 /**
  * 获取字典数据
  */
-export function useDict(...args) {
-  const res = ref({});
+export function useDict<T extends object>(...args) {
+  const dict = reactive({}) as T;
   return (() => {
     args.forEach(dictType => {
-      res.value[dictType] = [];
+      dict[dictType] = [];
       const dicts = useDictStore().getDict(dictType);
       if (dicts) {
-        res.value[dictType] = dicts;
+        dict[dictType] = dicts;
       } else {
         getDicts(dictType).then(resp => {
-          res.value[dictType] = resp.data.map(p => ({
+          dict[dictType] = resp.data.map(p => ({
             label: p.dictLabel,
             value: p.dictValue,
-            elTagType: p.listClass,
-            elTagClass: p.cssClass
+            elTagType: p.listClass
           }));
-          useDictStore().setDict(dictType, res.value[dictType]);
+          useDictStore().setDict(dictType, dict[dictType]);
         });
       }
     });
-    return toRefs(res.value);
+    return toRefs(dict);
   })();
 }

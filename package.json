@@ -5,8 +5,7 @@
   "license": "MIT",
   "scripts": {
     "prepare": "husky install",
-    "cz": "git add . && czg",
-    "pm2": "pm2 start ecosystem.config.js --env development"
+    "cz": "git add . && czg"
   },
   "devDependencies": {
     "@commitlint/cli": "^17.8.1",

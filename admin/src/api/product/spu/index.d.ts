@@ -1,4 +1,4 @@
-import type { GetListParams, GetListResponse } from "#/api/index.d";
+import type { ListParams, ListResponse } from "#/api/index.d";
 // 详情
 export interface ProductItem {
   id: string;
@@ -37,8 +37,8 @@ export interface ProductItem {
 }
 
 // 列表
-export type ProductListResponse = GetListResponse<ProductItem>;
-export interface ProductListParams extends GetListParams {
+export type ProductListResponse = ListResponse<ProductItem>;
+export interface ProductListParams extends ListParams {
   username?: string;
 }
 

@@ -1,6 +1,6 @@
 <template>
   <div class="app-page">
-    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
+    <el-form ref="queryRef" :model="queryParams" :inline="true">
       <el-form-item label="菜单名称" prop="menuName">
         <el-input
           v-model="queryParams.menuName"
@@ -28,7 +28,6 @@
       <el-col :span="1.5">
         <el-button type="info" plain icon="Sort" @click="toggleExpandAll">展开/折叠</el-button>
       </el-col>
-      <!-- <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" /> -->
     </el-row>
 
     <el-table
@@ -283,34 +282,57 @@
   </div>
 </template>
 
-<script setup>
-import { addMenu, delMenu, getMenu, listMenu, updateMenu } from "@/api/system/menu";
+<script setup lang="ts" name="MenuIndex">
+import { addMenu, delMenu, getMenuDetail, getMenuList, updateMenu } from "@/api/system/menu";
 import IconSelect from "@/components/IconSelect/index.vue";
-import { ClickOutside as vClickOutside } from "element-plus";
-
+import { FormInstance, ClickOutside as vClickOutside } from "element-plus";
+import { listToTree } from "@/utils/tree";
+import { parseTime } from "@/utils";
+import { useDict, type DictData } from "@/hooks/useDict";
 defineOptions({
   name: "MenuIndex"
 });
 
 const { proxy } = getCurrentInstance();
-const { sys_show_hide, sys_normal_disable } = proxy.useDict("sys_show_hide", "sys_normal_disable");
+
+const { sys_show_hide, sys_normal_disable } = useDict<{
+  sys_show_hide: DictData[];
+  sys_normal_disable: DictData[];
+}>("sys_show_hide", "sys_normal_disable");
 
 const menuList = ref([]);
-const open = ref(false);
 const loading = ref(true);
-const showSearch = ref(true);
-const title = ref("");
-const menuOptions = ref([]);
 const isExpandAll = ref(false);
 const refreshTable = ref(true);
+const queryRef = ref(null);
+const queryParams = ref({
+  menuName: undefined,
+  status: undefined
+});
+
+const open = ref(false);
+const title = ref("");
+const menuOptions = ref([]);
 const showChooseIcon = ref(false);
 const iconSelectRef = ref(null);
-
+const menuRef = ref(null);
 const data = reactive({
-  form: {},
-  queryParams: {
-    menuName: undefined,
-    visible: undefined
+  form: {
+    menuId: undefined,
+    parentId: 0,
+    menuName: "",
+    icon: undefined,
+    orderNum: undefined,
+    isFrame: "1",
+    isCache: "0",
+    visible: "0",
+    activeMenu: "",
+    status: "0",
+    component: "",
+    name: "",
+    perm: "",
+    menuType: "M",
+    path: ""
   },
   rules: {
     menuName: [{ required: true, message: "菜单名称不能为空", trigger: "blur" }],
@@ -322,30 +344,30 @@ const data = reactive({
   }
 });
 
-const { queryParams, form, rules } = toRefs(data);
+const { form, rules } = toRefs(data);
 
 watch(
-  () => data.form.isFrame,
+  () => unref(form).isFrame,
   val => {
-    data.rules.name[0].required = val !== "0";
-    data.rules.component[0].required = val !== "0";
+    unref(rules).name[0].required = val !== "0";
+    unref(rules).component[0].required = val !== "0";
   }
 );
 
 /** 查询菜单列表 */
 function getList() {
   loading.value = true;
-  listMenu(queryParams.value).then(response => {
-    menuList.value = proxy.handleTree(response.data, "menuId");
+  getMenuList(queryParams.value).then(response => {
+    menuList.value = listToTree(response.data, { id: "menuId" });
     loading.value = false;
   });
 }
 /** 查询菜单下拉树结构 */
 function getTreeselect() {
   menuOptions.value = [];
-  listMenu({ parentId: 0 }).then(response => {
+  getMenuList({ parentId: 0 }).then(response => {
     const menu = { menuId: 0, menuName: "主类目", children: [] };
-    menu.children = proxy.handleTree(response.data, "menuId");
+    menu.children = listToTree(response.data, { id: "menuId" });
     menuOptions.value.push(menu);
   });
 }
@@ -368,11 +390,15 @@ function reset() {
     activeMenu: "",
     status: "0",
     name: "",
+    component: "",
     perm: "",
     menuType: "M",
     path: ""
   };
-  proxy.resetForm("menuRef");
+  resetForm(menuRef.value);
+}
+function resetForm(formEl: FormInstance | undefined) {
+  formEl && formEl.resetFields();
 }
 /** 展示下拉图标 */
 function showSelectIcon() {
@@ -398,7 +424,7 @@ function handleQuery() {
 }
 /** 重置按钮操作 */
 function resetQuery() {
-  proxy.resetForm("queryRef");
+  resetForm(queryRef.value);
   handleQuery();
 }
 /** 新增按钮操作 */
@@ -426,7 +452,7 @@ function toggleExpandAll() {
 async function handleUpdate(row, isPerm = false) {
   reset();
   !isPerm && (await getTreeselect());
-  getMenu(row.menuId).then(response => {
+  getMenuDetail(row.menuId).then(response => {
     form.value = response.data;
     isPerm && (form.value.menuType = "F");
     title.value = !isPerm ? "修改菜单" : "修改功能";
@@ -435,18 +461,18 @@ async function handleUpdate(row, isPerm = false) {
 }
 /** 提交按钮 */
 function submitForm() {
-  proxy.$refs["menuRef"].validate(valid => {
+  unref(menuRef).validate(valid => {
     if (valid) {
       const params = { ...form.value };
       if (form.value.menuId != undefined) {
         updateMenu(params).then(response => {
-          proxy.$modal.msgSuccess("修改成功");
+          proxy.$message.success("修改成功");
           open.value = false;
           getList();
         });
       } else {
         addMenu(params).then(response => {
-          proxy.$modal.msgSuccess("新增成功");
+          proxy.$message.success("新增成功");
           open.value = false;
           getList();
         });
@@ -463,7 +489,7 @@ function handleDelete(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }

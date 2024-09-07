@@ -64,24 +64,25 @@
   </div>
 </template>
 
-<script setup name="Profile">
+<script setup name="Profile" lang="ts">
 import userAvatar from "./userAvatar.vue";
 import userInfo from "./userInfo.vue";
 import resetPwd from "./resetPwd.vue";
 import { getUserProfile } from "@/api/system/user";
+// import { getUserProfile } from "@/api/system/user";
 
 const activeTab = ref("userinfo");
 const state = reactive({
-  user: {},
-  roleGroup: {},
-  postGroup: {}
+  user: null,
+  roleGroup: null,
+  postGroup: null
 });
 
 function getUser() {
   getUserProfile().then(response => {
     state.user = response.data;
-    state.roleGroup = response.roleGroup;
-    state.postGroup = response.postGroup;
+    // state.roleGroup = response.roleGroup;
+    // state.postGroup = response.postGroup;
   });
 }
 

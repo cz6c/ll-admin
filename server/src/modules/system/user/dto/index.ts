@@ -131,21 +131,6 @@ export class ListUserDto extends PagingDto {
   status?: string;
 }
 
-export class ResetPwdDto {
-  @ApiProperty({
-    required: true,
-  })
-  @IsNumber()
-  userId: number;
-
-  @ApiProperty({
-    required: true,
-  })
-  @IsString()
-  @Length(5, 20)
-  password: string;
-}
-
 export class AllocatedListDto extends PagingDto {
   @ApiProperty({ required: false })
   @IsOptional()
@@ -162,6 +147,21 @@ export class AllocatedListDto extends PagingDto {
   @IsOptional()
   @IsNumberString()
   roleId?: string;
+}
+
+export class ResetPwdDto {
+  @ApiProperty({
+    required: true,
+  })
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({
+    required: true,
+  })
+  @IsString()
+  @Length(5, 20)
+  password: string;
 }
 
 export class UpdateProfileDto {
@@ -199,4 +199,16 @@ export class UpdatePwdDto {
   @IsString()
   @Length(0, 200)
   newPassword: string;
+}
+
+export class UpdateAuthRoleDto {
+  @ApiProperty({
+    required: true,
+  })
+  @IsNumber()
+  userId: number;
+
+  @ApiProperty({ required: true })
+  @IsArray()
+  roleIds: Array<number>;
 }

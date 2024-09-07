@@ -96,6 +96,12 @@ export class RoleController {
     return this.roleService.remove(menuIds);
   }
 
+  @ApiOperation({ summary: '导出角色管理xlsx文件' })
+  @Post('/export')
+  async export(@Res() res: Response, @Body() body: ListRoleDto): Promise<void> {
+    return this.roleService.export(res, body);
+  }
+
   @ApiOperation({
     summary: '角色管理-角色已分配用户列表',
   })
@@ -154,11 +160,5 @@ export class RoleController {
   @Put('authUser/selectAll')
   authUserSelectAll(@Body() body: AuthUserSelectAllDto) {
     return this.userService.authUserSelectAll(body);
-  }
-
-  @ApiOperation({ summary: '导出角色管理xlsx文件' })
-  @Post('/export')
-  async export(@Res() res: Response, @Body() body: ListRoleDto): Promise<void> {
-    return this.roleService.export(res, body);
   }
 }

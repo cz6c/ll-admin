@@ -1,7 +1,17 @@
-import request from "@/utils/request";
-import { parseStrEmpty } from "@/utils";
 import { $http } from "@/utils/request";
-import type { SysUserData, SysUserResponse, SysUserListParams, SysUserListResponse } from "#/api/system/user";
+import type {
+  SysUserData,
+  SysUserResponse,
+  SysUserListParams,
+  SysUserListResponse,
+  ResetPwdDto,
+  ChangeStatusDto,
+  RequestUserPayload,
+  UpdateProfileDto,
+  UpdatePwdDto,
+  SysPostAndPostResponse
+} from "#/api/system/user";
+import type { SysRoleResponse } from "#/api/system/role";
 
 // 查询用户列表
 export function listUser(params: SysUserListParams) {
@@ -13,9 +23,17 @@ export function listUser(params: SysUserListParams) {
 }
 
 // 查询用户详细
-export function getUser(userId?: number) {
+export function getUser(userId: number) {
   return $http<never, SysUserResponse>({
-    url: `/system/user/${parseStrEmpty(userId + "")}`,
+    url: `/system/user/${userId}`,
+    method: "get"
+  });
+}
+
+// 查询用户详细
+export function getPostAndRoleAll() {
+  return $http<never, SysPostAndPostResponse>({
+    url: `/system/user/getPostAndRoleAll`,
     method: "get"
   });
 }
@@ -25,7 +43,7 @@ export function addUser(data: SysUserData) {
   return $http<SysUserData, never>({
     url: `/system/user`,
     method: "post",
-    data: data
+    data
   });
 }
 
@@ -34,7 +52,7 @@ export function updateUser(data: SysUserData) {
   return $http<SysUserData, never>({
     url: `/system/user`,
     method: "put",
-    data: data
+    data
   });
 }
 
@@ -47,91 +65,71 @@ export function delUser(userIds: string) {
 }
 
 // 用户密码重置
-export function resetUserPwd(userId, password) {
-  const data = {
-    userId,
-    password
-  };
-  return request({
-    url: "/system/user/resetPwd",
+export function resetUserPwd(data: ResetPwdDto) {
+  return $http<ResetPwdDto, never>({
+    url: `/system/user/resetPwd`,
     method: "put",
-    data: data
+    data
   });
 }
 
 // 用户状态修改
-export function changeUserStatus(userId, status) {
-  const data = {
-    userId,
-    status
-  };
-  return request({
-    url: "/system/user/changeStatus",
+export function changeUserStatus(data: ChangeStatusDto) {
+  return $http<ChangeStatusDto, never>({
+    url: `/system/user/changeStatus`,
     method: "put",
-    data: data
+    data
   });
 }
 
 // 查询用户个人信息
 export function getUserProfile() {
-  return request({
-    url: "/system/user/profile",
+  return $http<never, RequestUserPayload>({
+    url: `/system/user/profile`,
     method: "get"
   });
 }
 
 // 修改用户个人信息
-export function updateUserProfile(data) {
-  return request({
-    url: "/system/user/profile",
+export function updateUserProfile(data: UpdateProfileDto) {
+  return $http<UpdateProfileDto, never>({
+    url: `/system/user/profile`,
     method: "put",
-    data: data
+    data
   });
 }
 
 // 用户密码重置
-export function updateUserPwd(oldPassword, newPassword) {
-  const data = {
-    oldPassword,
-    newPassword
-  };
-  return request({
+export function updateUserPwd(data: UpdatePwdDto) {
+  return $http<UpdatePwdDto, never>({
     url: "/system/user/profile/updatePwd",
     method: "put",
-    params: data
+    data
   });
 }
 
 // 用户头像上传
-export function uploadAvatar(data) {
-  return request({
+export function uploadAvatar(data: FormData) {
+  return $http<FormData, { imgUrl: string }>({
     url: "/system/user/profile/avatar",
     method: "post",
-    data: data
+    data
   });
 }
 
 // 查询授权角色
-export function getAuthRole(userId) {
-  return request({
+export function getAuthRole(userId: number) {
+  return $http<never, { roles: SysRoleResponse[]; user: SysUserData }>({
     url: "/system/user/authRole/" + userId,
     method: "get"
   });
 }
 
 // 保存授权角色
-export function updateAuthRole(data) {
-  return request({
+export function updateAuthRole(data: { userId: number; roleIds: number[] }) {
+  return $http<{ userId: number; roleIds: number[] }, never>({
     url: "/system/user/authRole",
     method: "put",
-    params: data
-  });
-}
-
-// 查询部门下拉树结构
-export function deptTreeSelect() {
-  return request({
-    url: "/system/user/deptTree",
-    method: "get"
+    data
   });
 }

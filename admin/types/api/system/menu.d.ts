@@ -32,11 +32,10 @@ export type SysMenuData = {
 };
 
 export type SysMenuResponse = Required<SysMenuData> & BaseResponse;
+export type SysMenuListResponse = SysMenuResponse[];
 
 export type SysMenuListParams = {
   menuName?: string;
   status?: string;
   parentId?: number;
 };
-
-export type SysMenuListResponse = SysMenuResponse[];

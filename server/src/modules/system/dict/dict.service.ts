@@ -139,16 +139,16 @@ export class DictService {
     //   },
     // });
 
-    // 尝试从Redis缓存中获取字典数据
-    // let data = await this.redisService.get(`${CacheEnum.SYS_DICT_KEY}${dictType}`);
+    // 尝试从Redis缓存中获取字典数据;
+    let data = await this.redisService.get(`${CacheEnum.SYS_DICT_KEY}${dictType}`);
 
-    // if (data) {
-    //   // 如果缓存中存在，则直接返回缓存数据
-    //   return ResultData.ok(data);
-    // }
+    if (data) {
+      // 如果缓存中存在，则直接返回缓存数据
+      return ResultData.ok(data);
+    }
 
     // 从数据库中查询字典数据
-    const data = await this.sysDictDataEntityRep.find({
+    data = await this.sysDictDataEntityRep.find({
       where: {
         dictType: dictType,
         delFlag: '0',
@@ -158,6 +158,24 @@ export class DictService {
     // 将查询到的数据存入Redis缓存，并返回数据
     await this.redisService.set(`${CacheEnum.SYS_DICT_KEY}${dictType}`, data);
     return ResultData.ok(data);
+  }
+
+  async refreshCache() {
+    const list = await this.sysDictTypeEntityRep.find({
+      where: {
+        delFlag: '0',
+      },
+    });
+    list.forEach(async (item) => {
+      const data = await this.sysDictDataEntityRep.find({
+        where: {
+          dictType: item.dictType,
+          delFlag: '0',
+        },
+      });
+      this.redisService.set(`${CacheEnum.SYS_DICT_KEY}${item.dictType}`, data);
+    });
+    return ResultData.ok();
   }
 
   async findOneDictData(dictCode: number) {

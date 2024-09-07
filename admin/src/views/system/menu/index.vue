@@ -289,9 +289,6 @@ import { FormInstance, ClickOutside as vClickOutside } from "element-plus";
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
-defineOptions({
-  name: "MenuIndex"
-});
 
 const { proxy } = getCurrentInstance();
 

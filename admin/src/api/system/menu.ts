@@ -28,7 +28,7 @@ export function treeselect() {
 
 // 根据角色ID查询菜单下拉树结构
 export function roleMenuTreeselect(roleId: number) {
-  return $http<never, { menus: SysMenuListResponse; checkedKeys: string[] }>({
+  return $http<never, { menus: SysMenuListResponse; checkedKeys: number[] }>({
     url: `/system/menu/roleMenuTreeselect/${roleId}`,
     method: "get"
   });
@@ -54,7 +54,7 @@ export function updateMenu(data: SysMenuData) {
 
 // 删除菜单
 export function delMenu(menuId: number) {
-  return $http<SysMenuData, never>({
+  return $http<never, never>({
     url: `/system/menu/${menuId}`,
     method: "delete"
   });

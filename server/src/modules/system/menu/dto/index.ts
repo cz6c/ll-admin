@@ -97,7 +97,7 @@ export class UpdateMenuDto extends CreateMenuDto {
   menuId: number;
 }
 
-export class ListDeptDto {
+export class ListMenuDto {
   @ApiProperty({
     required: false,
   })

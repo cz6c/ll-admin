@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
@@ -73,10 +73,15 @@ export class DeptService {
       // 根据不同的数据权限范围添加不同的查询条件
       if (dataScope === DataScopeEnum.DATA_SCOPE_DEPT) {
         // 如果是本部门数据权限，则只查询指定部门
-        this.addQueryForDeptDataScope(entity, deptId);
+        entity.andWhere('dept.deptId = :deptId', { deptId: deptId });
       } else if (dataScope === DataScopeEnum.DATA_SCOPE_DEPT_AND_CHILD) {
         // 如果是本部门及子部门数据权限，则查询指定部门及其所有子部门
-        this.addQueryForDeptAndChildDataScope(entity, deptId);
+        // 使用参数化查询以防止SQL注入
+        entity
+          .andWhere('dept.ancestors LIKE :ancestors', {
+            ancestors: `%${deptId}%`,
+          })
+          .orWhere('dept.deptId = :deptId', { deptId: deptId });
       } else if (dataScope === DataScopeEnum.DATA_SCOPE_SELF) {
         // 如果是仅本人数据权限，则不查询任何部门，直接返回空数组
         return [];
@@ -89,29 +94,6 @@ export class DeptService {
       console.error('Failed to query department IDs:', error);
       throw new Error('Querying department IDs failed');
     }
-  }
-
-  /**
-   * 添加查询条件以适应本部门数据权限范围。
-   * @param queryBuilder 查询构建器实例
-   * @param deptId 部门ID
-   */
-  private addQueryForDeptDataScope(queryBuilder: SelectQueryBuilder<any>, deptId: number) {
-    queryBuilder.andWhere('dept.deptId = :deptId', { deptId: deptId });
-  }
-
-  /**
-   * 添加查询条件以适应本部门及子部门数据权限范围。
-   * @param queryBuilder 查询构建器实例
-   * @param deptId 部门ID
-   */
-  private addQueryForDeptAndChildDataScope(queryBuilder: SelectQueryBuilder<any>, deptId: number) {
-    // 使用参数化查询以防止SQL注入
-    queryBuilder
-      .andWhere('dept.ancestors LIKE :ancestors', {
-        ancestors: `%${deptId}%`,
-      })
-      .orWhere('dept.deptId = :deptId', { deptId: deptId });
   }
 
   async findListExclude(id: number) {
@@ -167,6 +149,6 @@ export class DeptService {
     const tree = listToTree(res, {
       id: 'deptId',
     });
-    return tree;
+    return ResultData.ok(tree);
   }
 }

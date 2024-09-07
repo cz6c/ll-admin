@@ -363,8 +363,9 @@ import {
   getUser,
   updateUser,
   addUser,
-  deptTreeSelect
+  getPostAndRoleAll
 } from "@/api/system/user";
+import { deptTreeSelect } from "@/api/system/dept";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
@@ -558,7 +559,7 @@ function handleStatusChange(row) {
   proxy.$modal
     .confirm('确认要"' + text + '""' + row.userName + '"用户吗?')
     .then(function () {
-      return changeUserStatus(row.userId, row.status);
+      return changeUserStatus({ userId: row.userId, status: row.status });
     })
     .then(() => {
       proxy.$message.success(text + "成功");
@@ -566,19 +567,6 @@ function handleStatusChange(row) {
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";
     });
-}
-/** 更多操作 */
-function handleCommand(command, row) {
-  switch (command) {
-    case "handleResetPwd":
-      handleResetPwd(row);
-      break;
-    case "handleAuthRole":
-      handleAuthRole(row);
-      break;
-    default:
-      break;
-  }
 }
 /** 跳转角色分配 */
 function handleAuthRole(row) {
@@ -596,7 +584,7 @@ function handleResetPwd(row) {
       inputErrorMessage: "用户密码长度必须介于 5 和 20 之间"
     })
     .then(({ value }) => {
-      resetUserPwd(row.userId, value).then(response => {
+      resetUserPwd({ userId: row.userId, password: value }).then(response => {
         proxy.$message.success("修改成功，新密码是：" + value);
       });
     })
@@ -658,6 +646,12 @@ function reset() {
 function resetForm(formEl: FormInstance | undefined) {
   formEl && formEl.resetFields();
 }
+function getPostAndRoleAllFn() {
+  getPostAndRoleAll().then(response => {
+    postOptions.value = response.data.posts;
+    roleOptions.value = response.data.roles;
+  });
+}
 /** 取消按钮 */
 function cancel() {
   open.value = false;
@@ -666,23 +660,19 @@ function cancel() {
 /** 新增按钮操作 */
 function handleAdd() {
   reset();
-  getUser().then(response => {
-    postOptions.value = response.data.posts;
-    roleOptions.value = response.data.roles;
-    open.value = true;
-    title.value = "添加用户";
-    form.value.password = initPassword.value;
-  });
+  getPostAndRoleAllFn();
+  open.value = true;
+  title.value = "添加用户";
+  form.value.password = initPassword.value;
 }
 /** 修改按钮操作 */
 function handleUpdate(row) {
   reset();
   const userId = row.userId;
   getUser(userId).then(res => {
+    getPostAndRoleAllFn();
     const response = res.data;
     form.value = response.data;
-    postOptions.value = response.posts;
-    roleOptions.value = response.roles;
     form.value.postIds = response.postIds;
     form.value.roleIds = response.roleIds;
     open.value = true;

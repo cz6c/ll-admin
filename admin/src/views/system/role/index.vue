@@ -308,7 +308,7 @@ function handleStatusChange(row) {
   proxy.$modal
     .confirm('确认要"' + text + '""' + row.roleName + '"角色吗?')
     .then(function () {
-      return changeRoleStatus(row.roleId, row.status);
+      return changeRoleStatus({ roleId: row.roleId, status: row.status });
     })
     .then(() => {
       proxy.$message.success(text + "成功");

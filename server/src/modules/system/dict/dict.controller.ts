@@ -114,6 +114,14 @@ export class DictController {
     return this.dictService.findOneDataType(dictType);
   }
 
+  @ApiOperation({
+    summary: '字典数据-类型-刷新缓存',
+  })
+  @Delete('/data/type/refreshCache')
+  refreshCache() {
+    return this.dictService.refreshCache();
+  }
+
   @ApiOperation({ summary: '导出字典数据为xlsx文件' })
   @Post('/type/export')
   async export(@Res() res: Response, @Body() body: ListDictType): Promise<void> {

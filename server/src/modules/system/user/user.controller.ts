@@ -4,7 +4,7 @@ import { UserService } from './user.service';
 import { Response } from 'express';
 import { RequireRole } from '@/common/decorator/require-role.decorator';
 
-import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto } from './dto/index';
+import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto, UpdateAuthRoleDto } from './dto/index';
 import { GetRequestUser, RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
 
 @ApiTags('用户管理')
@@ -16,7 +16,7 @@ export class UserController {
     summary: '个人中心-用户信息',
   })
   @Get('/profile')
-  profile(@GetRequestUser('user') user: any) {
+  profile(@GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.profile(user);
   }
 
@@ -52,24 +52,8 @@ export class UserController {
     summary: '用户-列表',
   })
   @Get('list')
-  findAll(@Query() query: ListUserDto, @GetRequestUser('user') user: any) {
+  findAll(@Query() query: ListUserDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.findAll(query, user);
-  }
-
-  @ApiOperation({
-    summary: '用户-部门树',
-  })
-  @Get('deptTree')
-  deptTree() {
-    return this.userService.deptTree();
-  }
-
-  @ApiOperation({
-    summary: '用户-角色+岗位',
-  })
-  @Get()
-  findPostAndRoleAll() {
-    return this.userService.findPostAndRoleAll();
   }
 
   @ApiOperation({
@@ -86,8 +70,8 @@ export class UserController {
   })
   @RequireRole('admin')
   @Put('authRole')
-  updateAuthRole(@Query() query) {
-    return this.userService.updateAuthRole(query);
+  updateAuthRole(@Body() data: UpdateAuthRoleDto) {
+    return this.userService.updateAuthRole(data);
   }
 
   @ApiOperation({
@@ -96,6 +80,14 @@ export class UserController {
   @Get(':userId')
   findOne(@Param('userId') userId: string) {
     return this.userService.findOne(+userId);
+  }
+
+  @ApiOperation({
+    summary: '用户角色+岗位信息',
+  })
+  @Get('/getPostAndRoleAll')
+  findPostAndRoleAll() {
+    return this.userService.findPostAndRoleAll();
   }
 
   @ApiOperation({
@@ -119,7 +111,7 @@ export class UserController {
     required: true,
   })
   @Put()
-  update(@Body() updateUserDto: UpdateUserDto, @GetRequestUser('userId') userId: number) {
+  update(@Body() updateUserDto: UpdateUserDto, @GetRequestUser('userId') userId: RequestUserPayload['userId']) {
     return this.userService.update(updateUserDto, userId);
   }
 
@@ -147,7 +139,7 @@ export class UserController {
 
   @ApiOperation({ summary: '导出用户信息数据为xlsx' })
   @Post('/export')
-  async export(@Res() res: Response, @Body() body: ListUserDto, @GetRequestUser('user') user: any): Promise<void> {
+  async export(@Res() res: Response, @Body() body: ListUserDto, @GetRequestUser('user') user: RequestUserPayload['user']): Promise<void> {
     return this.userService.export(res, body, user);
   }
 }

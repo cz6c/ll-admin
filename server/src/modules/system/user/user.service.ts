@@ -11,7 +11,7 @@ import { ExportTable } from '@/common/utils/export';
 import { CacheEnum, DelFlagEnum, StatusEnum, DataScopeEnum } from '@/common/enum/index';
 import { LOGIN_TOKEN_EXPIRESIN, SYS_USER_TYPE } from '@/common/constant/index';
 import { ResultData } from '@/common/utils/result';
-import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, AllocatedListDto, UpdateProfileDto, UpdatePwdDto } from './dto/index';
+import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, AllocatedListDto, UpdateProfileDto, UpdatePwdDto, UpdateAuthRoleDto } from './dto/index';
 import { RegisterDto, LoginDto, ClientInfoDto } from '../../main/dto/index';
 import { AuthUserCancelDto, AuthUserCancelAllDto, AuthUserSelectAllDto } from '../role/dto/index';
 
@@ -25,6 +25,7 @@ import { DeptService } from '../dept/dept.service';
 
 import { ConfigService } from '../config/config.service';
 import { SysRoleEntity } from '../role/entities/role.entity';
+import { RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
 @Injectable()
 export class UserService {
   constructor(
@@ -83,7 +84,7 @@ export class UserService {
    * @param query
    * @returns
    */
-  async findAll(query: ListUserDto, user: any) {
+  async findAll(query: ListUserDto, user: RequestUserPayload['user']) {
     const entity = this.userRepo.createQueryBuilder('user');
     entity.where('user.delFlag = :delFlag', { delFlag: '0' });
 
@@ -111,8 +112,10 @@ export class UserService {
 
       if (!dataScopeAll) {
         if (deptIds.length > 0) {
+          // 联查部门
           entity.where('user.deptId IN (:...deptIds)', { deptIds: deptIds });
         } else if (dataScopeSelf) {
+          // 自己
           entity.where('user.userId = :userId', { userId: user.userId });
         }
       }
@@ -183,13 +186,13 @@ export class UserService {
       },
     });
 
-    const dept = await this.sysDeptEntityRep.findOne({
-      where: {
-        delFlag: '0',
-        deptId: data.deptId,
-      },
-    });
-    data['dept'] = dept;
+    // const dept = await this.sysDeptEntityRep.findOne({
+    //   where: {
+    //     delFlag: '0',
+    //     deptId: data.deptId,
+    //   },
+    // });
+    // data['dept'] = dept;
 
     const postList = await this.sysUserWithPostEntityRep.find({
       where: {
@@ -197,26 +200,11 @@ export class UserService {
       },
     });
     const postIds = postList.map((item) => item.postId);
-    const allPosts = await this.sysPostEntityRep.find({
-      where: {
-        delFlag: '0',
-      },
-    });
-
     const roleIds = await this.getRoleIds([userId]);
-    const allRoles = await this.roleService.findRoles({
-      where: {
-        delFlag: '0',
-      },
-    });
-
-    data['roles'] = allRoles.filter((item) => roleIds.includes(item.roleId));
 
     return ResultData.ok({
       data,
       postIds,
-      posts: allPosts,
-      roles: allRoles,
       roleIds,
     });
   }
@@ -226,7 +214,7 @@ export class UserService {
    * @param updateUserDto
    * @returns
    */
-  async update(updateUserDto: UpdateUserDto, userId: number) {
+  async update(updateUserDto: UpdateUserDto, userId: RequestUserPayload['userId']) {
     //不能修改超级管理员
     if (updateUserDto.userId === 1) throw new BadRequestException('非法操作！');
 
@@ -566,28 +554,27 @@ export class UserService {
 
   /**
    * 更新用户角色信息
-   * @param query
+   * @param data
    * @returns
    */
-  async updateAuthRole(query) {
-    const roleIds = query.roleIds.split(',');
-    if (roleIds?.length > 0) {
+  async updateAuthRole(data: UpdateAuthRoleDto) {
+    if (data.roleIds?.length > 0) {
       //用户已有角色,先删除所有关联角色
       const hasRoletId = await this.sysUserWithRoleEntityRep.findOne({
         where: {
-          userId: query.userId,
+          userId: data.userId,
         },
         select: ['roleId'],
       });
       if (hasRoletId) {
         await this.sysUserWithRoleEntityRep.delete({
-          userId: query.userId,
+          userId: data.userId,
         });
       }
       const roleEntity = this.sysUserWithRoleEntityRep.createQueryBuilder('roleEntity');
-      const roleValues = roleIds.map((id) => {
+      const roleValues = data.roleIds.map((id) => {
         return {
-          userId: query.userId,
+          userId: data.userId,
           roleId: id,
         };
       });
@@ -619,15 +606,6 @@ export class UserService {
       },
     );
     return ResultData.ok(res);
-  }
-
-  /**
-   * 部门树
-   * @returns
-   */
-  async deptTree() {
-    const tree = await this.deptService.deptTree();
-    return ResultData.ok(tree);
   }
 
   /**
@@ -757,7 +735,7 @@ export class UserService {
    * @param user
    * @returns
    */
-  async profile(user) {
+  async profile(user: RequestUserPayload['user']) {
     return ResultData.ok(user);
   }
 
@@ -800,7 +778,7 @@ export class UserService {
    * 导出用户信息数据为xlsx
    * @param res
    */
-  async export(res: Response, body: ListUserDto, user) {
+  async export(res: Response, body: ListUserDto, user: RequestUserPayload['user']) {
     delete body.pageNum;
     delete body.pageSize;
     const list = await this.findAll(body, user);

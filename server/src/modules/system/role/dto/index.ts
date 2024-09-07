@@ -7,12 +7,6 @@ export enum StatusEnum {
   DYNAMIC = '1',
 }
 
-//菜单类型
-export enum RoleTypeEnum {
-  C = 'C',
-  F = 'F',
-}
-
 export class CreateRoleDto {
   @ApiProperty({ required: true })
   @IsString()
@@ -48,7 +42,7 @@ export class CreateRoleDto {
   })
   @IsOptional()
   @IsString()
-  dataScope: string;
+  dataScope?: string;
 
   @ApiProperty({
     required: false,

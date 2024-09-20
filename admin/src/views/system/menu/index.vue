@@ -167,7 +167,7 @@
             <el-form-item prop="path">
               <template #label>
                 <span>
-                  <el-tooltip content="访问的路由地址，如：`user`，如外网地址需以`http(s)://`开头" placement="top">
+                  <el-tooltip content="访问的路由地址，如：`user`，如外链需以`http(s)://`开头" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
                   路由地址
@@ -223,7 +223,7 @@
               <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
               <template #label>
                 <span>
-                  <el-tooltip content="路由隐藏时，则会高亮设置的菜单路由侧边栏" placement="top">
+                  <el-tooltip content="选择隐藏路由时，可配置高亮菜单，如：`/system/user`" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
                   高亮菜单

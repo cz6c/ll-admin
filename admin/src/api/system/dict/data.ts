@@ -20,7 +20,7 @@ export function getData(dictCode: number) {
 
 // 根据字典类型查询字典数据信息
 export function getDicts(dictType: string) {
-  return $http<never, SysDictResponse>({
+  return $http<never, SysDictResponse[]>({
     url: "/system/dict/data/type/" + dictType,
     method: "get"
   });

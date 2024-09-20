@@ -7,7 +7,7 @@ import router, { RouterEnum } from "@/router";
 import $message from "@/utils/message";
 import { WebStorage } from "@/utils/storage";
 
-const errorCode = {
+export const errorCode = {
   "401": "认证失败，无法访问系统资源",
   "403": "当前操作没有权限",
   "404": "访问资源不存在",
@@ -24,16 +24,10 @@ const service = axios.create({
 // request 拦截器 ==> 对请求参数做处理
 service.interceptors.request.use(
   config => {
-    // 判断为文件流
-    const isFileApi = config.params && config.params.isExportApi;
-    if (isFileApi) {
-      config.responseType = "blob";
-    }
     config.headers.Authorization = config.headers.Authorization || `Bearer ${getToken()}`;
     // get请求映射params参数
     if (config.method === "get" && config.params) {
       let url = config.url + "?" + tansParams(config.params);
-      url = url.slice(0, -1);
       config.params = {};
       config.url = url;
     }
@@ -73,12 +67,11 @@ service.interceptors.request.use(
 // response 拦截器 ==> 对响应做处理
 service.interceptors.response.use(
   response => {
-    const res = response.data;
-    // 判断为文件流
-    const isFileApi = response.config.params && response.config.params.isExportApi;
-    if (isFileApi) {
-      return response;
+    // 二进制数据则直接返回
+    if (response.request.responseType === "blob" || response.request.responseType === "arraybuffer") {
+      return response.data;
     }
+    const res = response.data;
     // 未设置状态码则默认成功状态
     const code = res.code || 200;
     // 获取错误信息
@@ -117,6 +110,7 @@ service.interceptors.response.use(
     return Promise.reject(new Error(message || "Error"));
   }
 );
+
 export default service;
 
 // 封装 get post 方法
@@ -125,6 +119,11 @@ interface Response<T> {
   msg: string; // 接口消息
   data: T;
 }
+
+export function $http<P extends Record<string, any>, R>(config: AxiosRequestConfig<P>): Promise<Response<R>> {
+  return service.request(config);
+}
+
 export const createGet = <P extends Record<string, any>, R>(url: string, config: AxiosRequestConfig = {}) => {
   return (params?: P): Promise<Response<R>> => {
     return service.request({
@@ -144,8 +143,4 @@ export const createPost = <P extends Record<string, any>, R>(url: string, config
       ...config
     });
   };
-};
-
-export const $http = <P extends Record<string, any>, R>(config: AxiosRequestConfig<P>): Promise<Response<R>> => {
-  return service.request(config);
 };

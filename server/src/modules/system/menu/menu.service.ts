@@ -4,7 +4,7 @@ import { Repository, FindManyOptions, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysMenuEntity } from './entities/menu.entity';
 import { SysRoleWithMenuEntity } from '../role/entities/role-menu.entity';
-import { CreateMenuDto, UpdateMenuDto, ListDeptDto } from './dto/index';
+import { CreateMenuDto, UpdateMenuDto, ListMenuDto } from './dto/index';
 import { Uniq } from '@/common/utils/index';
 import { UserService } from '../user/user.service';
 import { buildMenus } from './utils';
@@ -25,7 +25,7 @@ export class MenuService {
     return ResultData.ok(res);
   }
 
-  async findAll(query: ListDeptDto) {
+  async findAll(query: ListMenuDto) {
     const entity = this.sysMenuEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
 

@@ -14,7 +14,7 @@ import type { SysDeptResponse } from "#/api/system/dept";
 
 // 查询角色列表
 export function listRole(params: ListRoleDto) {
-  return $http<ListRoleDto, SysRoleListResponse>({
+  return $http<never, SysRoleListResponse>({
     url: "/system/role/list",
     method: "get",
     params

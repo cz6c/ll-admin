@@ -322,13 +322,13 @@ function handleClean() {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "monitor/operlog/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `config_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "monitor/operlog/export",
+    {
+      ...queryParams.value
+    },
+    `config_${new Date().getTime()}.xlsx`
+  );
 }
 
 getList();

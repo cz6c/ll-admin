@@ -2,7 +2,7 @@ import { $http } from "@/utils/request";
 import type { ListDeptDto, SysDeptData, SysDeptListResponse, SysDeptResponse } from "#/api/system/dept";
 
 // 查询部门列表
-export function listDept(params: ListDeptDto) {
+export function listDept(params?: ListDeptDto) {
   return $http<never, SysDeptListResponse>({
     url: "/system/dept/list",
     method: "get",
@@ -49,13 +49,5 @@ export function delDept(deptId: number) {
   return $http<never, never>({
     url: "/system/dept/" + deptId,
     method: "delete"
-  });
-}
-
-// 查询部门下拉树结构
-export function deptTreeSelect() {
-  return $http<never, SysDeptResponse[]>({
-    url: "/system/dept/deptTree",
-    method: "get"
   });
 }

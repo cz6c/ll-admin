@@ -17,7 +17,7 @@ export default [
     children: [
       {
         name: "User",
-        path: "user",
+        path: "/system/user",
         hidden: false,
         component: "system/user/index",
         meta: {
@@ -28,8 +28,15 @@ export default [
         }
       },
       {
+        hidden: true,
+        path: "/system/user/authRole",
+        component: "system/user/authRole",
+        name: "AuthRole",
+        meta: { title: "分配角色", activeMenu: "/system/user" }
+      },
+      {
         name: "Role",
-        path: "role",
+        path: "/system/role",
         hidden: false,
         component: "system/role/index",
         meta: {
@@ -40,8 +47,15 @@ export default [
         }
       },
       {
+        hidden: true,
+        path: "/system/role/authUser",
+        component: "system/role/authUser",
+        name: "AuthUser",
+        meta: { title: "分配用户", activeMenu: "/system/role" }
+      },
+      {
         name: "Menu",
-        path: "menu",
+        path: "/system/menu",
         hidden: false,
         component: "system/menu/index",
         meta: {
@@ -53,7 +67,7 @@ export default [
       },
       {
         name: "Dept",
-        path: "dept",
+        path: "/system/dept",
         hidden: false,
         component: "system/dept/index",
         meta: {
@@ -65,7 +79,7 @@ export default [
       },
       {
         name: "Post",
-        path: "post",
+        path: "/system/post",
         hidden: false,
         component: "system/post/index",
         meta: {
@@ -77,7 +91,7 @@ export default [
       },
       {
         name: "Dict",
-        path: "dict",
+        path: "/system/dict",
         hidden: false,
         component: "system/dict/index",
         meta: {
@@ -88,8 +102,15 @@ export default [
         }
       },
       {
+        hidden: true,
+        path: "/system/dict/data",
+        component: () => "system/dict/data",
+        name: "Data",
+        meta: { title: "字典数据", activeMenu: "/system/dict" }
+      },
+      {
         name: "Config",
-        path: "config",
+        path: "/system/config",
         hidden: false,
         component: "system/config/index",
         meta: {
@@ -101,7 +122,7 @@ export default [
       },
       {
         name: "Notice",
-        path: "notice",
+        path: "/system/notice",
         hidden: false,
         component: "system/notice/index",
         meta: {
@@ -109,21 +130,7 @@ export default [
           icon: "message",
           noCache: false,
           link: null
-        },
-        children: [
-          {
-            name: "Notice1",
-            path: "notice1",
-            hidden: false,
-            component: "system/user/index",
-            meta: {
-              title: "通知公告1",
-              icon: "message",
-              noCache: false,
-              link: null
-            }
-          }
-        ]
+        }
       }
     ]
   },
@@ -143,7 +150,7 @@ export default [
     children: [
       {
         name: "Online",
-        path: "online",
+        path: "/monitor/online",
         hidden: false,
         component: "monitor/online/index",
         meta: {
@@ -155,7 +162,7 @@ export default [
       },
       {
         name: "Server",
-        path: "server",
+        path: "/monitor/server",
         hidden: false,
         component: "monitor/server/index",
         meta: {
@@ -167,7 +174,7 @@ export default [
       },
       {
         name: "Cache",
-        path: "cache",
+        path: "/monitor/cache",
         hidden: false,
         component: "monitor/cache/index",
         meta: {
@@ -179,7 +186,7 @@ export default [
       },
       {
         name: "CacheList",
-        path: "cacheList",
+        path: "/monitor/cacheList",
         hidden: false,
         component: "monitor/cache/list",
         meta: {
@@ -192,79 +199,15 @@ export default [
     ]
   },
   {
-    name: "Tool",
-    path: "/tool",
-    hidden: false,
-    component: "Layout",
-    meta: {
-      title: "系统工具",
-      icon: "tool",
-      noCache: false,
-      link: null
-    },
-    alwaysShow: true,
-    redirect: "noRedirect",
-    children: [
-      {
-        name: "Build",
-        path: "build",
-        hidden: false,
-        component: "tool/build/index",
-        meta: {
-          title: "表单构建",
-          icon: "build",
-          noCache: false,
-          link: null
-        }
-      },
-      {
-        name: "Gen",
-        path: "gen",
-        hidden: false,
-        component: "tool/gen/index",
-        meta: {
-          title: "代码生成",
-          icon: "code",
-          noCache: false,
-          link: null
-        }
-      },
-      {
-        name: "Swagger",
-        path: "swagger",
-        hidden: false,
-        component: "tool/swagger/index",
-        meta: {
-          title: "系统接口",
-          icon: "swagger",
-          noCache: false,
-          link: null
-        }
-      }
-    ]
-  },
-  {
     name: "Https://nest-admin.dooring.vip",
     path: "https://nest-admin.dooring.vip",
     hidden: false,
     component: "Layout",
     meta: {
-      title: "nest-admin官网1",
+      title: "nest-admin官网",
       icon: "guide",
       noCache: false,
       link: "https://nest-admin.dooring.vip"
-    }
-  },
-  {
-    name: "Mobile",
-    path: "/mobile",
-    hidden: false,
-    component: "Layout",
-    meta: {
-      title: "移动端系统管理",
-      icon: "wechat",
-      noCache: false,
-      link: null
     }
   }
 ] as AppRouteRecordRaw[];

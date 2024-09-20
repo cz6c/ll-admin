@@ -28,7 +28,7 @@ const routesList: AppRouteRecordRaw[] = [
     },
     children: [
       {
-        path: "index",
+        path: "/index",
         component: () => import("@/views/dashboard/index.vue"),
         name: RouterEnum.BASE_HOME_NAME,
         meta: { title: "首页", icon: "menu-iframe", affix: true }

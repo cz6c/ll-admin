@@ -64,12 +64,4 @@ export class DeptController {
   remove(@Param('id') id: string) {
     return this.deptService.remove(+id);
   }
-
-  @ApiOperation({
-    summary: '用户-部门树',
-  })
-  @Get('deptTree')
-  deptTree() {
-    return this.deptService.deptTree();
-  }
 }

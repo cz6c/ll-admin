@@ -17,7 +17,7 @@ export class CreateUserDto {
   @IsOptional()
   // @IsEmail()
   @Length(0, 50)
-  email: string;
+  email?: string;
 
   @ApiProperty({ required: true })
   @IsString()
@@ -67,11 +67,6 @@ export class CreateUserDto {
   @IsString()
   @Length(0, 500)
   remark?: string;
-
-  @ApiProperty({ required: true })
-  @IsOptional()
-  @IsNumber()
-  postSort?: number;
 }
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {

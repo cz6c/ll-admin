@@ -1,7 +1,7 @@
 // 列表请求
 export interface ListParams {
-  pageNum: number;
-  pageSize: number;
+  pageNum?: number;
+  pageSize?: number;
   params?: {
     beginTime: string;
     endTime: string;
@@ -23,7 +23,7 @@ export interface LoginParams {
   uuid: string;
 }
 
-// 公共相应数据
+// 公共数据
 export interface BaseResponse {
   //0正常 1停用
   status: string;

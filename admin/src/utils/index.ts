@@ -104,22 +104,6 @@ export function enumToOpts(data: unknown) {
     .map(([label, value]) => ({ value, label }));
 }
 
-/**
- * @description: 处理路由路劲  /system/user
- * @param {string} p
- * @return {*}
- */
-export function getNormalPath(p: string): string {
-  if (p.length === 0 || !p || p == "undefined") {
-    return p;
-  }
-  let res = p.replace("//", "/");
-  if (res[res.length - 1] === "/") {
-    return res.slice(0, res.length - 1);
-  }
-  return res;
-}
-
 // 日期格式化
 export function parseTime(time, pattern = "{y}-{m}-{d} {h}:{i}:{s}") {
   if (arguments.length === 0 || !time) {
@@ -287,10 +271,5 @@ export function tansParams(params) {
       }
     }
   }
-  return result;
-}
-
-// 验证是否为blob格式
-export function blobValidate(data) {
-  return data.type !== "application/json";
+  return result.slice(0, -1);
 }

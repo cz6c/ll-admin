@@ -288,13 +288,13 @@ function handleDelete(row) {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "system/role/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `role_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "system/role/export",
+    {
+      ...queryParams.value
+    },
+    `role_${new Date().getTime()}.xlsx`
+  );
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -319,7 +319,7 @@ function handleStatusChange(row) {
 }
 /** 分配用户 */
 function handleAuthUser(row) {
-  router.push("/system/role-auth/user/" + row.roleId);
+  router.push("/system/role/authUser?roleId=" + row.roleId);
 }
 /** 查询菜单树结构 */
 function getMenuTreeselect() {

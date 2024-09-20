@@ -59,6 +59,8 @@ declare module 'vue' {
     GridItem: typeof import('./../src/components/Grid/components/GridItem.vue')['default']
     HeaderSearch: typeof import('./../src/components/HeaderSearch/index.vue')['default']
     IconSelect: typeof import('./../src/components/IconSelect/index.vue')['default']
+    ImportTemp: typeof import('./../src/components/ImportTemp/index.vue')['default']
+    ImportTempDialog: typeof import('./../src/components/ImportTempDialog/index.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SearchForm: typeof import('./../src/components/SearchForm/index.vue')['default']

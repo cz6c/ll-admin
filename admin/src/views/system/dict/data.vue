@@ -348,15 +348,15 @@ function handleDelete(row) {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "system/dict/data/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `dict_data_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "system/dict/data/export",
+    {
+      ...queryParams.value
+    },
+    `dict_data_${new Date().getTime()}.xlsx`
+  );
 }
 
-getTypes(route.params && route.params.dictId);
+getTypes(route.query && route.query.dictId);
 getTypeList();
 </script>

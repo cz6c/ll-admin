@@ -114,7 +114,7 @@ const queryRef = ref(null);
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
-  roleId: Number(route.params.roleId),
+  roleId: Number(route.query.roleId),
   userName: undefined,
   phonenumber: undefined
 });

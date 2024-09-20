@@ -85,7 +85,7 @@
       <el-table-column label="字典名称" align="center" prop="dictName" :show-overflow-tooltip="true" />
       <el-table-column label="字典类型" align="center" :show-overflow-tooltip="true">
         <template #default="scope">
-          <router-link :to="'/system/dict-data/index/' + scope.row.dictId" class="link-type">
+          <router-link :to="'/system/dict/data?dictId=' + scope.row.dictId" class="link-type">
             <span>{{ scope.row.dictType }}</span>
           </router-link>
         </template>
@@ -302,13 +302,13 @@ function handleDelete(row) {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "system/dict/type/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `dict_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "system/dict/type/export",
+    {
+      ...queryParams.value
+    },
+    `dict_${new Date().getTime()}.xlsx`
+  );
 }
 /** 刷新缓存按钮操作 */
 function handleRefreshCache() {

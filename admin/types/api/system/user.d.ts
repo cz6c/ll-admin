@@ -16,7 +16,6 @@ export type SysUserData = {
   status?: string;
   sex?: string;
   remark?: string;
-  postSort?: number;
 };
 
 export type SysUserResponse = {
@@ -25,13 +24,9 @@ export type SysUserResponse = {
   roleIds: number[];
 };
 export type SysUserListResponse = ListResponse<SysUserResponse>;
-export type SysPostAndPostResponse = {
-  posts: SysPostResponse[];
-  roles: SysRoleResponse[];
-};
 
 export type SysUserListParams = ListParams & {
-  deptId?: string;
+  deptId?: number;
   nickName?: string;
   email?: string;
   userName?: string;
@@ -42,7 +37,7 @@ export type SysUserListParams = ListParams & {
 export type AllocatedListDto = ListParams & {
   userName?: string;
   phonenumber?: string;
-  roleId?: string;
+  roleId?: number;
 };
 
 export type ResetPwdDto = {

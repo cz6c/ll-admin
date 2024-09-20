@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
-import { listToTree } from '@/common/utils/tree';
 import { DataScopeEnum } from '@/common/enum/index';
 
 @Injectable()
@@ -134,21 +133,5 @@ export class DeptService {
       },
     );
     return ResultData.ok(data);
-  }
-
-  /**
-   * 部门树
-   * @returns
-   */
-  async deptTree() {
-    const res = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: '0',
-      },
-    });
-    const tree = listToTree(res, {
-      id: 'deptId',
-    });
-    return ResultData.ok(tree);
   }
 }

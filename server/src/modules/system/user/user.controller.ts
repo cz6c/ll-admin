@@ -83,14 +83,6 @@ export class UserController {
   }
 
   @ApiOperation({
-    summary: '用户角色+岗位信息',
-  })
-  @Get('/getPostAndRoleAll')
-  findPostAndRoleAll() {
-    return this.userService.findPostAndRoleAll();
-  }
-
-  @ApiOperation({
     summary: '用户-停用角色',
   })
   @ApiBody({

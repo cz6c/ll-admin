@@ -3,7 +3,7 @@ import type { ListPostDto, SysPostData, SysPostListResponse, SysPostResponse } f
 
 // 查询岗位列表
 export function listPost(params: ListPostDto) {
-  return $http<ListPostDto, SysPostListResponse>({
+  return $http<never, SysPostListResponse>({
     url: "/system/post/list",
     method: "get",
     params

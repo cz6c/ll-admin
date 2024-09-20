@@ -32,7 +32,6 @@
 
 <script setup>
 import ScrollPane from "./ScrollPane.vue";
-import { getNormalPath } from "@/utils";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 import { usePermissionStore } from "@/store/modules/permission";
 import { RouterEnum } from "@/router";
@@ -89,11 +88,11 @@ function isLastView() {
     return false;
   }
 }
-function filterAffixTags(routes, basePath = "") {
+function filterAffixTags(routes) {
   let tags = [];
   routes.forEach(route => {
     if (route.meta && route.meta.affix) {
-      const tagPath = getNormalPath(basePath + "/" + route.path);
+      const tagPath = route.path;
       tags.push({
         fullPath: tagPath,
         path: tagPath,
@@ -102,7 +101,7 @@ function filterAffixTags(routes, basePath = "") {
       });
     }
     if (route.children) {
-      const tempTags = filterAffixTags(route.children, route.path);
+      const tempTags = filterAffixTags(route.children);
       if (tempTags.length >= 1) {
         tags = [...tags, ...tempTags];
       }

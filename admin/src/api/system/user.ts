@@ -8,8 +8,7 @@ import type {
   ChangeStatusDto,
   RequestUserPayload,
   UpdateProfileDto,
-  UpdatePwdDto,
-  SysPostAndPostResponse
+  UpdatePwdDto
 } from "#/api/system/user";
 import type { SysRoleResponse } from "#/api/system/role";
 
@@ -26,14 +25,6 @@ export function listUser(params: SysUserListParams) {
 export function getUser(userId: number) {
   return $http<never, SysUserResponse>({
     url: `/system/user/${userId}`,
-    method: "get"
-  });
-}
-
-// 查询用户详细
-export function getPostAndRoleAll() {
-  return $http<never, SysPostAndPostResponse>({
-    url: `/system/user/getPostAndRoleAll`,
     method: "get"
   });
 }

@@ -240,13 +240,13 @@ function handleUnlock() {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "monitor/logininfor/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `config_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "monitor/logininfor/export",
+    {
+      ...queryParams.value
+    },
+    `config_${new Date().getTime()}.xlsx`
+  );
 }
 
 getList();

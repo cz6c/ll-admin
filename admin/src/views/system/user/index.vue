@@ -28,7 +28,7 @@
       </el-col>
       <!--用户数据-->
       <el-col :span="20" :xs="24">
-        <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
+        <el-form ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
           <el-form-item label="用户名称" prop="userName">
             <el-input
               v-model="queryParams.userName"
@@ -95,14 +95,12 @@
               >导出</el-button
             >
           </el-col>
-          <right-toolbar v-model:showSearch="showSearch" :columns="columns" @queryTable="getList" />
         </el-row>
 
         <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="50" align="center" />
-          <el-table-column v-if="columns[0].visible" key="userId" label="用户编号" align="center" prop="userId" />
+          <el-table-column key="userId" label="用户编号" align="center" prop="userId" />
           <el-table-column
-            v-if="columns[1].visible"
             key="userName"
             label="用户名称"
             align="center"
@@ -110,7 +108,6 @@
             :show-overflow-tooltip="true"
           />
           <el-table-column
-            v-if="columns[2].visible"
             key="nickName"
             label="用户昵称"
             align="center"
@@ -118,22 +115,14 @@
             :show-overflow-tooltip="true"
           />
           <el-table-column
-            v-if="columns[3].visible"
             key="deptName"
             label="部门"
             align="center"
             prop="dept.deptName"
             :show-overflow-tooltip="true"
           />
-          <el-table-column
-            v-if="columns[4].visible"
-            key="phonenumber"
-            label="手机号码"
-            align="center"
-            prop="phonenumber"
-            width="120"
-          />
-          <el-table-column v-if="columns[5].visible" key="status" label="状态" align="center">
+          <el-table-column key="phonenumber" label="手机号码" align="center" prop="phonenumber" width="120" />
+          <el-table-column key="status" label="状态" align="center">
             <template #default="scope">
               <el-switch
                 v-model="scope.row.status"
@@ -143,7 +132,12 @@
               />
             </template>
           </el-table-column>
-          <el-table-column v-if="columns[6].visible" label="创建时间" align="center" prop="createTime" width="160">
+          <el-table-column key="userType" label="用户类型" align="center" prop="userType" width="120">
+            <template #default="scope">
+              <span>{{ scope.row.userType === "00" ? "系统用户" : "" }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" align="center" prop="createTime" width="160">
             <template #default="scope">
               <span>{{ parseTime(scope.row.createTime) }}</span>
             </template>
@@ -159,7 +153,7 @@
                   @click="handleUpdate(scope.row)"
                 />
               </el-tooltip>
-              <el-tooltip v-if="scope.row.userId !== 1" content="删除" placement="top">
+              <el-tooltip v-if="scope.row.userId !== 1 && scope.row.userType !== '00'" content="删除" placement="top">
                 <el-button
                   v-hasPermi="['system:user:remove']"
                   link
@@ -315,60 +309,28 @@
 
     <!-- 用户导入对话框 -->
     <el-dialog v-model="upload.open" :title="upload.title" width="400px" append-to-body>
-      <el-upload
-        ref="uploadRef"
-        :limit="1"
-        accept=".xlsx, .xls"
-        :headers="upload.headers"
-        :action="upload.url + '?updateSupport=' + upload.updateSupport"
-        :disabled="upload.isUploading"
-        :on-progress="handleFileUploadProgress"
-        :on-success="handleFileSuccess"
-        :auto-upload="false"
-        drag
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip text-center">
-            <div class="el-upload__tip"><el-checkbox v-model="upload.updateSupport" />是否更新已经存在的用户数据</div>
-            <span>仅允许导入xls、xlsx格式文件。</span>
-            <el-link
-              type="primary"
-              :underline="false"
-              style="font-size: 12px; vertical-align: baseline"
-              @click="importTemplate"
-              >下载模板</el-link
-            >
-          </div>
-        </template>
-      </el-upload>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="submitFileForm">确 定</el-button>
-          <el-button @click="upload.open = false">取 消</el-button>
-        </div>
-      </template>
+      <ImportTemp
+        v-if="upload.open"
+        importUrl="/system/user/importData"
+        importTempUrl="system/user/importTemplate"
+        filePrefix="user_"
+        @success="getList"
+        @close="upload.open = false"
+      />
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts" name="User">
-import { getToken } from "@/utils/auth";
-import {
-  changeUserStatus,
-  listUser,
-  resetUserPwd,
-  delUser,
-  getUser,
-  updateUser,
-  addUser,
-  getPostAndRoleAll
-} from "@/api/system/user";
-import { deptTreeSelect } from "@/api/system/dept";
+import { changeUserStatus, listUser, resetUserPwd, delUser, getUser, updateUser, addUser } from "@/api/system/user";
+import { listRole } from "@/api/system/role";
+import { listPost } from "@/api/system/post";
+import { listDept } from "@/api/system/dept";
+import { listToTree } from "@/utils/tree";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
-import { FormInstance } from "element-plus";
+import { FormInstance, TreeInstance } from "element-plus";
+import ImportTemp from "@/components/ImportTemp/index.vue";
 
 const router = useRouter();
 const { proxy } = getCurrentInstance();
@@ -381,9 +343,7 @@ const { sys_user_sex, sys_normal_disable } = useDict<{
 const userList = ref([]);
 const open = ref(false);
 const loading = ref(true);
-const showSearch = ref(true);
 const ids = ref([]);
-const single = ref(true);
 const multiple = ref(true);
 const total = ref(0);
 const title = ref("");
@@ -398,31 +358,12 @@ const upload = reactive({
   // 是否显示弹出层（用户导入）
   open: false,
   // 弹出层标题（用户导入）
-  title: "",
-  // 是否禁用上传
-  isUploading: false,
-  // 是否更新已经存在的用户数据
-  updateSupport: 0,
-  // 设置上传的请求头部
-  headers: { Authorization: "Bearer " + getToken() },
-  // 上传的地址
-  url: import.meta.env.VITE_APP_BASE_API + "/system/user/importData"
+  title: ""
 });
-// 列显隐信息
-const columns = ref([
-  { key: 0, label: `用户编号`, visible: true },
-  { key: 1, label: `用户名称`, visible: true },
-  { key: 2, label: `用户昵称`, visible: true },
-  { key: 3, label: `部门`, visible: true },
-  { key: 4, label: `手机号码`, visible: true },
-  { key: 5, label: `状态`, visible: true },
-  { key: 6, label: `创建时间`, visible: true }
-]);
 
-const deptTreeRef = ref(null);
-const queryRef = ref(null);
-const uploadRef = ref(null);
-const userRef = ref(null);
+const deptTreeRef = ref<TreeInstance>(null);
+const queryRef = ref<FormInstance>(null);
+const userRef = ref<FormInstance>(null);
 
 const data = reactive({
   form: {
@@ -481,15 +422,16 @@ const data = reactive({
         trigger: "blur"
       }
     ]
-  }
+  } as FormInstance["rules"]
 });
 
 const { queryParams, form, rules } = toRefs(data);
 
 /** 通过条件过滤节点  */
-const filterNode = (value, data) => {
+const filterNode = (value: string, data) => {
   if (!value) return true;
-  return data.label.indexOf(value) !== -1;
+  let labelKey = unref(deptTreeRef).store.props.label as string;
+  return data[labelKey].indexOf(value) !== -1;
 };
 /** 根据名称筛选部门树 */
 watch(deptName, val => {
@@ -497,10 +439,17 @@ watch(deptName, val => {
 });
 /** 查询部门下拉树结构 */
 function getDeptTree() {
-  deptTreeSelect().then(response => {
-    deptOptions.value = response.data;
+  listDept().then(response => {
+    deptOptions.value = listToTree(response.data, { id: "deptId" });
   });
 }
+/** 节点单击事件 */
+function handleNodeClick(data) {
+  let key = unref(deptTreeRef).store.key;
+  queryParams.value.deptId = data[key];
+  handleQuery();
+}
+
 /** 查询用户列表 */
 function getList() {
   loading.value = true;
@@ -509,12 +458,6 @@ function getList() {
     userList.value = res.data.list;
     total.value = res.data.total;
   });
-}
-/** 节点单击事件 */
-function handleNodeClick(data) {
-  let key = unref(deptTreeRef).store.key;
-  queryParams.value.deptId = data[key];
-  handleQuery();
 }
 /** 搜索按钮操作 */
 function handleQuery() {
@@ -528,6 +471,11 @@ function resetQuery() {
   queryParams.value.deptId = undefined;
   unref(deptTreeRef).setCurrentKey(null);
   handleQuery();
+}
+/** 选择条数  */
+function handleSelectionChange(selection) {
+  ids.value = selection.filter(({ userType }) => userType !== "00").map(item => item.userId);
+  multiple.value = !ids.value.length;
 }
 /** 删除按钮操作 */
 function handleDelete(row) {
@@ -545,14 +493,20 @@ function handleDelete(row) {
 }
 /** 导出按钮操作 */
 function handleExport() {
-  // proxy.download(
-  //   "system/user/export",
-  //   {
-  //     ...queryParams.value
-  //   },
-  //   `user_${new Date().getTime()}.xlsx`
-  // );
+  proxy.$file.download(
+    "system/user/export",
+    {
+      ...queryParams.value
+    },
+    `user_${new Date().getTime()}.xlsx`
+  );
 }
+/** 导入按钮操作 */
+function handleImport() {
+  upload.title = "用户导入";
+  upload.open = true;
+}
+
 /** 用户状态修改  */
 function handleStatusChange(row) {
   let text = row.status === "0" ? "启用" : "停用";
@@ -571,18 +525,17 @@ function handleStatusChange(row) {
 /** 跳转角色分配 */
 function handleAuthRole(row) {
   const userId = row.userId;
-  router.push("/system/user-auth/role/" + userId);
+  router.push("/system/user/authRole?userId=" + userId);
 }
 /** 重置密码按钮操作 */
 function handleResetPwd(row) {
-  proxy
-    .$prompt('请输入"' + row.userName + '"的新密码', "提示", {
-      confirmButtonText: "确定",
-      cancelButtonText: "取消",
-      closeOnClickModal: false,
-      inputPattern: /^.{5,20}$/,
-      inputErrorMessage: "用户密码长度必须介于 5 和 20 之间"
-    })
+  ElMessageBox.prompt('请输入"' + row.userName + '"的新密码', "提示", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    closeOnClickModal: false,
+    inputPattern: /^.{5,20}$/,
+    inputErrorMessage: "用户密码长度必须介于 5 和 20 之间"
+  })
     .then(({ value }) => {
       resetUserPwd({ userId: row.userId, password: value }).then(response => {
         proxy.$message.success("修改成功，新密码是：" + value);
@@ -590,41 +543,7 @@ function handleResetPwd(row) {
     })
     .catch(() => {});
 }
-/** 选择条数  */
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.userId);
-  single.value = selection.length != 1;
-  multiple.value = !selection.length;
-}
-/** 导入按钮操作 */
-function handleImport() {
-  upload.title = "用户导入";
-  upload.open = true;
-}
-/** 下载模板操作 */
-function importTemplate() {
-  // proxy.download("system/user/importTemplate", {}, `user_template_${new Date().getTime()}.xlsx`);
-}
-/**文件上传中处理 */
-const handleFileUploadProgress = (event, file, fileList) => {
-  upload.isUploading = true;
-};
-/** 文件上传成功处理 */
-const handleFileSuccess = (response, file, fileList) => {
-  upload.open = false;
-  upload.isUploading = false;
-  unref(uploadRef).handleRemove(file);
-  proxy.$alert(
-    "<div style='overflow: auto;overflow-x: hidden;max-height: 70vh;padding: 10px 20px 0;'>" + response.msg + "</div>",
-    "导入结果",
-    { dangerouslyUseHTMLString: true }
-  );
-  getList();
-};
-/** 提交上传文件 */
-function submitFileForm() {
-  unref(uploadRef).submit();
-}
+
 /** 重置操作表单 */
 function reset() {
   form.value = {
@@ -647,9 +566,11 @@ function resetForm(formEl: FormInstance | undefined) {
   formEl && formEl.resetFields();
 }
 function getPostAndRoleAllFn() {
-  getPostAndRoleAll().then(response => {
-    postOptions.value = response.data.posts;
-    roleOptions.value = response.data.roles;
+  listRole({}).then(response => {
+    roleOptions.value = response.data.list;
+  });
+  listPost({}).then(response => {
+    postOptions.value = response.data.list;
   });
 }
 /** 取消按钮 */
@@ -682,21 +603,13 @@ function handleUpdate(row) {
 }
 /** 提交按钮 */
 function submitForm() {
-  unref(userRef).validate(valid => {
+  unref(userRef).validate(async valid => {
     if (valid) {
-      if (form.value.userId != undefined) {
-        updateUser(form.value).then(response => {
-          proxy.$message.success("修改成功");
-          open.value = false;
-          getList();
-        });
-      } else {
-        addUser(form.value).then(response => {
-          proxy.$message.success("新增成功");
-          open.value = false;
-          getList();
-        });
-      }
+      const flag = form.value.userId != undefined;
+      flag ? await updateUser(form.value) : await addUser(form.value);
+      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      open.value = false;
+      getList();
     }
   });
 }

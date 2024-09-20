@@ -17,12 +17,14 @@ export class DateParamsDTO {
  */
 export class PagingDto {
   @ApiProperty({ required: false })
+  @IsOptional()
   @IsNumber()
-  pageNum: number;
+  pageNum?: number;
 
   @ApiProperty({ required: false })
+  @IsOptional()
   @IsNumber()
-  pageSize: number;
+  pageSize?: number;
 
   /**
    * 时间区间

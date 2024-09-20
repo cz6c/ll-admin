@@ -156,28 +156,6 @@ export class UserService {
     });
   }
 
-  /**
-   * 用户角色+岗位信息
-   * @returns
-   */
-  async findPostAndRoleAll() {
-    const posts = await this.sysPostEntityRep.find({
-      where: {
-        delFlag: '0',
-      },
-    });
-    const roles = await this.roleService.findRoles({
-      where: {
-        delFlag: '0',
-      },
-    });
-
-    return ResultData.ok({
-      posts,
-      roles,
-    });
-  }
-
   async findOne(userId: number) {
     const data = await this.userRepo.findOne({
       where: {
@@ -498,6 +476,15 @@ export class UserService {
    * @returns
    */
   async remove(ids: number[]) {
+    // const userData = await this.userRepo.findOne({
+    //   where: {
+    //     userId: changeStatusDto.userId,
+    //   },
+    //   select: ['userType'],
+    // });
+    // if (userData.userType === SYS_USER_TYPE.SYS) {
+    //   return ResultData.fail(500, '系统角色不可停用');
+    // }
     // 忽略系统角色的删除
     const data = await this.userRepo.update(
       { userId: In(ids), userType: Not(SYS_USER_TYPE.SYS) },
@@ -505,6 +492,7 @@ export class UserService {
         delFlag: '1',
       },
     );
+    console.log('🚀 ~ UserService ~ remove ~ data:', data);
     return ResultData.ok(data);
   }
 

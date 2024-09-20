@@ -17,12 +17,7 @@
           :unique-opened="true"
           :collapse="!sidebar.opened"
         >
-          <SidebarItem
-            v-for="(route, index) in routes"
-            :key="route.path + index"
-            :item="route"
-            :base-path="route.path"
-          />
+          <SidebarItem v-for="(route, index) in routes" :key="route.path + index" :item="route" />
         </el-menu>
       </el-scrollbar>
     </div>
@@ -42,6 +37,7 @@ const sidebar = computed(() => useLayoutStore().sidebar);
 const router = useRouter();
 const getActiveRoutePath = computed((): string => {
   const currentRoute = router.currentRoute.value;
+  console.log("🚀 ~ getActiveRoutePath ~ currentRoute:", currentRoute);
   return (currentRoute.meta.activeMenu as string) ?? currentRoute.path;
 });
 </script>

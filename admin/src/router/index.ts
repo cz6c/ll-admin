@@ -60,7 +60,7 @@ const routesList: AppRouteRecordRaw[] = [
     ]
   },
   {
-    path: "/:pathMatch(.*)*",
+    path: "/404",
     name: "PAGE_NOT_FOUND_NAME",
     component: () => import("@/views/public/404.vue"),
     hidden: true

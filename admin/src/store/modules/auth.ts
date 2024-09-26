@@ -2,10 +2,12 @@ import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getInfo, logout } from "@/api/public";
 import type { LoginParams } from "#/api";
-import type { UserItem } from "@/api/system1/user/index.d";
+import type { SysUserData } from "#/api/system/user.d";
+import { usePermissionStore } from "@/store/modules/permission";
+import { useTagsViewStore } from "@/store/modules/tagsView";
 
 interface authStoreState {
-  userInfo: UserItem;
+  userInfo: SysUserData;
   userId: number;
   username: string;
   avatar: string;
@@ -58,10 +60,12 @@ export const useAuthStore = defineStore("auth", {
     /**
      * @description: 前端登出
      */
-    async webLogout() {
-      this.userId && (await logout());
-      this.$reset();
+    webLogout() {
+      this.userId && logout();
       removeToken();
+      this.$reset();
+      usePermissionStore().$reset();
+      useTagsViewStore().$reset();
     }
   }
 });

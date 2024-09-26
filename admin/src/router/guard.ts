@@ -23,20 +23,6 @@ function setupPermissionGuard(router: Router) {
     const authStore = useAuthStore();
     const token = getToken();
 
-    // 没有接口本地调试时开启
-    // if (to.matched.length > 0 && to.matched[0].name !== "PAGE_NOT_FOUND_NAME" && permissionStore.addRoutes.length) {
-    //   next();
-    // } else {
-    //   let data = constRoutes;
-    //   if (productConfig.isDynamicAddedRoute) {
-    //     // 向后端请求路由数据
-    //     const res = await getRouters();
-    //     data = res.data;
-    //   }
-    //   permissionStore.generateRoutes(data);
-    //   next({ path: to.fullPath, replace: true });
-    // }
-
     // 验证token
     if (token) {
       if (to.name === RouterEnum.BASE_LOGIN_NAME) {
@@ -47,21 +33,23 @@ function setupPermissionGuard(router: Router) {
         try {
           await authStore.getLoginUserInfo();
           // 是否已经生成过动态路由
-          // if (permissionStore.addRoutes.length === 0) {
-          let data = constRoutes;
-          if (productConfig.isDynamicAddedRoute) {
-            // 向后端请求路由数据
-            const res = await getRouters();
-            data = res.data;
+          if (to.matched.length === 0) {
+            next({ name: "PAGE_NOT_FOUND_NAME" });
+          } else if (permissionStore.addRoutes.length > 0) {
+            next();
+          } else {
+            let data = constRoutes;
+            if (productConfig.isDynamicAddedRoute) {
+              // 向后端请求路由数据
+              const res = await getRouters();
+              data = res.data;
+            }
+            permissionStore.generateRoutes(data);
+            next({ ...to, replace: true });
           }
-          permissionStore.generateRoutes(data);
-          next({ path: to.fullPath, replace: true });
-          // } else {
-          //   next();
-          // }
         } catch (error) {
           // 登录过期或登录无效，前端登出
-          await useAuthStore().webLogout();
+          useAuthStore().webLogout();
           next({
             name: RouterEnum.BASE_LOGIN_NAME,
             query: { redirect: to.fullPath },
@@ -76,7 +64,7 @@ function setupPermissionGuard(router: Router) {
         return next();
       } else {
         // 无权限，前端登出
-        await useAuthStore().webLogout();
+        useAuthStore().webLogout();
         next({
           name: RouterEnum.BASE_LOGIN_NAME,
           query: { redirect: to.fullPath },

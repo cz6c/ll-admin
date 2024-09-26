@@ -65,8 +65,8 @@ async function logout() {
     cancelButtonText: "取消",
     type: "warning"
   })
-    .then(async () => {
-      await userStore.webLogout();
+    .then(() => {
+      userStore.webLogout();
       router.replace({
         name: RouterEnum.BASE_LOGIN_NAME,
         replace: true,

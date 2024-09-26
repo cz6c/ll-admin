@@ -174,5 +174,8 @@ export const useTagsViewStore = defineStore("tags-view", {
         resolve([...this.visitedViews]);
       });
     }
+  },
+  persist: {
+    storage: sessionStorage
   }
 });

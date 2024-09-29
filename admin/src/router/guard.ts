@@ -31,22 +31,24 @@ function setupPermissionGuard(router: Router) {
       // 验证用户权限
       if (!authStore.userId) {
         try {
+          console.log("刷新页面");
           await authStore.getLoginUserInfo();
+          let data = [];
           // 是否已经生成过动态路由
-          if (to.matched.length === 0) {
-            next({ name: "PAGE_NOT_FOUND_NAME" });
-          } else if (permissionStore.addRoutes.length > 0) {
-            next();
+          if (permissionStore.addRoutes.length > 0) {
+            console.log("缓存动态路由");
+            data = permissionStore.addRoutes;
           } else {
-            let data = constRoutes;
+            data = constRoutes;
             if (productConfig.isDynamicAddedRoute) {
               // 向后端请求路由数据
               const res = await getRouters();
               data = res.data;
             }
-            permissionStore.generateRoutes(data);
-            next({ ...to, replace: true });
           }
+          permissionStore.generateRoutes(data);
+          delete to.name; // 删除name, 防止生成路由后重定向到404页面
+          next({ ...to, replace: true });
         } catch (error) {
           // 登录过期或登录无效，前端登出
           useAuthStore().webLogout();
@@ -65,11 +67,6 @@ function setupPermissionGuard(router: Router) {
       } else {
         // 无权限，前端登出
         useAuthStore().webLogout();
-        next({
-          name: RouterEnum.BASE_LOGIN_NAME,
-          query: { redirect: to.fullPath },
-          replace: true
-        });
       }
     }
   });

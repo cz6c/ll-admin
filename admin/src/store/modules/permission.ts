@@ -18,11 +18,8 @@ export const usePermissionStore = defineStore("permission", {
     addRoutes: []
   }),
   actions: {
-    setRoutes(routes) {
-      this.addRoutes = routes;
-      this.routes = constantRoutes.concat(routes);
-    },
     generateRoutes(data) {
+      this.addRoutes = data;
       const sdata = JSON.parse(JSON.stringify(data));
       const asyncRoutes = menuToRoute(sdata);
       asyncRoutes.forEach(route => {
@@ -30,7 +27,7 @@ export const usePermissionStore = defineStore("permission", {
           router.addRoute(route); // 动态添加可访问路由表
         }
       });
-      this.setRoutes(asyncRoutes);
+      this.routes = constantRoutes.concat(asyncRoutes);
     }
   },
   persist: {

@@ -48,34 +48,19 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['monitor:operlog:remove']"
-          type="danger"
-          plain
-          icon="Delete"
-          :disabled="multiple"
-          @click="handleDelete"
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button v-hasPermi="['monitor:operlog:remove']" type="danger" plain icon="Delete" @click="handleClean"
-          >清空</el-button
-        >
+        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
-      <el-col :span="1.5">
-        <el-button v-hasPermi="['monitor:operlog:export']" type="warning" plain icon="Download" @click="handleExport"
-          >导出</el-button
-        >
-      </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
       ref="operlogRef"
       v-loading="loading"
       :data="operlogList"
-      :default-sort="defaultSort"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
     >
@@ -129,14 +114,7 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['monitor:operlog:query']"
-            link
-            type="primary"
-            icon="View"
-            @click="handleView(scope.row)"
-            >详细</el-button
-          >
+          <el-button v-auth="'query'" link type="primary" icon="View" @click="handleView(scope.row)">详细</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -218,7 +196,6 @@ const ids = ref([]);
 const multiple = ref(true);
 const total = ref(0);
 const dateRange = ref([]);
-const defaultSort = ref({ prop: "operTime", order: "descending" });
 
 const queryRef = ref(null);
 const operlogRef = ref(null);
@@ -275,7 +252,6 @@ function resetQuery() {
   dateRange.value = [];
   unref(queryRef) && unref(queryRef).resetFields();
   queryParams.value.pageNum = 1;
-  unref(operlogRef).sort(defaultSort.value.prop, defaultSort.value.order);
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -304,19 +280,6 @@ function handleDelete(row) {
     .then(() => {
       getList();
       proxy.$message.success("删除成功");
-    })
-    .catch(() => {});
-}
-/** 清空按钮操作 */
-function handleClean() {
-  proxy.$modal
-    .confirm("是否确认清空所有操作日志数据项?")
-    .then(function () {
-      return cleanOperlog();
-    })
-    .then(() => {
-      getList();
-      proxy.$message.success("清空成功");
     })
     .catch(() => {});
 }

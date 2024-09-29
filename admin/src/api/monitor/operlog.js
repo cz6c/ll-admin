@@ -16,11 +16,3 @@ export function delOperlog(operId) {
     method: "delete"
   });
 }
-
-// 清空操作日志
-export function cleanOperlog() {
-  return request({
-    url: "/monitor/operlog/clean",
-    method: "delete"
-  });
-}

@@ -4,7 +4,7 @@ export type SysNoticeData = {
   noticeId: number;
   noticeTitle: string;
   noticeType: string;
-  remark?: string;
+  noticeContent: string;
   status?: string;
 };
 

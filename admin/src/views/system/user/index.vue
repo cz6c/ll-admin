@@ -70,30 +70,18 @@
 
         <el-row :gutter="10" class="mb8">
           <el-col :span="1.5">
-            <el-button v-hasPermi="['system:user:add']" type="primary" plain icon="Plus" @click="handleAdd"
-              >新增</el-button
-            >
+            <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
           </el-col>
           <el-col :span="1.5">
-            <el-button
-              v-hasPermi="['system:user:remove']"
-              type="danger"
-              plain
-              icon="Delete"
-              :disabled="multiple"
-              @click="handleDelete"
-              >删除</el-button
-            >
+            <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">
+              删除
+            </el-button>
           </el-col>
           <el-col :span="1.5">
-            <el-button v-hasPermi="['system:user:import']" type="info" plain icon="Upload" @click="handleImport"
-              >导入</el-button
-            >
+            <el-button v-auth="'import'" type="info" plain icon="Upload" @click="handleImport">导入</el-button>
           </el-col>
           <el-col :span="1.5">
-            <el-button v-hasPermi="['system:user:export']" type="warning" plain icon="Download" @click="handleExport"
-              >导出</el-button
-            >
+            <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
           </el-col>
         </el-row>
 
@@ -145,40 +133,16 @@
           <el-table-column label="操作" align="center" width="150" class-name="small-padding fixed-width">
             <template #default="scope">
               <el-tooltip v-if="scope.row.userId !== 1" content="修改" placement="top">
-                <el-button
-                  v-hasPermi="['system:user:edit']"
-                  link
-                  type="primary"
-                  icon="Edit"
-                  @click="handleUpdate(scope.row)"
-                />
+                <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)" />
               </el-tooltip>
               <el-tooltip v-if="scope.row.userId !== 1 && scope.row.userType !== '00'" content="删除" placement="top">
-                <el-button
-                  v-hasPermi="['system:user:remove']"
-                  link
-                  type="primary"
-                  icon="Delete"
-                  @click="handleDelete(scope.row)"
-                />
+                <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)" />
               </el-tooltip>
               <el-tooltip v-if="scope.row.userId !== 1" content="重置密码" placement="top">
-                <el-button
-                  v-hasPermi="['system:user:resetPwd']"
-                  link
-                  type="primary"
-                  icon="Key"
-                  @click="handleResetPwd(scope.row)"
-                />
+                <el-button v-auth="'resetPwd'" link type="primary" icon="Key" @click="handleResetPwd(scope.row)" />
               </el-tooltip>
               <el-tooltip v-if="scope.row.userId !== 1" content="分配角色" placement="top">
-                <el-button
-                  v-hasPermi="['system:user:edit']"
-                  link
-                  type="primary"
-                  icon="CircleCheck"
-                  @click="handleAuthRole(scope.row)"
-                />
+                <el-button v-auth="'edit'" link type="primary" icon="CircleCheck" @click="handleAuthRole(scope.row)" />
               </el-tooltip>
             </template>
           </el-table-column>
@@ -329,7 +293,7 @@ import { listDept } from "@/api/system/dept";
 import { listToTree } from "@/utils/tree";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
-import { FormInstance, TreeInstance } from "element-plus";
+import { FormInstance, FormRules, TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
 
 const router = useRouter();
@@ -422,7 +386,7 @@ const data = reactive({
         trigger: "blur"
       }
     ]
-  } as FormInstance["rules"]
+  } as FormRules
 });
 
 const { queryParams, form, rules } = toRefs(data);

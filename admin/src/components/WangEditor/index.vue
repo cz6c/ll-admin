@@ -103,7 +103,7 @@ props.editorConfig.MENU_CONF!["uploadImage"] = {
     formData.append("file", file);
     try {
       const { data } = await uploadImg(formData);
-      insertFn(data);
+      insertFn(data.url);
     } catch (error) {
       console.log(error);
     }

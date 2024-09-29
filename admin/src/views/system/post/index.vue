@@ -32,36 +32,21 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:post:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:post:edit']"
-          type="success"
-          plain
-          icon="Edit"
-          :disabled="single"
-          @click="handleUpdate"
+        <el-button v-auth="'edit'" type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:post:remove']"
-          type="danger"
-          plain
-          icon="Delete"
-          :disabled="multiple"
-          @click="handleDelete"
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:post:export']" type="warning" plain icon="Download" @click="handleExport"
-          >导出</el-button
-        >
+        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="postList" @selection-change="handleSelectionChange">
@@ -82,17 +67,10 @@
       </el-table-column>
       <el-table-column label="操作" width="180" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button v-hasPermi="['system:post:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
-            >修改</el-button
-          >
-          <el-button
-            v-hasPermi="['system:post:remove']"
-            link
-            type="primary"
-            icon="Delete"
-            @click="handleDelete(scope.row)"
-            >删除</el-button
-          >
+          <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)">修改</el-button>
+          <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)">
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>

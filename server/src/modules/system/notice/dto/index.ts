@@ -26,7 +26,7 @@ export class CreateNoticeDto {
   @IsOptional()
   @IsString()
   @Length(0, 500)
-  remark?: string;
+  noticeContent: string;
 
   @ApiProperty({
     required: false,

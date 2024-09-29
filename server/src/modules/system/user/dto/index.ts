@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber, IsNumberString, IsEmail } from 'class-validator';
+import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber, IsNumberString } from 'class-validator';
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
 
@@ -15,8 +15,8 @@ export class CreateUserDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  // @IsEmail()
   @Length(0, 50)
+  @IsString()
   email?: string;
 
   @ApiProperty({ required: true })
@@ -168,7 +168,7 @@ export class UpdateProfileDto {
 
   @ApiProperty({ required: true })
   @IsOptional()
-  @IsEmail()
+  @IsString()
   @Length(0, 50)
   email: string;
 

@@ -32,33 +32,18 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:notice:add']" type="primary" plain icon="Plus" @click="handleAdd"
-          >新增</el-button
-        >
+        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:notice:edit']"
-          type="success"
-          plain
-          icon="Edit"
-          :disabled="single"
-          @click="handleUpdate"
-          >修改</el-button
-        >
+        <el-button v-auth="'edit'" type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          >修改
+        </el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:notice:remove']"
-          type="danger"
-          plain
-          icon="Delete"
-          :disabled="multiple"
-          @click="handleDelete"
-          >删除</el-button
-        >
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          >删除
+        </el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="noticeList" @selection-change="handleSelectionChange">
@@ -83,22 +68,10 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:notice:edit']"
-            link
-            type="primary"
-            icon="Edit"
-            @click="handleUpdate(scope.row)"
-            >修改</el-button
-          >
-          <el-button
-            v-hasPermi="['system:notice:remove']"
-            link
-            type="primary"
-            icon="Delete"
-            @click="handleDelete(scope.row)"
-            >删除</el-button
-          >
+          <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)">修改</el-button>
+          <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)">
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -112,7 +85,7 @@
     />
 
     <!-- 添加或修改公告对话框 -->
-    <el-dialog v-model="open" :title="title" width="780px" append-to-body>
+    <el-dialog v-model="open" :title="title" width="1000px" append-to-body>
       <el-form ref="noticeRef" :model="form" :rules="rules" label-width="80px">
         <el-row>
           <el-col :span="12">
@@ -138,7 +111,7 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="内容">
-              <editor v-model="form.noticeContent" :min-height="192" />
+              <WangEditor v-model="form.noticeContent" height="400px" />
             </el-form-item>
           </el-col>
         </el-row>

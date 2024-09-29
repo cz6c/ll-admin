@@ -32,17 +32,15 @@ function hasOneShowingChild(children, parent) {
 }
 
 function resolvePath(routePath, routeQuery) {
-  if (isExternal(routePath)) {
-    return routePath;
-  }
   if (routeQuery) {
     let query = JSON.parse(routeQuery);
     return {
       path: routePath,
       query: query
     };
+  } else {
+    return routePath;
   }
-  return routePath;
 }
 
 function hasTitle(title) {
@@ -58,7 +56,7 @@ function hasTitle(title) {
   <div v-if="!item.hidden">
     <template v-if="hasOneShowingChild(item.children, item) && onlyOneChild.hasOneShowingChild">
       <app-link v-if="onlyOneChild.meta" :to="resolvePath(onlyOneChild.path, onlyOneChild.query)">
-        <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{ 'sub-menu-title-noDropdown': !isNest }">
+        <el-menu-item :index="onlyOneChild.path" :class="{ 'sub-menu-title-noDropdown': !isNest }">
           <SvgIcon :name="onlyOneChild.meta.icon" size="18" />
           <template #title>
             <span class="menu-title" :title="hasTitle(onlyOneChild.meta.title)">{{ onlyOneChild.meta.title }}</span>
@@ -67,7 +65,7 @@ function hasTitle(title) {
       </app-link>
     </template>
 
-    <el-sub-menu v-else :index="resolvePath(item.path)" popper-append-to-body>
+    <el-sub-menu v-else :index="item.path" popper-append-to-body>
       <template v-if="item.meta" #title>
         <SvgIcon :name="item.meta.icon" size="18" />
         <span class="menu-title" :title="hasTitle(item.meta.title)">{{ item.meta.title }}</span>

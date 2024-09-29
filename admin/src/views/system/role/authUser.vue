@@ -27,13 +27,11 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:role:add']" type="primary" plain icon="Plus" @click="openSelectUser"
-          >添加用户</el-button
-        >
+        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="openSelectUser">添加用户</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button
-          v-hasPermi="['system:role:remove']"
+          v-auth="'remove'"
           type="danger"
           plain
           icon="CircleClose"
@@ -45,7 +43,6 @@
       <el-col :span="1.5">
         <el-button type="warning" plain icon="Close" @click="handleClose">关闭</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="userList" @selection-change="handleSelectionChange">
@@ -66,14 +63,9 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button
-            v-hasPermi="['system:role:remove']"
-            link
-            type="primary"
-            icon="CircleClose"
-            @click="cancelAuthUser(scope.row)"
-            >取消授权</el-button
-          >
+          <el-button v-auth="'remove'" link type="primary" icon="CircleClose" @click="cancelAuthUser(scope.row)">
+            取消授权
+          </el-button>
         </template>
       </el-table-column>
     </el-table>

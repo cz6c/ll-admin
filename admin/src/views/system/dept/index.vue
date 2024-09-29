@@ -23,12 +23,11 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:dept:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button type="info" plain icon="Sort" @click="toggleExpandAll">展开/折叠</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
@@ -53,15 +52,11 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button v-hasPermi="['system:dept:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
-            >修改</el-button
-          >
-          <el-button v-hasPermi="['system:dept:add']" link type="primary" icon="Plus" @click="handleAdd(scope.row)"
-            >新增</el-button
-          >
+          <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)">修改</el-button>
+          <el-button v-auth="'add'" link type="primary" icon="Plus" @click="handleAdd(scope.row)">新增</el-button>
           <el-button
             v-if="scope.row.parentId != 0"
-            v-hasPermi="['system:dept:remove']"
+            v-auth="'remove'"
             link
             type="primary"
             icon="Delete"
@@ -143,7 +138,7 @@ import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild }
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
-import { FormInstance } from "element-plus";
+import { FormInstance, FormRules } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
@@ -166,11 +161,11 @@ const data = reactive({
   form: {
     deptId: undefined,
     parentId: undefined,
-    deptName: undefined,
+    deptName: "",
     orderNum: 0,
-    leader: undefined,
-    phone: undefined,
-    email: undefined,
+    leader: "",
+    phone: "",
+    email: "",
     status: "0"
   },
   queryParams: {
@@ -181,6 +176,7 @@ const data = reactive({
     parentId: [{ required: true, message: "上级部门不能为空", trigger: "blur" }],
     deptName: [{ required: true, message: "部门名称不能为空", trigger: "blur" }],
     orderNum: [{ required: true, message: "显示排序不能为空", trigger: "blur" }],
+    leader: [{ required: true, message: "负责人不能为空", trigger: "blur" }],
     email: [
       {
         type: "email",
@@ -195,7 +191,7 @@ const data = reactive({
         trigger: "blur"
       }
     ]
-  }
+  } as FormRules
 });
 
 const { queryParams, form, rules } = toRefs(data);
@@ -218,11 +214,11 @@ function reset() {
   form.value = {
     deptId: undefined,
     parentId: undefined,
-    deptName: undefined,
+    deptName: "",
     orderNum: 0,
-    leader: undefined,
-    phone: undefined,
-    email: undefined,
+    leader: "",
+    phone: "",
+    email: "",
     status: "0"
   };
   resetForm(unref(deptRef));

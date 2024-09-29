@@ -43,45 +43,27 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['monitor:logininfor:remove']"
-          type="danger"
-          plain
-          icon="Delete"
-          :disabled="multiple"
-          @click="handleDelete"
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button v-hasPermi="['monitor:logininfor:remove']" type="danger" plain icon="Delete" @click="handleClean"
-          >清空</el-button
-        >
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" @click="handleClean">清空</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['monitor:logininfor:unlock']"
-          type="primary"
-          plain
-          icon="Unlock"
-          :disabled="single"
-          @click="handleUnlock"
+        <el-button v-auth="'unlock'" type="primary" plain icon="Unlock" :disabled="single" @click="handleUnlock"
           >解锁</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button v-hasPermi="['monitor:logininfor:export']" type="warning" plain icon="Download" @click="handleExport"
-          >导出</el-button
-        >
+        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table
       ref="logininforRef"
       v-loading="loading"
       :data="logininforList"
-      :default-sort="defaultSort"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
     >
@@ -149,7 +131,6 @@ const multiple = ref(true);
 const selectName = ref("");
 const total = ref(0);
 const dateRange = ref([]);
-const defaultSort = ref({ prop: "loginTime", order: "descending" });
 
 const queryRef = ref(null);
 const logininforRef = ref(null);
@@ -183,7 +164,6 @@ function resetQuery() {
   dateRange.value = [];
   unref(queryRef) && unref(queryRef).resetFields();
   queryParams.value.pageNum = 1;
-  unref(logininforRef).sort(defaultSort.value.prop, defaultSort.value.order);
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {

@@ -33,6 +33,7 @@ export class PostService {
     if (query.status) {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
+    entity.orderBy('entity.postSort', 'ASC');
 
     if (query.pageSize && query.pageNum) {
       entity.skip(query.pageSize * (query.pageNum - 1)).take(query.pageSize);

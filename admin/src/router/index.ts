@@ -3,7 +3,7 @@ import type { RouteRecordRaw } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
 export const Layout = () => import("@/layout/index.vue");
-export const IFrame = () => import("@/views/iframe/index.vue");
+export const IFrame = () => import("@/layout/iframe/index.vue");
 
 export enum RouterEnum {
   // login name

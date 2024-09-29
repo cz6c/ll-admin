@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { CreateOperlogDto } from './dto/create-operlog.dto';
-import { UpdateOperlogDto } from './dto/update-operlog.dto';
 
 @Injectable()
 export class OperlogService {
@@ -15,11 +14,6 @@ export class OperlogService {
 
   findOne(id: number) {
     return `This action returns a #${id} operlog`;
-  }
-
-  update(id: number, updateOperlogDto: UpdateOperlogDto) {
-    console.log('🚀 ~ OperlogService ~ update ~ updateOperlogDto:', updateOperlogDto);
-    return `This action updates a #${id} operlog`;
   }
 
   remove(id: number) {

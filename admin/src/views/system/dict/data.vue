@@ -28,39 +28,24 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:dict:add']" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:dict:edit']"
-          type="success"
-          plain
-          icon="Edit"
-          :disabled="single"
-          @click="handleUpdate"
+        <el-button v-auth="'edit'" type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
           >修改</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-hasPermi="['system:dict:remove']"
-          type="danger"
-          plain
-          icon="Delete"
-          :disabled="multiple"
-          @click="handleDelete"
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
           >删除</el-button
         >
       </el-col>
       <el-col :span="1.5">
-        <el-button v-hasPermi="['system:dict:export']" type="warning" plain icon="Download" @click="handleExport"
-          >导出</el-button
-        >
+        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button type="warning" plain icon="Close" @click="handleClose">关闭</el-button>
       </el-col>
-      <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
     </el-row>
 
     <el-table v-loading="loading" :data="dataList" @selection-change="handleSelectionChange">
@@ -89,15 +74,8 @@
       </el-table-column>
       <el-table-column label="操作" align="center" width="160" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button v-hasPermi="['system:dict:edit']" link type="primary" icon="Edit" @click="handleUpdate(scope.row)"
-            >修改</el-button
-          >
-          <el-button
-            v-hasPermi="['system:dict:remove']"
-            link
-            type="primary"
-            icon="Delete"
-            @click="handleDelete(scope.row)"
+          <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)">修改</el-button>
+          <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)"
             >删除</el-button
           >
         </template>
@@ -158,7 +136,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Data">
+<script setup lang="ts" name="DictData">
 import { useDictStore } from "@/store/modules/dict";
 import { optionselect as getDictOptionselect, getType } from "@/api/system/dict/type";
 import { listData, getData, delData, addData, updateData } from "@/api/system/dict/data";

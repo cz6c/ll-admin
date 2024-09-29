@@ -42,6 +42,7 @@ export class DeptService {
     if (query.status) {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
+    entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
     return ResultData.ok(res);
   }

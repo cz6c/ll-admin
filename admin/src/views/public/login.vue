@@ -10,8 +10,8 @@
           <p class="description">{{ BASE_TITLE }}</p>
         </div>
         <el-form ref="formRef" :rules="rules" :model="loginForm">
-          <el-form-item prop="username">
-            <el-input v-model="loginForm.username" auto-complete="off" placeholder="请输入账号">
+          <el-form-item prop="userName">
+            <el-input v-model="loginForm.userName" auto-complete="off" placeholder="请输入账号">
               <template #prefix><SvgIcon name="user" size="20" /></template>
             </el-input>
           </el-form-item>
@@ -78,14 +78,14 @@ const codeUrl = ref("");
 let redirect = ref("");
 const loginForm = reactive({
   password: "123456",
-  username: "admin",
+  userName: "admin",
   rememberMe: false,
   code: "",
   uuid: ""
 });
 const rules: FormRules = {
   password: [{ required: true, message: "请输入密码", trigger: "blur" }],
-  username: [{ required: true, message: "请输入账号", trigger: "blur" }],
+  userName: [{ required: true, message: "请输入账号", trigger: "blur" }],
   code: [{ required: true, trigger: "change", message: "请输入验证码" }]
 };
 
@@ -111,12 +111,12 @@ function handleLogin() {
         loading.value = true;
         // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
         if (loginForm.rememberMe) {
-          Cookies.set("username", loginForm.username, { expires: 30 });
+          Cookies.set("userName", loginForm.userName, { expires: 30 });
           Cookies.set("password", encrypt(loginForm.password), { expires: 30 });
           Cookies.set("rememberMe", loginForm.rememberMe, { expires: 30 });
         } else {
           // 否则移除
-          Cookies.remove("username");
+          Cookies.remove("userName");
           Cookies.remove("password");
           Cookies.remove("rememberMe");
         }
@@ -145,10 +145,10 @@ async function getCode() {
 }
 
 function getCookie() {
-  const username = Cookies.get("username");
+  const userName = Cookies.get("userName");
   const password = Cookies.get("password");
   const rememberMe = Cookies.get("rememberMe");
-  loginForm.username = username === undefined ? loginForm.username : username;
+  loginForm.userName = userName === undefined ? loginForm.userName : userName;
   loginForm.password = password === undefined ? loginForm.password : decrypt(password);
   loginForm.rememberMe = rememberMe === undefined ? false : Boolean(rememberMe);
 }

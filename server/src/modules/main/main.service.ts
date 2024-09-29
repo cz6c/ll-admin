@@ -23,7 +23,7 @@ export class MainService {
   async login(user: LoginDto, clientInfo: ClientInfoDto) {
     const loginLog = {
       ...clientInfo,
-      userName: user.username,
+      userName: user.userName,
       status: '0',
       msg: '',
     };

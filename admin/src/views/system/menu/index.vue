@@ -89,6 +89,13 @@
     <el-dialog v-model="open" :title="title" width="680px" append-to-body>
       <el-form ref="menuRef" :model="form" :rules="rules" label-width="100px">
         <el-row>
+          <el-col v-if="form.menuType === 'F'" :span="24">
+            <el-form-item label="快捷输入">
+              <el-button v-for="{ label, value } in fOptionts" :key="value" @click="handleF({ label, value })">
+                {{ label }}
+              </el-button>
+            </el-form-item>
+          </el-col>
           <el-col v-if="form.menuType === 'M'" :span="24">
             <el-form-item label="上级菜单">
               <el-tree-select
@@ -492,4 +499,35 @@ function handleDelete(row) {
 }
 
 getList();
+
+const fOptionts = [
+  {
+    label: "新增",
+    value: "add"
+  },
+  {
+    label: "编辑",
+    value: "edit"
+  },
+  {
+    label: "删除",
+    value: "remove"
+  },
+  {
+    label: "查询",
+    value: "query"
+  },
+  {
+    label: "导入",
+    value: "import"
+  },
+  {
+    label: "导出",
+    value: "export"
+  }
+];
+function handleF({ label, value }) {
+  form.value.menuName = label;
+  form.value.perm = value;
+}
 </script>

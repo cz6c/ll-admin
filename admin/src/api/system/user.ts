@@ -6,7 +6,7 @@ import type {
   SysUserListResponse,
   ResetPwdDto,
   ChangeStatusDto,
-  RequestUserPayload,
+  UserProfile,
   UpdateProfileDto,
   UpdatePwdDto
 } from "#/api/system/user";
@@ -75,7 +75,7 @@ export function changeUserStatus(data: ChangeStatusDto) {
 
 // 查询用户个人信息
 export function getUserProfile() {
-  return $http<never, RequestUserPayload>({
+  return $http<never, UserProfile>({
     url: `/system/user/profile`,
     method: "get"
   });

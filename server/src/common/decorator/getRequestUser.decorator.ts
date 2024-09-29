@@ -20,7 +20,7 @@ export interface RequestUserPayload {
   token: string;
   user: User;
   userId: number;
-  username: string;
+  userName: string;
   deptId: number;
 }
 

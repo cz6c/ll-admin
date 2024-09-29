@@ -17,7 +17,7 @@ export interface ListResponse<T> {
 
 // 登录参数
 export interface LoginParams {
-  username: string;
+  userName: string;
   password: string;
   code: string;
   uuid: string;

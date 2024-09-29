@@ -81,8 +81,8 @@ export function Paginate(data: { list: Array<any>; pageSize: number; pageNum: nu
         arr.push(Boolean(item.ipaddr.includes(filterParam.ipaddr)));
       }
 
-      if (filterParam.userName && item.username) {
-        arr.push(Boolean(item.username.includes(filterParam.userName)));
+      if (filterParam.userName && item.userName) {
+        arr.push(Boolean(item.userName.includes(filterParam.userName)));
       }
       return !Boolean(arr.includes(false));
     });

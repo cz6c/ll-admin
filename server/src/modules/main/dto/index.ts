@@ -16,7 +16,7 @@ export class LoginDto {
 
   @IsString()
   @Length(2, 10)
-  username: string;
+  userName: string;
 
   @IsString()
   @Length(5, 20)

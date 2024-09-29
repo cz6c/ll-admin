@@ -43,17 +43,17 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
-          >删除</el-button
-        >
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">
+          删除
+        </el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button v-auth="'remove'" type="danger" plain icon="Delete" @click="handleClean">清空</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button v-auth="'unlock'" type="primary" plain icon="Unlock" :disabled="single" @click="handleUnlock"
-          >解锁</el-button
-        >
+        <el-button v-auth="'unlock'" type="primary" plain icon="Unlock" :disabled="single" @click="handleUnlock">
+          解锁
+        </el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
@@ -207,14 +207,14 @@ function handleClean() {
 }
 /** 解锁按钮操作 */
 function handleUnlock() {
-  const username = selectName.value;
+  const userName = selectName.value;
   proxy.$modal
-    .confirm('是否确认解锁用户"' + username + '"数据项?')
+    .confirm('是否确认解锁用户"' + userName + '"数据项?')
     .then(function () {
-      return unlockLogininfor(username);
+      return unlockLogininfor(userName);
     })
     .then(() => {
-      proxy.$message.success("用户" + username + "解锁成功");
+      proxy.$message.success("用户" + userName + "解锁成功");
     })
     .catch(() => {});
 }

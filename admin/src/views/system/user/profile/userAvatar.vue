@@ -57,9 +57,9 @@
 // import "vue-cropper/dist/index.css";
 import { VueCropper } from "vue-cropper";
 import { uploadAvatar } from "@/api/system/user";
-import { useUserStore } from "@/store/modules/user";
+import { useAuthStore } from "@/store/modules/auth";
 
-const userStore = useUserStore();
+const userStore = useAuthStore();
 const { proxy } = getCurrentInstance();
 
 const open = ref(false);

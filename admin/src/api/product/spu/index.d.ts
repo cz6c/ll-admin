@@ -39,7 +39,7 @@ export interface ProductItem {
 // 列表
 export type ProductListResponse = ListResponse<ProductItem>;
 export interface ProductListParams extends ListParams {
-  username?: string;
+  userName?: string;
 }
 
 export interface SkuItem {

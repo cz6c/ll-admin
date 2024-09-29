@@ -27,18 +27,12 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="openSelectUser">添加用户</el-button>
+        <el-button type="primary" plain icon="Plus" @click="openSelectUser">添加用户</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button
-          v-auth="'remove'"
-          type="danger"
-          plain
-          icon="CircleClose"
-          :disabled="multiple"
-          @click="cancelAuthUserAll"
-          >批量取消授权</el-button
-        >
+        <el-button type="danger" plain icon="CircleClose" :disabled="multiple" @click="cancelAuthUserAll">
+          批量取消授权
+        </el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button type="warning" plain icon="Close" @click="handleClose">关闭</el-button>
@@ -63,9 +57,7 @@
       </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template #default="scope">
-          <el-button v-auth="'remove'" link type="primary" icon="CircleClose" @click="cancelAuthUser(scope.row)">
-            取消授权
-          </el-button>
+          <el-button link type="primary" icon="CircleClose" @click="cancelAuthUser(scope.row)">取消授权</el-button>
         </template>
       </el-table-column>
     </el-table>

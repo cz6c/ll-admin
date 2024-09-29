@@ -80,7 +80,7 @@ const tableConfig = reactive<TableConfig<OrderItem>>({
   columns: [
     {
       label: "订单编号",
-      prop: "username"
+      prop: "userName"
     },
     {
       label: "订单状态",

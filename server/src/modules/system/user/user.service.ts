@@ -281,7 +281,7 @@ export class UserService {
 
     const data = await this.userRepo.findOne({
       where: {
-        userName: user.username,
+        userName: user.userName,
       },
       select: ['userId', 'password'],
     });
@@ -330,7 +330,7 @@ export class UserService {
       token: uuid,
       user: userData,
       userId: userData.userId,
-      username: userData.userName,
+      userName: userData.userName,
       deptId: userData.deptId,
     };
     await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${uuid}`, metaData, LOGIN_TOKEN_EXPIRESIN);
@@ -407,15 +407,15 @@ export class UserService {
     const loginDate = GetNowDate();
     const checkUserNameUnique = await this.userRepo.findOne({
       where: {
-        userName: user.username,
+        userName: user.userName,
       },
       select: ['userName'],
     });
     if (checkUserNameUnique) {
-      return ResultData.fail(500, `保存用户'${user.username}'失败，注册账号已存在`);
+      return ResultData.fail(500, `保存用户'${user.userName}'失败，注册账号已存在`);
     }
-    user['userName'] = user.username;
-    user['nickName'] = user.username;
+    user['userName'] = user.userName;
+    user['nickName'] = user.userName;
     await this.userRepo.save({ ...user, loginDate });
     return ResultData.ok();
   }

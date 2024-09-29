@@ -61,7 +61,7 @@ export interface OrderSkuEntity {
 // 列表
 export type OrderListResponse = ListResponse<OrderItem>;
 export interface OrderListParams extends ListParams {
-  username?: string;
+  userName?: string;
 }
 
 /** 订单状态枚举 */

@@ -16,6 +16,7 @@ export type SysUserData = {
   status?: string;
   sex?: string;
   remark?: string;
+  avatar?: string;
 };
 
 export type SysUserResponse = {
@@ -62,20 +63,9 @@ export type UpdatePwdDto = {
   newPassword: string;
 };
 
-export type RequestUserPayload = {
-  browser: string;
-  ipaddr: string;
-  loginLocation: string;
-  loginTime: Date;
-  os: string;
-  roles: string[];
-  token: string;
-  user: SysUserData & {
+export type UserProfile = SysUserData &
+  BaseResponse & {
     dept: SysDeptResponse;
     roles: Array<SysRoleResponse>;
     posts: Array<SysPostResponse>;
   };
-  userId: number;
-  username: string;
-  deptId: number;
-};

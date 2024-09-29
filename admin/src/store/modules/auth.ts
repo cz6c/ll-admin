@@ -9,7 +9,7 @@ import { useTagsViewStore } from "@/store/modules/tagsView";
 interface authStoreState {
   userInfo: SysUserData;
   userId: number;
-  username: string;
+  userName: string;
   avatar: string;
   roles: string[];
 }
@@ -19,7 +19,7 @@ export const useAuthStore = defineStore("auth", {
     // 用户信息
     userInfo: null,
     userId: 0,
-    username: "",
+    userName: "",
     avatar: "",
     // 角色权限
     roles: []
@@ -48,7 +48,7 @@ export const useAuthStore = defineStore("auth", {
         const { data } = await getInfo();
         this.userInfo = data.user;
         this.userId = data.user.userId;
-        this.username = data.user.username;
+        this.userName = data.user.userName;
         this.avatar = data.user.avatar;
         this.roles = data.roles;
         return data;
@@ -64,8 +64,10 @@ export const useAuthStore = defineStore("auth", {
       this.userId && logout();
       removeToken();
       this.$reset();
-      usePermissionStore().$reset();
-      useTagsViewStore().$reset();
+      setTimeout(() => {
+        usePermissionStore().$reset();
+        useTagsViewStore().$reset();
+      }, 500);
     }
   }
 });

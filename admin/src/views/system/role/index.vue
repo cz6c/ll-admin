@@ -89,7 +89,7 @@
             <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)" />
           </el-tooltip>
           <el-tooltip v-if="scope.row.roleId !== 1" content="分配用户" placement="top">
-            <el-button v-auth="'edit'" link type="primary" icon="User" @click="handleAuthUser(scope.row)" />
+            <el-button v-auth="'authUser'" link type="primary" icon="User" @click="handleAuthUser(scope.row)" />
           </el-tooltip>
         </template>
       </el-table-column>

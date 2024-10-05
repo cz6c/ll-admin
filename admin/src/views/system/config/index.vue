@@ -57,9 +57,6 @@
       <el-col :span="1.5">
         <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Refresh" @click="handleRefreshCache">刷新缓存</el-button>
-      </el-col>
     </el-row>
 
     <el-table v-loading="loading" :data="configList" @selection-change="handleSelectionChange">
@@ -129,7 +126,7 @@
 </template>
 
 <script setup lang="ts" name="Config">
-import { listConfig, getConfig, delConfig, addConfig, updateConfig, refreshCache } from "@/api/system/config";
+import { listConfig, getConfig, delConfig, addConfig, updateConfig } from "@/api/system/config";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict, type DictData } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
@@ -283,12 +280,6 @@ function handleExport() {
     },
     `config_${new Date().getTime()}.xlsx`
   );
-}
-/** 刷新缓存按钮操作 */
-function handleRefreshCache() {
-  refreshCache().then(() => {
-    proxy.$message.success("刷新缓存成功");
-  });
 }
 
 getList();

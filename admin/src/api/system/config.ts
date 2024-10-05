@@ -18,14 +18,6 @@ export function getConfig(configId: number) {
   });
 }
 
-// 根据参数键名查询参数值
-export function getConfigKey(configKey: string) {
-  return $http<never, SysConfigResponse>({
-    url: "/system/config/configKey/" + configKey,
-    method: "get"
-  });
-}
-
 // 新增参数配置
 export function addConfig(data: SysConfigData) {
   return $http<SysConfigData, never>({
@@ -48,14 +40,6 @@ export function updateConfig(data: SysConfigData) {
 export function delConfig(configIds: string) {
   return $http<never, never>({
     url: "/system/config/" + configIds,
-    method: "delete"
-  });
-}
-
-// 刷新参数缓存
-export function refreshCache() {
-  return $http<never, never>({
-    url: "/system/config/refreshCache",
     method: "delete"
   });
 }

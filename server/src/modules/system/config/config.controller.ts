@@ -41,27 +41,11 @@ export class ConfigController {
   }
 
   @ApiOperation({
-    summary: '参数设置-详情(configKey)【走缓存】',
-  })
-  @Get('/configKey/:id')
-  findOneByconfigKey(@Param('id') configKey: string) {
-    return this.configService.findOneByConfigKey(configKey);
-  }
-
-  @ApiOperation({
     summary: '参数设置-更新',
   })
   @Put()
   update(@Body() updateConfigDto: UpdateConfigDto) {
     return this.configService.update(updateConfigDto);
-  }
-
-  @ApiOperation({
-    summary: '参数设置-刷新缓存',
-  })
-  @Delete('/refreshCache')
-  refreshCache() {
-    return this.configService.refreshCache();
   }
 
   @ApiOperation({

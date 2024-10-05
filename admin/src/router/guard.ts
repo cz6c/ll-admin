@@ -67,6 +67,11 @@ function setupPermissionGuard(router: Router) {
       } else {
         // 无权限，前端登出
         useAuthStore().webLogout();
+        next({
+          name: RouterEnum.BASE_LOGIN_NAME,
+          query: { redirect: to.fullPath },
+          replace: true
+        });
       }
     }
   });

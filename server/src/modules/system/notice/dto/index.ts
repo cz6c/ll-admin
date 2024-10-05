@@ -1,12 +1,8 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
 import { PagingDto } from '@/common/dto/index';
+import { StatusEnum } from '@/common/enum';
 
-export enum StatusEnum {
-  STATIC = '0',
-  DYNAMIC = '1',
-}
 export enum TypeEnum {
   Instruct = '1',
   Notice = '2',

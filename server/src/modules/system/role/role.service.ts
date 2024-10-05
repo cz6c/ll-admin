@@ -6,7 +6,7 @@ import { ResultData } from '@/common/utils/result';
 import { listToTree } from '@/common/utils/tree';
 import { ExportTable } from '@/common/utils/export';
 
-import { DataScopeEnum } from '@/common/enum/index';
+import { DataScopeEnum, DelFlagEnum, StatusEnum } from '@/common/enum/index';
 import { SysRoleEntity } from './entities/role.entity';
 import { SysRoleWithMenuEntity } from './entities/role-menu.entity';
 import { SysRoleWithDeptEntity } from './entities/role-dept.entity';
@@ -42,7 +42,7 @@ export class RoleService {
 
   async findAll(query: ListRoleDto) {
     const entity = this.sysRoleEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.roleName) {
       entity.andWhere(`entity.roleName LIKE "%${query.roleName}%"`);
@@ -79,7 +79,7 @@ export class RoleService {
     const res = await this.sysRoleEntityRep.findOne({
       where: {
         roleId: roleId,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(res);
@@ -159,7 +159,7 @@ export class RoleService {
     const data = await this.sysRoleEntityRep.update(
       { roleId: In(roleIds) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);
@@ -168,7 +168,7 @@ export class RoleService {
   async deptTree(roleId: number) {
     const res = await this.sysDeptEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     const tree = listToTree(res, {
@@ -202,7 +202,7 @@ export class RoleService {
     });
     const menuIds = list.map((item) => item.menuId);
     const permission = await this.menuService.findMany({
-      where: { delFlag: '0', status: '0', menuId: In(menuIds) },
+      where: { delFlag: DelFlagEnum.NORMAL, status: StatusEnum.NORMAL, menuId: In(menuIds) },
     });
     return permission;
   }

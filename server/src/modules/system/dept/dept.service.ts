@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
-import { DataScopeEnum } from '@/common/enum/index';
+import { DataScopeEnum, DelFlagEnum } from '@/common/enum/index';
 
 @Injectable()
 export class DeptService {
@@ -18,7 +18,7 @@ export class DeptService {
       const parent = await this.sysDeptEntityRep.findOne({
         where: {
           deptId: createDeptDto.parentId,
-          delFlag: '0',
+          delFlag: DelFlagEnum.NORMAL,
         },
         select: ['ancestors'],
       });
@@ -34,7 +34,7 @@ export class DeptService {
 
   async findAll(query: ListDeptDto) {
     const entity = this.sysDeptEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.deptName) {
       entity.andWhere(`entity.deptName LIKE "%${query.deptName}%"`);
@@ -51,7 +51,7 @@ export class DeptService {
     const data = await this.sysDeptEntityRep.findOne({
       where: {
         deptId: deptId,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(data);
@@ -68,7 +68,7 @@ export class DeptService {
       // 创建部门实体的查询构建器
       const entity = this.sysDeptEntityRep.createQueryBuilder('dept');
       // 筛选出删除标志为未删除的部门
-      entity.where('dept.delFlag = :delFlag', { delFlag: '0' });
+      entity.where('dept.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
       // 根据不同的数据权限范围添加不同的查询条件
       if (dataScope === DataScopeEnum.DATA_SCOPE_DEPT) {
@@ -101,7 +101,7 @@ export class DeptService {
     //TODO 需排出ancestors 中不出现id的数据
     const data = await this.sysDeptEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(data);
@@ -112,7 +112,7 @@ export class DeptService {
       const parent = await this.sysDeptEntityRep.findOne({
         where: {
           deptId: updateDeptDto.parentId,
-          delFlag: '0',
+          delFlag: DelFlagEnum.NORMAL,
         },
         select: ['ancestors'],
       });
@@ -130,7 +130,7 @@ export class DeptService {
     const data = await this.sysDeptEntityRep.update(
       { deptId: deptId },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);

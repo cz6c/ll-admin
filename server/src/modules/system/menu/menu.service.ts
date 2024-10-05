@@ -9,6 +9,7 @@ import { Uniq } from '@/common/utils/index';
 import { UserService } from '../user/user.service';
 import { buildMenus } from './utils';
 import { listToTree } from '@/common/utils/tree';
+import { DelFlagEnum, StatusEnum } from '@/common/enum';
 @Injectable()
 export class MenuService {
   constructor(
@@ -27,7 +28,7 @@ export class MenuService {
 
   async findAll(query: ListMenuDto) {
     const entity = this.sysMenuEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.menuName) {
       entity.andWhere(`entity.menuName LIKE "%${query.menuName}%"`);
@@ -46,7 +47,7 @@ export class MenuService {
   async treeSelect() {
     const res = await this.sysMenuEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
       order: {
         orderNum: 'ASC',
@@ -66,7 +67,7 @@ export class MenuService {
   async roleMenuTreeselect(roleId: number): Promise<any> {
     const res = await this.sysMenuEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
       order: {
         orderNum: 'ASC',
@@ -91,7 +92,7 @@ export class MenuService {
   async findOne(menuId: number) {
     const res = await this.sysMenuEntityRep.findOne({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         menuId: menuId,
       },
     });
@@ -107,7 +108,7 @@ export class MenuService {
     const data = await this.sysMenuEntityRep.update(
       { menuId: menuId },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);
@@ -129,8 +130,8 @@ export class MenuService {
       // 超管roleId=1，所有菜单权限
       menuWidthRoleList = await this.sysMenuEntityRep.find({
         where: {
-          delFlag: '0',
-          status: '0',
+          delFlag: DelFlagEnum.NORMAL,
+          status: StatusEnum.NORMAL,
         },
         select: ['menuId'],
       });
@@ -146,8 +147,8 @@ export class MenuService {
     // 菜单列表
     const menuList = await this.sysMenuEntityRep.find({
       where: {
-        delFlag: '0',
-        status: '0',
+        delFlag: DelFlagEnum.NORMAL,
+        status: StatusEnum.NORMAL,
         menuId: In(menuIds),
       },
       order: {

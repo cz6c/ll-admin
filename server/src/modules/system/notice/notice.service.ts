@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysNoticeEntity } from './entities/notice.entity';
 import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from './dto/index';
+import { DelFlagEnum } from '@/common/enum';
 
 @Injectable()
 export class NoticeService {
@@ -18,7 +19,7 @@ export class NoticeService {
 
   async findAll(query: ListNoticeDto) {
     const entity = this.sysNoticeEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.noticeTitle) {
       entity.andWhere(`entity.noticeTitle LIKE "%${query.noticeTitle}%"`);
@@ -68,7 +69,7 @@ export class NoticeService {
     const data = await this.sysNoticeEntityRep.update(
       { noticeId: In(noticeIds) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);

@@ -1,11 +1,6 @@
 import { IsString, Length, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export enum StatusEnum {
-  STATIC = '0',
-  DYNAMIC = '1',
-}
-
 export class LoginDto {
   @ApiProperty({
     required: false,

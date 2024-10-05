@@ -1,10 +1,6 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
-export enum StatusEnum {
-  STATIC = '0',
-  DYNAMIC = '1',
-}
+import { StatusEnum } from '@/common/enum';
 
 export enum MenuTypeEnum {
   M = 'M',

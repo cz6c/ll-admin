@@ -6,6 +6,7 @@ import { LoginlogService } from '../monitor/loginlog/loginlog.service';
 import { AxiosService } from '@/modules/axios/axios.service';
 import { RegisterDto, LoginDto, ClientInfoDto } from './dto/index';
 import { MenuService } from '../system/menu/menu.service';
+import { StatusEnum } from '@/common/enum';
 @Injectable()
 export class MainService {
   constructor(
@@ -24,7 +25,7 @@ export class MainService {
     const loginLog = {
       ...clientInfo,
       userName: user.userName,
-      status: '0',
+      status: StatusEnum.NORMAL,
       msg: '',
     };
     try {
@@ -32,7 +33,7 @@ export class MainService {
       loginLog.loginLocation = loginLocation;
     } catch (error) {}
     const loginRes = await this.userService.login(user, loginLog);
-    loginLog.status = loginRes.code === SUCCESS_CODE ? '0' : '1';
+    loginLog.status = loginRes.code === SUCCESS_CODE ? StatusEnum.NORMAL : StatusEnum.STOP;
     loginLog.msg = loginRes.msg;
     this.loginlogService.create(loginLog);
     return loginRes;
@@ -45,7 +46,7 @@ export class MainService {
     const loginLog = {
       ...clientInfo,
       userName: '',
-      status: '0',
+      status: StatusEnum.NORMAL,
       msg: '退出成功',
     };
     try {

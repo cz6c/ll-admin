@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Response } from 'express';
 import { Repository, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
-import { CacheEnum } from '@/common/enum/index';
+import { CacheEnum, DelFlagEnum } from '@/common/enum/index';
 import { ExportTable } from '@/common/utils/export';
 import { SysDictTypeEntity } from './entities/dict.type.entity';
 import { SysDictDataEntity } from './entities/dict.data.entity';
@@ -24,7 +24,7 @@ export class DictService {
   }
 
   async deleteType(dictIds: number[]) {
-    await this.sysDictTypeEntityRep.update({ dictId: In(dictIds) }, { delFlag: '1' });
+    await this.sysDictTypeEntityRep.update({ dictId: In(dictIds) }, { delFlag: DelFlagEnum.DELETE });
     return ResultData.ok();
   }
 
@@ -35,7 +35,7 @@ export class DictService {
 
   async findAllType(query: ListDictType) {
     const entity = this.sysDictTypeEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.dictName) {
       entity.andWhere(`entity.dictName LIKE "%${query.dictName}%"`);
@@ -69,7 +69,7 @@ export class DictService {
     const data = await this.sysDictTypeEntityRep.findOne({
       where: {
         dictId: dictId,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(data);
@@ -78,7 +78,7 @@ export class DictService {
   async findOptionselect() {
     const data = await this.sysDictTypeEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(data);
@@ -91,7 +91,7 @@ export class DictService {
   }
 
   async deleteDictData(dictId: number) {
-    await this.sysDictDataEntityRep.update({ dictCode: dictId }, { delFlag: '1' });
+    await this.sysDictDataEntityRep.update({ dictCode: dictId }, { delFlag: DelFlagEnum.DELETE });
     return ResultData.ok();
   }
 
@@ -102,7 +102,7 @@ export class DictService {
 
   async findAllData(query: ListDictData) {
     const entity = this.sysDictDataEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
     if (query.dictLabel) {
       entity.andWhere(`entity.dictLabel LIKE "%${query.dictLabel}%"`);
     }
@@ -143,7 +143,7 @@ export class DictService {
     data = await this.sysDictDataEntityRep.find({
       where: {
         dictType: dictType,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
 
@@ -155,14 +155,14 @@ export class DictService {
   async refreshCache() {
     const list = await this.sysDictTypeEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     list.forEach(async (item) => {
       const data = await this.sysDictDataEntityRep.find({
         where: {
           dictType: item.dictType,
-          delFlag: '0',
+          delFlag: DelFlagEnum.NORMAL,
         },
       });
       this.redisService.set(`${CacheEnum.SYS_DICT_KEY}${item.dictType}`, data);
@@ -174,7 +174,7 @@ export class DictService {
     const data = await this.sysDictDataEntityRep.findOne({
       where: {
         dictCode: dictCode,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(data);

@@ -30,36 +30,6 @@ export enum CacheEnum {
 }
 
 /**
- * 数据过滤规则枚举
- */
-export enum DataScopeEnum {
-  /**
-   * 全部数据权限
-   */
-  DATA_SCOPE_ALL = '1',
-
-  /**
-   * 自定数据权限
-   */
-  DATA_SCOPE_CUSTOM = '2',
-
-  /**
-   * 部门数据权限
-   */
-  DATA_SCOPE_DEPT = '3',
-
-  /**
-   * 部门及以下数据权限
-   */
-  DATA_SCOPE_DEPT_AND_CHILD = '4',
-
-  /**
-   * 仅本人数据权限
-   */
-  DATA_SCOPE_SELF = '5',
-}
-
-/**
  * 删除标志:0代表存在 1代表删除
  */
 export enum DelFlagEnum {
@@ -88,15 +58,31 @@ export enum StatusEnum {
 }
 
 /**
- * 性别:0男,1女
+ * 数据过滤规则枚举
  */
-export enum SexEnum {
+export enum DataScopeEnum {
   /**
-   * 男
+   * 全部数据权限
    */
-  MAN = '0',
+  DATA_SCOPE_ALL = '1',
+
   /**
-   * 女
+   * 自定数据权限
    */
-  WOMAN = '1',
+  DATA_SCOPE_CUSTOM = '2',
+
+  /**
+   * 部门数据权限
+   */
+  DATA_SCOPE_DEPT = '3',
+
+  /**
+   * 部门及以下数据权限
+   */
+  DATA_SCOPE_DEPT_AND_CHILD = '4',
+
+  /**
+   * 仅本人数据权限
+   */
+  DATA_SCOPE_SELF = '5',
 }

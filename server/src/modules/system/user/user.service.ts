@@ -86,7 +86,7 @@ export class UserService {
    */
   async findAll(query: ListUserDto, user: RequestUserPayload['user']) {
     const entity = this.userRepo.createQueryBuilder('user');
-    entity.where('user.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('user.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     //数据权限过滤
     if (user) {
@@ -159,7 +159,7 @@ export class UserService {
   async findOne(userId: number) {
     const data = await this.userRepo.findOne({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         userId: userId,
       },
     });
@@ -373,7 +373,7 @@ export class UserService {
 
     const roles = await this.roleService.findRoles({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         roleId: In(roleIds),
       },
     });
@@ -389,7 +389,7 @@ export class UserService {
 
     const posts = await this.sysPostEntityRep.find({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         postId: In(postIds),
       },
     });
@@ -489,7 +489,7 @@ export class UserService {
     const data = await this.userRepo.update(
       { userId: In(ids), userType: Not(SYS_USER_TYPE.SYS) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     console.log('🚀 ~ UserService ~ remove ~ data:', data);
@@ -504,20 +504,20 @@ export class UserService {
   async authRole(userId: number) {
     const allRoles = await this.roleService.findRoles({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
 
     const user = await this.userRepo.findOne({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         userId: userId,
       },
     });
 
     const dept = await this.sysDeptEntityRep.findOne({
       where: {
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
         deptId: user.deptId,
       },
     });
@@ -616,8 +616,8 @@ export class UserService {
     }
     const userIds = roleWidthRoleList.map((item) => item.userId);
     const entity = this.userRepo.createQueryBuilder('user');
-    entity.where('user.delFlag = :delFlag', { delFlag: '0' });
-    entity.andWhere('user.status = :status', { status: '0' });
+    entity.where('user.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    entity.andWhere('user.status = :status', { status: StatusEnum.NORMAL });
     entity.andWhere('user.userId IN (:...userIds)', { userIds: userIds });
     if (query.userName) {
       entity.andWhere(`user.userName LIKE "%${query.userName}%"`);
@@ -651,8 +651,8 @@ export class UserService {
 
     const userIds = roleWidthRoleList.map((item) => item.userId);
     const entity = this.userRepo.createQueryBuilder('user');
-    entity.where('user.delFlag = :delFlag', { delFlag: '0' });
-    entity.andWhere('user.status = :status', { status: '0' });
+    entity.where('user.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    entity.andWhere('user.status = :status', { status: StatusEnum.NORMAL });
     entity.andWhere({
       userId: Not(In(userIds)),
     });

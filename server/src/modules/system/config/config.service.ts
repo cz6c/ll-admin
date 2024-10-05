@@ -7,6 +7,7 @@ import { ExportTable } from '@/common/utils/export';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from './dto/index';
 import { SysConfigEntity } from './entities/config.entity';
 import { RedisService } from '@/modules/redis/redis.service';
+import { DelFlagEnum } from '@/common/enum';
 
 @Injectable()
 export class ConfigService {
@@ -22,7 +23,7 @@ export class ConfigService {
 
   async findAll(query: ListConfigDto) {
     const entity = this.sysConfigEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.configName) {
       entity.andWhere(`entity.configName LIKE "%${query.configName}%"`);
@@ -66,6 +67,7 @@ export class ConfigService {
       where: {
         configKey: configKey,
       },
+      select: ['configValue', 'configKey'],
     });
     return data.configValue;
   }
@@ -84,7 +86,7 @@ export class ConfigService {
     const list = await this.sysConfigEntityRep.find({
       where: {
         configId: In(configIds),
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
       select: ['configType', 'configKey'],
     });
@@ -95,7 +97,7 @@ export class ConfigService {
     const data = await this.sysConfigEntityRep.update(
       { configId: In(configIds) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);

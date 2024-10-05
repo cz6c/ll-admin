@@ -6,6 +6,7 @@ import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
 import { MonitorLoginlogEntity } from './entities/loginlog.entity';
 import { CreateLoginlogDto, ListLoginlogDto } from './dto/index';
+import { DelFlagEnum } from '@/common/enum';
 
 @Injectable()
 export class LoginlogService {
@@ -30,7 +31,7 @@ export class LoginlogService {
    */
   async findAll(query: ListLoginlogDto) {
     const entity = this.monitorLoginlogEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.ipaddr) {
       entity.andWhere(`entity.ipaddr LIKE "%${query.ipaddr}%"`);
@@ -73,7 +74,7 @@ export class LoginlogService {
     const data = await this.monitorLoginlogEntityRep.update(
       { infoId: In(ids) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);
@@ -87,7 +88,7 @@ export class LoginlogService {
     await this.monitorLoginlogEntityRep.update(
       { infoId: Not(IsNull()) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok();
@@ -115,12 +116,6 @@ export class LoginlogService {
         { title: '提示消息', dataIndex: 'msg' },
         { title: '访问时间', dataIndex: 'loginTime' },
       ],
-      dictMap: {
-        status: {
-          '0': '成功',
-          '1': '失败',
-        },
-      },
     };
     ExportTable(options, res);
   }

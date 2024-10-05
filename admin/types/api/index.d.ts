@@ -26,9 +26,9 @@ export interface LoginParams {
 // 公共数据
 export interface BaseResponse {
   //0正常 1停用
-  status: string;
+  status: "0" | "1";
   //0代表存在 1代表删除
-  delFlag: string;
+  delFlag: "0" | "1";
   // 创建者
   createBy: string;
   // 创建时间

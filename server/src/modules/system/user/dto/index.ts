@@ -1,10 +1,20 @@
 import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber, IsNumberString } from 'class-validator';
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
+import { StatusEnum } from '@/common/enum';
 
-export enum StatusEnum {
-  STATIC = '0',
-  DYNAMIC = '1',
+/**
+ * 性别:0男,1女
+ */
+export enum SexEnum {
+  /**
+   * 男
+   */
+  MAN = '0',
+  /**
+   * 女
+   */
+  WOMAN = '1',
 }
 
 export class CreateUserDto {
@@ -59,7 +69,7 @@ export class CreateUserDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @IsEnum(StatusEnum)
+  @IsEnum(SexEnum)
   sex?: string;
 
   @ApiProperty({ required: false })
@@ -180,7 +190,7 @@ export class UpdateProfileDto {
   @ApiProperty({ required: true })
   @IsOptional()
   @IsString()
-  @IsEnum(StatusEnum)
+  @IsEnum(SexEnum)
   sex: string;
 }
 

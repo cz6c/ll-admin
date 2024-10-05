@@ -6,6 +6,7 @@ import { ExportTable } from '@/common/utils/export';
 import { SysPostEntity } from './entities/post.entity';
 import { Response } from 'express';
 import { CreatePostDto, UpdatePostDto, ListPostDto } from './dto/index';
+import { DelFlagEnum } from '@/common/enum';
 
 @Injectable()
 export class PostService {
@@ -20,7 +21,7 @@ export class PostService {
 
   async findAll(query: ListPostDto) {
     const entity = this.sysPostEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: '0' });
+    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.postName) {
       entity.andWhere(`entity.postName LIKE "%${query.postName}%"`);
@@ -51,7 +52,7 @@ export class PostService {
     const res = await this.sysPostEntityRep.findOne({
       where: {
         postId: postId,
-        delFlag: '0',
+        delFlag: DelFlagEnum.NORMAL,
       },
     });
     return ResultData.ok(res);
@@ -66,7 +67,7 @@ export class PostService {
     const data = await this.sysPostEntityRep.update(
       { postId: In(postIds) },
       {
-        delFlag: '1',
+        delFlag: DelFlagEnum.DELETE,
       },
     );
     return ResultData.ok(data);

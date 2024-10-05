@@ -1,11 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-
-export enum StatusEnum {
-  STATIC = '0',
-  DYNAMIC = '1',
-}
+import { StatusEnum } from '@/common/enum';
 
 export class CreateLoginlogDto {
   @IsOptional()

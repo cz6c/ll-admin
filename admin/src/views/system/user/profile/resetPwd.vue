@@ -16,10 +16,12 @@
   </el-form>
 </template>
 
-<script setup>
+<script setup lang="ts" name="ResetPwd">
 import { updateUserPwd } from "@/api/system/user";
+import { FormInstance, FormRules } from "element-plus";
 
 const { proxy } = getCurrentInstance();
+const pwdRef = ref<FormInstance>(null);
 
 const user = reactive({
   oldPassword: undefined,
@@ -34,7 +36,7 @@ const equalToPassword = (rule, value, callback) => {
     callback();
   }
 };
-const rules = ref({
+const rules = ref<FormRules>({
   oldPassword: [{ required: true, message: "旧密码不能为空", trigger: "blur" }],
   newPassword: [
     { required: true, message: "新密码不能为空", trigger: "blur" },
@@ -48,16 +50,16 @@ const rules = ref({
 
 /** 提交按钮 */
 function submit() {
-  proxy.$refs.pwdRef.validate(valid => {
+  unref(pwdRef).validate(valid => {
     if (valid) {
-      updateUserPwd(user.oldPassword, user.newPassword).then(response => {
-        proxy.$modal.msgSuccess("修改成功");
+      updateUserPwd(user).then(response => {
+        proxy.$message.success("修改成功");
       });
     }
   });
 }
 /** 关闭按钮 */
 function close() {
-  proxy.$tab.closePage();
+  proxy.$tab.closePage(undefined);
 }
 </script>

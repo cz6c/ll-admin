@@ -12,34 +12,32 @@
             <div class="text-center">
               <userAvatar :user="state.user" />
             </div>
-            <ul class="list-group list-group-striped">
-              <li class="list-group-item">
-                <SvgIcon name="user" />用户名称
-                <div class="pull-right">{{ state.user.userName }}</div>
-              </li>
-              <li class="list-group-item">
-                <SvgIcon name="phone" />手机号码
-                <div class="pull-right">{{ state.user.phonenumber }}</div>
-              </li>
-              <li class="list-group-item">
-                <SvgIcon name="email" />用户邮箱
-                <div class="pull-right">{{ state.user.email }}</div>
-              </li>
-              <li class="list-group-item">
-                <SvgIcon name="tree" />所属部门
-                <div v-if="state.user.dept" class="pull-right">
-                  {{ state.user.dept.deptName }} / {{ state.postGroup }}
-                </div>
-              </li>
-              <li class="list-group-item">
-                <SvgIcon name="peoples" />所属角色
-                <div class="pull-right">{{ state.roleGroup }}</div>
-              </li>
-              <li class="list-group-item">
-                <SvgIcon name="date" />创建日期
-                <div class="pull-right">{{ state.user.createTime }}</div>
-              </li>
-            </ul>
+            <div class="list-group">
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="user" /><span>用户名称：</span></div>
+                <div class="value">{{ state.user.userName }}</div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="phone" /><span>手机号码：</span></div>
+                <div class="value">{{ state.user.phonenumber }}</div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="email" /><span>用户邮箱：</span></div>
+                <div class="value">{{ state.user.email }}</div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="tree" /><span>所属部门：</span></div>
+                <div v-if="state.user.dept" class="value">{{ state.user.dept.deptName }} / {{ state.postGroup }}</div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="peoples" /><span>所属角色：</span></div>
+                <div class="value">{{ state.roleGroup }}</div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><SvgIcon name="date" /><span>创建日期：</span></div>
+                <div class="value">{{ state.user.createTime }}</div>
+              </div>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -88,3 +86,20 @@ function getUser() {
 
 getUser();
 </script>
+
+<style lang="scss" scoped>
+.list-group {
+  .list-group-item {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    .label {
+      display: flex;
+      align-items: center;
+      span {
+        margin-left: 8px;
+      }
+    }
+  }
+}
+</style>

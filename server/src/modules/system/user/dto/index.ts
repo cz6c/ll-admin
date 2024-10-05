@@ -3,20 +3,6 @@ import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
 import { StatusEnum } from '@/common/enum';
 
-/**
- * 性别:0男,1女
- */
-export enum SexEnum {
-  /**
-   * 男
-   */
-  MAN = '0',
-  /**
-   * 女
-   */
-  WOMAN = '1',
-}
-
 export class CreateUserDto {
   @ApiProperty({ required: false })
   @IsOptional()
@@ -69,7 +55,6 @@ export class CreateUserDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @IsEnum(SexEnum)
   sex?: string;
 
   @ApiProperty({ required: false })
@@ -190,7 +175,6 @@ export class UpdateProfileDto {
   @ApiProperty({ required: true })
   @IsOptional()
   @IsString()
-  @IsEnum(SexEnum)
   sex: string;
 }
 

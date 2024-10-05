@@ -11,8 +11,7 @@
     </el-form-item>
     <el-form-item label="性别">
       <el-radio-group v-model="user.sex">
-        <el-radio label="0">男</el-radio>
-        <el-radio label="1">女</el-radio>
+        <el-radio v-for="item in sys_user_sex" :key="item.value" :label="item.value">{{ item.label }}</el-radio>
       </el-radio-group>
     </el-form-item>
     <el-form-item>
@@ -22,14 +21,22 @@
   </el-form>
 </template>
 
-<script setup>
+<script setup lang="ts" name="UserInfo">
+import { UpdateProfileDto } from "#/api/system/user";
 import { updateUserProfile } from "@/api/system/user";
+import { useDict, type DictData } from "@/hooks/useDict";
+import { FormInstance, FormRules } from "element-plus";
 
-const user = defineModel("user");
+const { sys_user_sex } = useDict<{
+  sys_user_sex: DictData[];
+}>("sys_user_sex");
+
+const user = defineModel<UpdateProfileDto>("user");
 
 const { proxy } = getCurrentInstance();
+const userRef = ref<FormInstance>(null);
 
-const rules = ref({
+const rules = ref<FormRules>({
   nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
   email: [
     { required: true, message: "邮箱地址不能为空", trigger: "blur" },
@@ -51,16 +58,16 @@ const rules = ref({
 
 /** 提交按钮 */
 function submit() {
-  proxy.$refs.userRef.validate(valid => {
+  unref(userRef).validate(valid => {
     if (valid) {
-      updateUserProfile(props.user).then(response => {
-        proxy.$modal.msgSuccess("修改成功");
+      updateUserProfile(unref(user)).then(response => {
+        proxy.$message.success("修改成功");
       });
     }
   });
 }
 /** 关闭按钮 */
 function close() {
-  proxy.$tab.closePage();
+  proxy.$tab.closePage(undefined);
 }
 </script>

@@ -1,6 +1,8 @@
 import type { App } from "vue";
 // elementui
 import * as ElementPlusIconsVue from "@element-plus/icons-vue";
+import VueCropper from "vue-cropper";
+import "vue-cropper/dist/index.css";
 
 /**
  * @description: 公共业务组件
@@ -27,4 +29,5 @@ function install(app: App<Element>) {
 
 export function registerGlobComp(app: App) {
   app.use({ install });
+  app.use(VueCropper);
 }

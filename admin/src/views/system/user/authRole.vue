@@ -52,12 +52,13 @@
   </div>
 </template>
 
-<script setup name="AuthRole">
+<script setup lang="ts" name="AuthRole">
 import { getAuthRole, updateAuthRole } from "@/api/system/user";
 import { parseTime } from "@/utils";
 
 const route = useRoute();
 const { proxy } = getCurrentInstance();
+const roleRef = ref(null);
 
 const loading = ref(true);
 const total = ref(0);
@@ -73,7 +74,7 @@ const form = ref({
 
 /** 单击选中行数据 */
 function clickRow(row) {
-  proxy.$refs["roleRef"].toggleRowSelection(row);
+  unref(roleRef).toggleRowSelection(row);
 }
 /** 多选框选中数据 */
 function handleSelectionChange(selection) {
@@ -92,13 +93,13 @@ function close() {
 function submitForm() {
   const userId = form.value.userId;
   updateAuthRole({ userId: userId, roleIds: roleIds.value }).then(response => {
-    proxy.$modal.msgSuccess("授权成功");
+    proxy.$message.success("授权成功");
     close();
   });
 }
 
 (() => {
-  const userId = route.query && route.query.userId;
+  const userId = route.query && Number(route.query.userId);
   if (userId) {
     loading.value = true;
     getAuthRole(userId).then(res => {
@@ -109,7 +110,7 @@ function submitForm() {
       nextTick(() => {
         roles.value.forEach(row => {
           if (row.flag) {
-            proxy.$refs["roleRef"].toggleRowSelection(row);
+            unref(roleRef).toggleRowSelection(row);
           }
         });
       });

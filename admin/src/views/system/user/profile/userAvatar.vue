@@ -6,7 +6,7 @@
         <el-col :xs="24" :md="12" :style="{ height: '350px' }">
           <vue-cropper
             v-if="visible"
-            ref="cropper"
+            ref="cropperRef"
             :img="options.img"
             :info="true"
             :autoCrop="options.autoCrop"
@@ -53,14 +53,13 @@
   </div>
 </template>
 
-<script setup>
-// import "vue-cropper/dist/index.css";
-import { VueCropper } from "vue-cropper";
+<script setup lang="ts" name="UserAvatar">
 import { uploadAvatar } from "@/api/system/user";
 import { useAuthStore } from "@/store/modules/auth";
 
 const userStore = useAuthStore();
 const { proxy } = getCurrentInstance();
+const cropperRef = ref(null);
 
 const open = ref(false);
 const visible = ref(false);
@@ -74,7 +73,10 @@ const options = reactive({
   autoCropHeight: 200, // 默认生成截图框高度
   fixedBox: true, // 固定截图框大小 不允许改变
   outputType: "png", // 默认生成截图为PNG格式
-  previews: {} //预览数据
+  previews: {
+    url: "",
+    img: ""
+  } //预览数据
 });
 
 /** 编辑头像 */
@@ -86,42 +88,44 @@ function modalOpened() {
   visible.value = true;
 }
 /** 覆盖默认上传行为 */
-function requestUpload() {}
+function requestUpload() {
+  return null;
+}
 /** 向左旋转 */
 function rotateLeft() {
-  proxy.$refs.cropper.rotateLeft();
+  unref(cropperRef).rotateLeft();
 }
 /** 向右旋转 */
 function rotateRight() {
-  proxy.$refs.cropper.rotateRight();
+  unref(cropperRef).rotateRight();
 }
 /** 图片缩放 */
 function changeScale(num) {
   num = num || 1;
-  proxy.$refs.cropper.changeScale(num);
+  unref(cropperRef).changeScale(num);
 }
 /** 上传预处理 */
 function beforeUpload(file) {
   if (file.type.indexOf("image/") == -1) {
-    proxy.$modal.msgError("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
+    proxy.$message.error("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
   } else {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
-      options.img = reader.result;
+      options.img = reader.result as string;
     };
   }
 }
 /** 上传图片 */
 function uploadImg() {
-  proxy.$refs.cropper.getCropBlob(data => {
+  unref(cropperRef).getCropBlob(data => {
     let formData = new FormData();
     formData.append("avatarfile", data);
     uploadAvatar(formData).then(response => {
       open.value = false;
-      options.img = response.imgUrl;
+      options.img = response.data.imgUrl;
       userStore.avatar = options.img;
-      proxy.$modal.msgSuccess("修改成功");
+      proxy.$message.success("修改成功");
       visible.value = false;
     });
   });
@@ -133,7 +137,7 @@ function realTime(data) {
 /** 关闭窗口 */
 function closeDialog() {
   options.img = userStore.avatar;
-  options.visible = false;
+  visible.value = false;
 }
 </script>
 
@@ -142,6 +146,7 @@ function closeDialog() {
   position: relative;
   display: inline-block;
   height: 120px;
+  width: 120px;
 }
 
 .user-info-head:hover:after {

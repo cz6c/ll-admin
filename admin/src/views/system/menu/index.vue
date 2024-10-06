@@ -295,14 +295,11 @@ import IconSelect from "@/components/IconSelect/index.vue";
 import { FormInstance, ClickOutside as vClickOutside } from "element-plus";
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_show_hide, sys_normal_disable } = useDict<{
-  sys_show_hide: DictData[];
-  sys_normal_disable: DictData[];
-}>("sys_show_hide", "sys_normal_disable");
+const { sys_show_hide, sys_normal_disable } = toRefs(useDict("sys_show_hide", "sys_normal_disable"));
 
 const menuList = ref([]);
 const loading = ref(true);

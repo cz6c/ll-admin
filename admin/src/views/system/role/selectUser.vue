@@ -69,7 +69,7 @@
 <script setup lang="ts" name="SelectUser">
 import { authUserSelectAll, unallocatedUserList } from "@/api/system/role";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 
 const props = defineProps({
   roleId: {
@@ -79,9 +79,7 @@ const props = defineProps({
 
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const userList = ref([]);
 const visible = ref(false);

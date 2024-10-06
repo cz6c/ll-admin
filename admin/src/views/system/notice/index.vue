@@ -129,15 +129,12 @@
 <script setup lang="ts" name="Notice">
 import { listNotice, getNotice, delNotice, addNotice, updateNotice } from "@/api/system/notice";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_notice_status, sys_notice_type } = useDict<{
-  sys_notice_status: DictData[];
-  sys_notice_type: DictData[];
-}>("sys_notice_status", "sys_notice_type");
+const { sys_notice_status, sys_notice_type } = toRefs(useDict("sys_notice_status", "sys_notice_type"));
 
 const noticeList = ref([]);
 const open = ref(false);

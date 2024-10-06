@@ -26,7 +26,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="操作状态" clearable style="width: 240px">
-          <el-option v-for="dict in sys_common_status" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in sys_success_error" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="操作时间" style="width: 308px">
@@ -84,7 +84,7 @@
       <el-table-column label="主机" align="center" prop="operIp" width="130" :show-overflow-tooltip="true" />
       <el-table-column label="操作状态" align="center" prop="status">
         <template #default="scope">
-          <dict-tag :options="sys_common_status" :value="scope.row.status" />
+          <dict-tag :options="sys_success_error" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column
@@ -179,14 +179,11 @@
 <script setup lang="ts" name="Operlog">
 import { list, delOperlog, cleanOperlog } from "@/api/monitor/operlog";
 import { parseTime, addDateRange, selectDictLabel } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_oper_type, sys_common_status } = useDict<{
-  sys_oper_type: DictData[];
-  sys_common_status: DictData[];
-}>("sys_oper_type", "sys_common_status");
+const { sys_oper_type, sys_success_error } = toRefs(useDict("sys_oper_type", "sys_success_error"));
 
 const operlogList = ref([]);
 const open = ref(false);

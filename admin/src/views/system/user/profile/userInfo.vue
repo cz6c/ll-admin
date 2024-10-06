@@ -24,12 +24,10 @@
 <script setup lang="ts" name="UserInfo">
 import { UpdateProfileDto } from "#/api/system/user";
 import { updateUserProfile } from "@/api/system/user";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
 
-const { sys_user_sex } = useDict<{
-  sys_user_sex: DictData[];
-}>("sys_user_sex");
+const { sys_user_sex } = toRefs(useDict("sys_user_sex"));
 
 const user = defineModel<UpdateProfileDto>("user");
 

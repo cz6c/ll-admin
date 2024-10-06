@@ -136,14 +136,12 @@
 import { useDictStore } from "@/store/modules/dict";
 import { listType, getType, delType, addType, updateType, refreshCache } from "@/api/system/dict/type";
 import { parseTime, addDateRange } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const typeList = ref([]);
 const open = ref(false);

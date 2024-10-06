@@ -292,17 +292,14 @@ import { listPost } from "@/api/system/post";
 import { listDept } from "@/api/system/dept";
 import { listToTree } from "@/utils/tree";
 import { parseTime, addDateRange } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules, TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
 
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { sys_user_sex, sys_normal_disable } = useDict<{
-  sys_user_sex: DictData[];
-  sys_normal_disable: DictData[];
-}>("sys_user_sex", "sys_normal_disable");
+const { sys_user_sex, sys_normal_disable } = toRefs(useDict("sys_user_sex", "sys_normal_disable"));
 
 const userList = ref([]);
 const open = ref(false);

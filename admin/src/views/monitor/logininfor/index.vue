@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="登录状态" clearable style="width: 240px">
-          <el-option v-for="dict in sys_common_status" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in sys_success_error" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="登录时间" style="width: 308px">
@@ -83,7 +83,7 @@
       <el-table-column label="浏览器" align="center" prop="browser" :show-overflow-tooltip="true" />
       <el-table-column label="登录状态" align="center" prop="status">
         <template #default="scope">
-          <dict-tag :options="sys_common_status" :value="scope.row.status" />
+          <dict-tag :options="sys_success_error" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column label="描述" align="center" prop="msg" :show-overflow-tooltip="true" />
@@ -114,13 +114,11 @@
 <script setup lang="ts" name="Logininfor">
 import { list, delLogininfor, cleanLogininfor, unlockLogininfor } from "@/api/monitor/logininfor";
 import { parseTime, addDateRange } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_common_status } = useDict<{
-  sys_common_status: DictData[];
-}>("sys_common_status");
+const { sys_success_error } = toRefs(useDict("sys_success_error"));
 
 const logininforList = ref([]);
 const loading = ref(true);

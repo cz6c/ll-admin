@@ -137,14 +137,12 @@
 import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild } from "@/api/system/dept";
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const deptList = ref([]);
 const open = ref(false);

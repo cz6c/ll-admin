@@ -128,14 +128,12 @@
 <script setup lang="ts" name="Config">
 import { listConfig, getConfig, delConfig, addConfig, updateConfig } from "@/api/system/config";
 import { parseTime, addDateRange } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_yes_no } = useDict<{
-  sys_yes_no: DictData[];
-}>("sys_yes_no");
+const { sys_yes_no } = toRefs(useDict("sys_yes_no"));
 
 const configList = ref([]);
 const open = ref(false);

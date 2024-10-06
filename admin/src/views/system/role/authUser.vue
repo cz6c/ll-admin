@@ -77,14 +77,12 @@
 import selectUser from "./selectUser.vue";
 import { allocatedUserList, authUserCancel, authUserCancelAll } from "@/api/system/role";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 
 const route = useRoute();
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const userList = ref([]);
 const loading = ref(true);

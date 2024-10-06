@@ -1,17 +1,21 @@
 import { useDictStore } from "@/store/modules/dict";
 import { getDicts } from "@/api/system/dict/data";
 
-export interface DictData {
+interface DictData {
   label: string;
   value: string;
   elTagType: string;
 }
 
+export interface DictDataMap {
+  [key: string]: DictData[];
+}
+
 /**
  * 获取字典数据
  */
-export function useDict<T extends object>(...args) {
-  const dict = reactive({}) as T;
+export function useDict(...args) {
+  const dict = reactive({});
   return (() => {
     args.forEach(dictType => {
       dict[dictType] = [];
@@ -29,6 +33,6 @@ export function useDict<T extends object>(...args) {
         });
       }
     });
-    return toRefs(dict);
+    return dict as DictDataMap;
   })();
 }

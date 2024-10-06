@@ -165,15 +165,13 @@
 import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
 import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu";
 import { parseTime, addDateRange } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const roleList = ref([]);
 const open = ref(false);

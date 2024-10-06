@@ -119,14 +119,12 @@
 <script setup lang="ts" name="Post">
 import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post";
 import { parseTime } from "@/utils";
-import { useDict, type DictData } from "@/hooks/useDict";
+import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = useDict<{
-  sys_normal_disable: DictData[];
-}>("sys_normal_disable");
+const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
 
 const postList = ref([]);
 const open = ref(false);

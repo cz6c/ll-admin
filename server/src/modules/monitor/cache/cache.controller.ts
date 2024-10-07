@@ -53,12 +53,4 @@ export class CacheController {
   clearCacheKey(@Param('cacheKey') cacheKey: string) {
     return this.cacheService.clearCacheKey(cacheKey);
   }
-
-  @ApiOperation({
-    summary: '清理全部',
-  })
-  @Delete('/clearCacheAll')
-  clearCacheAll() {
-    return this.cacheService.clearCacheAll();
-  }
 }

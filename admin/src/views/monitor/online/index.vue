@@ -24,16 +24,8 @@
         <el-button icon="Refresh" @click="resetQuery">重置</el-button>
       </el-form-item>
     </el-form>
-    <el-table
-      v-loading="loading"
-      :data="onlineList.slice((pageNum - 1) * pageSize, pageNum * pageSize)"
-      style="width: 100%"
-    >
-      <el-table-column label="序号" width="50" type="index" align="center">
-        <template #default="scope">
-          <span>{{ (pageNum - 1) * pageSize + scope.$index + 1 }}</span>
-        </template>
-      </el-table-column>
+    <el-table v-loading="loading" :data="onlineList" style="width: 100%">
+      <el-table-column label="序号" width="50" type="index" align="center" />
       <el-table-column label="会话编号" align="center" prop="tokenId" :show-overflow-tooltip="true" />
       <el-table-column label="登录名称" align="center" prop="userName" :show-overflow-tooltip="true" />
       <el-table-column label="所属部门" align="center" prop="deptName" :show-overflow-tooltip="true" />
@@ -55,11 +47,17 @@
       </el-table-column>
     </el-table>
 
-    <pagination v-show="total > 0" v-model:page="pageNum" v-model:limit="pageSize" :total="total" />
+    <pagination
+      v-show="total > 0"
+      v-model:page="queryParams.pageNum"
+      v-model:limit="queryParams.pageSize"
+      :total="total"
+      @pagination="getList"
+    />
   </div>
 </template>
 
-<script setup name="Online">
+<script setup lang="ts" name="Online">
 import { forceLogout, list as initData } from "@/api/monitor/online";
 import { parseTime } from "@/utils";
 
@@ -68,11 +66,11 @@ const { proxy } = getCurrentInstance();
 const onlineList = ref([]);
 const loading = ref(true);
 const total = ref(0);
-const pageNum = ref(1);
-const pageSize = ref(10);
 
 const queryRef = ref(null);
-const queryParams = ref({
+const queryParams = reactive({
+  pageNum: 1,
+  pageSize: 10,
   ipaddr: undefined,
   userName: undefined
 });
@@ -80,11 +78,7 @@ const queryParams = ref({
 /** 查询登录日志列表 */
 function getList() {
   loading.value = true;
-  initData({
-    ...queryParams.value,
-    pageNum: pageNum.value,
-    pageSize: pageSize.value
-  }).then(response => {
+  initData(queryParams).then(response => {
     onlineList.value = response.data.list;
     total.value = response.data.total;
     loading.value = false;
@@ -92,7 +86,7 @@ function getList() {
 }
 /** 搜索按钮操作 */
 function handleQuery() {
-  pageNum.value = 1;
+  queryParams.pageNum = 1;
   getList();
 }
 /** 重置按钮操作 */
@@ -109,7 +103,7 @@ function handleForceLogout(row) {
     })
     .then(() => {
       getList();
-      proxy.$modal.msgSuccess("删除成功");
+      proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }

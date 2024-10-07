@@ -1,25 +1,26 @@
-import request from "@/utils/request";
+import { $http } from "@/utils/request";
+import type { LoginlogListParams, LoginlogListResponse } from "#/api/monitor/logininfor";
 
 // 查询登录日志列表
-export function list(query) {
-  return request({
+export function list(params: LoginlogListParams) {
+  return $http<never, LoginlogListResponse>({
     url: "/monitor/logininfor/list",
     method: "get",
-    params: query
+    params
   });
 }
 
 // 删除登录日志
-export function delLogininfor(infoId) {
-  return request({
+export function delLogininfor(infoId: number) {
+  return $http({
     url: "/monitor/logininfor/" + infoId,
     method: "delete"
   });
 }
 
 // 解锁用户登录状态
-export function unlockLogininfor(userName) {
-  return request({
+export function unlockLogininfor(userName: string) {
+  return $http({
     url: "/monitor/logininfor/unlock/" + userName,
     method: "get"
   });
@@ -27,7 +28,7 @@ export function unlockLogininfor(userName) {
 
 // 清空登录日志
 export function cleanLogininfor() {
-  return request({
+  return $http({
     url: "/monitor/logininfor/clean",
     method: "delete"
   });

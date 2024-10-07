@@ -1,8 +1,9 @@
-import request from "@/utils/request";
+import { $http } from "@/utils/request";
+import type { CacheData, CacheInfo } from "#/api/monitor/cache";
 
 // 查询缓存详细
 export function getCache() {
-  return request({
+  return $http<never, CacheInfo>({
     url: "/monitor/cache",
     method: "get"
   });
@@ -10,48 +11,40 @@ export function getCache() {
 
 // 查询缓存名称列表
 export function listCacheName() {
-  return request({
+  return $http<never, CacheData[]>({
     url: "/monitor/cache/getNames",
     method: "get"
   });
 }
 
 // 查询缓存键名列表
-export function listCacheKey(cacheName) {
-  return request({
+export function listCacheKey(cacheName: string) {
+  return $http<never, string[]>({
     url: "/monitor/cache/getKeys/" + cacheName,
     method: "get"
   });
 }
 
 // 查询缓存内容
-export function getCacheValue(cacheName, cacheKey) {
-  return request({
+export function getCacheValue(cacheName: string, cacheKey: string) {
+  return $http<never, CacheData>({
     url: "/monitor/cache/getValue/" + cacheName + "/" + cacheKey,
     method: "get"
   });
 }
 
 // 清理指定名称缓存
-export function clearCacheName(cacheName) {
-  return request({
+export function clearCacheName(cacheName: string) {
+  return $http({
     url: "/monitor/cache/clearCacheName/" + cacheName,
     method: "delete"
   });
 }
 
 // 清理指定键名缓存
-export function clearCacheKey(cacheKey) {
-  return request({
+export function clearCacheKey(cacheKey: string) {
+  return $http({
     url: "/monitor/cache/clearCacheKey/" + cacheKey,
-    method: "delete"
-  });
-}
-
-// 清理全部缓存
-export function clearCacheAll() {
-  return request({
-    url: "/monitor/cache/clearCacheAll",
     method: "delete"
   });
 }

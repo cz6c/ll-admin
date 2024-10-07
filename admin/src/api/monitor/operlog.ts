@@ -1,8 +1,8 @@
-import request from "@/utils/request";
+import { $http } from "@/utils/request";
 
 // 查询操作日志列表
 export function list(query) {
-  return request({
+  return $http({
     url: "/monitor/operlog/list",
     method: "get",
     params: query
@@ -11,7 +11,7 @@ export function list(query) {
 
 // 删除操作日志
 export function delOperlog(operId) {
-  return request({
+  return $http({
     url: "/monitor/operlog/" + operId,
     method: "delete"
   });

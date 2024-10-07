@@ -15,40 +15,28 @@ export class CacheService {
       remark: '用户信息',
     },
     {
-      cacheName: 'sys_config:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '配置信息',
-    },
-    {
-      cacheName: 'sys_dict:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '数据字典',
-    },
-    {
       cacheName: 'captcha_codes:',
       cacheKey: '',
       cacheValue: '',
       remark: '验证码',
     },
     {
-      cacheName: 'repeat_submit:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '防重提交',
-    },
-    {
-      cacheName: 'rate_limit:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '限流处理',
-    },
-    {
       cacheName: 'pwd_err_cnt:',
       cacheKey: '',
       cacheValue: '',
       remark: '密码错误次数',
+    },
+    {
+      cacheName: 'ma_code:',
+      cacheKey: '',
+      cacheValue: '',
+      remark: '微信code存储',
+    },
+    {
+      cacheName: 'sys_dict:',
+      cacheKey: '',
+      cacheValue: '',
+      remark: '数据字典',
     },
   ];
 

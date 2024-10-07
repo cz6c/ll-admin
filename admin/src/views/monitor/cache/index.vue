@@ -145,11 +145,15 @@
   </div>
 </template>
 
-<script setup name="Cache">
+<script setup lang="ts" name="Cache">
 import { getCache } from "@/api/monitor/cache";
 import * as echarts from "echarts";
 
-const cache = ref([]);
+const cache = ref({
+  dbSize: 0,
+  info: null,
+  commandStats: []
+});
 const commandstats = ref(null);
 const usedmemory = ref(null);
 const { proxy } = getCurrentInstance();

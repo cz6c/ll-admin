@@ -285,7 +285,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="User">
+<script setup lang="ts">
 import { changeUserStatus, listUser, resetUserPwd, delUser, getUser, updateUser, addUser } from "@/api/system/user";
 import { listRole } from "@/api/system/role";
 import { listPost } from "@/api/system/post";
@@ -296,6 +296,9 @@ import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules, TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
 
+defineOptions({
+  name: "User"
+});
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 

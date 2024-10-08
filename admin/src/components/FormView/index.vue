@@ -1,4 +1,4 @@
-<script setup lang="ts" name="FormView">
+<script setup lang="ts">
 import { FormItem } from "./index.d";
 import { BreakPoint } from "@/components/Grid/type";
 import { handleProp } from "@/utils";
@@ -6,6 +6,10 @@ import { isFunction } from "@/utils/is";
 import { cloneDeep } from "lodash-es";
 import type { FormInstance, FormRules } from "element-plus";
 const formRef = ref<FormInstance>();
+
+defineOptions({
+  name: "FormView"
+});
 
 export interface FormViewProps {
   columns: FormItem[]; // 表单配置列

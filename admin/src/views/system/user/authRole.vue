@@ -52,10 +52,13 @@
   </div>
 </template>
 
-<script setup lang="ts" name="AuthRole">
+<script setup lang="ts">
 import { getAuthRole, updateAuthRole } from "@/api/system/user";
 import { parseTime } from "@/utils";
 
+defineOptions({
+  name: "AuthRole"
+});
 const route = useRoute();
 const { proxy } = getCurrentInstance();
 const roleRef = ref(null);

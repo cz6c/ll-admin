@@ -1,4 +1,4 @@
-<script setup lang="tsx" name="Spu">
+<script setup lang="tsx">
 import TableView from "@/components/TableView/index.vue";
 import { TableConfig, TableViewInstance } from "@/components/TableView/index.d";
 import { useTable } from "@/components/TableView/useTable";
@@ -7,6 +7,9 @@ import { getProductListApi, statusChangeApi, delProductApi } from "@/api/product
 import { ProductItem } from "@/api/product/spu/index.d";
 import { dayjs } from "element-plus";
 
+defineOptions({
+  name: "Spu"
+});
 const { proxy } = getCurrentInstance();
 
 const getListApi = getProductListApi;

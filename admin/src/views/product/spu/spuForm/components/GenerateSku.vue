@@ -1,4 +1,4 @@
-<script setup lang="tsx" name="GenerateSku">
+<script setup lang="tsx">
 import { SpecificationItem, SkuItem } from "@/api/product/spu/index.d";
 import { betchDelSkuApi, betchDelSpecsApi } from "@/api/product/spu";
 import { isEqual } from "lodash-es";
@@ -6,6 +6,9 @@ import UploadImg from "@/components/Upload/UploadImg.vue";
 import { TableCol } from "@/components/TableView";
 import TableView from "@/components/TableView/index.vue";
 
+defineOptions({
+  name: "GenerateSku"
+});
 const specList = defineModel<SpecificationItem[]>("specs", { required: true });
 const skuList = defineModel<SkuItem[]>("skus", { required: true });
 const columns: TableCol<SkuItem>[] = [

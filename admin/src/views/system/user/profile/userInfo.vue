@@ -21,12 +21,15 @@
   </el-form>
 </template>
 
-<script setup lang="ts" name="UserInfo">
+<script setup lang="ts">
 import { UpdateProfileDto } from "#/api/system/user";
 import { updateUserProfile } from "@/api/system/user";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
 
+defineOptions({
+  name: "UserInfo"
+});
 const { sys_user_sex } = toRefs(useDict("sys_user_sex"));
 
 const user = defineModel<UpdateProfileDto>("user");

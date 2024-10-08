@@ -1,10 +1,13 @@
-<script lang="ts" setup name="SpuForm">
+<script setup lang="ts">
 import { createProductApi, updateProductApi, getProductInfoApi } from "@/api/product/spu";
 import { ProductItem } from "@/api/product/spu/index.d";
 import GenerateSku from "./components/GenerateSku.vue";
 import { useCategory } from "@/views/product/category/useCategory";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
 
+defineOptions({
+  name: "SpuForm"
+});
 const { proxy } = getCurrentInstance();
 
 const { options, getCategoryTrees } = useCategory();

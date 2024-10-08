@@ -1,5 +1,11 @@
-<script setup lang="ts" name="ImportTemp">
+<script setup lang="ts">
 import { getToken } from "@/utils/auth";
+import { UploadFile } from "element-plus";
+
+defineOptions({
+  name: "ImportTemp"
+});
+
 const { proxy } = getCurrentInstance();
 
 const props = defineProps({
@@ -33,7 +39,7 @@ const handleFileUploadProgress = () => {
   upload.isUploading = true;
 };
 /** 文件上传成功处理 */
-const handleFileSuccess = (response: any, file: File) => {
+const handleFileSuccess = (response: any, file: UploadFile) => {
   upload.isUploading = false;
   unref(uploadRef).handleRemove(file);
   $emit("success");

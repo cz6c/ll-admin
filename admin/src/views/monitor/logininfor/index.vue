@@ -111,11 +111,14 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Logininfor">
+<script setup lang="ts">
 import { list, delLogininfor, cleanLogininfor, unlockLogininfor } from "@/api/monitor/logininfor";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
+defineOptions({
+  name: "Logininfor"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_success_error } = toRefs(useDict("sys_success_error"));

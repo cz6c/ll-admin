@@ -1,9 +1,13 @@
-<script setup lang="ts" name="UploadImg">
+<script setup lang="ts">
 import { generateUUID } from "@/utils";
 import { uploadImg } from "@/api/public";
 import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
 import type { UploadProps, UploadRequestOptions } from "element-plus";
 import { ImageMimeType } from "./index.d";
+
+defineOptions({
+  name: "UploadImg"
+});
 
 interface UploadFileProps {
   drag?: boolean; // 是否支持拖拽上传 ==> 非必传（默认为 true）

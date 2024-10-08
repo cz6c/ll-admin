@@ -1,6 +1,9 @@
-<script setup lang="ts" name="BreadCrumb">
-import { RouteLocationMatched, useRoute, useRouter } from "vue-router";
+<script setup lang="ts">
 import { RouterEnum } from "@/router";
+
+defineOptions({
+  name: "BreadCrumb"
+});
 
 const route = useRoute();
 const router = useRouter();
@@ -11,7 +14,7 @@ function getBreadcrumb() {
   levelList.value = route.matched.filter(item => item.meta && item.meta.title && item.meta.breadcrumb !== false);
 }
 
-function handleLink(item: RouteLocationMatched) {
+function handleLink(item) {
   const { redirect, path } = item;
   if (redirect) {
     router.push(redirect as string);

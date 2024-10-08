@@ -57,10 +57,13 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Online">
+<script setup lang="ts">
 import { forceLogout, list as initData } from "@/api/monitor/online";
 import { parseTime } from "@/utils";
 
+defineOptions({
+  name: "Online"
+});
 const { proxy } = getCurrentInstance();
 
 const onlineList = ref([]);

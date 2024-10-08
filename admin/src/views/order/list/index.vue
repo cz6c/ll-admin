@@ -1,4 +1,4 @@
-<script setup lang="tsx" name="OrderList">
+<script setup lang="tsx">
 import TableView from "@/components/TableView/index.vue";
 import { TableConfig, TableViewInstance } from "@/components/TableView/index.d";
 import { useTable } from "@/components/TableView/useTable";
@@ -8,6 +8,9 @@ import { OrderItem, OrderState, PayChannel } from "@/api/order/index.d";
 import { dayjs } from "element-plus";
 import { enumToOpts } from "@/utils";
 
+defineOptions({
+  name: "OrderList"
+});
 const { proxy } = getCurrentInstance();
 
 const getListApi = getOrderListApi;

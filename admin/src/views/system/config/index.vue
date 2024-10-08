@@ -125,12 +125,15 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Config">
+<script setup lang="ts">
 import { listConfig, getConfig, delConfig, addConfig, updateConfig } from "@/api/system/config";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
+defineOptions({
+  name: "Config"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_yes_no } = toRefs(useDict("sys_yes_no"));

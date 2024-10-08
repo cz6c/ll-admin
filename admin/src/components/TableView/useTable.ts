@@ -5,7 +5,7 @@ import { cloneDeep } from "lodash-es";
 
 export interface Params {
   getListApi: Fn;
-  apiQuery: Record<string, any> & ListParams;
+  apiQuery?: Record<string, any> & ListParams & { total: number };
   beforeFetch?: Fn;
   afterFetch?: Fn;
 }

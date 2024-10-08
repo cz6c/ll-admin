@@ -1,11 +1,10 @@
-<template>
-  <div v-show="isShow" :style="style">
-    <slot />
-  </div>
-</template>
-<script setup lang="ts" name="GridItem">
+<script setup lang="ts">
 import { computed, inject, Ref, ref, useAttrs, watch } from "vue";
 import { BreakPoint } from "../type";
+
+defineOptions({
+  name: "GridItem"
+});
 
 type Props = {
   offset?: number;
@@ -56,3 +55,9 @@ const style = computed(() => {
   }
 });
 </script>
+
+<template>
+  <div v-show="isShow" :style="style">
+    <slot />
+  </div>
+</template>

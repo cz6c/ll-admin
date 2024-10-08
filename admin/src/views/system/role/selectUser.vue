@@ -66,11 +66,14 @@
   </el-dialog>
 </template>
 
-<script setup lang="ts" name="SelectUser">
+<script setup lang="ts">
 import { authUserSelectAll, unallocatedUserList } from "@/api/system/role";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
+defineOptions({
+  name: "SelectUser"
+});
 const props = defineProps({
   roleId: {
     type: [Number, String]

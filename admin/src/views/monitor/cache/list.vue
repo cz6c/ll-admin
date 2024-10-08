@@ -105,10 +105,13 @@
   </div>
 </template>
 
-<script setup lang="ts" name="CacheList">
+<script setup lang="ts">
 import { CacheData } from "#/api/monitor/cache";
 import { listCacheName, listCacheKey, getCacheValue, clearCacheName, clearCacheKey } from "@/api/monitor/cache";
 
+defineOptions({
+  name: "CacheList"
+});
 const { proxy } = getCurrentInstance();
 
 const cacheNames = ref([]);

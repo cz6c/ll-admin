@@ -62,12 +62,16 @@
   </div>
 </template>
 
-<script setup name="Profile" lang="ts">
+<script setup lang="ts">
 import userAvatar from "./userAvatar.vue";
 import userInfo from "./userInfo.vue";
 import resetPwd from "./resetPwd.vue";
 import { getUserProfile } from "@/api/system/user";
 import { UserProfile } from "#/api/system/user";
+
+defineOptions({
+  name: "Profile"
+});
 
 const activeTab = ref("userinfo");
 const state = reactive({

@@ -1,4 +1,8 @@
-<script setup lang="ts" name="OrderDetails"></script>
+<script setup lang="ts">
+defineOptions({
+  name: "OrderDetails"
+});
+</script>
 
 <template>
   <div class="index" />

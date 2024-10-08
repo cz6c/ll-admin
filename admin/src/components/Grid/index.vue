@@ -4,7 +4,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Grid">
+<script setup lang="ts">
 import {
   ref,
   watch,
@@ -20,6 +20,10 @@ import {
   VNode
 } from "vue";
 import type { BreakPoint } from "./type";
+
+defineOptions({
+  name: "Grid"
+});
 
 type Props = {
   cols?: number | Record<BreakPoint, number>; // 响应式栅格数
@@ -118,7 +122,7 @@ const findIndex = () => {
       prev +=
         ((current as VNode)!.props![breakPoint.value]?.span ?? (current as VNode)!.props?.span ?? 1) +
         ((current as VNode)!.props![breakPoint.value]?.offset ?? (current as VNode)!.props?.offset ?? 0);
-      if (Number(prev) > props.collapsedRows * gridCols.value - suffixCols) {
+      if (Number(prev) > props.collapsedRows * (gridCols.value as number) - suffixCols) {
         hiddenIndex.value = index;
         find = true;
         throw "find it";

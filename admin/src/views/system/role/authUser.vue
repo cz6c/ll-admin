@@ -73,12 +73,15 @@
   </div>
 </template>
 
-<script setup lang="ts" name="AuthUser">
+<script setup lang="ts">
 import selectUser from "./selectUser.vue";
 import { allocatedUserList, authUserCancel, authUserCancelAll } from "@/api/system/role";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
+defineOptions({
+  name: "AuthUser"
+});
 const route = useRoute();
 const { proxy } = getCurrentInstance();
 

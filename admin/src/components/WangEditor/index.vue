@@ -19,13 +19,17 @@
   </div>
 </template>
 
-<script setup lang="ts" name="WangEditor">
+<script setup lang="ts">
 import { nextTick, computed, inject, shallowRef, onBeforeUnmount } from "vue";
 import { IToolbarConfig, IEditorConfig, IDomEditor } from "@wangeditor/editor";
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import "@wangeditor/editor/dist/css/style.css";
 import { formContextKey, formItemContextKey } from "element-plus";
 import { uploadImg } from "@/api/public";
+
+defineOptions({
+  name: "WangEditor"
+});
 
 // 富文本 DOM 元素
 const editorRef = shallowRef<IDomEditor | undefined>(undefined);

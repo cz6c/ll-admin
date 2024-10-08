@@ -1,20 +1,22 @@
-<script setup name="SidebarItem">
-import { isExternal } from "@/utils/is";
+<script setup lang="ts">
 import AppLink from "./Link.vue";
+import type { AppRouteRecordRaw } from "#/utils";
 
-const props = defineProps({
-  // route object
+defineOptions({
+  name: "SidebarItem"
+});
+
+// route object
+const { item, isNest = false } = defineProps({
   item: {
-    type: Object,
-    required: true
+    type: Object
   },
   isNest: {
-    type: Boolean,
-    default: false
+    type: Boolean
   }
 });
 
-const onlyOneChild = ref({});
+const onlyOneChild = ref({} as AppRouteRecordRaw & { hasOneShowingChild: boolean; query: Record<string, any> });
 
 function hasOneShowingChild(children, parent) {
   // 当没有子路由器时，显示父路由

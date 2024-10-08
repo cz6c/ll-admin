@@ -132,13 +132,16 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Dict">
+<script setup lang="ts">
 import { useDictStore } from "@/store/modules/dict";
 import { listType, getType, delType, addType, updateType, refreshCache } from "@/api/system/dict/type";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
+defineOptions({
+  name: "Dict"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));

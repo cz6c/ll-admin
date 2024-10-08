@@ -1,11 +1,14 @@
-<script setup lang="ts" name="BaseImage">
+<script setup lang="ts">
+defineOptions({
+  name: "BaseImage"
+});
+
 const props = defineProps({
   src: {
     type: String,
     default: ""
   },
   fit: {
-    type: String,
     default: "contain"
   },
   lazy: {
@@ -13,7 +16,6 @@ const props = defineProps({
     default: true
   },
   previewSrcList: {
-    type: Array, // 图片预览
     default: () => []
   },
   width: {

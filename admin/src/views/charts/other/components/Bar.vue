@@ -1,11 +1,15 @@
-<script lang="ts" setup name="Bar">
+<script setup lang="ts">
 import { ref, Ref, onMounted } from "vue";
 import { useEcharts } from "@/hooks/useEcharts";
 
+defineOptions({
+  name: "Bar"
+});
+
 withDefaults(
   defineProps<{
-    width: string;
-    height: string;
+    width?: string;
+    height?: string;
   }>(),
   {
     width: "100%",

@@ -73,10 +73,13 @@
   </template>
 </template>
 
-<script setup lang="ts" name="SearchFormItem">
-import { computed } from "vue";
+<script setup lang="ts">
 import { handleProp } from "@/utils";
 import { SearchProps } from "../type";
+
+defineOptions({
+  name: "SearchFormItem"
+});
 
 interface Props {
   column: SearchProps;

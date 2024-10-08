@@ -1,14 +1,18 @@
-<template>
-  <div class="app-page home">nest-admin vue3</div>
-</template>
+<script setup lang="ts">
+defineOptions({
+  name: "Index"
+});
 
-<script setup name="Index">
 const version = ref("3.8.6");
 
 function goTarget(url) {
   window.open(url, "__blank");
 }
 </script>
+
+<template>
+  <div class="app-page home">nest-admin vue3</div>
+</template>
 
 <style scoped lang="scss">
 .home {

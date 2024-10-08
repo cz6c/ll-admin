@@ -176,11 +176,14 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Operlog">
-import { list, delOperlog, cleanOperlog } from "@/api/monitor/operlog";
+<script setup lang="ts">
+import { list, delOperlog } from "@/api/monitor/operlog";
 import { parseTime, addDateRange, selectDictLabel } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
+defineOptions({
+  name: "Operlog"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_oper_type, sys_success_error } = toRefs(useDict("sys_oper_type", "sys_success_error"));
@@ -231,7 +234,7 @@ function getList() {
   list(addDateRange(queryParams.value, dateRange.value)).then(response => {
     console.log("response", response);
     operlogList.value = response.data.list;
-    total.value = response.total;
+    total.value = response.data.total;
     loading.value = false;
   });
 }

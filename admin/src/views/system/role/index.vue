@@ -161,13 +161,16 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Role">
+<script setup lang="ts">
 import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
 import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
+defineOptions({
+  name: "Role"
+});
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 

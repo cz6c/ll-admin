@@ -6,7 +6,6 @@
 import type { PluginOption } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
-// import vueSetupExtend from "unplugin-vue-setup-extend-plus";
 import vueDevTools from "vite-plugin-vue-devtools";
 import progress from "vite-plugin-progress";
 import { ConfigSvgIconsPlugin } from "./plugins/svgIcons";
@@ -26,8 +25,6 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     vue(),
     // JSX支持
     vueJsx(),
-    // setup语法糖组件名支持
-    // vueSetupExtend(),
     // 调试工具
     vueDevTools(),
     // 构建显示进度条

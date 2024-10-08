@@ -19,7 +19,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Layout">
+<script setup lang="ts">
 import AppMain from "./components/AppMain/index.vue";
 import Sidebar from "./components/Sidebar/index.vue";
 import Navbar from "./components/Navbar/index.vue";
@@ -30,6 +30,10 @@ import { useSettingsStore } from "@/store/modules/settings";
 import { useWindowSize } from "@vueuse/core";
 import variables from "@/assets/style/variables.module.scss";
 console.log("🚀 ~ variables:", variables);
+
+defineOptions({
+  name: "Layout"
+});
 
 const settingRef = ref(null);
 function setLayout() {

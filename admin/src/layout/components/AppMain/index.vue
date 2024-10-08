@@ -10,8 +10,12 @@
   </router-view>
 </template>
 
-<script setup lang="ts" name="AppMain">
+<script setup lang="ts">
 import { useTagsViewStore } from "@/store/modules/tagsView";
+
+defineOptions({
+  name: "AppMain"
+});
 
 const tagsViewStore = useTagsViewStore();
 </script>

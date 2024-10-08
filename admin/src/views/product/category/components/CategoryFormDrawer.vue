@@ -1,9 +1,12 @@
-<script lang="ts" setup name="CategoryFormDrawer">
+<script setup lang="ts">
 import { CategoryItem } from "@/api/product/category/index.d";
 import { getCategoryInfoApi, createCategoryApi, updateCategoryApi } from "@/api/product/category";
 import { useCategory } from "../useCategory";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
 
+defineOptions({
+  name: "CategoryFormDrawer"
+});
 const { proxy } = getCurrentInstance();
 
 const { options, getCategoryTrees } = useCategory();

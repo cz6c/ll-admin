@@ -22,10 +22,14 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import Fuse from "fuse.js";
 import { isHttp } from "@/utils/is";
 import { usePermissionStore } from "@/store/modules/permission";
+
+defineOptions({
+  name: "HeaderSearch"
+});
 
 const search = ref("");
 const options = ref([]);

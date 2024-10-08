@@ -1,5 +1,9 @@
-<script setup lang="ts" name="TableFooter">
+<script setup lang="ts">
 import { ListParams } from "#/api";
+
+defineOptions({
+  name: "TableFooter"
+});
 
 export interface Pagination {
   pageQuery: ListParams & { total: number };

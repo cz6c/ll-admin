@@ -42,14 +42,17 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Navbar">
+<script setup lang="ts">
 import Breadcrumb from "./components/BreadCrumb.vue";
 import FoldButton from "./components/FoldButton.vue";
 import HeaderSearch from "@/components/HeaderSearch/index.vue";
 import { useAuthStore } from "@/store/modules/auth";
 import { RouterEnum } from "@/router";
-import { useRouter } from "vue-router";
 import { useLayoutStore } from "@/store/modules/layout";
+
+defineOptions({
+  name: "Navbar"
+});
 
 const userStore = useAuthStore();
 const layoutStore = useLayoutStore();

@@ -145,9 +145,13 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Cache">
+<script setup lang="ts">
 import { getCache } from "@/api/monitor/cache";
 import * as echarts from "echarts";
+
+defineOptions({
+  name: "Cache"
+});
 
 const cache = ref({
   dbSize: 0,

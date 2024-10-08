@@ -2,9 +2,13 @@
   <RenderTableColumn v-bind="props.column" />
 </template>
 
-<script setup lang="tsx" name="TableColumn">
+<script setup lang="tsx">
 import { TableCol, RenderScope, HeaderRenderScope } from "../index.d";
 import { formatValue, handleProp, handleRowAccordingToProp } from "@/utils";
+
+defineOptions({
+  name: "TableColumn"
+});
 
 const props = defineProps<{ column: TableCol }>();
 

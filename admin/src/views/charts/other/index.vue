@@ -1,10 +1,14 @@
-<script lang="ts" setup name="Other">
+<script setup lang="ts">
 import Bar from "./components/Bar.vue";
 import Line from "./components/Line.vue";
 import Pie from "./components/Pie.vue";
 import Radar from "./components/Radar.vue";
 import Calendar from "./components/Calendar.vue";
 import Funnel from "./components/Funnel.vue";
+
+defineOptions({
+  name: "Other"
+});
 </script>
 
 <template>

@@ -136,7 +136,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="DictData">
+<script setup lang="ts">
 import { useDictStore } from "@/store/modules/dict";
 import { optionselect as getDictOptionselect, getType } from "@/api/system/dict/type";
 import { listData, getData, delData, addData, updateData } from "@/api/system/dict/data";
@@ -144,6 +144,9 @@ import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
+defineOptions({
+  name: "DictData"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));

@@ -55,7 +55,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Login">
+<script setup lang="ts">
 import { useAuthStore } from "@/store/modules/auth";
 import type { FormInstance, FormRules } from "element-plus";
 import { getCodeImg } from "@/api/public";
@@ -63,6 +63,9 @@ import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
 import { productConfig } from "@/config";
 
+defineOptions({
+  name: "Login"
+});
 const { proxy } = getCurrentInstance();
 
 const BASE_TITLE = computed(() => {

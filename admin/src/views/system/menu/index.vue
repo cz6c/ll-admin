@@ -289,7 +289,7 @@
   </div>
 </template>
 
-<script setup lang="ts" name="MenuIndex">
+<script setup lang="ts">
 import { addMenu, delMenu, getMenuDetail, getMenuList, updateMenu } from "@/api/system/menu";
 import IconSelect from "@/components/IconSelect/index.vue";
 import { FormInstance, ClickOutside as vClickOutside } from "element-plus";
@@ -297,6 +297,9 @@ import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
+defineOptions({
+  name: "MenuIndex"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_show_hide, sys_normal_disable } = toRefs(useDict("sys_show_hide", "sys_normal_disable"));

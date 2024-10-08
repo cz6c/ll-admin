@@ -1,6 +1,9 @@
+<script setup lang="ts">
+defineOptions({
+  name: "SpuDetails"
+});
+</script>
 <template>
   <div class="cz-card" />
 </template>
-
-<script setup lang="ts" name="SpuDetails"></script>
 <style scoped lang="scss"></style>

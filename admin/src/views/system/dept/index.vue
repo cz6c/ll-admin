@@ -133,13 +133,16 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Dept">
+<script setup lang="ts">
 import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild } from "@/api/system/dept";
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
 
+defineOptions({
+  name: "Dept"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));

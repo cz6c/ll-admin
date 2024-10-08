@@ -53,11 +53,14 @@
   </div>
 </template>
 
-<script setup lang="ts" name="UserAvatar">
+<script setup lang="ts">
 import { uploadAvatar } from "@/api/system/user";
 import { uploadImg } from "@/api/public";
 import { useAuthStore } from "@/store/modules/auth";
 
+defineOptions({
+  name: "UserAvatar"
+});
 const userStore = useAuthStore();
 const { proxy } = getCurrentInstance();
 const cropperRef = ref(null);

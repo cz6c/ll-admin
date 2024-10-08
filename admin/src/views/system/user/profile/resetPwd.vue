@@ -16,10 +16,13 @@
   </el-form>
 </template>
 
-<script setup lang="ts" name="ResetPwd">
+<script setup lang="ts">
 import { updateUserPwd } from "@/api/system/user";
 import { FormInstance, FormRules } from "element-plus";
 
+defineOptions({
+  name: "ResetPwd"
+});
 const { proxy } = getCurrentInstance();
 const pwdRef = ref<FormInstance>(null);
 

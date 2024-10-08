@@ -1,8 +1,7 @@
-<template>
-  <div />
-</template>
-<script lang="ts" setup name="Redirect">
-import { useRouter } from "vue-router";
+<script setup lang="ts">
+defineOptions({
+  name: "Redirect"
+});
 
 const route = useRoute();
 const router = useRouter();
@@ -11,3 +10,7 @@ const { path } = params;
 
 router.replace({ path: "/" + path, query });
 </script>
+
+<template>
+  <div />
+</template>

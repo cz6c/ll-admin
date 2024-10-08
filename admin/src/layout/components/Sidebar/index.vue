@@ -26,10 +26,14 @@
     </div>
   </div>
 </template>
-<script setup lang="ts" name="Sidebar">
+<script setup lang="ts">
 import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
+
+defineOptions({
+  name: "Sidebar"
+});
 
 const routes = computed(() => usePermissionStore().routes);
 const sidebar = computed(() => useLayoutStore().sidebar);

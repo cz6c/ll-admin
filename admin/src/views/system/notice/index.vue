@@ -126,12 +126,15 @@
   </div>
 </template>
 
-<script setup lang="ts" name="Notice">
+<script setup lang="ts">
 import { listNotice, getNotice, delNotice, addNotice, updateNotice } from "@/api/system/notice";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
 
+defineOptions({
+  name: "Notice"
+});
 const { proxy } = getCurrentInstance();
 
 const { sys_notice_status, sys_notice_type } = toRefs(useDict("sys_notice_status", "sys_notice_type"));

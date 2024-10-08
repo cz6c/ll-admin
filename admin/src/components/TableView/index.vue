@@ -1,9 +1,13 @@
-<script lang="ts" setup name="TableView">
+<script lang="ts" setup>
 import type { ElTable } from "element-plus";
 import TableColumn from "./components/TableColumn.vue";
 import { TableCol } from "./index.d";
 import { cloneDeep } from "lodash-es";
 import { Pagination } from "./components/TableFooter.vue";
+
+defineOptions({
+  name: "TableView"
+});
 
 // 表格配置
 export interface TableProps<T = any> {
@@ -78,7 +82,7 @@ defineExpose({
       :data="data"
       :rowKey="rowKey"
       :tooltip-options="{
-        'popper-class': 'table-tooltip-popper'
+        popperClass: 'table-tooltip-popper'
       }"
       showOverflowTooltip
       @selection-change="handleSelectionChange"

@@ -1,18 +1,20 @@
-<script setup lang="tsx" name="Category">
+<script setup lang="tsx">
 import { TableConfig, TableViewInstance } from "@/components/TableView";
 import { getCategoryTreesApi, delCategoryApi } from "@/api/product/category";
 import { CategoryItem } from "@/api/product/category/index.d";
 import CategoryFormDrawer from "./components/CategoryFormDrawer.vue";
 import { useTable } from "@/components/TableView/useTable";
 
+defineOptions({
+  name: "Category"
+});
 const { proxy } = getCurrentInstance();
 
 const getListApi = getCategoryTreesApi;
 const delApi = delCategoryApi;
 
 const { loading, tableData, getList } = useTable({
-  getListApi,
-  apiQuery: {}
+  getListApi
 });
 getList();
 

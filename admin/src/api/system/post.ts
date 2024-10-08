@@ -38,7 +38,7 @@ export function updatePost(data: SysPostData) {
 
 // 删除岗位
 export function delPost(postIds: string) {
-  return $http<never, never>({
+  return $http({
     url: "/system/post/" + postIds,
     method: "delete"
   });

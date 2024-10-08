@@ -8,8 +8,9 @@ import { ChunkFileDto, ChunkMergeFileDto } from './dto/index';
 import { GenerateUUID } from '@/common/utils/index';
 import * as fs from 'fs';
 import * as path from 'path';
-import iconv from 'iconv-lite';
+import * as iconv from 'iconv-lite';
 import * as COS from 'cos-nodejs-sdk-v5';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UploadService {
@@ -37,16 +38,17 @@ export class UploadService {
   /**
    * 单文件上传
    * @param file
+   * @param fileType
    * @returns
    */
-  async singleFileUpload(file: Express.Multer.File) {
+  async singleFileUpload(file: Express.Multer.File, fileType: string) {
     const fileSize = (file.size / 1024 / 1024).toFixed(2);
     if (fileSize > this.config.get('app.file.maxSize')) {
       return ResultData.fail(500, `文件大小不能超过${this.config.get('app.file.maxSize')}MB`);
     }
     let res;
     if (this.isLocal) {
-      res = await this.saveFileLocal(file);
+      res = await this.saveFileLocal(file, fileType);
     } else {
       const targetDir = this.config.get('cos.location');
       res = await this.saveFileCos(targetDir, file);
@@ -211,17 +213,25 @@ export class UploadService {
   /**
    * 保存文件到本地
    * @param file
+   * @param fileType
    */
-  async saveFileLocal(file: Express.Multer.File) {
-    const rootPath = process.cwd();
+  async saveFileLocal(file: Express.Multer.File, fileType: string) {
+    let fileDir = process.env.NODE_ENV === 'production' ? '/prod' : '/test';
+    // 根据接口参数决定存储目录  append额外的参数必须在append文件之前，不然读不到
+    switch (fileType) {
+      case 'avatar':
+        fileDir += '/avatar';
+        break;
+    }
     //文件根目录
-    const baseDirPath = path.join(rootPath, this.config.get('app.file.location'));
+    const baseDirPath = path.join(process.cwd(), this.config.get('app.file.location'));
     //对文件名转码
     const originalname = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf8');
-    //重新生成文件名加上时间戳
-    const newFileName = this.getNewFileName(originalname);
+    // 计算文件内容的哈希值 重新生成文件名
+    const hash = crypto.createHash('md5').update(file.buffer).digest('hex');
+    const newFileName = `${hash}${path.extname(originalname)}`;
     //文件路径
-    const targetFile = path.join(baseDirPath, newFileName);
+    const targetFile = path.join(baseDirPath, fileDir, newFileName);
     //文件目录
     const sourceFilesDir = path.dirname(targetFile);
     //文件相对地址

@@ -46,7 +46,7 @@ export function updateDept(data: SysDeptData) {
 
 // 删除部门
 export function delDept(deptId: number) {
-  return $http<never, never>({
+  return $http({
     url: "/system/dept/" + deptId,
     method: "delete"
   });

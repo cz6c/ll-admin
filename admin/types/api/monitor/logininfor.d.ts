@@ -11,9 +11,7 @@ export type LoginlogData = {
   status?: string;
 };
 
-export type LoginlogResponse = {
-  data: Required<LoginlogData> & BaseResponse;
-};
+export type LoginlogResponse = Required<LoginlogData> & BaseResponse;
 
 export type LoginlogListResponse = ListResponse<LoginlogResponse>;
 

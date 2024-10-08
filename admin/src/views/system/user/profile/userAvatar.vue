@@ -46,7 +46,7 @@
           <el-button icon="RefreshRight" @click="rotateRight()" />
         </el-col>
         <el-col :lg="{ span: 2, offset: 6 }" :md="2">
-          <el-button type="primary" @click="uploadImg()">提 交</el-button>
+          <el-button type="primary" @click="sumbit()">提 交</el-button>
         </el-col>
       </el-row>
     </el-dialog>
@@ -55,6 +55,7 @@
 
 <script setup lang="ts" name="UserAvatar">
 import { uploadAvatar } from "@/api/system/user";
+import { uploadImg } from "@/api/public";
 import { useAuthStore } from "@/store/modules/auth";
 
 const userStore = useAuthStore();
@@ -104,11 +105,14 @@ function changeScale(num) {
   num = num || 1;
   unref(cropperRef).changeScale(num);
 }
+
+const nowFile = ref(null);
 /** 上传预处理 */
 function beforeUpload(file) {
   if (file.type.indexOf("image/") == -1) {
     proxy.$message.error("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
   } else {
+    nowFile.value = file;
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
@@ -117,14 +121,19 @@ function beforeUpload(file) {
   }
 }
 /** 上传图片 */
-function uploadImg() {
-  unref(cropperRef).getCropBlob(data => {
+function sumbit() {
+  unref(cropperRef).getCropBlob(blob => {
+    let newFile = new File([blob], unref(nowFile).name, {
+      type: unref(nowFile).type
+    });
     let formData = new FormData();
-    formData.append("avatarfile", data);
-    uploadAvatar(formData).then(response => {
+    formData.append("fileType", "avatar");
+    formData.append("file", newFile);
+    uploadImg(formData).then(response => {
       open.value = false;
-      options.img = response.data.imgUrl;
+      options.img = response.data.url;
       userStore.avatar = options.img;
+      uploadAvatar({ avatar: options.img });
       proxy.$message.success("修改成功");
       visible.value = false;
     });

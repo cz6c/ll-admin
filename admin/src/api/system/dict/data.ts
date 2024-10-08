@@ -46,7 +46,7 @@ export function updateData(data: SysDictData) {
 
 // 删除字典数据
 export function delData(dictCode: number) {
-  return $http<never, never>({
+  return $http({
     url: "/system/dict/data/" + dictCode,
     method: "delete"
   });

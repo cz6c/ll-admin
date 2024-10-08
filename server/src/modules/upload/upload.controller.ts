@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Query, UploadedFile, UseInterceptors, HttpCode } from '@nestjs/common';
 import { UploadService } from './upload.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { ChunkFileDto, ChunkMergeFileDto, FileUploadDto, uploadIdDto } from './dto/index';
 
 @ApiTags('通用')
@@ -23,9 +23,10 @@ export class UploadController {
   })
   @HttpCode(200)
   @Post()
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
-  singleFileUpload(@UploadedFile() file: Express.Multer.File) {
-    return this.uploadService.singleFileUpload(file);
+  singleFileUpload(@UploadedFile() file: Express.Multer.File, @Body() body: { fileType: string }) {
+    return this.uploadService.singleFileUpload(file, body.fileType);
   }
 
   /**

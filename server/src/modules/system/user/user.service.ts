@@ -744,6 +744,17 @@ export class UserService {
   }
 
   /**
+   * 个人中心-修改头像
+   * @param user
+   * @param avatar
+   * @returns
+   */
+  async updateAvatar(user: any, avatar: string) {
+    await this.userRepo.update({ userId: user.user.userId }, { avatar: avatar });
+    return ResultData.ok();
+  }
+
+  /**
    * 个人中心-修改密码
    * @param user
    * @param updatePwdDto

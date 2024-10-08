@@ -54,7 +54,7 @@ export function updateMenu(data: SysMenuData) {
 
 // 删除菜单
 export function delMenu(menuId: number) {
-  return $http<never, never>({
+  return $http({
     url: `/system/menu/${menuId}`,
     method: "delete"
   });

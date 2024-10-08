@@ -38,7 +38,7 @@ export function updateNotice(data: SysNoticeData) {
 
 // 删除公告
 export function delNotice(noticeIds: string) {
-  return $http<never, never>({
+  return $http({
     url: "/system/notice/" + noticeIds,
     method: "delete"
   });

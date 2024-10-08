@@ -67,7 +67,7 @@ export function changeRoleStatus(data: ChangeStatusDto) {
 
 // 删除角色
 export function delRole(roleId: number) {
-  return $http<never, never>({
+  return $http({
     url: "/system/role/" + roleId,
     method: "delete"
   });

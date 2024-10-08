@@ -29,6 +29,14 @@ export class UserController {
   }
 
   @ApiOperation({
+    summary: '个人中心-修改用户头像',
+  })
+  @Put('/profile/avatar')
+  updateAvatar(@GetRequestUser() user: RequestUserPayload, @Body() body: { avatar: string }) {
+    return this.userService.updateAvatar(user, body.avatar);
+  }
+
+  @ApiOperation({
     summary: '个人中心-修改密码',
   })
   @Put('/profile/updatePwd')

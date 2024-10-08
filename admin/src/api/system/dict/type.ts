@@ -46,7 +46,7 @@ export function delType(dictIds: string) {
 
 // 刷新字典缓存
 export function refreshCache() {
-  return $http<never, never>({
+  return $http({
     url: "/system/dict/type/refreshCache",
     method: "delete"
   });

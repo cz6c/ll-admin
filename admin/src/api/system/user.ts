@@ -100,10 +100,10 @@ export function updateUserPwd(data: UpdatePwdDto) {
 }
 
 // 用户头像上传
-export function uploadAvatar(data: FormData) {
-  return $http<FormData, { imgUrl: string }>({
+export function uploadAvatar(data: { avatar: string }) {
+  return $http<{ avatar: string }, never>({
     url: "/system/user/profile/avatar",
-    method: "post",
+    method: "put",
     data
   });
 }

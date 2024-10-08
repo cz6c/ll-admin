@@ -26,7 +26,6 @@ import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import "@wangeditor/editor/dist/css/style.css";
 import { formContextKey, formItemContextKey } from "element-plus";
 import { uploadImg } from "@/api/public";
-import { qiniuUpload } from "@/components/Upload/qiniu";
 
 // 富文本 DOM 元素
 const editorRef = shallowRef<IDomEditor | undefined>(undefined);
@@ -125,11 +124,11 @@ type InsertFnTypeVideo = (url: string, poster?: string) => void;
 props.editorConfig.MENU_CONF!["uploadVideo"] = {
   async customUpload(file: File, insertFn: InsertFnTypeVideo) {
     if (!uploadVideoValidate(file)) return;
-    // let formData = new FormData();
-    // formData.append("file", file);
+    let formData = new FormData();
+    formData.append("file", file);
     try {
-      const data = await qiniuUpload(file);
-      insertFn(data);
+      const { data } = await uploadImg(formData);
+      insertFn(data.url);
     } catch (error) {
       console.log(error);
     }

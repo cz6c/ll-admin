@@ -13,7 +13,7 @@ export function login(data: LoginParams) {
 }
 // 登出
 export function logout() {
-  return $http<never, never>({
+  return $http({
     url: "/logout",
     method: "post"
   });
@@ -49,29 +49,18 @@ export function getRouters() {
 }
 
 // 获取城市地区
-// export const getAreaList = createGet<never, any>("/admin/getAreaList");
 export function getAreaList() {
   return $http<never, any>({
-    url: "/admin/getAreaList",
+    url: "/common/area/trees",
     method: "get"
   });
 }
 
 // 上传图片
-// export const uploadImg = createPost<FormData, { url: string }>("/api/files/upload");
 export function uploadImg(data: FormData) {
-  return $http<FormData, { url: string }>({
-    url: "/api/files/upload",
+  return $http<FormData, { url: string; fileName: string; newFileName: string }>({
+    url: "/common/upload",
     method: "post",
     data
-  });
-}
-
-// 获取七牛云上传token
-// export const getQiniuToken = createGet<never, { token: string; key: string; domain: string }>("/api/getQiniuToken");
-export function getQiniuToken() {
-  return $http<never, { token: string; key: string; domain: string }>({
-    url: "/api/getQiniuToken",
-    method: "get"
   });
 }

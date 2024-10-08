@@ -38,7 +38,7 @@ export function updateConfig(data: SysConfigData) {
 
 // 删除参数配置
 export function delConfig(configIds: string) {
-  return $http<never, never>({
+  return $http({
     url: "/system/config/" + configIds,
     method: "delete"
   });

@@ -35,7 +35,7 @@ jobs:
           # 用户
           REMOTE_USER: ${{ secrets.SERVER_USER }}
           # 目标地址
-          TARGET: '/www/wwwroot/ll_api'
+          TARGET: '/www/wwwroot/ll_api/server'
 
       # 安装依赖、重启服务 
       - name: Server Reload
@@ -45,8 +45,8 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /www/wwwroot/ll_api
-            cp /www/wwwroot/ll_api/prod.yml /www/wwwroot/ll_api/src/config/prod.yml
+            cd /www/wwwroot/ll_api/server
+            cp /www/wwwroot/ll_api/prod.yml /www/wwwroot/ll_api/server/src/config/prod.yml
             pnpm install
             pnpm run build
             if pm2 list | grep -q "ll_api"; then

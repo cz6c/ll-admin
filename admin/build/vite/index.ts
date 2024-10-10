@@ -14,11 +14,10 @@ import { AutoImportDeps } from "./plugins/autoImport";
 import { ConfigCompressPlugin } from "./plugins/compress";
 import { ConfigRestartPlugin } from "./plugins/restart";
 import { ConfigImageminPlugin } from "./plugins/imagemin";
-import { ConfigVisualizerConfig } from "./plugins/visualizer";
 import { UnoCSSPlugin } from "./plugins/unocss";
 
 export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
-  const { VITE_USE_COMPRESS, VITE_USE_REPORT } = env;
+  const { VITE_USE_COMPRESS } = env;
 
   const vitePlugins: (PluginOption | PluginOption[])[] = [
     // vue支持
@@ -47,9 +46,6 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
 
     // 开启.gz压缩  rollup-plugin-gzip
     VITE_USE_COMPRESS && vitePlugins.push(ConfigCompressPlugin());
-
-    // 打包体积分析 rollup-plugin-visualizer
-    VITE_USE_REPORT && vitePlugins.push(ConfigVisualizerConfig());
   }
 
   return vitePlugins;

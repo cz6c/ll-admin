@@ -1,0 +1,55 @@
+# workflow 工作流的名字，自定义
+name: deploy web
+
+# 配置触发条件
+on:
+  push: # 监听到 web 分支的 push 动作
+    branches:
+      - web
+
+# 工作流的任务集配置
+jobs:
+  # 定义一个 job，id 为 deploy
+  deploy:
+    # 指定任务执行的运行器。
+    runs-on: ubuntu-latest
+
+    # 定义 job 的具体步骤
+    steps:
+      # 官方action，将代码拉取到虚拟机
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16.20.2"
+          cache: "pnpm"
+
+      - name: Install And build
+        run: |
+          cd admin
+          pnpm install
+          pnpm run build:prod
+
+      # 拷贝文件到服务器指定目录
+      - name: Deploy to server
+        uses: easingthemes/ssh-deploy@main
+        env:
+          # 私钥
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          # SCP参数
+          ARGS: "-avzr --delete"
+          # 源目录
+          SOURCE: "/admin/dist/"
+          # 服务器ip
+          REMOTE_HOST: ${{ secrets.SERVER_HOST }}
+          # 用户
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          # 目标地址
+          TARGET: "/www/wwwroot/ll_admin"

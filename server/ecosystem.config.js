@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'll_app',
+      name: 'll_api',
       script: './dist/main.js',
       instances: 1, // 启用多少个实例
       exec_mode: 'cluster', // 应用程序启动模式，这里设置的是cluster_mode（集群），默认是fork
@@ -14,6 +14,9 @@ module.exports = {
       error_file: './logs/err.log',
       env: {
         NODE_ENV: 'development',
+      },
+      env_production: {
+        NODE_ENV: 'production',
       },
     },
   ],

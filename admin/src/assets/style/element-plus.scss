@@ -128,29 +128,6 @@
   }
 }
 
-:root {
-  // menu
-  --el-menu-text-color: #020818 !important;
-  --el-menu-active-color: #020818 !important;
-  --el-menu-item-height: 50px !important;
-  --el-menu-hover-bg-color: transparent !important;
-
-  // button
-  --el-border-radius-base: 6px;
-}
-
-// table
-.el-table {
-  --el-table-text-color: var(--el-black) !important;
-  --el-table-header-text-color: var(--el-black) !important;
-  --el-table-header-bg-color: #f7f7fb !important;
-}
-
-// input
-.el-input {
-  --el-input-border-radius: 6px;
-}
-
 .cz-drawer {
   .el-drawer__title {
     font-size: 16px;

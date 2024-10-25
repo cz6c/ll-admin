@@ -34,9 +34,9 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     },
     css: {
       preprocessorOptions: {
-        // 引入配置element plus 主题色scss文件
         scss: {
-          additionalData: '@use "@/assets/style/theme.scss" as *;'
+          additionalData: '@use "@/assets/style/theme.scss" as *;', // 引入配置项目主题色文件
+          api: "modern-compiler" // 去除sass警告
         }
       }
     },

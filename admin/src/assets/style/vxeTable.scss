@@ -1,0 +1,25 @@
+.vxe-table--render-default,
+.vxe-table--tooltip-wrapper {
+  font-family: "Microsoft YaHe", "font", "font1", "font2", "font3", "font4", "font5", "font6", "font7", "font8", "font9" !important;
+  font-weight: 500;
+}
+
+// 表头
+.vxe-header--column {
+  font-weight: 500 !important;
+}
+
+// checkbox
+.vxe-table--render-default .vxe-cell--checkbox .vxe-checkbox--icon {
+  font-weight: 400 !important;
+}
+
+// tooltip层级增大，弹框需要
+.vxe-table--tooltip-wrapper {
+  z-index: 3000 !important;
+}
+
+@import "vxe-pc-ui/styles/cssvar.scss";
+@import "vxe-pc-ui/lib/style.css";
+@import "vxe-table/styles/cssvar.scss";
+@import "vxe-table/lib/style.css";

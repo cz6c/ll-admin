@@ -3,8 +3,7 @@ import { defineStore } from "pinia";
 export const useLayoutStore = defineStore("layout", {
   state: () => ({
     sidebar: {
-      opened: true,
-      withoutAnimation: false
+      opened: true
     },
     device: "desktop"
   }),
@@ -14,9 +13,8 @@ export const useLayoutStore = defineStore("layout", {
       this.sidebar.opened = !this.sidebar.opened;
     },
     // 关闭侧边栏
-    closeSideBar({ withoutAnimation }) {
+    closeSideBar() {
       this.sidebar.opened = false;
-      this.sidebar.withoutAnimation = withoutAnimation;
     },
     // 切换设备类型
     toggleDevice(device: "mobile" | "desktop") {

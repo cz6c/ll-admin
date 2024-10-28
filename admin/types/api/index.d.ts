@@ -2,12 +2,10 @@
 export interface ListParams {
   pageNum?: number;
   pageSize?: number;
-  params?: {
-    beginTime: string;
-    endTime: string;
-  };
+  beginTime: string;
+  endTime: string;
   orderByColumn?: string;
-  isAsc?: "ascending" | "descending";
+  order?: "ascending" | "descending";
 }
 // 列表响应
 export interface ListResponse<T> {

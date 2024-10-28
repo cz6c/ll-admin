@@ -1,90 +1,17 @@
 <script setup lang="ts">
-import type { VxeGridInstance, VxeTablePropTypes, VxeGridProps, VxeColumnPropTypes, VxeGridListeners } from "vxe-table";
+import type { VxeGridProps } from "vxe-table";
+import { useTable } from "@/hooks/useVxetable";
+import type { ListParams } from "#/api/index.d";
 
 defineOptions({
   name: "Index"
 });
 
-interface RowVO {
-  id: number;
-  name: string;
-  role: string;
-  sex: string;
-  age: number;
-  address: string;
-}
-const expandAll = ref(false);
-const selectRows = ref<RowVO[]>([]);
-const gridRef = ref<VxeGridInstance<RowVO>>();
-const gridOptions = reactive<VxeGridProps<RowVO>>({
-  height: 500,
-  treeConfig: {
-    childrenField: "children"
-  },
-  checkboxConfig: {
-    reserve: true
-  },
-  pagerConfig: {
-    total: 0,
-    currentPage: 1,
-    pageSize: 10
-  },
-  toolbarConfig: {
-    zoom: true,
-    custom: true,
-    refresh: {
-      queryMethod: () => {
-        console.log("🚀 ~ refresh:");
-        return findList();
-      }
-    }
-  },
-  columns: [
-    {
-      treeNode: true,
-      width: 50,
-      slots: {
-        header: "treeNode_header"
-      }
-    },
-    { type: "checkbox", width: 80 },
-    { field: "name", title: "name" },
-    { field: "role", title: "role" },
-    { field: "sex", title: "sex" },
-    { field: "age", title: "Age", sortable: true },
-    { field: "address", title: "Address", showOverflow: true }
-  ],
-  data: []
-});
-const gridEvents: VxeGridListeners<RowVO> = {
-  sortChange({ field, order }) {
-    gridOptions.pagerConfig.currentPage = 1;
-    findList(field, order);
-  },
-  pageChange({ pageSize, currentPage }) {
-    gridOptions.pagerConfig.currentPage = currentPage;
-    gridOptions.pagerConfig.pageSize = pageSize;
-    findList();
-  },
-  checkboxChange() {
-    handleCheckBox();
-  },
-  checkboxAll() {
-    handleCheckBox();
-  }
-};
-const handleCheckBox = () => {
-  const records = unref(gridRef).getCheckboxRecords();
-  const reserves = unref(gridRef).getCheckboxReserveRecords();
-  const { reserve } = gridOptions.checkboxConfig;
-  const arr = reserve ? records.concat(...reserves) : records;
-  selectRows.value = arr;
-};
-
-const findList = (field?: VxeColumnPropTypes.Field, order?: VxeTablePropTypes.SortOrder) => {
-  gridOptions.loading = true;
+const getListApi = query => {
+  console.log("🚀 ~ getListApi ~ query:", query);
+  const { field, order, pageNum, pageSize, name } = query;
   // 模拟接口
-  return new Promise<RowVO[]>(resolve => {
+  return new Promise<{ data: { list: RowVO[]; total: number } }>(resolve => {
     setTimeout(() => {
       gridOptions.loading = false;
       const mockList = [
@@ -154,36 +81,98 @@ const findList = (field?: VxeColumnPropTypes.Field, order?: VxeTablePropTypes.So
         { id: 100022, name: "Test22", nickname: "T22", role: "Develop", sex: "Man", age: 44, address: "Guangzhou" }
       ];
       let arr = JSON.parse(JSON.stringify(mockList));
+      if (name) {
+        arr = arr.filter(r => r.name.includes(name));
+      }
       if (field && order) {
         arr = mockList.sort((a, b) => {
-          if (order === "asc") {
+          if (order === "ascending") {
             return a[field] - b[field];
-          } else if (order === "desc") {
+          } else if (order === "descending") {
             return b[field] - a[field];
           } else {
             return;
           }
         });
       }
-      const { pageSize, currentPage } = gridOptions.pagerConfig;
-      gridOptions.pagerConfig.total = arr.length;
-      gridOptions.data = arr.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-      gridOptions.loading = false;
-      console.log(gridOptions.data);
-      resolve(gridOptions.data);
+      const list = arr.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+      console.log("🚀 ~ setTimeout ~ list:", list);
+      resolve({
+        data: {
+          list,
+          total: arr.length
+        }
+      });
     }, 300);
   });
 };
-findList();
 
-// 展开收缩全部行
-function expandAllChange(val) {
-  expandAll.value = val;
-  // 展开所有
-  unref(expandAll) && unref(gridRef).setAllTreeExpand(true);
-  // 关闭所有
-  !unref(expandAll) && unref(gridRef).clearTreeExpand();
+interface RowVO {
+  id: number;
+  name: string;
+  role: string;
+  sex: string;
+  age: number;
+  address: string;
 }
+const gridOptions = reactive<VxeGridProps<RowVO>>({
+  height: 500,
+  treeConfig: {
+    childrenField: "children"
+  },
+  checkboxConfig: {
+    reserve: true
+  },
+  pagerConfig: {
+    total: 0,
+    currentPage: 1,
+    pageSize: 10
+  },
+  toolbarConfig: {
+    zoom: true,
+    custom: true,
+    refresh: {
+      queryMethod: () => {
+        console.log("🚀 ~ refresh:");
+        return getTableData();
+      }
+    }
+  },
+  columns: [
+    {
+      treeNode: true,
+      width: 50,
+      slots: {
+        header: "treeNode_header"
+      }
+    },
+    { type: "checkbox", width: 80 },
+    { field: "name", title: "name" },
+    { field: "role", title: "role" },
+    { field: "sex", title: "sex" },
+    { field: "age", title: "Age", sortable: true },
+    { field: "address", title: "Address", showOverflow: true }
+  ],
+  data: []
+});
+const apiQuery = reactive<ListParams & { name: string }>({
+  pageNum: null,
+  pageSize: null,
+  beginTime: null,
+  endTime: null,
+  orderByColumn: null,
+  order: null,
+  name: "Test1"
+});
+
+const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, getTableData } = useTable(
+  gridOptions,
+  getListApi,
+  apiQuery
+);
+console.log("🚀 ~ gridOptions:", gridOptions);
+
+getTableData();
 </script>
 
 <template>
@@ -200,6 +189,7 @@ function expandAllChange(val) {
         </el-tooltip>
       </template>
     </vxe-grid>
+    {{ selectRows.length }}
   </div>
 </template>
 

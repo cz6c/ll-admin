@@ -45,12 +45,12 @@ export class LoginlogService {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
 
-    if (query.params?.beginTime && query.params?.endTime) {
-      entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.params.beginTime, end: query.params.endTime });
+    if (query?.beginTime && query?.endTime) {
+      entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }
 
-    if (query.orderByColumn && query.isAsc) {
-      const key = query.isAsc === 'ascending' ? 'ASC' : 'DESC';
+    if (query.orderByColumn && query.order) {
+      const key = query.order === 'ascending' ? 'ASC' : 'DESC';
       entity.orderBy(`entity.${query.orderByColumn}`, key);
     }
 

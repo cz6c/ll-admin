@@ -58,7 +58,7 @@ a {
     padding: 16px;
     box-sizing: border-box;
     /* 50= navbar  50  */
-    height: calc(100vh - 50px - 36px); 
+    height: calc(100vh - 50px - 36px);
     // 内容区高度-自动
     &.auto-height {
       height: auto;

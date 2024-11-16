@@ -28,8 +28,7 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
     console.log("🚀 ~ handleCheckBox ~ reserves:", reserves);
     console.log("🚀 ~ handleCheckBox ~ records:", records);
     const { reserve } = gridOptions.checkboxConfig;
-    const arr = reserve ? [...reserves, ...records] : records;
-    selectRows.value = arr;
+    selectRows.value = reserve ? [...reserves, ...records] : records;
   }
 
   /**
@@ -63,9 +62,9 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
   // 公共列表事件
   const gridEvents: VxeGridListeners<T> = {
     sortChange({ field, order }) {
-      gridOptions.pagerConfig.currentPage = 1;
       apiQuery.orderByColumn = field;
       apiQuery.order = order === "asc" ? "ascending" : order === "desc" ? "descending" : null;
+      gridOptions.pagerConfig.currentPage = 1;
       getTableData();
     },
     pageChange({ pageSize, currentPage }) {
@@ -87,7 +86,6 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
     expandAll,
     expandAllChange,
     selectRows,
-    handleCheckBox,
     getTableData
   };
 }

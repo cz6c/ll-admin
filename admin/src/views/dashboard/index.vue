@@ -2,7 +2,7 @@
 import type { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import type { ListParams } from "#/api/index.d";
-
+import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 defineOptions({
   name: "Index"
 });
@@ -141,17 +141,25 @@ const gridOptions = reactive<VxeGridProps<RowVO>>({
   columns: [
     {
       treeNode: true,
+      title: "treeNode",
       width: 50,
       slots: {
         header: "treeNode_header"
       }
     },
-    { type: "checkbox", width: 80 },
+    { type: "checkbox", title: "checked", width: 80 },
     { field: "name", title: "name" },
     { field: "role", title: "role" },
     { field: "sex", title: "sex" },
     { field: "age", title: "Age", sortable: true },
-    { field: "address", title: "Address", showOverflow: true }
+    { field: "address", title: "Address", showOverflow: true },
+    {
+      title: "操作",
+      width: 150,
+      slots: {
+        default: "tools"
+      }
+    }
   ],
   data: []
 });
@@ -162,7 +170,7 @@ const apiQuery = reactive<ListParams & { name: string }>({
   endTime: null,
   orderByColumn: null,
   order: null,
-  name: "Test1"
+  name: "Test"
 });
 
 const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, getTableData } = useTable(
@@ -173,6 +181,34 @@ const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, getTableDat
 console.log("🚀 ~ gridOptions:", gridOptions);
 
 getTableData();
+
+const rowButtons: BtnOptionsProps<RowVO>[] = [
+  {
+    type: "primary",
+    btnText: "添加",
+    btnDisabled: row => {
+      return row.name === "Test1";
+    },
+    btnClick: row => {
+      console.log(row);
+    },
+    showOverflow: true,
+    tooltipContent: row => {
+      return `<span>添加</span>`;
+    }
+  },
+  {
+    type: "warning",
+    btnText: "移出",
+    btnClick: row => {
+      console.log(row);
+    },
+    showOverflow: true,
+    tooltipContent: row => {
+      return `移出`;
+    }
+  }
+];
 </script>
 
 <template>
@@ -187,6 +223,9 @@ getTableData();
             />
           </div>
         </el-tooltip>
+      </template>
+      <template #tools="{ row }">
+        <ToolButtons :buttons="rowButtons" :row="row" :maxShowNum="1" />
       </template>
     </vxe-grid>
     {{ selectRows.length }}

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Response } from 'express';
-import { Repository, In, Not, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
 import { MonitorLoginlogEntity } from './entities/loginlog.entity';
@@ -41,10 +41,6 @@ export class LoginlogService {
       entity.andWhere(`entity.userName LIKE "%${query.userName}%"`);
     }
 
-    if (query.status) {
-      entity.andWhere('entity.status = :status', { status: query.status });
-    }
-
     if (query.params?.beginTime && query.params?.endTime) {
       entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.params.beginTime, end: query.params.endTime });
     }
@@ -64,34 +60,6 @@ export class LoginlogService {
       list,
       total,
     });
-  }
-
-  /**
-   * 删除日志
-   * @returns
-   */
-  async remove(ids: string[]) {
-    const data = await this.monitorLoginlogEntityRep.update(
-      { infoId: In(ids) },
-      {
-        delFlag: DelFlagEnum.DELETE,
-      },
-    );
-    return ResultData.ok(data);
-  }
-
-  /**
-   * 删除全部日志
-   * @returns
-   */
-  async removeAll() {
-    await this.monitorLoginlogEntityRep.update(
-      { infoId: Not(IsNull()) },
-      {
-        delFlag: DelFlagEnum.DELETE,
-      },
-    );
-    return ResultData.ok();
   }
 
   /**

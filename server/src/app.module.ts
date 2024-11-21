@@ -8,6 +8,9 @@ import { RedisModule } from './modules/redis/redis.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from 'src/common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+
+import { AxiosModule } from './modules/axios/axios.module';
+import { TaskModule } from './modules/task/task.module';
 import { AreaModule } from './modules/area/area.module';
 import { UploadModule } from './modules/upload/upload.module';
 
@@ -24,7 +27,6 @@ import { MainModule } from './modules/main/main.module';
 import { CacheModule } from './modules/monitor/cache/cache.module';
 import { LoginlogModule } from './modules/monitor/loginlog/loginlog.module';
 import { OperlogModule } from './modules/monitor/operlog/operlog.module';
-import { AxiosModule } from './modules/axios/axios.module';
 import { OnlineModule } from './modules/monitor/online/online.module';
 import { ServerModule } from './modules/monitor/server/server.module';
 
@@ -67,6 +69,8 @@ import { ServerModule } from './modules/monitor/server/server.module';
       true,
     ),
     HttpModule,
+    AxiosModule,
+    TaskModule,
     AreaModule,
     UploadModule,
     AuthModule,
@@ -82,7 +86,6 @@ import { ServerModule } from './modules/monitor/server/server.module';
     CacheModule,
     LoginlogModule,
     OperlogModule,
-    AxiosModule,
     OnlineModule,
     ServerModule,
   ],

@@ -9,27 +9,3 @@ export function list(params: LoginlogListParams) {
     params
   });
 }
-
-// 删除登录日志
-export function delLogininfor(infoId: number) {
-  return $http({
-    url: "/monitor/logininfor/" + infoId,
-    method: "delete"
-  });
-}
-
-// 解锁用户登录状态
-export function unlockLogininfor(userName: string) {
-  return $http({
-    url: "/monitor/logininfor/unlock/" + userName,
-    method: "get"
-  });
-}
-
-// 清空登录日志
-export function cleanLogininfor() {
-  return $http({
-    url: "/monitor/logininfor/clean",
-    method: "delete"
-  });
-}

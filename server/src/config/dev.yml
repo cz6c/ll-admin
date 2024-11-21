@@ -75,3 +75,19 @@ perm:
 # 初始密码， 重置密码
 user:
   initialPassword: '123456'
+
+# 发送邮箱配置
+mail:
+  host: 'smtp.163.com'
+  port: 465
+  secure: true
+  auth: {
+    user: 'chenzb961@163.com',
+    pass: 'TUWLhYad2NcPy5PJ'
+  }
+
+# 聚合api配置
+nowapi:
+  host: 'https://sapi.k780.com'
+  appkey: 74718
+  sign: '3dcd6cb85599ae25e2d68906fcfd4e6d'

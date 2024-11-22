@@ -10,7 +10,7 @@ import { JwtAuthGuard } from 'src/common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
 import { AxiosModule } from './modules/axios/axios.module';
-import { TaskModule } from './modules/task/task.module';
+import { NodemailerModule } from './modules/nodemailer/nodemailer.module';
 import { AreaModule } from './modules/area/area.module';
 import { UploadModule } from './modules/upload/upload.module';
 
@@ -29,6 +29,9 @@ import { LoginlogModule } from './modules/monitor/loginlog/loginlog.module';
 import { OperlogModule } from './modules/monitor/operlog/operlog.module';
 import { OnlineModule } from './modules/monitor/online/online.module';
 import { ServerModule } from './modules/monitor/server/server.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { EmailService } from './modules/nodemailer/email.service';
+import { TaskService } from './modules/task/task.service';
 
 @Global()
 @Module({
@@ -68,9 +71,10 @@ import { ServerModule } from './modules/monitor/server/server.module';
       },
       true,
     ),
+    ScheduleModule.forRoot(),
     HttpModule,
     AxiosModule,
-    TaskModule,
+    NodemailerModule,
     AreaModule,
     UploadModule,
     AuthModule,
@@ -98,6 +102,9 @@ import { ServerModule } from './modules/monitor/server/server.module';
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
+    EmailService,
+    TaskService,
   ],
+  exports: [EmailService, TaskService],
 })
 export class AppModule {}

@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { NodemailerService } from './nodemailer.service';
-import { CreateNodemailerPushTaskDto, UpdateNodemailerPushTaskDto, ListNodemailerPushTaskDto } from './dto/index';
+import { CreateNodemailerPushTaskDto, UpdateNodemailerPushTaskDto, ListNodemailerPushTaskDto, ListNodemailerPushLogDto } from './dto/index';
 
 @ApiTags('邮箱推送任务管理')
 @Controller('nodemailer')
@@ -59,5 +59,17 @@ export class NodemailerController {
   remove(@Param('ids') ids: string) {
     const _ids = ids.split(',').map((id) => id);
     return this.nodemailerService.removePushTask(_ids);
+  }
+
+  @ApiOperation({
+    summary: '邮箱推送任务-日志列表',
+  })
+  @ApiBody({
+    type: ListNodemailerPushLogDto,
+    required: true,
+  })
+  @Get('/logList')
+  findAllLog(@Query() query: ListNodemailerPushLogDto) {
+    return this.nodemailerService.findAllPushLog(query);
   }
 }

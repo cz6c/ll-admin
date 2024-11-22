@@ -60,8 +60,8 @@ importers:
         specifier: ^2.14.3
         version: 2.14.5
       cron:
-        specifier: ^3.2.1
-        version: 3.2.1
+        specifier: 3.1.7
+        version: 3.1.7
       dayjs:
         specifier: ^1.11.11
         version: 1.11.12
@@ -1577,9 +1577,6 @@ packages:
   cron@3.1.7:
     resolution: {integrity: sha512-tlBg7ARsAMQLzgwqVxy8AZl/qlTc5nibqYwtNGoCrd+cV+ugI+tvZC1oT/8dFH8W455YrywGykx/KMmAqOr7Jw==}
 
-  cron@3.2.1:
-    resolution: {integrity: sha512-w2n5l49GMmmkBFEsH9FIDhjZ1n1QgTMOCMGuQtOXs5veNiosZmso6bQGuqOJSYAXXrG84WQFVneNk+Yt0Ua9iw==}
-
   cross-env@7.0.3:
     resolution: {integrity: sha512-+/HKd6EgcQCJGh2PSjZuUitQBQynKor4wrFbRg4DtAgS1aWO+gU52xpH7M9ScGgXSYmAVS9bIJ8EzuaGw0oNAw==}
     engines: {node: '>=10.14', npm: '>=6', yarn: '>=1'}
@@ -2701,10 +2698,6 @@ packages:
 
   luxon@3.4.4:
     resolution: {integrity: sha512-zobTr7akeGHnv7eBOXcRgMeCP6+uyYsczwmeRCauvpvaAltgNyTbLH/+VaEAPUeWBT+1GuNmz4wC/6jtQzbbVA==}
-    engines: {node: '>=12'}
-
-  luxon@3.5.0:
-    resolution: {integrity: sha512-rh+Zjr6DNfUYR3bPwJEnuwDdqMbxZW7LOQfUN4B54+Cl+0o5zaU9RJ6bcidfDtC1cWCZXQ+nvX8bf6bAji37QQ==}
     engines: {node: '>=12'}
 
   magic-string@0.30.8:
@@ -5678,11 +5671,6 @@ snapshots:
       '@types/luxon': 3.4.2
       luxon: 3.4.4
 
-  cron@3.2.1:
-    dependencies:
-      '@types/luxon': 3.4.2
-      luxon: 3.5.0
-
   cross-env@7.0.3:
     dependencies:
       cross-spawn: 7.0.3
@@ -7036,8 +7024,6 @@ snapshots:
   lru-cache@8.0.5: {}
 
   luxon@3.4.4: {}
-
-  luxon@3.5.0: {}
 
   magic-string@0.30.8:
     dependencies:

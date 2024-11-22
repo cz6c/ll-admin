@@ -4,17 +4,35 @@ import { PagingDto } from '@/common/dto/index';
 import { StatusEnum } from '@/common/enum';
 
 /**
- * 数据状态:0正常,1停用
+ * 推送类型:1定期推送,2按时推送
  */
 export enum PushModelEnum {
   /**
-   * 定期推送
+   * 1定期推送
    */
   REGULAR = '1',
   /**
-   * 按时推送
+   * 2按时推送
    */
   PUNCTUAL = '2',
+}
+
+/**
+ * 定期推送间隔:1每日 2每周 3每月
+ */
+export enum PushIntervalEnum {
+  /**
+   * 1每日
+   */
+  EVERYDAY = '1',
+  /**
+   * 2每周
+   */
+  WEEKLY = '2',
+  /**
+   * 3每月
+   */
+  MONTHLY = '3',
 }
 
 export class CreateNodemailerPushTaskDto {
@@ -31,7 +49,12 @@ export class CreateNodemailerPushTaskDto {
   @ApiProperty({ required: true })
   @IsString()
   @IsEnum(PushModelEnum)
-  pushModel: string;
+  pushModel: PushModelEnum;
+
+  @ApiProperty({ required: true })
+  @IsString()
+  @Length(0, 200)
+  pushTitle: string;
 
   @ApiProperty({ required: true })
   @IsString()
@@ -40,13 +63,14 @@ export class CreateNodemailerPushTaskDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsNumber()
-  pushInterval?: number;
+  @IsString()
+  @IsEnum(PushIntervalEnum)
+  pushInterval?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsDate()
-  startTime?: Date;
+  @IsString()
+  startDate?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -78,4 +102,20 @@ export class ListNodemailerPushTaskDto extends PagingDto {
   @IsString()
   @Length(0, 50)
   pushtaskName?: string;
+}
+
+/**
+ * 推送状态:1成功,2失败
+ */
+export enum PushStatusEnum {
+  SUCCESS = '1',
+  FAIL = '2',
+}
+
+export class ListNodemailerPushLogDto extends ListNodemailerPushTaskDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @IsEnum(PushStatusEnum)
+  pushStatus?: string;
 }

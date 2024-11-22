@@ -8,5 +8,6 @@ import { NodemailerPushLogEntity } from './entities/nodemailer.pushlog.entity';
   imports: [TypeOrmModule.forFeature([NodemailerPushTaskEntity, NodemailerPushLogEntity])],
   controllers: [NodemailerController],
   providers: [NodemailerService],
+  exports: [NodemailerService],
 })
-export class NodemailerLogsModule {}
+export class NodemailerModule {}

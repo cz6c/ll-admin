@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { SchedulerRegistry, Cron } from '@nestjs/schedule';
+import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
 import { CronJob, CronTime } from 'cron';
 import { EmailService } from '../nodemailer/email.service';
 
@@ -46,7 +46,7 @@ export class TaskService {
     return this.schedulerRegistry.getCronJob(name)?.setTime(cronTime);
   }
 
-  @Cron(`0 0 12 * * ?`)
+  @Cron(CronExpression.EVERY_DAY_AT_11PM)
   openForBusiness() {
     console.log('表达式');
     this.emailService.sendMail('1272654068@qq.com', 'pushTitle', 'pushContent');

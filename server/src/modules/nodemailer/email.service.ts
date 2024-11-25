@@ -11,7 +11,7 @@ export class EmailService {
   }
 
   // 发送邮件
-  async sendMail(to: string, subject: string, text: string, html?: string): Promise<void> {
+  async sendMail(to: string | string[], subject: string, text: string, html?: string): Promise<void> {
     const mailConfig = this.configService.get('mail');
     const mailOptions = {
       from: mailConfig.auth.user,

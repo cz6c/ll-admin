@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
 import { CronJob, CronTime } from 'cron';
 import { EmailService } from '../nodemailer/email.service';
+import { AxiosService } from '../axios/axios.service';
 
 // 定时任务服务
 @Injectable()
@@ -10,6 +11,7 @@ export class TaskService {
     // 定时任务注册器
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly emailService: EmailService,
+    private readonly axiosService: AxiosService,
   ) {}
 
   // 注册定时任务
@@ -46,14 +48,22 @@ export class TaskService {
     return this.schedulerRegistry.getCronJob(name)?.setTime(cronTime);
   }
 
+  /**
+   * @description: 每天晚上11点 推送最新金价
+   * @return
+   */
   @Cron(CronExpression.EVERY_DAY_AT_11PM)
-  openForBusiness() {
-    console.log('表达式');
-    this.emailService.sendMail('1272654068@qq.com', 'pushTitle', 'pushContent');
+  async getGoldInfo() {
+    const res = await this.axiosService.getGoldInfo();
+    console.log('🚀 ~ TaskService ~ openForBusiness ~ res:', res);
+    const html = `<p>品种名称：${res.varietynm}</p> <p>当前价：${res.last_price}</p> <p>昨收价：${res.yesy_price}</p> <p>涨跌额：${res.change_price}</p> <p>更新时间：${res.uptime}</p>`;
+    this.emailService.sendMail('1272654068@qq.com,769763659@qq.com', '最新金价', 'pushContent', html);
   }
 
-  // @Cron(new Date('2024-11-22 18:04:00'))
-  // openForBusiness1() {
+  // @Cron(new Date('2024-11-25 17:45:10'))
+  // async openForBusiness1() {
   //   console.log('时间对象，必须是未来时间');
+  //   const res = await this.axiosService.getGoldInfo();
+  //   console.log('🚀 ~ TaskService ~ openForBusiness ~ res:', res);
   // }
 }

@@ -37,7 +37,7 @@ jobs:
           # 目标地址
           TARGET: '/www/wwwroot/ll_api/server'
 
-      # 安装依赖、重启服务 
+      # 安装依赖、重启服务
       - name: Server Reload
         uses: appleboy/ssh-action@master
         with:

@@ -60,11 +60,11 @@ export class TaskService {
     this.emailService.sendMail('1272654068@qq.com, 769763659@qq.com', '最新金价', 'pushContent', html);
   }
 
-  @Cron(new Date('2024-11-26 00:01:08'))
+  @Cron(new Date('2024-11-26 00:20:08'))
   async openForBusiness1() {
     const res = await this.axiosService.getGoldInfo();
     console.log('🚀 ~ TaskService ~ openForBusiness ~ res:', res);
     const html = `<p>品种名称：${res.varietynm}</p> <p>当前价：${res.last_price}</p> <p>昨收价：${res.yesy_price}</p> <p>涨跌额：${res.change_price}</p> <p>更新时间：${res.uptime}</p>`;
-    this.emailService.sendMail('1272654068@qq.com, 769763659@qq.com', '最新金价', 'pushContent', html);
+    this.emailService.sendMail(['1272654068@qq.com', '769763659@qq.com'], '最新金价', 'pushContent', html);
   }
 }

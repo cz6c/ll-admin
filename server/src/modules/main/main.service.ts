@@ -3,7 +3,7 @@ import { ResultData } from '@/common/utils/result';
 import { SUCCESS_CODE } from '@/common/utils/result';
 import { UserService } from '../system/user/user.service';
 import { LoginlogService } from '../monitor/loginlog/loginlog.service';
-import { AxiosService } from '@/modules/axios/axios.service';
+import { AxiosService } from '@/plugins/axios.service';
 import { RegisterDto, LoginDto, ClientInfoDto } from './dto/index';
 import { MenuService } from '../system/menu/menu.service';
 import { StatusEnum } from '@/common/enum';

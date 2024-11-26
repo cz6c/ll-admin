@@ -2,14 +2,13 @@ import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService, ConfigModule } from '@nestjs/config';
 import configuration from './config/index';
-import { HttpModule } from '@nestjs/axios';
 import { RedisClientOptions } from '@liaoliaots/nestjs-redis';
 import { RedisModule } from './modules/redis/redis.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from 'src/common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PluginsModule } from './plugins/plugins.module';
 
-import { AxiosModule } from './modules/axios/axios.module';
 import { NodemailerModule } from './modules/nodemailer/nodemailer.module';
 import { AreaModule } from './modules/area/area.module';
 import { UploadModule } from './modules/upload/upload.module';
@@ -29,9 +28,6 @@ import { LoginlogModule } from './modules/monitor/loginlog/loginlog.module';
 import { OperlogModule } from './modules/monitor/operlog/operlog.module';
 import { OnlineModule } from './modules/monitor/online/online.module';
 import { ServerModule } from './modules/monitor/server/server.module';
-import { ScheduleModule } from '@nestjs/schedule';
-import { EmailService } from './modules/nodemailer/email.service';
-import { TaskService } from './modules/task/task.service';
 
 @Global()
 @Module({
@@ -71,9 +67,9 @@ import { TaskService } from './modules/task/task.service';
       },
       true,
     ),
-    ScheduleModule.forRoot(),
-    HttpModule,
-    AxiosModule,
+    // 功能插件
+    PluginsModule,
+    // 以下业务模块
     NodemailerModule,
     AreaModule,
     UploadModule,
@@ -102,9 +98,6 @@ import { TaskService } from './modules/task/task.service';
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
-    EmailService,
-    TaskService,
   ],
-  exports: [EmailService, TaskService],
 })
 export class AppModule {}

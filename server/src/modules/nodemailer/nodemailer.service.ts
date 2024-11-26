@@ -14,8 +14,8 @@ import {
   PushModelEnum,
 } from './dto/index';
 import { DelFlagEnum, StatusEnum } from '@/common/enum';
-import { TaskService } from '../task/task.service';
-import { EmailService } from './email.service';
+import { TaskService } from '../../plugins/task.service';
+import { EmailService } from '../../plugins/email.service';
 
 @Injectable()
 export class NodemailerService {

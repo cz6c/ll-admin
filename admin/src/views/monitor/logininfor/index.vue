@@ -43,19 +43,6 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">
-          删除
-        </el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" @click="handleClean">清空</el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'unlock'" type="primary" plain icon="Unlock" :disabled="single" @click="handleUnlock">
-          解锁
-        </el-button>
-      </el-col>
-      <el-col :span="1.5">
         <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
     </el-row>
@@ -112,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { list, delLogininfor, cleanLogininfor, unlockLogininfor } from "@/api/monitor/logininfor";
+import { list } from "@/api/monitor/logininfor";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 
@@ -178,46 +165,6 @@ function handleSortChange(column, prop, order) {
   queryParams.value.orderByColumn = column.prop;
   queryParams.value.isAsc = column.order;
   getList();
-}
-/** 删除按钮操作 */
-function handleDelete(row) {
-  const infoIds = row.infoId || ids.value;
-  proxy.$modal
-    .confirm('是否确认删除访问编号为"' + infoIds + '"的数据项?')
-    .then(function () {
-      return delLogininfor(infoIds);
-    })
-    .then(() => {
-      getList();
-      proxy.$message.success("删除成功");
-    })
-    .catch(() => {});
-}
-/** 清空按钮操作 */
-function handleClean() {
-  proxy.$modal
-    .confirm("是否确认清空所有登录日志数据项?")
-    .then(function () {
-      return cleanLogininfor();
-    })
-    .then(() => {
-      getList();
-      proxy.$message.success("清空成功");
-    })
-    .catch(() => {});
-}
-/** 解锁按钮操作 */
-function handleUnlock() {
-  const userName = selectName.value;
-  proxy.$modal
-    .confirm('是否确认解锁用户"' + userName + '"数据项?')
-    .then(function () {
-      return unlockLogininfor(userName);
-    })
-    .then(() => {
-      proxy.$message.success("用户" + userName + "解锁成功");
-    })
-    .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {

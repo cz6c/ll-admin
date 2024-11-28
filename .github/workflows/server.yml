@@ -18,7 +18,7 @@ jobs:
     steps:
       # 官方action，将代码拉取到虚拟机
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 拷贝文件到服务器指定目录
       - name: Deploy to server
@@ -37,7 +37,7 @@ jobs:
           # 目标地址
           TARGET: '/www/wwwroot/ll_api/server'
 
-      # 安装依赖、重启服务 
+      # 安装依赖、重启服务
       - name: Server Reload
         uses: appleboy/ssh-action@master
         with:

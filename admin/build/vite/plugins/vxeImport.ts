@@ -10,6 +10,9 @@ export const VxeImport = () => {
     resolvers: [
       VxeResolver({
         libraryName: "vxe-table"
+      }),
+      VxeResolver({
+        libraryName: "vxe-pc-ui"
       })
     ]
   });

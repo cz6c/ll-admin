@@ -33,8 +33,8 @@ export class NoticeService {
       entity.andWhere('entity.noticeType = :noticeType', { noticeType: query.noticeType });
     }
 
-    if (query.params?.beginTime && query.params?.endTime) {
-      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.params.beginTime, end: query.params.endTime });
+    if (query?.beginTime && query?.endTime) {
+      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }
 
     entity.skip(query.pageSize * (query.pageNum - 1)).take(query.pageSize);

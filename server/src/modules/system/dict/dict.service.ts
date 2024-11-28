@@ -49,8 +49,8 @@ export class DictService {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
 
-    if (query.params?.beginTime && query.params?.endTime) {
-      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.params.beginTime, end: query.params.endTime });
+    if (query?.beginTime && query?.endTime) {
+      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }
 
     if (query.pageSize && query.pageNum) {

@@ -2,7 +2,7 @@
 /dist
 /node_modules
 /build
-/src/config/*.yml
+/src/config/prod.yml
 
 # Logs
 logs

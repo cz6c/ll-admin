@@ -1,0 +1,20 @@
+// checkbox
+.vxe-table--render-default .vxe-cell--checkbox .vxe-checkbox--icon {
+  font-weight: 400 !important;
+}
+
+// tooltip层级增大，弹框需要
+.vxe-table--tooltip-wrapper {
+  z-index: 3000 !important;
+}
+
+:root {
+  // vxetable
+  --vxe-ui-font-color: #333 !important;
+  --vxe-ui-table-header-font-weight: 500;
+}
+
+@import "vxe-pc-ui/styles/cssvar.scss";
+@import "vxe-pc-ui/lib/style.css";
+@import "vxe-table/styles/cssvar.scss";
+@import "vxe-table/lib/style.css";

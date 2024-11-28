@@ -28,8 +28,6 @@ import Settings from "./components/Settings/index.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { useSettingsStore } from "@/store/modules/settings";
 import { useWindowSize } from "@vueuse/core";
-import variables from "@/assets/style/variables.module.scss";
-console.log("🚀 ~ variables:", variables);
 
 defineOptions({
   name: "Layout"
@@ -48,7 +46,6 @@ const needTagsView = computed(() => settingsStore.tagsView);
 
 const classObj = computed(() => ({
   collapseSidebar: !sidebar.value.opened,
-  withoutAnimation: sidebar.value.withoutAnimation,
   mobile: device.value === "mobile"
 }));
 
@@ -58,7 +55,7 @@ const WIDTH = 992; // refer to Bootstrap's responsive design
 watchEffect(() => {
   if (width.value - 1 < WIDTH) {
     layoutStore.toggleDevice("mobile");
-    layoutStore.closeSideBar({ withoutAnimation: true });
+    layoutStore.closeSideBar();
   } else {
     layoutStore.toggleDevice("desktop");
   }
@@ -69,54 +66,6 @@ function toggleSideBar() {
 }
 
 function handleClickOutside() {
-  layoutStore.closeSideBar({ withoutAnimation: false });
+  layoutStore.closeSideBar();
 }
 </script>
-
-<style scoped lang="scss">
-@import "@/assets/style/variables.module.scss";
-@import "@/assets/style/mixin.scss";
-.app-wrapper {
-  @include clearfix;
-  position: relative;
-  height: 100%;
-  width: 100%;
-  background: #f7f7fb;
-
-  .drawer-bg {
-    background: #000;
-    opacity: 0.3;
-    width: 100%;
-    top: 0;
-    height: 100%;
-    position: absolute;
-    z-index: 999;
-  }
-
-  .main-container {
-    height: 100%;
-    transition: margin-left 0.28s;
-    margin-left: $base-sidebar-width;
-    position: relative;
-
-    .el-header {
-      background-color: #fff;
-      border-bottom: 1px solid #d8dce5;
-    }
-    .app-main {
-      /* 50= navbar  50  */
-      min-height: calc(100vh - 50px);
-      width: 100%;
-      position: relative;
-      overflow: hidden;
-    }
-
-    &.hasTagsView {
-      .app-main {
-        /* 84 = navbar + tags-view = 50 + 35 */
-        min-height: calc(100vh - 85px);
-      }
-    }
-  }
-}
-</style>

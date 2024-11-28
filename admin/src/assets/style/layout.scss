@@ -1,8 +1,25 @@
 #app {
+  .app-wrapper {
+    @include clearfix;
+    position: relative;
+    height: 100%;
+    width: 100%;
+    background: #f7f7fb;
+
+    .drawer-bg {
+      background: #000;
+      opacity: 0.3;
+      width: 100%;
+      top: 0;
+      height: 100%;
+      position: absolute;
+      z-index: 999;
+    }
+  }
   .sidebar-container {
     -webkit-transition: width 0.28s;
     transition: width 0.28s;
-    width: $base-sidebar-width !important;
+    width: 220px !important;
     background-color: #fff;
     height: 100%;
     position: fixed;
@@ -94,6 +111,31 @@
       }
     }
   }
+  .main-container {
+    height: 100%;
+    transition: margin-left 0.28s;
+    margin-left: 220px;
+    position: relative;
+
+    .el-header {
+      background-color: #fff;
+      border-bottom: 1px solid #d8dce5;
+    }
+    .app-main {
+      /* 50= navbar  50  */
+      min-height: calc(100vh - 50px);
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    &.hasTagsView {
+      .app-main {
+        /* 84 = navbar + tags-view = 50 + 35 */
+        min-height: calc(100vh - 85px);
+      }
+    }
+  }
 
   // 收起菜单
   .collapseSidebar {
@@ -121,7 +163,6 @@
 
     // 包含子集的一级菜单
     .el-sub-menu {
-
       & > .el-sub-menu__title {
         padding: 0 !important;
 
@@ -155,15 +196,6 @@
 
   // mobile responsive
   .mobile {
-    .main-container {
-      margin-left: $base-sidebar-width;
-    }
-
-    .sidebar-container {
-      transition: transform 0.28s;
-      width: $base-sidebar-width !important;
-    }
-
     &.collapseSidebar {
       .main-container {
         margin-left: 0;
@@ -171,15 +203,15 @@
       .sidebar-container {
         pointer-events: none;
         transition-duration: 0.3s;
-        transform: translate3d(-$base-sidebar-width, 0, 0);
+        transform: translate3d(-220px, 0, 0);
       }
     }
   }
+}
 
-  .withoutAnimation {
-    .main-container,
-    .sidebar-container {
-      transition: none;
-    }
+.nest-menu {
+  .svg-icon {
+    flex-shrink: 0;
+    margin-right: 12px;
   }
 }

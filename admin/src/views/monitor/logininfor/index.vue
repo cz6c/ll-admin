@@ -130,7 +130,7 @@ const queryParams = ref({
   userName: undefined,
   status: undefined,
   orderByColumn: undefined,
-  isAsc: undefined
+  order: undefined
 });
 
 /** 查询登录日志列表 */
@@ -163,7 +163,7 @@ function handleSelectionChange(selection) {
 /** 排序触发事件 */
 function handleSortChange(column, prop, order) {
   queryParams.value.orderByColumn = column.prop;
-  queryParams.value.isAsc = column.order;
+  queryParams.value.order = column.order;
   getList();
 }
 /** 导出按钮操作 */

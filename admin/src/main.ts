@@ -9,7 +9,7 @@ import { installPlugins } from "@/plugins";
 
 // css
 import "normalize.css";
-import "@/assets/style/global.scss";
+import "@/assets/style/index.scss";
 
 // 注册svg
 import "virtual:svg-icons-register";

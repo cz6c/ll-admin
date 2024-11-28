@@ -4,14 +4,14 @@ import { defineConfig, presetAttributify, presetUno } from "unocss";
 export default defineConfig({
   content: {
     pipeline: {
-      exclude: ["node_modules", "dist", ".git", ".husky", ".vscode", "public", "build"],
-    },
+      exclude: ["node_modules", "dist", ".git", ".husky", ".vscode", "public", "build"]
+    }
   },
   presets: [presetUno(), presetAttributify()],
   rules: [
     [/^bc-(.+)$/, ([, color]) => ({ "border-color": `#${color}` })],
     ["card-shadow", { "box-shadow": "0 1px 2px -2px #00000029, 0 3px 6px #0000001f, 0 5px 12px 4px #00000017" }],
-    [/^flex-(.+)$/, ([, num]) => ({ flex: `0 0 ${num}` })],
+    [/^flex-(.+)$/, ([, num]) => ({ flex: `0 0 ${num}` })]
   ],
   shortcuts: {
     "wh-full": "w-full h-full",
@@ -42,11 +42,11 @@ export default defineConfig({
     "fixed-center": "fixed left-0 top-0 flex-center wh-full",
     "nowrap-hidden": "whitespace-nowrap overflow-hidden",
     "ellipsis-text": "nowrap-hidden text-ellipsis",
-    "transition-base": "transition-all duration-300 ease-in-out",
+    "transition-base": "transition-all duration-300 ease-in-out"
   },
   theme: {
     colors: {
-      primary: "var(--primary-color)",
-    },
-  },
+      primary: "var(--primary-color)"
+    }
+  }
 });

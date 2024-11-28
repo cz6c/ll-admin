@@ -138,8 +138,8 @@ export class UserService {
       entity.andWhere('user.status = :status', { status: query.status });
     }
 
-    if (query.params?.beginTime && query.params?.endTime) {
-      entity.andWhere('user.createTime BETWEEN :start AND :end', { start: query.params.beginTime, end: query.params.endTime });
+    if (query?.beginTime && query?.endTime) {
+      entity.andWhere('user.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }
 
     if (query.pageSize && query.pageNum) {

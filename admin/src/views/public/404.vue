@@ -40,6 +40,8 @@ defineOptions({
     }
 
     &__child {
+      position: absolute;
+
       @keyframes cloudLeft {
         0% {
           top: 17px;
@@ -91,8 +93,6 @@ defineOptions({
         }
       }
 
-      position: absolute;
-
       &.left {
         top: 17px;
         left: 220px;
@@ -120,6 +120,8 @@ defineOptions({
   }
 
   .bullshit {
+    padding: 60px;
+    width: 368px;
     @keyframes slideUp {
       0% {
         transform: translateY(60px);
@@ -131,9 +133,6 @@ defineOptions({
         opacity: 1;
       }
     }
-
-    padding: 60px;
-    width: 368px;
 
     &__oops {
       margin-bottom: 20px;

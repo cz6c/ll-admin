@@ -4,11 +4,11 @@ import { NodemailerService } from './nodemailer.service';
 import { NodemailerController } from './nodemailer.controller';
 import { NodemailerPushTaskEntity } from './entities/nodemailer.pushtask.entity';
 import { NodemailerPushLogEntity } from './entities/nodemailer.pushlog.entity';
-import { PluginsModule } from '@/plugins/plugins.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([NodemailerPushTaskEntity, NodemailerPushLogEntity]), PluginsModule],
+  imports: [TypeOrmModule.forFeature([NodemailerPushTaskEntity, NodemailerPushLogEntity])],
   controllers: [NodemailerController],
   providers: [NodemailerService],
+  exports: [NodemailerService],
 })
 export class NodemailerModule {}

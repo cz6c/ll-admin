@@ -49,7 +49,7 @@ export class CreateNodemailerPushTaskDto {
   @ApiProperty({ required: true })
   @IsString()
   @IsEnum(PushModelEnum)
-  pushModel: PushModelEnum;
+  pushModel: string;
 
   @ApiProperty({ required: true })
   @IsString()
@@ -112,10 +112,54 @@ export enum PushStatusEnum {
   FAIL = '2',
 }
 
+export class CreateNodemailerPushLogDto {
+  @IsOptional()
+  @IsString()
+  @IsEnum(PushStatusEnum)
+  pushStatus: string;
+
+  @IsString()
+  @Length(0, 50)
+  pushtaskId?: number;
+
+  @IsString()
+  @Length(0, 50)
+  pushtaskName?: string;
+
+  @IsString()
+  @Length(0, 200)
+  acceptEmail: string;
+
+  @IsString()
+  @Length(0, 200)
+  pushTitle: string;
+
+  @IsString()
+  @Length(0, 200)
+  pushContent: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  remark?: string;
+}
+
 export class ListNodemailerPushLogDto extends ListNodemailerPushTaskDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   @IsEnum(PushStatusEnum)
   pushStatus?: string;
+}
+
+export interface SendMailOptionsType {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html?: string;
+  pushTask: {
+    pushtaskId?: number;
+    pushtaskName?: string;
+    remark?: string;
+  };
 }

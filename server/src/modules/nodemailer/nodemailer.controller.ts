@@ -53,6 +53,14 @@ export class NodemailerController {
   }
 
   @ApiOperation({
+    summary: '邮箱推送任务-切换状态',
+  })
+  @Put('/switchStatus')
+  switchStatus(@Body() data: Pick<UpdateNodemailerPushTaskDto, 'pushtaskId'>) {
+    return this.nodemailerService.switchStatus(data.pushtaskId);
+  }
+
+  @ApiOperation({
     summary: '邮箱推送任务-删除',
   })
   @Delete('/:ids')

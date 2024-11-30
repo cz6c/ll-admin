@@ -31,6 +31,6 @@ export abstract class BaseEntity {
   public updateTime: Date;
 
   @ApiProperty({ type: String, description: '备注' })
-  @Column({ type: 'varchar', name: 'remark', length: 500, default: null, comment: '备注' })
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
   public remark: string;
 }

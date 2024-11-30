@@ -1,7 +1,7 @@
 # 开发环境配置
 app:
   prefix: ''
-  port: 6000
+  port: 6060
   # 文件相关
   file:
     # 是否为本地文件服务或cos
@@ -9,7 +9,7 @@ app:
     # location 文件上传后存储目录，相对路径（相对本项目根目录）或绝对路径
     location: '../upload'
     # 文件服务器地址，这是开发环境的配置 生产环境请自行配置成可访问域名
-    domain: 'http://127.0.0.1:6000'
+    domain: 'http://127.0.0.1:6060'
     # 文件虚拟路径, 必须以 / 开头， 如 http://localhost:8081/static/****.jpg  , 如果不需要则 设置 ''
     serveRoot: '/upload'
     # 文件大小限制，单位M
@@ -25,10 +25,10 @@ cos:
 # 数据库配置
 db:
   mysql:
-    host: '127.0.0.1'
-    username: 'root'
-    password: '123456'
-    database: 'test'
+    host: '156.236.66.19'
+    username: 'admin_test'
+    password: 'fFE6yDDZKhJpxRKd'
+    database: 'admin_test'
     port: 3306
     charset: 'utf8mb4'
     # 是否启用日志记录
@@ -50,7 +50,7 @@ redis:
   host: '127.0.0.1'
   password: '123456'
   port: 6379
-  db: 1
+  db: 2
   keyPrefix: ''
 
 # jwt 配置

@@ -66,7 +66,8 @@ async function bootstrap() {
   const port = config.get<number>('app.port') || 3000;
   await app.listen(port);
 
-  console.log(`➜  服务地址：    http://localhost:${port}${prefix}/`);
-  console.log(`➜  swagger地址： http://localhost:${port}${prefix}/swagger-ui/`);
+  console.log(`➜  运行环境：${process.env.NODE_ENV}`);
+  console.log(`➜  服务地址：http://localhost:${port}${prefix}/`);
+  console.log(`➜  swagger： http://localhost:${port}${prefix}/swagger-ui/`);
 }
 bootstrap();

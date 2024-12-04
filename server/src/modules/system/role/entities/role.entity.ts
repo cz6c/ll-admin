@@ -2,8 +2,7 @@ import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from '@/common/entities/base';
 
-// comment: '角色信息表',
-@Entity('sys_role')
+@Entity('sys_role', { comment: '角色信息表' })
 export class SysRoleEntity extends BaseEntity {
   @ApiProperty({ type: String, description: '角色ID' })
   @PrimaryGeneratedColumn({ type: 'int', name: 'role_id', comment: '角色ID' })
@@ -27,4 +26,7 @@ export class SysRoleEntity extends BaseEntity {
 
   @Column({ type: 'boolean', name: 'dept_check_strictly', default: false, comment: '部门树选择项是否关联显示' })
   public deptCheckStrictly: boolean;
+
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  public remark: string;
 }

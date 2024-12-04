@@ -1,6 +1,6 @@
 import { IsString, IsEnum, Min, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { StatusEnum } from '@/common/enum';
+import { StatusEnum } from '@/common/enum/dict';
 
 export class CreateDeptDto {
   @ApiProperty({
@@ -50,9 +50,8 @@ export class CreateDeptDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  status?: string;
+  status?: StatusEnum;
 }
 
 export class UpdateDeptDto extends CreateDeptDto {
@@ -75,7 +74,6 @@ export class ListDeptDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
   status?: string;
 }

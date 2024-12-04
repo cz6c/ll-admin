@@ -2,6 +2,7 @@ import { $http } from "@/utils/request";
 import type { LoginParams } from "#/api";
 import type { AppRouteRecordRaw } from "#/utils";
 import type { SysUserData } from "#/api/system/user.d";
+import type { SysDictResponse } from "#/api/system/dict";
 
 // 登录
 export function login(data: LoginParams) {
@@ -62,5 +63,13 @@ export function uploadImg(data: FormData) {
     url: "/common/upload",
     method: "post",
     data
+  });
+}
+
+// 根据字典类型查询字典数据信息
+export function getDicts(dictType: string) {
+  return $http<never, SysDictResponse[]>({
+    url: "/getDicts/" + dictType,
+    method: "get"
   });
 }

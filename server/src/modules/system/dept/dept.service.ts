@@ -4,7 +4,8 @@ import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
-import { DataScopeEnum, DelFlagEnum } from '@/common/enum/index';
+import { DelFlagEnum } from '@/common/enum/dict';
+import { DataScopeEnum } from '@/common/enum/loca';
 
 @Injectable()
 export class DeptService {

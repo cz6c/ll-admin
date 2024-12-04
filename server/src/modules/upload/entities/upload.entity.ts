@@ -1,9 +1,8 @@
+import { StatusEnum } from '@/common/enum/dict';
 import { Entity, Column, PrimaryColumn } from 'typeorm';
-import { BaseEntity } from '@/common/entities/base';
 
-// comment: '文件上传记录',
-@Entity('sys_upload')
-export class SysUploadEntity extends BaseEntity {
+@Entity('sys_upload', { comment: '文件上传记录' })
+export class SysUploadEntity {
   @PrimaryColumn({ type: 'varchar', name: 'upload_id', comment: '任务Id' })
   uploadId: string;
 
@@ -42,4 +41,8 @@ export class SysUploadEntity extends BaseEntity {
     name: 'ext',
   })
   ext: string;
+
+  //是否启用
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'status', comment: '状态' })
+  public status: StatusEnum;
 }

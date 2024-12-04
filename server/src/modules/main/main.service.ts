@@ -6,7 +6,9 @@ import { LoginlogService } from '../monitor/loginlog/loginlog.service';
 import { AxiosService } from '@/plugins/axios.service';
 import { RegisterDto, LoginDto, ClientInfoDto } from './dto/index';
 import { MenuService } from '../system/menu/menu.service';
-import { StatusEnum } from '@/common/enum';
+import { StatusEnum } from '@/common/enum/dict';
+import { getEnum2Array } from '@/common/enum';
+
 @Injectable()
 export class MainService {
   constructor(
@@ -76,5 +78,13 @@ export class MainService {
   async getRouters(userId: number) {
     const menus = await this.menuService.getMenuListByUserId(userId);
     return ResultData.ok(menus);
+  }
+
+  /**
+   * 获取字典
+   */
+  async getDicts(type: string) {
+    const data = getEnum2Array(type);
+    return ResultData.ok(data);
   }
 }

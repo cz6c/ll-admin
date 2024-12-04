@@ -1,18 +1,19 @@
 import { Column, CreateDateColumn, Entity, UpdateDateColumn } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+import { DelFlagEnum, StatusEnum } from '../enum/dict';
 
 //基础实体信息
 @Entity()
 export abstract class BaseEntity {
   //0正常 1停用
-  @ApiProperty({ type: String, description: '状态' })
-  @Column({ type: 'char', name: 'status', default: '0', length: 1, comment: '状态' })
-  public status: string;
+  @ApiProperty({ type: StatusEnum, description: '状态' })
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'status', comment: '状态' })
+  public status: StatusEnum;
 
   //0代表存在 1代表删除
-  @ApiProperty({ type: String, description: '删除标志' })
-  @Column({ type: 'char', name: 'del_flag', default: '0', length: 1, comment: '删除标志' })
-  public delFlag: string;
+  @ApiProperty({ type: DelFlagEnum, description: '删除标志' })
+  @Column({ type: 'enum', enum: DelFlagEnum, default: DelFlagEnum.NORMAL, name: 'del_flag', comment: '删除标志' })
+  public delFlag: DelFlagEnum;
 
   @ApiProperty({ type: String, description: '创建者' })
   @Column({ type: 'varchar', name: 'create_by', length: 64, default: '', comment: '创建者' })
@@ -29,8 +30,4 @@ export abstract class BaseEntity {
   @ApiProperty({ type: Date, description: '更新时间' })
   @UpdateDateColumn({ type: 'datetime', name: 'update_time', default: null, comment: '更新时间' })
   public updateTime: Date;
-
-  @ApiProperty({ type: String, description: '备注' })
-  @Column({ type: 'varchar', name: 'remark', length: 500, default: null, comment: '备注' })
-  public remark: string;
 }

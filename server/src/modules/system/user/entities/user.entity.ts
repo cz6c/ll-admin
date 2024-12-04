@@ -1,9 +1,9 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { BaseEntity } from '@/common/entities/base';
+import { UserTypeEnum } from '@/common/enum/dict';
 
-// comment: '用户信息表',
-@Entity('sys_user')
+@Entity('sys_user', { comment: '用户信息表' })
 export class UserEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'user_id', comment: '用户ID' })
   public userId: number;
@@ -18,8 +18,8 @@ export class UserEntity extends BaseEntity {
   public nickName: string;
 
   //00系统用户
-  @Column({ type: 'varchar', name: 'user_type', length: 2, default: '00', comment: '用户类型' })
-  public userType: string;
+  @Column({ type: 'enum', enum: UserTypeEnum, default: UserTypeEnum.SYS, name: 'user_type', comment: '用户类型' })
+  public userType: UserTypeEnum;
 
   @Column({ type: 'varchar', name: 'email', length: 50, default: '', comment: '邮箱' })
   public email: string;
@@ -43,4 +43,7 @@ export class UserEntity extends BaseEntity {
 
   @Column({ type: 'timestamp', name: 'login_date', comment: '最后登录时间' })
   public loginDate: Date;
+
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  public remark: string;
 }

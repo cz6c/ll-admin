@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, HttpCode, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpCode, Request, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import * as Useragent from 'useragent';
 import { MainService } from './main.service';
@@ -7,9 +7,9 @@ import { createMath } from '@/common/utils/captcha';
 import { ResultData } from '@/common/utils/result';
 import { GenerateUUID } from '@/common/utils/index';
 import { RedisService } from '@/modules/redis/redis.service';
-import { CacheEnum } from '@/common/enum/index';
 import { ConfigService } from '@/modules/system/config/config.service';
 import { GetRequestUser, RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
+import { CacheEnum } from '@/common/enum/loca';
 
 @ApiTags('登录鉴权')
 @Controller('/')
@@ -125,5 +125,13 @@ export class MainController {
   @Get('/getRouters')
   getRouters(@GetRequestUser('userId') userId: number) {
     return this.mainService.getRouters(userId);
+  }
+
+  @ApiOperation({
+    summary: '根据类型获取字典定义',
+  })
+  @Get('getDicts/:type')
+  getDicts(@Param('type') type: string) {
+    return this.mainService.getDicts(type);
   }
 }

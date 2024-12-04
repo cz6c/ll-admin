@@ -1,7 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
-// comment: '操作日志记录',
-@Entity('sys_oper_log')
+@Entity('sys_oper_log', { comment: '操作日志记录' })
 export class MonitorOperlogEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'oper_id', comment: '日志主键' })
   public operId: number;

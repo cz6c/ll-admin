@@ -7,7 +7,7 @@ import { ExportTable } from '@/common/utils/export';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from './dto/index';
 import { SysConfigEntity } from './entities/config.entity';
 import { RedisService } from '@/modules/redis/redis.service';
-import { DelFlagEnum } from '@/common/enum';
+import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class ConfigService {
@@ -69,7 +69,7 @@ export class ConfigService {
       },
       select: ['configValue', 'configKey'],
     });
-    return data.configValue;
+    return data?.configValue;
   }
 
   async update(updateConfigDto: UpdateConfigDto) {

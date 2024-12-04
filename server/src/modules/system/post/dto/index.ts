@@ -1,7 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum';
+import { StatusEnum } from '@/common/enum/dict';
 
 export class CreatePostDto {
   @IsString()
@@ -13,9 +13,8 @@ export class CreatePostDto {
   postCode: string;
 
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  status?: string;
+  status?: StatusEnum;
 
   @ApiProperty({
     required: false,

@@ -6,7 +6,7 @@ import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
 import { MonitorLoginlogEntity } from './entities/loginlog.entity';
 import { CreateLoginlogDto, ListLoginlogDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum';
+import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class LoginlogService {

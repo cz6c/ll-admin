@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as iconv from 'iconv-lite';
 import * as COS from 'cos-nodejs-sdk-v5';
 import * as crypto from 'crypto';
+import { StatusEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class UploadService {
@@ -153,7 +154,7 @@ export class UploadService {
       this.uploadLargeFileCos(targetFile, key);
       data.url = path.join(this.config.get('cos.domain'), key);
       // 写入上传记录
-      await this.sysUploadEntityRep.save({ uploadId, ...data, ext: path.extname(data.newFileName), size: stats.size, status: '0' });
+      await this.sysUploadEntityRep.save({ uploadId, ...data, ext: path.extname(data.newFileName), size: stats.size });
       return ResultData.ok(data);
     }
     await this.sysUploadEntityRep.save({ uploadId, ...data, ext: path.extname(data.newFileName), size: stats.size });
@@ -321,7 +322,7 @@ export class UploadService {
     if (data) {
       return ResultData.ok({
         data: data,
-        msg: data.status === '0' ? '上传成功' : '上传中',
+        msg: data.status === StatusEnum.NORMAL ? '上传成功' : '上传中',
       });
     } else {
       return ResultData.fail(500, '文件不存在');
@@ -347,7 +348,7 @@ export class UploadService {
         onProgress: function (progressData) {
           /* 非必须 */
           if (progressData.percent === 1) {
-            this.sysUploadEntityRep.update({ filName: targetFile }, { status: 0 });
+            this.sysUploadEntityRep.update({ filName: targetFile }, { status: StatusEnum.NORMAL });
           }
         },
       });

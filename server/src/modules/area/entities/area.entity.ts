@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Entity, Column, PrimaryColumn } from 'typeorm';
 
-@Entity('province')
+@Entity('province', { comment: '省' })
 export class ProvinceEntity {
   /** 名称 */
   @Column({ nullable: true })
@@ -12,7 +12,7 @@ export class ProvinceEntity {
   code: string;
 }
 
-@Entity('city')
+@Entity('city', { comment: '市' })
 export class CityEntity {
   /** 名称 */
   @Column({ nullable: true })
@@ -27,7 +27,7 @@ export class CityEntity {
   provinceCode: string;
 }
 
-@Entity('area')
+@Entity('area', { comment: '区' })
 export class AreaEntity {
   @ApiProperty({ type: String, description: '名称' })
   @Column({ nullable: true })

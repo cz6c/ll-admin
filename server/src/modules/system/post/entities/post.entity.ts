@@ -1,8 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base';
 
-// comment: '岗位信息表',
-@Entity('sys_post')
+@Entity('sys_post', { comment: '岗位信息表' })
 export class SysPostEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'post_id', comment: '岗位ID' })
   public postId: number;

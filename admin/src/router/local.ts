@@ -90,25 +90,6 @@ export default [
         }
       },
       {
-        name: "Dict",
-        path: "/system/dict",
-        hidden: false,
-        component: "system/dict/index",
-        meta: {
-          title: "字典管理",
-          icon: "dict",
-          noCache: false,
-          link: null
-        }
-      },
-      {
-        hidden: true,
-        path: "/system/dict/data",
-        component: () => "system/dict/data",
-        name: "Data",
-        meta: { title: "字典数据", activeMenu: "/system/dict" }
-      },
-      {
         name: "Config",
         path: "/system/config",
         hidden: false,

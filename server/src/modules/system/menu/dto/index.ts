@@ -1,11 +1,6 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { StatusEnum } from '@/common/enum';
-
-export enum MenuTypeEnum {
-  M = 'M',
-  F = 'F',
-}
+import { MenuTypeEnum, StatusEnum } from '@/common/enum/dict';
 
 export class CreateMenuDto {
   @ApiProperty({ required: true })
@@ -48,14 +43,12 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  isCache: string;
+  isCache?: StatusEnum;
 
   @ApiProperty({ required: true })
-  @IsString()
   @IsEnum(StatusEnum)
-  isFrame: string;
+  isFrame: StatusEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -70,21 +63,23 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(MenuTypeEnum)
-  menuType: string;
+  menuType?: MenuTypeEnum;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEnum(StatusEnum)
+  status?: StatusEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @IsEnum(StatusEnum)
-  status: string;
+  remark: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  visible: string;
+  visible?: StatusEnum;
 }
 
 export class UpdateMenuDto extends CreateMenuDto {
@@ -105,9 +100,8 @@ export class ListMenuDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  status?: string;
+  status?: StatusEnum;
 
   @ApiProperty({
     required: false,

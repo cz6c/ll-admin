@@ -1,8 +1,8 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base';
+import { MenuTypeEnum, StatusEnum } from '@/common/enum/dict';
 
-// comment: '菜单权限表',
-@Entity('sys_menu')
+@Entity('sys_menu', { comment: '菜单权限表' })
 export class SysMenuEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'menu_id', comment: '菜单ID' })
   public menuId: number;
@@ -28,17 +28,17 @@ export class SysMenuEntity extends BaseEntity {
   @Column({ type: 'varchar', name: 'active_menu', length: 255, default: '', comment: '高亮菜单' })
   public activeMenu: string;
 
-  //是否为外链（0是 1否）
-  @Column({ type: 'char', name: 'is_frame', default: '1', comment: '是否为外链' })
-  public isFrame: string;
+  //是否为外链
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.STOP, name: 'is_frame', comment: '是否为外链' })
+  public isFrame: StatusEnum;
 
-  //是否缓存（0是 1否）
-  @Column({ type: 'char', name: 'is_cache', default: '0', comment: '是否缓存' })
-  public isCache: string;
+  //是否缓存
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'is_cache', comment: '是否缓存' })
+  public isCache: StatusEnum;
 
-  //是否显示（0是 1否）
-  @Column({ type: 'char', name: 'visible', default: '0', comment: '是否显示' })
-  public visible: string;
+  //是否显示
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'visible', comment: '是否显示' })
+  public visible: StatusEnum;
 
   @Column({ type: 'varchar', name: 'icon', length: 100, default: '', comment: '菜单图标' })
   public icon: string;
@@ -47,6 +47,9 @@ export class SysMenuEntity extends BaseEntity {
   public perm: string;
 
   //菜单类型（M菜单 F按钮）
-  @Column({ type: 'char', name: 'menu_type', length: 1, default: 'M', comment: '菜单类型' })
-  public menuType: string;
+  @Column({ type: 'enum', enum: MenuTypeEnum, default: MenuTypeEnum.M, name: 'menu_type', comment: '菜单类型' })
+  public menuType: MenuTypeEnum;
+
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  public remark: string;
 }

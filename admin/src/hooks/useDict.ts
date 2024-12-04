@@ -1,5 +1,5 @@
+import { getDicts } from "@/api/public";
 import { useDictStore } from "@/store/modules/dict";
-import { getDicts } from "@/api/system/dict/data";
 
 interface DictData {
   label: string;
@@ -26,8 +26,8 @@ export function useDict(...args) {
         getDicts(dictType).then(resp => {
           dict[dictType] = resp.data.map(p => ({
             label: p.dictLabel,
-            value: p.dictValue,
-            elTagType: p.listClass
+            value: p.dictValue
+            // elTagType: p.listClass
           }));
           useDictStore().setDict(dictType, dict[dictType]);
         });

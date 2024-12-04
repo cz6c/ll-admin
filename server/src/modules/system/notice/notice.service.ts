@@ -4,7 +4,7 @@ import { Repository, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysNoticeEntity } from './entities/notice.entity';
 import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum';
+import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class NoticeService {

@@ -2,8 +2,8 @@
 export interface ListParams {
   pageNum?: number;
   pageSize?: number;
-  beginTime: string;
-  endTime: string;
+  beginTime?: string;
+  endTime?: string;
   orderByColumn?: string;
   order?: "ascending" | "descending";
 }

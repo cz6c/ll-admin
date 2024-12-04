@@ -1,7 +1,7 @@
 import * as Lodash from 'lodash';
 import * as ExcelJS from 'exceljs';
 import { Response } from 'express';
-import { StatusEnum, DelFlagEnum } from '@/common/enum/index';
+import { DelFlagEnum, StatusEnum } from '../enum/dict';
 
 /**
  * 通用枚举映射配置

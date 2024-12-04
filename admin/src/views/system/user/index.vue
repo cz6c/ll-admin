@@ -49,7 +49,7 @@
           </el-form-item>
           <el-form-item label="状态" prop="status">
             <el-select v-model="queryParams.status" placeholder="用户状态" clearable style="width: 240px">
-              <el-option v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.label" :value="dict.value" />
+              <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
             </el-select>
           </el-form-item>
           <el-form-item label="创建时间" style="width: 308px">
@@ -213,16 +213,14 @@
           <el-col :span="12">
             <el-form-item label="用户性别">
               <el-select v-model="form.sex" placeholder="请选择">
-                <el-option v-for="dict in sys_user_sex" :key="dict.value" :label="dict.label" :value="dict.value" />
+                <el-option v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="状态">
               <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.value">{{
-                  dict.label
-                }}</el-radio>
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -302,7 +300,7 @@ defineOptions({
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { sys_user_sex, sys_normal_disable } = toRefs(useDict("sys_user_sex", "sys_normal_disable"));
+const { UserSexEnum, StatusEnum } = toRefs(useDict("UserSexEnum", "StatusEnum"));
 
 const userList = ref([]);
 const open = ref(false);

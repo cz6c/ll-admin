@@ -9,14 +9,23 @@ export class LoginDto {
   @IsString()
   code?: string;
 
+  @ApiProperty({
+    required: true,
+  })
   @IsString()
   @Length(2, 10)
   userName: string;
 
+  @ApiProperty({
+    required: true,
+  })
   @IsString()
   @Length(5, 20)
   password: string;
 
+  @ApiProperty({
+    required: false,
+  })
   @IsOptional()
   @IsString()
   uuid?: string;

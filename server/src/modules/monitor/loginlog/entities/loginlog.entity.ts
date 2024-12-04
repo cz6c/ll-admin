@@ -1,7 +1,7 @@
+import { StatusEnum } from '@/common/enum/dict';
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
-// comment: '系统访问记录',
-@Entity('sys_logininfor')
+@Entity('sys_logininfor', { comment: '系统访问记录' })
 export class MonitorLoginlogEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'info_id', comment: '访问ID' })
   public infoId: number;
@@ -27,4 +27,8 @@ export class MonitorLoginlogEntity {
   //提示消息
   @Column({ type: 'varchar', name: 'msg', length: 255, default: '', comment: '提示消息' })
   public msg: string;
+
+  //0正常 1停用
+  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'status', comment: '状态' })
+  public status: StatusEnum;
 }

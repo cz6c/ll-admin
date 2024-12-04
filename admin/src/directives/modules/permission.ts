@@ -2,12 +2,14 @@ import type { App } from "vue";
 import { intersection } from "lodash-es";
 import { isArray } from "@/utils/is";
 import router from "@/router";
+import { productConfig } from "@/config";
 
 /**
  * @description: 判断是否有按钮级权限
  * @param {string} value
  */
 function hasPermission(value: string | string[]): boolean {
+  if (!productConfig.isDynamicAddedRoute) return true;
   const perms = router.currentRoute.value.meta.perms as string[];
   if (!isArray(value)) {
     return perms.includes(value);

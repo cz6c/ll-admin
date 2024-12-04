@@ -1,8 +1,8 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base';
+import { ConfigTypeEnum } from '@/common/enum/dict';
 
-// comment: '参数配置表',
-@Entity('sys_config')
+@Entity('sys_config', { comment: '参数配置表' })
 export class SysConfigEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'config_id', comment: '参数主键' })
   public configId: number;
@@ -17,6 +17,9 @@ export class SysConfigEntity extends BaseEntity {
   public configValue: string;
 
   //系统内置（Y是 N否）
-  @Column({ type: 'char', name: 'config_type', length: 1, default: 'N', comment: '系统内置' })
-  public configType: string;
+  @Column({ type: 'enum', enum: ConfigTypeEnum, default: ConfigTypeEnum.NO, name: 'config_type', comment: '系统内置' })
+  public configType: ConfigTypeEnum;
+
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  public remark: string;
 }

@@ -1,20 +1,15 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum';
+import { NoticeTypeEnum, StatusEnum } from '@/common/enum/dict';
 
-export enum TypeEnum {
-  Instruct = '1',
-  Notice = '2',
-}
 export class CreateNoticeDto {
   @IsString()
   @Length(0, 50)
   noticeTitle: string;
 
-  @IsString()
-  @IsEnum(TypeEnum)
-  noticeType: string;
+  @IsEnum(NoticeTypeEnum)
+  noticeType: NoticeTypeEnum;
 
   @ApiProperty({
     required: true,
@@ -28,9 +23,8 @@ export class CreateNoticeDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  status?: string;
+  status?: StatusEnum;
 }
 
 export class UpdateNoticeDto extends CreateNoticeDto {
@@ -45,8 +39,7 @@ export class ListNoticeDto extends PagingDto {
   noticeTitle?: string;
 
   @IsOptional()
-  @IsString()
-  @IsEnum(TypeEnum)
+  @IsEnum(NoticeTypeEnum)
   noticeType?: string;
 
   @IsOptional()

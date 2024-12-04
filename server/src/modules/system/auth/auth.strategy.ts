@@ -3,7 +3,7 @@ import { Strategy, ExtractJwt } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException, Injectable } from '@nestjs/common';
 import { RedisService } from '@/modules/redis/redis.service';
-import { CacheEnum } from '@/common/enum/index';
+import { CacheEnum } from '@/common/enum/loca';
 
 @Injectable()
 export class AuthStrategy extends PassportStrategy(Strategy) {

@@ -9,7 +9,7 @@ import { Uniq } from '@/common/utils/index';
 import { UserService } from '../user/user.service';
 import { buildMenus } from './utils';
 import { listToTree } from '@/common/utils/tree';
-import { DelFlagEnum, StatusEnum } from '@/common/enum';
+import { DelFlagEnum, StatusEnum } from '@/common/enum/dict';
 @Injectable()
 export class MenuService {
   constructor(

@@ -16,7 +16,6 @@ import { UploadModule } from './modules/upload/upload.module';
 import { AuthModule } from './modules/system/auth/auth.module';
 import { UserModule } from './modules/system/user/user.module';
 import { DeptModule } from './modules/system/dept/dept.module';
-import { DictModule } from './modules/system/dict/dict.module';
 import { MenuModule } from './modules/system/menu/menu.module';
 import { RoleModule } from './modules/system/role/role.module';
 import { PostModule } from './modules/system/post/post.module';
@@ -76,7 +75,6 @@ import { ServerModule } from './modules/monitor/server/server.module';
     AuthModule,
     UserModule,
     DeptModule,
-    DictModule,
     MenuModule,
     RoleModule,
     PostModule,

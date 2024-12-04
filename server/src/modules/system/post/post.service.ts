@@ -6,7 +6,7 @@ import { ExportTable } from '@/common/utils/export';
 import { SysPostEntity } from './entities/post.entity';
 import { Response } from 'express';
 import { CreatePostDto, UpdatePostDto, ListPostDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum';
+import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class PostService {

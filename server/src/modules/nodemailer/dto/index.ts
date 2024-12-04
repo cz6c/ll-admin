@@ -1,39 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber, IsDate } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum';
-
-/**
- * 推送类型:1定期推送,2按时推送
- */
-export enum PushModelEnum {
-  /**
-   * 1定期推送
-   */
-  REGULAR = '1',
-  /**
-   * 2按时推送
-   */
-  PUNCTUAL = '2',
-}
-
-/**
- * 定期推送间隔:1每日 2每周 3每月
- */
-export enum PushIntervalEnum {
-  /**
-   * 1每日
-   */
-  EVERYDAY = '1',
-  /**
-   * 2每周
-   */
-  WEEKLY = '2',
-  /**
-   * 3每月
-   */
-  MONTHLY = '3',
-}
+import { PushIntervalEnum, PushModelEnum, PushStatusEnum, StatusEnum } from '@/common/enum/dict';
 
 export class CreateNodemailerPushTaskDto {
   @ApiProperty({ required: true })
@@ -47,9 +15,8 @@ export class CreateNodemailerPushTaskDto {
   acceptEmail: string;
 
   @ApiProperty({ required: true })
-  @IsString()
   @IsEnum(PushModelEnum)
-  pushModel: string;
+  pushModel: PushModelEnum;
 
   @ApiProperty({ required: true })
   @IsString()
@@ -63,9 +30,8 @@ export class CreateNodemailerPushTaskDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(PushIntervalEnum)
-  pushInterval?: string;
+  pushInterval?: PushIntervalEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -79,9 +45,8 @@ export class CreateNodemailerPushTaskDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(StatusEnum)
-  status?: string;
+  status?: StatusEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -104,19 +69,10 @@ export class ListNodemailerPushTaskDto extends PagingDto {
   pushtaskName?: string;
 }
 
-/**
- * 推送状态:1成功,2失败
- */
-export enum PushStatusEnum {
-  SUCCESS = '1',
-  FAIL = '2',
-}
-
 export class CreateNodemailerPushLogDto {
   @IsOptional()
-  @IsString()
   @IsEnum(PushStatusEnum)
-  pushStatus: string;
+  pushStatus: PushStatusEnum;
 
   @IsString()
   @Length(0, 50)
@@ -147,9 +103,8 @@ export class CreateNodemailerPushLogDto {
 export class ListNodemailerPushLogDto extends ListNodemailerPushTaskDto {
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
   @IsEnum(PushStatusEnum)
-  pushStatus?: string;
+  pushStatus?: PushStatusEnum;
 }
 
 export interface SendMailOptionsType {

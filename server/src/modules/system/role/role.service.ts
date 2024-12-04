@@ -6,13 +6,14 @@ import { ResultData } from '@/common/utils/result';
 import { listToTree } from '@/common/utils/tree';
 import { ExportTable } from '@/common/utils/export';
 
-import { DataScopeEnum, DelFlagEnum, StatusEnum } from '@/common/enum/index';
 import { SysRoleEntity } from './entities/role.entity';
 import { SysRoleWithMenuEntity } from './entities/role-menu.entity';
 import { SysRoleWithDeptEntity } from './entities/role-dept.entity';
 import { SysDeptEntity } from '../dept/entities/dept.entity';
 import { MenuService } from '../menu/menu.service';
 import { CreateRoleDto, UpdateRoleDto, ListRoleDto, ChangeStatusDto } from './dto/index';
+import { DelFlagEnum, StatusEnum } from '@/common/enum/dict';
+import { DataScopeEnum } from '@/common/enum/loca';
 
 @Injectable()
 export class RoleService {

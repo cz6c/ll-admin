@@ -9,18 +9,15 @@ import {
   UpdateNodemailerPushTaskDto,
   ListNodemailerPushTaskDto,
   ListNodemailerPushLogDto,
-  PushIntervalEnum,
-  PushModelEnum,
   CreateNodemailerPushLogDto,
-  PushStatusEnum,
   SendMailOptionsType,
 } from './dto/index';
-import { DelFlagEnum, StatusEnum } from '@/common/enum';
 import { CronJob } from 'cron';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { isArray } from '@/common/utils/is';
+import { DelFlagEnum, PushIntervalEnum, PushModelEnum, PushStatusEnum, StatusEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class NodemailerService {

@@ -2,12 +2,9 @@
   <div>
     <template v-for="(item, index) in options">
       <template v-if="values.includes(item.value)">
-        <span v-if="item.elTagType == 'default' || item.elTagType == ''" :key="item.value" :index="index">
+        <span :key="item.value" :index="index">
           {{ item.label + " " }}
         </span>
-        <el-tag v-else :key="item.value + ''" :disable-transitions="true" :index="index" :type="item.elTagType">
-          {{ item.label + " " }}
-        </el-tag>
       </template>
     </template>
     <template v-if="unmatch && showValue">
@@ -70,8 +67,4 @@ function handleArray(array) {
 }
 </script>
 
-<style scoped>
-.el-tag + .el-tag {
-  margin-left: 10px;
-}
-</style>
+<style scoped></style>

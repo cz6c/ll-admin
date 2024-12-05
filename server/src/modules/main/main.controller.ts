@@ -8,7 +8,7 @@ import { ResultData } from '@/common/utils/result';
 import { GenerateUUID } from '@/common/utils/index';
 import { RedisService } from '@/modules/redis/redis.service';
 import { ConfigService } from '@/modules/system/config/config.service';
-import { GetRequestUser, RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
+import { GetRequestUser, RequestUserPayload } from '@/common/decorator';
 import { CacheEnum } from '@/common/enum/loca';
 
 @ApiTags('登录鉴权')

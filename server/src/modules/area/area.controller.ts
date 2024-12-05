@@ -2,7 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AreaService } from './area.service';
 import { AeraListParamsDto, AeraVO } from './dto/index.dto';
-import { ApiResult } from '@/common/decorator/api-result.decorator';
+import { ApiResult } from '@/common/decorator';
 
 @ApiTags('通用')
 @Controller('common/area')

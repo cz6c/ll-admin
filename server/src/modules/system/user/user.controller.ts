@@ -2,10 +2,8 @@ import { Controller, Get, Post, Body, Put, Param, Query, Res, Delete } from '@ne
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { Response } from 'express';
-import { RequireRole } from '@/common/decorator/require-role.decorator';
-
+import { GetRequestUser, RequestUserPayload, RequireRole } from '@/common/decorator';
 import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto, UpdateAuthRoleDto } from './dto/index';
-import { GetRequestUser, RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
 
 @ApiTags('用户管理')
 @Controller('system/user')

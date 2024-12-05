@@ -62,8 +62,7 @@ redis:
 # jwt 配置
 jwt:
   secretkey: 'you_secretkey'
-  expiresIn: '2h'
-  refreshExpiresIn: '2h'
+
 # 权限 白名单配置
 perm:
   router:

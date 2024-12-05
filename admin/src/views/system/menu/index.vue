@@ -165,7 +165,7 @@
                 </span>
               </template>
               <el-radio-group v-model="form.isFrame">
-                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -219,7 +219,7 @@
                 </span>
               </template>
               <el-radio-group v-model="form.isCache">
-                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -247,7 +247,7 @@
                 </span>
               </template>
               <el-radio-group v-model="form.visible">
-                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -267,7 +267,7 @@
           <el-col :span="12">
             <el-form-item prop="status" label="启用状态">
               <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-radio-group>
             </el-form-item>
           </el-col>

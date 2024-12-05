@@ -19,7 +19,6 @@ import { SysPostEntity } from '../post/entities/post.entity';
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => ({
         secret: config.get('jwt.secretkey'),
-        expiresIn: config.get('jwt.expiresIn'),
       }),
       inject: [ConfigService],
     }),

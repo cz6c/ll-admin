@@ -11,7 +11,7 @@
     </el-form-item>
     <el-form-item label="性别">
       <el-radio-group v-model="user.sex">
-        <el-radio v-for="item in UserSexEnum" :key="item.value" :label="item.value">{{ item.label }}</el-radio>
+        <el-radio v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
       </el-radio-group>
     </el-form-item>
     <el-form-item>

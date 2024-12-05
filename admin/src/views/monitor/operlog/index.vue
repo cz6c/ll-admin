@@ -19,14 +19,9 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="类型" prop="businessType">
-        <el-select v-model="queryParams.businessType" placeholder="操作类型" clearable style="width: 240px">
-          <el-option v-for="dict in sys_oper_type" :key="dict.value" :label="dict.label" :value="dict.value" />
-        </el-select>
-      </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="操作状态" clearable style="width: 240px">
-          <el-option v-for="dict in sys_success_error" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in SuccessErrorEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="操作时间" style="width: 308px">
@@ -67,11 +62,6 @@
       <el-table-column type="selection" width="50" align="center" />
       <el-table-column label="日志编号" align="center" prop="operId" />
       <el-table-column label="系统模块" align="center" prop="title" :show-overflow-tooltip="true" />
-      <el-table-column label="操作类型" align="center" prop="businessType">
-        <template #default="scope">
-          <dict-tag :options="sys_oper_type" :value="scope.row.businessType" />
-        </template>
-      </el-table-column>
       <el-table-column
         label="操作人员"
         align="center"
@@ -84,7 +74,7 @@
       <el-table-column label="主机" align="center" prop="operIp" width="130" :show-overflow-tooltip="true" />
       <el-table-column label="操作状态" align="center" prop="status">
         <template #default="scope">
-          <dict-tag :options="sys_success_error" :value="scope.row.status" />
+          <dict-tag :options="SuccessErrorEnum" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column
@@ -132,7 +122,7 @@
       <el-form :model="form" label-width="100px">
         <el-row>
           <el-col :span="12">
-            <el-form-item label="操作模块：">{{ form.title }} / {{ typeFormat(form) }}</el-form-item>
+            <el-form-item label="操作模块：">{{ form.title }}</el-form-item>
             <el-form-item label="登录信息："
               >{{ form.operName }} / {{ form.operIp }} / {{ form.operLocation }}</el-form-item
             >
@@ -186,7 +176,7 @@ defineOptions({
 });
 const { proxy } = getCurrentInstance();
 
-const { sys_oper_type, sys_success_error } = toRefs(useDict("sys_oper_type", "sys_success_error"));
+const { SuccessErrorEnum } = toRefs(useDict("SuccessErrorEnum"));
 
 const operlogList = ref([]);
 const open = ref(false);
@@ -237,10 +227,6 @@ function getList() {
     total.value = response.data.total;
     loading.value = false;
   });
-}
-/** 操作日志类型字典翻译 */
-function typeFormat(row) {
-  return selectDictLabel(sys_oper_type.value, row.businessType);
 }
 /** 搜索按钮操作 */
 function handleQuery() {

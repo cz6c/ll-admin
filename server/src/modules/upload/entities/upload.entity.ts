@@ -1,4 +1,4 @@
-import { StatusEnum } from '@/common/enum/dict';
+import { SuccessErrorEnum } from '@/common/enum/dict';
 import { Entity, Column, PrimaryColumn } from 'typeorm';
 
 @Entity('sys_upload', { comment: '文件上传记录' })
@@ -42,7 +42,7 @@ export class SysUploadEntity {
   })
   ext: string;
 
-  //是否启用
-  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'status', comment: '状态' })
-  public status: StatusEnum;
+  //成功失败
+  @Column({ type: 'enum', enum: SuccessErrorEnum, default: SuccessErrorEnum.FAIL, name: 'status', comment: '状态' })
+  public status: SuccessErrorEnum;
 }

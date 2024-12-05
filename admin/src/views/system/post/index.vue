@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="岗位状态" clearable style="width: 200px">
-          <el-option v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -57,7 +57,7 @@
       <el-table-column label="岗位排序" align="center" prop="postSort" />
       <el-table-column label="状态" align="center" prop="status">
         <template #default="scope">
-          <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
+          <dict-tag :options="StatusEnum" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column label="创建时间" align="center" prop="createTime" width="180">
@@ -97,9 +97,7 @@
         </el-form-item>
         <el-form-item label="岗位状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.value">{{
-              dict.label
-            }}</el-radio>
+            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -127,7 +125,7 @@ defineOptions({
 });
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
+const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
 const postList = ref([]);
 const open = ref(false);

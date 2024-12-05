@@ -14,6 +14,7 @@ export type SysUserData = {
   postIds?: Array<number>;
   roleIds?: Array<number>;
   status?: string;
+  userType?: string;
   sex?: string;
   remark?: string;
   avatar?: string;

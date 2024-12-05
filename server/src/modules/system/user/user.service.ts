@@ -61,7 +61,7 @@ export class UserService {
       createUserDto.password = await bcrypt.hashSync(createUserDto.password, this.salt);
     }
 
-    const res = await this.userRepo.save({ ...createUserDto, loginDate, userType: UserTypeEnum.CUSTOM });
+    const res = await this.userRepo.save({ ...createUserDto, loginDate });
     const postEntity = this.sysUserWithPostEntityRep.createQueryBuilder('postEntity');
     const postValues = createUserDto.postIds.map((id) => {
       return {

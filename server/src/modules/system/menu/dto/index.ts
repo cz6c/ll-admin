@@ -1,6 +1,6 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { MenuTypeEnum, StatusEnum } from '@/common/enum/dict';
+import { MenuTypeEnum, StatusEnum, YesNoEnum, YesNoEnum } from '@/common/enum/dict';
 
 export class CreateMenuDto {
   @ApiProperty({ required: true })
@@ -43,12 +43,12 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsEnum(StatusEnum)
-  isCache?: StatusEnum;
+  @IsEnum(YesNoEnum)
+  isCache?: YesNoEnum;
 
   @ApiProperty({ required: true })
-  @IsEnum(StatusEnum)
-  isFrame: StatusEnum;
+  @IsEnum(YesNoEnum)
+  isFrame: YesNoEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -78,8 +78,8 @@ export class CreateMenuDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsEnum(StatusEnum)
-  visible?: StatusEnum;
+  @IsEnum(YesNoEnum)
+  visible?: YesNoEnum;
 }
 
 export class UpdateMenuDto extends CreateMenuDto {

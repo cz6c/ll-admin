@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="类型" prop="noticeType">
         <el-select v-model="queryParams.noticeType" placeholder="公告类型" clearable style="width: 200px">
-          <el-option v-for="dict in sys_notice_type" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in NoticeTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -52,12 +52,12 @@
       <el-table-column label="公告标题" align="center" prop="noticeTitle" :show-overflow-tooltip="true" />
       <el-table-column label="公告类型" align="center" prop="noticeType" width="100">
         <template #default="scope">
-          <dict-tag :options="sys_notice_type" :value="scope.row.noticeType" />
+          <dict-tag :options="NoticeTypeEnum" :value="scope.row.noticeType" />
         </template>
       </el-table-column>
       <el-table-column label="状态" align="center" prop="status" width="100">
         <template #default="scope">
-          <dict-tag :options="sys_notice_status" :value="scope.row.status" />
+          <dict-tag :options="StatusEnum" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column label="创建者" align="center" prop="createBy" width="100" />
@@ -96,16 +96,14 @@
           <el-col :span="12">
             <el-form-item label="公告类型" prop="noticeType">
               <el-select v-model="form.noticeType" placeholder="请选择">
-                <el-option v-for="dict in sys_notice_type" :key="dict.value" :label="dict.label" :value="dict.value" />
+                <el-option v-for="dict in NoticeTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="状态">
               <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in sys_notice_status" :key="dict.value" :label="dict.value">{{
-                  dict.label
-                }}</el-radio>
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -137,7 +135,7 @@ defineOptions({
 });
 const { proxy } = getCurrentInstance();
 
-const { sys_notice_status, sys_notice_type } = toRefs(useDict("sys_notice_status", "sys_notice_type"));
+const { StatusEnum, NoticeTypeEnum } = toRefs(useDict("StatusEnum", "NoticeTypeEnum"));
 
 const noticeList = ref([]);
 const open = ref(false);

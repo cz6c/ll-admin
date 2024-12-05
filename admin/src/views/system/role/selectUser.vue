@@ -40,7 +40,7 @@
         <el-table-column label="手机" prop="phonenumber" :show-overflow-tooltip="true" />
         <el-table-column label="状态" align="center" prop="status">
           <template #default="scope">
-            <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
+            <dict-tag :options="StatusEnum" :value="scope.row.status" />
           </template>
         </el-table-column>
         <el-table-column label="创建时间" align="center" prop="createTime" width="180">
@@ -82,7 +82,7 @@ const props = defineProps({
 
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
+const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
 const userList = ref([]);
 const visible = ref(false);

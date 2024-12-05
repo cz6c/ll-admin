@@ -1,7 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { ConfigTypeEnum, StatusEnum } from '@/common/enum/dict';
+import { YesNoEnum, StatusEnum } from '@/common/enum/dict';
 
 export class CreateConfigDto {
   @IsString()
@@ -16,8 +16,8 @@ export class CreateConfigDto {
   @Length(0, 100)
   configKey: string;
 
-  @IsEnum(ConfigTypeEnum)
-  configType: ConfigTypeEnum;
+  @IsEnum(YesNoEnum)
+  configType: YesNoEnum;
 
   @ApiProperty({
     required: true,
@@ -52,6 +52,6 @@ export class ListConfigDto extends PagingDto {
   configKey?: string;
 
   @IsOptional()
-  @IsEnum(ConfigTypeEnum)
-  configType?: ConfigTypeEnum;
+  @IsEnum(YesNoEnum)
+  configType?: YesNoEnum;
 }

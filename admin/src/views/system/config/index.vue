@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="系统内置" prop="configType">
         <el-select v-model="queryParams.configType" placeholder="系统内置" clearable>
-          <el-option v-for="dict in sys_yes_no" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="创建时间" style="width: 308px">
@@ -67,7 +67,7 @@
       <el-table-column label="参数键值" align="center" prop="configValue" :show-overflow-tooltip="true" />
       <el-table-column label="系统内置" align="center" prop="configType">
         <template #default="scope">
-          <dict-tag :options="sys_yes_no" :value="scope.row.configType" />
+          <dict-tag :options="YesNoEnum" :value="scope.row.configType" />
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" :show-overflow-tooltip="true" />
@@ -108,7 +108,7 @@
         </el-form-item>
         <el-form-item label="系统内置" prop="configType">
           <el-radio-group v-model="form.configType">
-            <el-radio v-for="dict in sys_yes_no" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+            <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -136,7 +136,7 @@ defineOptions({
 });
 const { proxy } = getCurrentInstance();
 
-const { sys_yes_no } = toRefs(useDict("sys_yes_no"));
+const { YesNoEnum } = toRefs(useDict("YesNoEnum"));
 
 const configList = ref([]);
 const open = ref(false);
@@ -157,7 +157,7 @@ const data = reactive({
     configName: undefined,
     configKey: undefined,
     configValue: undefined,
-    configType: "Y",
+    configType: "0",
     remark: undefined
   },
   queryParams: {
@@ -197,7 +197,7 @@ function reset() {
     configName: undefined,
     configKey: undefined,
     configValue: undefined,
-    configType: "Y",
+    configType: "0",
     remark: undefined
   };
   resetForm(configRef.value);

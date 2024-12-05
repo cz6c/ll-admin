@@ -110,6 +110,16 @@
             :show-overflow-tooltip="true"
           />
           <el-table-column key="phonenumber" label="手机号码" align="center" prop="phonenumber" width="120" />
+          <el-table-column key="sex" label="性别" align="center" prop="sex" width="120">
+            <template #default="scope">
+              <dict-tag :options="UserSexEnum" :value="scope.row.sex" />
+            </template>
+          </el-table-column>
+          <el-table-column key="userType" label="用户类型" align="center" prop="userType" width="120">
+            <template #default="scope">
+              <dict-tag :options="UserTypeEnum" :value="scope.row.userType" />
+            </template>
+          </el-table-column>
           <el-table-column key="status" label="状态" align="center">
             <template #default="scope">
               <el-switch
@@ -118,11 +128,6 @@
                 inactive-value="1"
                 @change="handleStatusChange(scope.row)"
               />
-            </template>
-          </el-table-column>
-          <el-table-column key="userType" label="用户类型" align="center" prop="userType" width="120">
-            <template #default="scope">
-              <span>{{ scope.row.userType === "00" ? "系统用户" : "" }}</span>
             </template>
           </el-table-column>
           <el-table-column label="创建时间" align="center" prop="createTime" width="160">
@@ -218,15 +223,6 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="状态">
-              <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
             <el-form-item label="岗位">
               <el-select v-model="form.postIds" multiple placeholder="请选择">
                 <el-option
@@ -239,7 +235,25 @@
               </el-select>
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row>
           <el-col :span="12">
+            <el-form-item label="用户类型">
+              <el-radio-group v-model="form.userType">
+                <el-radio v-for="dict in UserTypeEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row>
+          <el-col :span="24">
             <el-form-item label="角色">
               <el-select v-model="form.roleIds" multiple placeholder="请选择">
                 <el-option
@@ -300,7 +314,7 @@ defineOptions({
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { UserSexEnum, StatusEnum } = toRefs(useDict("UserSexEnum", "StatusEnum"));
+const { UserSexEnum, StatusEnum, UserTypeEnum } = toRefs(useDict("UserSexEnum", "StatusEnum", "UserTypeEnum"));
 
 const userList = ref([]);
 const open = ref(false);
@@ -338,6 +352,7 @@ const data = reactive({
     email: "",
     sex: "",
     status: "0",
+    userType: "00",
     remark: "",
     postIds: [],
     roleIds: []
@@ -518,6 +533,7 @@ function reset() {
     email: "",
     sex: "",
     status: "0",
+    userType: "00",
     remark: "",
     postIds: [],
     roleIds: []

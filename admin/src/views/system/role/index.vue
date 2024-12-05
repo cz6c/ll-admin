@@ -21,7 +21,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="角色状态" clearable style="width: 240px">
-          <el-option v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item label="创建时间" style="width: 308px">
@@ -125,9 +125,7 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.value">{{
-              dict.label
-            }}</el-radio>
+            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="菜单权限">
@@ -174,7 +172,7 @@ defineOptions({
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { sys_normal_disable } = toRefs(useDict("sys_normal_disable"));
+const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
 const roleList = ref([]);
 const open = ref(false);

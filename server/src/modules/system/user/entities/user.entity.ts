@@ -18,7 +18,7 @@ export class UserEntity extends BaseEntity {
   public nickName: string;
 
   //00系统用户
-  @Column({ type: 'enum', enum: UserTypeEnum, default: UserTypeEnum.SYS, name: 'user_type', comment: '用户类型' })
+  @Column({ type: 'enum', enum: UserTypeEnum, default: UserTypeEnum.CUSTOM, name: 'user_type', comment: '用户类型' })
   public userType: UserTypeEnum;
 
   @Column({ type: 'varchar', name: 'email', length: 50, default: '', comment: '邮箱' })

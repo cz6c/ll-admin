@@ -35,6 +35,42 @@ export const Status = {
 };
 
 /**
+ * 0成功,1失败
+ */
+export enum SuccessErrorEnum {
+  /**
+   * 成功
+   */
+  SUCCESS = '0',
+  /**
+   * 失败
+   */
+  FAIL = '1',
+}
+export const SuccessError = {
+  [SuccessErrorEnum.SUCCESS]: '成功',
+  [SuccessErrorEnum.FAIL]: '失败',
+};
+
+/**
+ *  0是 1否
+ */
+export enum YesNoEnum {
+  /**
+   *  是
+   */
+  YES = '0',
+  /**
+   *  否
+   */
+  NO = '1',
+}
+export const YesNo = {
+  [YesNoEnum.YES]: '是',
+  [YesNoEnum.NO]: '否',
+};
+
+/**
  * 用户类型 00系统用户,10自定义用户
  */
 export enum UserTypeEnum {
@@ -53,7 +89,7 @@ export const UserType = {
 };
 
 /**
- * 用户性别 0男,1女
+ * 用户性别 0男 1女 2未知
  */
 export enum UserSexEnum {
   /**
@@ -64,10 +100,15 @@ export enum UserSexEnum {
    * 女
    */
   WOMAN = '1',
+  /**
+   * 未知
+   */
+  UNKNOWN = '2',
 }
 export const UserSex = {
   [UserSexEnum.MAN]: '男',
   [UserSexEnum.WOMAN]: '女',
+  [UserSexEnum.UNKNOWN]: '未知',
 };
 
 /**
@@ -86,24 +127,6 @@ export enum MenuTypeEnum {
 export const MenuType = {
   [MenuTypeEnum.M]: '菜单',
   [MenuTypeEnum.F]: '按钮',
-};
-
-/**
- *  是否系统内置
- */
-export enum ConfigTypeEnum {
-  /**
-   *  是
-   */
-  YES = 'Y',
-  /**
-   *  否
-   */
-  NO = 'N',
-}
-export const ConfigType = {
-  [ConfigTypeEnum.YES]: '是',
-  [ConfigTypeEnum.NO]: '否',
 };
 
 /**
@@ -163,22 +186,4 @@ export const PushInterval = {
   [PushIntervalEnum.EVERYDAY]: '每日',
   [PushIntervalEnum.WEEKLY]: '每周',
   [PushIntervalEnum.MONTHLY]: '每月',
-};
-
-/**
- * 推送状态:1成功,2失败
- */
-export enum PushStatusEnum {
-  /**
-   * 成功
-   */
-  SUCCESS = '1',
-  /**
-   * 失败
-   */
-  FAIL = '2',
-}
-export const PushStatus = {
-  [PushStatusEnum.SUCCESS]: '成功',
-  [PushStatusEnum.FAIL]: '失败',
 };

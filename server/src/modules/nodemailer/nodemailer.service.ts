@@ -17,7 +17,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { isArray } from '@/common/utils/is';
-import { DelFlagEnum, PushIntervalEnum, PushModelEnum, PushStatusEnum, StatusEnum } from '@/common/enum/dict';
+import { DelFlagEnum, PushIntervalEnum, PushModelEnum, SuccessErrorEnum, StatusEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class NodemailerService {
@@ -232,9 +232,9 @@ export class NodemailerService {
         html,
       };
       await this.transporter.sendMail(mailOptions);
-      this.createPushLog({ ...pushLog, pushStatus: PushStatusEnum.SUCCESS });
+      this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.SUCCESS });
     } catch (error) {
-      this.createPushLog({ ...pushLog, pushStatus: PushStatusEnum.FAIL });
+      this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.FAIL });
       console.log('🚀 sendMail ~ error:', error);
     }
   }

@@ -7,7 +7,7 @@ import { ExportTable } from '@/common/utils/export';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from './dto/index';
 import { SysConfigEntity } from './entities/config.entity';
 import { RedisService } from '@/modules/redis/redis.service';
-import { DelFlagEnum } from '@/common/enum/dict';
+import { DelFlagEnum, YesNoEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class ConfigService {
@@ -90,7 +90,7 @@ export class ConfigService {
       },
       select: ['configType', 'configKey'],
     });
-    const item = list.find((item) => item.configType === 'Y');
+    const item = list.find((item) => item.configType === YesNoEnum.YES);
     if (item) {
       return ResultData.fail(500, `内置参数【${item.configKey}】不能删除`);
     }

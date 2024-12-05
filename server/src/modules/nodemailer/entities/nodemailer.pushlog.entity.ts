@@ -1,4 +1,4 @@
-import { PushStatusEnum } from '@/common/enum/dict';
+import { SuccessErrorEnum } from '@/common/enum/dict';
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('nodemailer_pushlog', { comment: '推送日志表' })
@@ -10,8 +10,8 @@ export class NodemailerPushLogEntity {
   public createTime: Date;
 
   // 1 推送成功  2 推送失败
-  @Column({ type: 'enum', enum: PushStatusEnum, default: PushStatusEnum.SUCCESS, name: 'push_status', comment: '推送状态' })
-  public pushStatus: PushStatusEnum;
+  @Column({ type: 'enum', enum: SuccessErrorEnum, default: SuccessErrorEnum.SUCCESS, name: 'push_status', comment: '推送状态' })
+  public pushStatus: SuccessErrorEnum;
 
   @Column({ type: 'int', name: 'pushtask_id', default: null, comment: '任务ID' })
   public pushtaskId: number;

@@ -1,7 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber, IsDate } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { PushIntervalEnum, PushModelEnum, PushStatusEnum, StatusEnum } from '@/common/enum/dict';
+import { PushIntervalEnum, PushModelEnum, SuccessErrorEnum, StatusEnum } from '@/common/enum/dict';
 
 export class CreateNodemailerPushTaskDto {
   @ApiProperty({ required: true })
@@ -71,8 +71,8 @@ export class ListNodemailerPushTaskDto extends PagingDto {
 
 export class CreateNodemailerPushLogDto {
   @IsOptional()
-  @IsEnum(PushStatusEnum)
-  pushStatus: PushStatusEnum;
+  @IsEnum(SuccessErrorEnum)
+  pushStatus: SuccessErrorEnum;
 
   @IsString()
   @Length(0, 50)
@@ -103,8 +103,8 @@ export class CreateNodemailerPushLogDto {
 export class ListNodemailerPushLogDto extends ListNodemailerPushTaskDto {
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsEnum(PushStatusEnum)
-  pushStatus?: PushStatusEnum;
+  @IsEnum(SuccessErrorEnum)
+  pushStatus?: SuccessErrorEnum;
 }
 
 export interface SendMailOptionsType {

@@ -1,3 +1,4 @@
+import { YesNoEnum } from '@/common/enum/dict';
 import { isURL } from 'class-validator';
 
 /**
@@ -46,8 +47,8 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
     formattedNode.meta = {
       title: menu.menuName,
       icon: menu.icon,
-      noCache: menu.isCache === '1',
-      link: menu.isFrame === '0' ? menu.path : null,
+      noCache: menu.isCache === YesNoEnum.NO,
+      link: menu.isFrame === YesNoEnum.YES ? menu.path : null,
       activeMenu: menu.activeMenu,
     };
     if (menu.children) {
@@ -71,7 +72,7 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
  * @return 结果
  */
 const isMenuFrame = (menu): boolean => {
-  return menu.parentId === 0 && menu.isFrame === '1';
+  return menu.parentId === 0 && menu.isFrame === YesNoEnum.NO;
 };
 
 /**
@@ -81,7 +82,7 @@ const isMenuFrame = (menu): boolean => {
  * @return 结果
  */
 const isInnerLink = (menu): boolean => {
-  return menu.isFrame === '0' && isURL(menu.path);
+  return menu.isFrame === YesNoEnum.YES && isURL(menu.path);
 };
 
 /**

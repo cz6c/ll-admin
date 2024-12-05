@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base';
-import { MenuTypeEnum, StatusEnum } from '@/common/enum/dict';
+import { MenuTypeEnum, YesNoEnum } from '@/common/enum/dict';
 
 @Entity('sys_menu', { comment: '菜单权限表' })
 export class SysMenuEntity extends BaseEntity {
@@ -29,16 +29,16 @@ export class SysMenuEntity extends BaseEntity {
   public activeMenu: string;
 
   //是否为外链
-  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.STOP, name: 'is_frame', comment: '是否为外链' })
-  public isFrame: StatusEnum;
+  @Column({ type: 'enum', enum: YesNoEnum, default: YesNoEnum.NO, name: 'is_frame', comment: '是否为外链' })
+  public isFrame: YesNoEnum;
 
   //是否缓存
-  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'is_cache', comment: '是否缓存' })
-  public isCache: StatusEnum;
+  @Column({ type: 'enum', enum: YesNoEnum, default: YesNoEnum.YES, name: 'is_cache', comment: '是否缓存' })
+  public isCache: YesNoEnum;
 
   //是否显示
-  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'visible', comment: '是否显示' })
-  public visible: StatusEnum;
+  @Column({ type: 'enum', enum: YesNoEnum, default: YesNoEnum.YES, name: 'visible', comment: '是否显示' })
+  public visible: YesNoEnum;
 
   @Column({ type: 'varchar', name: 'icon', length: 100, default: '', comment: '菜单图标' })
   public icon: string;

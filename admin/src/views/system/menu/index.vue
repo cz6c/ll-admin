@@ -12,7 +12,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="菜单状态" clearable style="width: 200px">
-          <el-option v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -49,7 +49,7 @@
       <el-table-column prop="perm" label="功能权限标识" :show-overflow-tooltip="true" />
       <el-table-column prop="status" label="状态" width="80">
         <template #default="scope">
-          <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
+          <dict-tag :options="StatusEnum" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column label="创建时间" align="center" width="160" prop="createTime">
@@ -165,8 +165,7 @@
                 </span>
               </template>
               <el-radio-group v-model="form.isFrame">
-                <el-radio label="0">是</el-radio>
-                <el-radio label="1">否</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -216,12 +215,11 @@
                   <el-tooltip content="选择缓存则会被`keep-alive`缓存，需与组件名称匹配" placement="top">
                     <el-icon><question-filled /></el-icon>
                   </el-tooltip>
-                  缓存状态
+                  是否缓存
                 </span>
               </template>
               <el-radio-group v-model="form.isCache">
-                <el-radio label="0">缓存</el-radio>
-                <el-radio label="1">不缓存</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -249,9 +247,7 @@
                 </span>
               </template>
               <el-radio-group v-model="form.visible">
-                <el-radio v-for="dict in sys_show_hide" :key="dict.value" :label="dict.value">{{
-                  dict.label
-                }}</el-radio>
+                <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -271,9 +267,7 @@
           <el-col :span="12">
             <el-form-item prop="status" label="启用状态">
               <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.value">{{
-                  dict.label
-                }}</el-radio>
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.value">{{ dict.label }}</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -302,7 +296,7 @@ defineOptions({
 });
 const { proxy } = getCurrentInstance();
 
-const { sys_show_hide, sys_normal_disable } = toRefs(useDict("sys_show_hide", "sys_normal_disable"));
+const { StatusEnum, YesNoEnum } = toRefs(useDict("StatusEnum", "YesNoEnum"));
 
 const menuList = ref([]);
 const loading = ref(true);

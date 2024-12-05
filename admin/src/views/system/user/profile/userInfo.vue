@@ -11,7 +11,7 @@
     </el-form-item>
     <el-form-item label="性别">
       <el-radio-group v-model="user.sex">
-        <el-radio v-for="item in sys_user_sex" :key="item.value" :label="item.value">{{ item.label }}</el-radio>
+        <el-radio v-for="item in UserSexEnum" :key="item.value" :label="item.value">{{ item.label }}</el-radio>
       </el-radio-group>
     </el-form-item>
     <el-form-item>
@@ -30,7 +30,7 @@ import { FormInstance, FormRules } from "element-plus";
 defineOptions({
   name: "UserInfo"
 });
-const { sys_user_sex } = toRefs(useDict("sys_user_sex"));
+const { UserSexEnum } = toRefs(useDict("UserSexEnum"));
 
 const user = defineModel<UpdateProfileDto>("user");
 

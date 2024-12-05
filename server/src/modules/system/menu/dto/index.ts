@@ -1,6 +1,6 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { MenuTypeEnum, StatusEnum, YesNoEnum, YesNoEnum } from '@/common/enum/dict';
+import { MenuTypeEnum, StatusEnum, YesNoEnum } from '@/common/enum/dict';
 
 export class CreateMenuDto {
   @ApiProperty({ required: true })

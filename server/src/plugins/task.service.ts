@@ -11,15 +11,13 @@ export class TaskService {
     private readonly axiosService: AxiosService,
   ) {}
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
-  async test() {
-    // const res = await this.axiosService.getGoldInfo();
-    console.log('🚀 ~ TaskService ~ test');
-  }
+  // @Cron(CronExpression.EVERY_10_SECONDS)
+  // async test() {
+  //   console.log('🚀 ~ TaskService ~ test');
+  // }
 
   // @Cron(new Date('2024-11-26 16:01:08'))
   // async test1() {
-  //   // const res = await this.axiosService.getGoldInfo();
   //   console.log('🚀 ~ TaskService ~ test1');
   // }
 

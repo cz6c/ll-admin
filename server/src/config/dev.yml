@@ -25,6 +25,10 @@ cos:
 # 数据库配置
 db:
   mysql:
+    # host: '156.236.66.19'
+    # username: 'admin_test'
+    # password: 'fFE6yDDZKhJpxRKd'
+    # database: 'admin_test'
     host: '127.0.0.1'
     username: 'root'
     password: '123456'

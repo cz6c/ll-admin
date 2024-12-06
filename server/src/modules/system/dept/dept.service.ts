@@ -4,14 +4,17 @@ import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum/dict';
-import { DataScopeEnum } from '@/common/enum/loca';
+import { DataScopeEnum, DelFlagEnum } from '@/common/enum/dict';
+import { listToTree } from '@/common/utils/tree';
+import { SysRoleWithDeptEntity } from '../role/entities/role-dept.entity';
 
 @Injectable()
 export class DeptService {
   constructor(
     @InjectRepository(SysDeptEntity)
     private readonly sysDeptEntityRep: Repository<SysDeptEntity>,
+    @InjectRepository(SysRoleWithDeptEntity)
+    private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
   ) {}
 
   async create(createDeptDto: CreateDeptDto) {
@@ -46,6 +49,21 @@ export class DeptService {
     entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
     return ResultData.ok(res);
+  }
+
+  async treeSelect() {
+    const res = await this.sysDeptEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+      order: {
+        orderNum: 'ASC',
+      },
+    });
+    const tree = listToTree(res, {
+      id: 'deptId',
+    });
+    return ResultData.ok(tree);
   }
 
   async findOne(deptId: number) {
@@ -135,5 +153,36 @@ export class DeptService {
       },
     );
     return ResultData.ok(data);
+  }
+
+  /**
+   * @description: 查询所有部门以及角色已关联的部门数据 --用于自定义数据权限范围
+   * @param {number} roleId
+   * @return
+   */
+  async roleDeptTreeSelect(roleId: number) {
+    // 查询所有部门数据
+    const res = await this.sysDeptEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+    });
+    const tree = listToTree(res, {
+      id: 'deptId',
+    });
+
+    // 查询角色id已关联的部门
+    const deptIds = await this.sysRoleWithDeptEntityRep.find({
+      where: { roleId: roleId },
+      select: ['deptId'],
+    });
+    const checkedKeys = deptIds.map((item) => {
+      return item.deptId;
+    });
+
+    return ResultData.ok({
+      depts: tree,
+      checkedKeys: checkedKeys,
+    });
   }
 }

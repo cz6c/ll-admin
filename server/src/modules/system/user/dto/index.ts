@@ -1,5 +1,5 @@
 import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber, IsNumberString } from 'class-validator';
-import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { ApiProperty, OmitType, PartialType } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
 import { StatusEnum } from '@/common/enum/dict';
 
@@ -63,7 +63,7 @@ export class CreateUserDto {
   remark?: string;
 }
 
-export class UpdateUserDto extends PartialType(CreateUserDto) {
+export class UpdateUserDto extends OmitType(PartialType(CreateUserDto), ['userName', 'password'] as const) {
   @ApiProperty({
     required: true,
   })

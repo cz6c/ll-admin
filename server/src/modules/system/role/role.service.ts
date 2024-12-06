@@ -3,17 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, FindManyOptions } from 'typeorm';
 import { Response } from 'express';
 import { ResultData } from '@/common/utils/result';
-import { listToTree } from '@/common/utils/tree';
 import { ExportTable } from '@/common/utils/export';
 
 import { SysRoleEntity } from './entities/role.entity';
 import { SysRoleWithMenuEntity } from './entities/role-menu.entity';
 import { SysRoleWithDeptEntity } from './entities/role-dept.entity';
-import { SysDeptEntity } from '../dept/entities/dept.entity';
-import { MenuService } from '../menu/menu.service';
 import { CreateRoleDto, UpdateRoleDto, ListRoleDto, ChangeStatusDto } from './dto/index';
-import { DelFlagEnum, StatusEnum } from '@/common/enum/dict';
-import { DataScopeEnum } from '@/common/enum/loca';
+import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class RoleService {
@@ -24,12 +20,17 @@ export class RoleService {
     private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>,
     @InjectRepository(SysRoleWithDeptEntity)
     private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
-    @InjectRepository(SysDeptEntity)
-    private readonly sysDeptEntityRep: Repository<SysDeptEntity>,
-    private readonly menuService: MenuService,
   ) {}
+
+  /**
+   * @description:创建角色
+   * @param {CreateRoleDto} createRoleDto
+   * @return
+   */
   async create(createRoleDto: CreateRoleDto) {
     const res = await this.sysRoleEntityRep.save(createRoleDto);
+
+    // 关联菜单
     const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
     const values = createRoleDto.menuIds.map((id) => {
       return {
@@ -38,9 +39,15 @@ export class RoleService {
       };
     });
     entity.insert().values(values).execute();
+
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 分页查询角色列表
+   * @param {ListRoleDto} query
+   * @return
+   */
   async findAll(query: ListRoleDto) {
     const entity = this.sysRoleEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -76,6 +83,11 @@ export class RoleService {
     });
   }
 
+  /**
+   * @description:查询角色详情
+   * @param {number} roleId
+   * @return
+   */
   async findOne(roleId: number) {
     const res = await this.sysRoleEntityRep.findOne({
       where: {
@@ -86,6 +98,11 @@ export class RoleService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 更新角色
+   * @param {UpdateRoleDto} updateRoleDto
+   * @return
+   */
   async update(updateRoleDto: UpdateRoleDto) {
     const hasId = await this.sysRoleWithMenuEntityRep.findOne({
       where: {
@@ -94,14 +111,14 @@ export class RoleService {
       select: ['roleId'],
     });
 
-    //角色已关联菜单
+    //角色已关联菜单 先删除关联
     if (hasId) {
       await this.sysRoleWithMenuEntityRep.delete({
         roleId: updateRoleDto.roleId,
       });
     }
 
-    //TODO 后续改造为事务
+    // 角色重新关联菜单 TODO 后续改造为事务
     const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
     const values = updateRoleDto.menuIds.map((id) => {
       return {
@@ -109,43 +126,18 @@ export class RoleService {
         menuId: id,
       };
     });
+    entity.insert().values(values).execute();
 
     delete (updateRoleDto as any).menuIds;
-    entity.insert().values(values).execute();
     const res = await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, updateRoleDto);
     return ResultData.ok(res);
   }
 
-  async dataScope(updateRoleDto: UpdateRoleDto) {
-    const hasId = await this.sysRoleWithDeptEntityRep.findOne({
-      where: {
-        roleId: updateRoleDto.roleId,
-      },
-      select: ['roleId'],
-    });
-
-    //角色已有权限 或者 非自定义权限 先删除权限关联
-    if (hasId || updateRoleDto.dataScope !== DataScopeEnum.DATA_SCOPE_CUSTOM) {
-      await this.sysRoleWithDeptEntityRep.delete({
-        roleId: updateRoleDto.roleId,
-      });
-    }
-
-    const entity = this.sysRoleWithDeptEntityRep.createQueryBuilder('entity');
-    const values = updateRoleDto.deptIds.map((id) => {
-      return {
-        roleId: updateRoleDto.roleId,
-        deptId: id,
-      };
-    });
-    entity.insert().values(values).execute();
-
-    delete (updateRoleDto as any).deptIds;
-
-    const res = await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, updateRoleDto);
-    return ResultData.ok(res);
-  }
-
+  /**
+   * @description: 更新角色状态
+   * @param {ChangeStatusDto} changeStatusDto
+   * @return
+   */
   async changeStatus(changeStatusDto: ChangeStatusDto) {
     const res = await this.sysRoleEntityRep.update(
       { roleId: changeStatusDto.roleId },
@@ -156,6 +148,11 @@ export class RoleService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 批量删除角色
+   * @param {number} roleIds
+   * @return
+   */
   async remove(roleIds: number[]) {
     const data = await this.sysRoleEntityRep.update(
       { roleId: In(roleIds) },
@@ -166,51 +163,17 @@ export class RoleService {
     return ResultData.ok(data);
   }
 
-  async deptTree(roleId: number) {
-    const res = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-    });
-    const tree = listToTree(res, {
-      id: 'deptId',
-    });
-    const deptIds = await this.sysRoleWithDeptEntityRep.find({
-      where: { roleId: roleId },
-      select: ['deptId'],
-    });
-    const checkedKeys = deptIds.map((item) => {
-      return item.deptId;
-    });
-    return ResultData.ok({
-      depts: tree,
-      checkedKeys: checkedKeys,
-    });
-  }
-
+  /**
+   * @description: 根据条件查角色列表
+   * @param {FindManyOptions} where
+   * @return
+   */
   async findRoles(where: FindManyOptions<SysRoleEntity>) {
     return await this.sysRoleEntityRep.find(where);
-  }
-  /**
-   * 根据角色获取用户权限列表
-   */
-  async getPermissionsByRoleIds(roleIds: number[]) {
-    const list = await this.sysRoleWithMenuEntityRep.find({
-      where: {
-        roleId: In(roleIds),
-      },
-      select: ['menuId'],
-    });
-    const menuIds = list.map((item) => item.menuId);
-    const permission = await this.menuService.findMany({
-      where: { delFlag: DelFlagEnum.NORMAL, status: StatusEnum.NORMAL, menuId: In(menuIds) },
-    });
-    return permission;
   }
 
   /**
    * 根据角色ID异步查找与之关联的部门ID列表。
-   *
    * @param roleId - 角色的ID，用于查询与该角色关联的部门。
    * @returns 返回一个Promise，该Promise解析为一个部门ID的数组。
    */

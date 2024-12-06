@@ -64,7 +64,7 @@ export class MenuService {
    * @param {number} roleId
    * @return {*}
    */
-  async roleMenuTreeselect(roleId: number): Promise<any> {
+  async roleMenuTreeSelect(roleId: number): Promise<any> {
     const res = await this.sysMenuEntityRep.find({
       where: {
         delFlag: DelFlagEnum.NORMAL,

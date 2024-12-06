@@ -105,16 +105,17 @@ export class MainController {
   }
 
   @ApiOperation({
-    summary: '用户信息',
+    summary: '获取登录用户信息',
   })
-  @Get('/getInfo')
-  async getInfo(@GetRequestUser() user: RequestUserPayload) {
+  @Get('/getLoginUserInfo')
+  async getLoginUserInfo(@GetRequestUser() tokenData: RequestUserPayload) {
+    const roles = tokenData.roles.map((item) => item.roleKey);
     return {
       msg: '操作成功',
       code: 200,
       data: {
-        roles: user.roles,
-        user: user.user,
+        roles: roles,
+        user: tokenData.user,
       },
     };
   }
@@ -123,8 +124,8 @@ export class MainController {
     summary: '路由信息',
   })
   @Get('/getRouters')
-  getRouters(@GetRequestUser('userId') userId: number) {
-    return this.mainService.getRouters(userId);
+  getRouters(@GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.mainService.getRouters(user.userId);
   }
 
   @ApiOperation({

@@ -30,6 +30,22 @@ export class DeptController {
   }
 
   @ApiOperation({
+    summary: '部门管理-树',
+  })
+  @Get('/treeSelect')
+  treeSelect() {
+    return this.deptService.treeSelect();
+  }
+
+  @ApiOperation({
+    summary: '部门管理-角色部门树',
+  })
+  @Get('roleDeptTreeSelect/:id')
+  roleDeptTreeSelect(@Param('id') id: string) {
+    return this.deptService.roleDeptTreeSelect(+id);
+  }
+
+  @ApiOperation({
     summary: '部门管理-详情',
   })
   @Get(':id')

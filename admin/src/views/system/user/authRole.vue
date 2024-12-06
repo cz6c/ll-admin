@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { getAuthRole, updateAuthRole } from "@/api/system/user";
 import { parseTime } from "@/utils";
+import { useAuthStore } from "@/store/modules/auth";
 
 defineOptions({
   name: "AuthRole"
@@ -62,6 +63,7 @@ defineOptions({
 const route = useRoute();
 const { proxy } = getCurrentInstance();
 const roleRef = ref(null);
+const userStore = useAuthStore();
 
 const loading = ref(true);
 const total = ref(0);
@@ -70,9 +72,9 @@ const pageSize = ref(10);
 const roleIds = ref([]);
 const roles = ref([]);
 const form = ref({
-  nickName: undefined,
-  userName: undefined,
-  userId: undefined
+  nickName: userStore.userInfo.nickName,
+  userName: userStore.userInfo.userName,
+  userId: userStore.userId
 });
 
 /** 单击选中行数据 */
@@ -107,12 +109,11 @@ function submitForm() {
     loading.value = true;
     getAuthRole(userId).then(res => {
       const response = res.data;
-      form.value = response.user;
       roles.value = response.roles;
       total.value = roles.value.length;
       nextTick(() => {
         roles.value.forEach(row => {
-          if (row.flag) {
+          if (response.checkedKeys.includes(row.roleId)) {
             unref(roleRef).toggleRowSelection(row);
           }
         });

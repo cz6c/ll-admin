@@ -29,19 +29,19 @@ export class MenuController {
   }
 
   @ApiOperation({
-    summary: '菜单管理-树表',
+    summary: '菜单管理-树',
   })
-  @Get('/treeselect')
+  @Get('/treeSelect')
   treeSelect() {
     return this.menuService.treeSelect();
   }
 
   @ApiOperation({
-    summary: '菜单管理-角色-树表',
+    summary: '菜单管理-角色-树',
   })
-  @Get('/roleMenuTreeselect/:menuId')
-  roleMenuTreeselect(@Param('menuId') menuId: string) {
-    return this.menuService.roleMenuTreeselect(+menuId);
+  @Get('/roleMenuTreeSelect/:menuId')
+  roleMenuTreeSelect(@Param('menuId') menuId: string) {
+    return this.menuService.roleMenuTreeSelect(+menuId);
   }
 
   @ApiOperation({

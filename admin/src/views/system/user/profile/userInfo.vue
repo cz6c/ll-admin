@@ -25,6 +25,7 @@
 import { UpdateProfileDto } from "#/api/system/user";
 import { updateUserProfile } from "@/api/system/user";
 import { useDict } from "@/hooks/useDict";
+import { useAuthStore } from "@/store/modules/auth";
 import { FormInstance, FormRules } from "element-plus";
 
 defineOptions({
@@ -34,6 +35,7 @@ const { UserSexEnum } = toRefs(useDict("UserSexEnum"));
 
 const user = defineModel<UpdateProfileDto>("user");
 
+const authStore = useAuthStore();
 const { proxy } = getCurrentInstance();
 const userRef = ref<FormInstance>(null);
 
@@ -63,6 +65,7 @@ function submit() {
     if (valid) {
       updateUserProfile(unref(user)).then(response => {
         proxy.$message.success("修改成功");
+        authStore.getLoginUserInfo();
       });
     }
   });

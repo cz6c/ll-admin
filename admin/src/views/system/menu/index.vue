@@ -361,11 +361,11 @@ function getList() {
   });
 }
 /** 查询菜单下拉树结构 */
-function getTreeselect() {
+function getTreeSelect() {
   menuOptions.value = [];
   getMenuList({ parentId: 0 }).then(response => {
     const menu = { menuId: 0, menuName: "主类目", children: [] };
-    menu.children = listToTree(response.data, { id: "menuId" });
+    menu.children = response.data;
     menuOptions.value.push(menu);
   });
 }
@@ -428,7 +428,7 @@ function resetQuery() {
 /** 新增按钮操作 */
 function handleAdd(row, isPerm = false) {
   reset();
-  !isPerm && getTreeselect();
+  !isPerm && getTreeSelect();
   if (row != null && row.menuId) {
     form.value.parentId = row.menuId;
   } else {
@@ -449,7 +449,7 @@ function toggleExpandAll() {
 /** 修改按钮操作 */
 async function handleUpdate(row, isPerm = false) {
   reset();
-  !isPerm && (await getTreeselect());
+  !isPerm && (await getTreeSelect());
   getMenuDetail(row.menuId).then(response => {
     form.value = response.data;
     isPerm && (form.value.menuType = "F");

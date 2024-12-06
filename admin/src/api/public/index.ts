@@ -35,9 +35,9 @@ export function getCodeImg() {
   });
 }
 // 获取当前用户信息
-export function getInfo() {
+export function getLoginUserInfo() {
   return $http<never, { roles: string[]; user: SysUserData }>({
-    url: "/getInfo",
+    url: "/getLoginUserInfo",
     method: "get"
   });
 }

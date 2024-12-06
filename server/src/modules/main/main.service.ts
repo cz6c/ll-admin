@@ -68,11 +68,6 @@ export class MainService {
   }
 
   /**
-   * 登陆记录
-   */
-  loginRecord() {}
-
-  /**
    * 获取路由菜单
    */
   async getRouters(userId: number) {

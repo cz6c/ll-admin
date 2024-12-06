@@ -10,7 +10,6 @@ import type {
   AuthUserCancelDto
 } from "#/api/system/role";
 import type { AllocatedListDto, SysUserListResponse } from "#/api/system/user";
-import type { SysDeptResponse } from "#/api/system/dept";
 
 // 查询角色列表
 export function listRole(params: ListRoleDto) {
@@ -42,15 +41,6 @@ export function addRole(data: SysRoleData) {
 export function updateRole(data: SysRoleData) {
   return $http<SysRoleData, never>({
     url: "/system/role",
-    method: "put",
-    data
-  });
-}
-
-// 角色数据权限
-export function dataScope(data: SysRoleData) {
-  return $http<SysRoleData, never>({
-    url: "/system/role/dataScope",
     method: "put",
     data
   });
@@ -115,13 +105,5 @@ export function authUserSelectAll(data: AuthUserSelectAllDto) {
     url: "/system/role/authUser/selectAll",
     method: "put",
     data
-  });
-}
-
-// 根据角色ID查询部门树结构
-export function deptTreeSelect(roleId: number) {
-  return $http<never, { depts: SysDeptResponse[]; checkedKeys: number[] }>({
-    url: "/system/role/deptTree/" + roleId,
-    method: "get"
   });
 }

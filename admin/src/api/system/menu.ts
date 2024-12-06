@@ -19,17 +19,17 @@ export function getMenuDetail(menuId: number) {
 }
 
 // 查询菜单下拉树结构
-export function treeselect() {
+export function treeSelect() {
   return $http<never, SysMenuListResponse>({
-    url: `/system/menu/treeselect`,
+    url: `/system/menu/treeSelect`,
     method: "get"
   });
 }
 
 // 根据角色ID查询菜单下拉树结构
-export function roleMenuTreeselect(roleId: number) {
+export function roleMenuTreeSelect(roleId: number) {
   return $http<never, { menus: SysMenuListResponse; checkedKeys: number[] }>({
-    url: `/system/menu/roleMenuTreeselect/${roleId}`,
+    url: `/system/menu/roleMenuTreeSelect/${roleId}`,
     method: "get"
   });
 }

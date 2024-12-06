@@ -22,24 +22,24 @@ export class UserController {
     summary: '个人中心-修改用户信息',
   })
   @Put('/profile')
-  updateProfile(@GetRequestUser() user: RequestUserPayload, @Body() updateProfileDto: UpdateProfileDto) {
-    return this.userService.updateProfile(user, updateProfileDto);
+  updateProfile(@GetRequestUser() tokenData: RequestUserPayload, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.userService.updateProfile(tokenData, updateProfileDto);
   }
 
   @ApiOperation({
     summary: '个人中心-修改用户头像',
   })
   @Put('/profile/avatar')
-  updateAvatar(@GetRequestUser() user: RequestUserPayload, @Body() body: { avatar: string }) {
-    return this.userService.updateAvatar(user, body.avatar);
+  updateAvatar(@GetRequestUser() tokenData: RequestUserPayload, @Body() body: { avatar: string }) {
+    return this.userService.updateAvatar(tokenData, body.avatar);
   }
 
   @ApiOperation({
     summary: '个人中心-修改密码',
   })
   @Put('/profile/updatePwd')
-  updatePwd(@GetRequestUser() user: RequestUserPayload, @Body() updatePwdDto: UpdatePwdDto) {
-    return this.userService.updatePwd(user, updatePwdDto);
+  updatePwd(@GetRequestUser() tokenData: RequestUserPayload, @Body() updatePwdDto: UpdatePwdDto) {
+    return this.userService.updatePwd(tokenData, updatePwdDto);
   }
 
   @ApiOperation({
@@ -58,8 +58,8 @@ export class UserController {
     summary: '用户-列表',
   })
   @Get('list')
-  findAll(@Query() query: ListUserDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
-    return this.userService.findAll(query, user);
+  findAll(@Query() query: ListUserDto, @GetRequestUser() tokenData: RequestUserPayload) {
+    return this.userService.findAll(query, tokenData);
   }
 
   @ApiOperation({
@@ -67,8 +67,8 @@ export class UserController {
   })
   @RequireRole('admin')
   @Get('authRole/:id')
-  authRole(@Param('id') id: string) {
-    return this.userService.authRole(+id);
+  getAuthRole(@Param('id') id: string) {
+    return this.userService.getAuthRole(+id);
   }
 
   @ApiOperation({
@@ -109,8 +109,8 @@ export class UserController {
     required: true,
   })
   @Put()
-  update(@Body() updateUserDto: UpdateUserDto, @GetRequestUser('userId') userId: RequestUserPayload['userId']) {
-    return this.userService.update(updateUserDto, userId);
+  update(@Body() updateUserDto: UpdateUserDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.userService.update(updateUserDto, user.userId);
   }
 
   @ApiOperation({
@@ -137,7 +137,7 @@ export class UserController {
 
   @ApiOperation({ summary: '导出用户信息数据为xlsx' })
   @Post('/export')
-  async export(@Res() res: Response, @Body() body: ListUserDto, @GetRequestUser('user') user: RequestUserPayload['user']): Promise<void> {
-    return this.userService.export(res, body, user);
+  async export(@Res() res: Response, @Body() body: ListUserDto, @GetRequestUser() tokenData: RequestUserPayload): Promise<void> {
+    return this.userService.export(res, body, tokenData);
   }
 }

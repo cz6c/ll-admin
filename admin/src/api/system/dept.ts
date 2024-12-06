@@ -18,6 +18,22 @@ export function listDeptExcludeChild(deptId: number) {
   });
 }
 
+// 查询部门下拉树结构
+export function treeSelect() {
+  return $http<never, SysDeptListResponse>({
+    url: `/system/dept/treeSelect`,
+    method: "get"
+  });
+}
+
+// 根据角色ID查询部门树结构
+export function roleDeptTreeSelect(roleId: number) {
+  return $http<never, { depts: SysDeptResponse[]; checkedKeys: number[] }>({
+    url: "/system/dept/roleDeptTreeSelect/" + roleId,
+    method: "get"
+  });
+}
+
 // 查询部门详细
 export function getDept(deptId: number) {
   return $http<never, SysDeptResponse>({

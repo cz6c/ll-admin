@@ -132,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild } from "@/api/system/dept";
+import { listDept, getDept, delDept, addDept, updateDept, listDeptExcludeChild, treeSelect } from "@/api/system/dept";
 import { listToTree } from "@/utils/tree";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
@@ -237,8 +237,8 @@ function resetQuery() {
 /** 新增按钮操作 */
 function handleAdd(row) {
   reset();
-  listDept().then(response => {
-    deptOptions.value = listToTree(response.data, { id: "deptId" });
+  treeSelect().then(response => {
+    deptOptions.value = response.data;
   });
   if (row != undefined) {
     form.value.parentId = row.deptId;

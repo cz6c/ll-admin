@@ -61,7 +61,7 @@ import { useAuthStore } from "@/store/modules/auth";
 defineOptions({
   name: "UserAvatar"
 });
-const userStore = useAuthStore();
+const authStore = useAuthStore();
 const { proxy } = getCurrentInstance();
 const cropperRef = ref(null);
 
@@ -71,7 +71,7 @@ const title = ref("修改头像");
 
 //图片裁剪数据
 const options = reactive({
-  img: userStore.avatar, // 裁剪图片的地址
+  img: authStore.avatar, // 裁剪图片的地址
   autoCrop: true, // 是否默认生成截图框
   autoCropWidth: 200, // 默认生成截图框宽度
   autoCropHeight: 200, // 默认生成截图框高度
@@ -135,10 +135,11 @@ function sumbit() {
     uploadImg(formData).then(response => {
       open.value = false;
       options.img = response.data.url;
-      userStore.avatar = options.img;
+      authStore.avatar = options.img;
       uploadAvatar({ avatar: options.img });
       proxy.$message.success("修改成功");
       visible.value = false;
+      authStore.getLoginUserInfo();
     });
   });
 }
@@ -148,7 +149,7 @@ function realTime(data) {
 }
 /** 关闭窗口 */
 function closeDialog() {
-  options.img = userStore.avatar;
+  options.img = authStore.avatar;
   visible.value = false;
 }
 </script>

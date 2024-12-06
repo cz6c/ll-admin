@@ -39,14 +39,6 @@ export class RoleController {
   }
 
   @ApiOperation({
-    summary: '角色管理-部门树',
-  })
-  @Get('deptTree/:id')
-  deptTree(@Param('id') id: string) {
-    return this.roleService.deptTree(+id);
-  }
-
-  @ApiOperation({
     summary: '角色管理-详情',
   })
   @Get(':id')
@@ -64,18 +56,6 @@ export class RoleController {
   @Put()
   update(@Body() updateRoleDto: UpdateRoleDto) {
     return this.roleService.update(updateRoleDto);
-  }
-
-  @ApiOperation({
-    summary: '角色管理-数据权限修改',
-  })
-  @ApiBody({
-    type: UpdateRoleDto,
-    required: true,
-  })
-  @Put('dataScope')
-  dataScope(@Body() updateRoleDto: UpdateRoleDto) {
-    return this.roleService.dataScope(updateRoleDto);
   }
 
   @ApiOperation({

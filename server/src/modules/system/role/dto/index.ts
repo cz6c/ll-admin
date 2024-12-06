@@ -1,7 +1,7 @@
 import { IsString, IsEnum, IsArray, Length, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum/dict';
+import { DataScopeEnum, StatusEnum } from '@/common/enum/dict';
 
 export class CreateRoleDto {
   @ApiProperty({ required: true })
@@ -36,8 +36,8 @@ export class CreateRoleDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
-  dataScope?: string;
+  @IsEnum(DataScopeEnum)
+  dataScope?: DataScopeEnum;
 
   @ApiProperty({
     required: false,

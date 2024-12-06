@@ -120,18 +120,31 @@
           </template>
           <el-input v-model="form.roleKey" placeholder="请输入权限字符" />
         </el-form-item>
-        <el-form-item label="角色顺序" prop="roleSort">
-          <el-input-number v-model="form.roleSort" controls-position="right" :min="0" />
+        <el-form-item label="数据权限" prop="dataScope">
+          <el-select v-model="form.dataScope" placeholder="数据权限范围">
+            <el-option v-for="dict in DataScopeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-          </el-radio-group>
+        <el-form-item label="数据权限范围">
+          <el-checkbox v-model="deptExpand" @change="handleCheckedTreeExpand($event, 1)">展开/折叠</el-checkbox>
+          <el-checkbox v-model="deptNodeAll" @change="handleCheckedTreeNodeAll($event, 1)">全选/全不选</el-checkbox>
+          <el-checkbox v-model="form.deptCheckStrictly" @change="handleCheckedTreeConnect($event, 1)">
+            父子联动
+          </el-checkbox>
+          <el-tree
+            ref="deptRef"
+            class="tree-border"
+            :data="deptOptions"
+            show-checkbox
+            node-key="deptId"
+            :check-strictly="!form.deptCheckStrictly"
+            :props="{ label: 'deptName', children: 'children' }"
+          />
         </el-form-item>
         <el-form-item label="菜单权限">
-          <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event)">展开/折叠</el-checkbox>
-          <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event)">全选/全不选</el-checkbox>
-          <el-checkbox v-model="form.menuCheckStrictly" @change="handleCheckedTreeConnect($event)">
+          <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event, 2)">展开/折叠</el-checkbox>
+          <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event, 2)">全选/全不选</el-checkbox>
+          <el-checkbox v-model="form.menuCheckStrictly" @change="handleCheckedTreeConnect($event, 2)">
             父子联动
           </el-checkbox>
           <el-tree
@@ -141,9 +154,16 @@
             show-checkbox
             node-key="menuId"
             :check-strictly="!form.menuCheckStrictly"
-            empty-text="加载中，请稍候"
             :props="{ label: 'menuName', children: 'children' }"
           />
+        </el-form-item>
+        <el-form-item label="角色顺序" prop="roleSort">
+          <el-input-number v-model="form.roleSort" controls-position="right" :min="0" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-radio-group v-model="form.status">
+            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
@@ -161,10 +181,11 @@
 
 <script setup lang="ts">
 import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
-import { roleMenuTreeselect, treeselect as menuTreeselect } from "@/api/system/menu";
+import { roleMenuTreeSelect, treeSelect as menuTreeSelect } from "@/api/system/menu";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
+import { roleDeptTreeSelect, treeSelect as deptTreeSelect } from "@/api/system/dept";
 
 defineOptions({
   name: "Role"
@@ -172,7 +193,7 @@ defineOptions({
 const router = useRouter();
 const { proxy } = getCurrentInstance();
 
-const { StatusEnum } = toRefs(useDict("StatusEnum"));
+const { StatusEnum, DataScopeEnum } = toRefs(useDict("StatusEnum", "DataScopeEnum"));
 
 const roleList = ref([]);
 const open = ref(false);
@@ -188,6 +209,10 @@ const menuOptions = ref([]);
 const menuExpand = ref(false);
 const menuNodeAll = ref(false);
 const menuRef = ref(null);
+const deptOptions = ref([]);
+const deptExpand = ref(false);
+const deptNodeAll = ref(false);
+const deptRef = ref(null);
 
 const queryRef = ref(null);
 const roleRef = ref(null);
@@ -197,9 +222,12 @@ const data = reactive({
     roleName: undefined,
     roleKey: undefined,
     roleSort: 0,
+    dataScope: "1",
     status: "0",
     menuIds: [],
+    deptIds: [],
     menuCheckStrictly: true,
+    deptCheckStrictly: true,
     remark: undefined
   },
   queryParams: {
@@ -212,6 +240,7 @@ const data = reactive({
   rules: {
     roleName: [{ required: true, message: "角色名称不能为空", trigger: "blur" }],
     roleKey: [{ required: true, message: "权限字符不能为空", trigger: "blur" }],
+    dataScope: [{ required: true, message: "数据权限不能为空", trigger: "blur" }],
     roleSort: [{ required: true, message: "角色顺序不能为空", trigger: "blur" }]
   }
 });
@@ -288,9 +317,15 @@ function handleAuthUser(row) {
   router.push("/system/role/authUser?roleId=" + row.roleId);
 }
 /** 查询菜单树结构 */
-function getMenuTreeselect() {
-  menuTreeselect().then(response => {
+function getMenuTreeSelect() {
+  menuTreeSelect().then(response => {
     menuOptions.value = response.data;
+  });
+}
+/** 查询部门树结构 */
+function getDeptTreeSelect() {
+  deptTreeSelect().then(response => {
+    deptOptions.value = response.data;
   });
 }
 /** 重置新增的表单以及其他数据  */
@@ -300,14 +335,22 @@ function reset() {
   }
   menuExpand.value = false;
   menuNodeAll.value = false;
+  if (deptRef.value != undefined) {
+    deptRef.value.setCheckedKeys([]);
+  }
+  deptExpand.value = false;
+  deptNodeAll.value = false;
   form.value = {
     roleId: undefined,
     roleName: undefined,
     roleKey: undefined,
     roleSort: 0,
+    dataScope: "1",
     status: "0",
     menuIds: [],
+    deptIds: [],
     menuCheckStrictly: true,
+    deptCheckStrictly: true,
     remark: undefined
   };
   resetForm(roleRef.value);
@@ -318,7 +361,8 @@ function resetForm(formEl: FormInstance | undefined) {
 /** 添加角色 */
 function handleAdd() {
   reset();
-  getMenuTreeselect();
+  getMenuTreeSelect();
+  getDeptTreeSelect();
   open.value = true;
   title.value = "添加角色";
 }
@@ -332,29 +376,50 @@ function handleUpdate(row) {
     open.value = true;
     nextTick(() => {
       /** 根据角色ID查询菜单树结构 */
-      roleMenuTreeselect(roleId).then(res => {
+      roleMenuTreeSelect(roleId).then(res => {
         menuOptions.value = res.data.menus;
         menuRef.value.setCheckedKeys(res.data.checkedKeys, true);
+      });
+      /** 根据角色ID查询部门树结构 */
+      roleDeptTreeSelect(roleId).then(res => {
+        deptOptions.value = res.data.depts;
+        deptRef.value.setCheckedKeys(res.data.checkedKeys, true);
       });
     });
     title.value = "修改角色";
   });
 }
 /** 树权限（展开/折叠）*/
-function handleCheckedTreeExpand(value) {
-  let treeList = menuOptions.value;
-  let key = menuRef.value.store.key;
-  for (let i = 0; i < treeList.length; i++) {
-    menuRef.value.store.nodesMap[treeList[i][key]].expanded = value;
+function handleCheckedTreeExpand(value, type) {
+  if (type === 1) {
+    let treeList = deptOptions.value;
+    let key = deptRef.value.store.key;
+    for (let i = 0; i < treeList.length; i++) {
+      deptRef.value.store.nodesMap[treeList[i][key]].expanded = value;
+    }
+  } else {
+    let treeList = menuOptions.value;
+    let key = menuRef.value.store.key;
+    for (let i = 0; i < treeList.length; i++) {
+      menuRef.value.store.nodesMap[treeList[i][key]].expanded = value;
+    }
   }
 }
 /** 树权限（全选/全不选） */
-function handleCheckedTreeNodeAll(value) {
-  menuRef.value.setCheckedNodes(value ? menuOptions.value : []);
+function handleCheckedTreeNodeAll(value, type) {
+  if (type === 1) {
+    deptRef.value.setCheckedNodes(value ? deptOptions.value : []);
+  } else {
+    menuRef.value.setCheckedNodes(value ? menuOptions.value : []);
+  }
 }
 /** 树权限（父子联动） */
-function handleCheckedTreeConnect(value) {
-  form.value.menuCheckStrictly = value ? true : false;
+function handleCheckedTreeConnect(value, type) {
+  if (type === 1) {
+    form.value.deptCheckStrictly = value ? true : false;
+  } else {
+    form.value.menuCheckStrictly = value ? true : false;
+  }
 }
 /** 所有勾选菜单节点数据 */
 function getMenuAllCheckedKeys() {
@@ -365,11 +430,21 @@ function getMenuAllCheckedKeys() {
   checkedKeys.unshift.apply(checkedKeys, halfCheckedKeys);
   return checkedKeys;
 }
+/** 所有勾选菜单节点数据 */
+function getDeptAllCheckedKeys() {
+  // 目前被选中的菜单节点
+  let checkedKeys = deptRef.value.getCheckedKeys();
+  // 半选中的菜单节点
+  let halfCheckedKeys = deptRef.value.getHalfCheckedKeys();
+  checkedKeys.unshift.apply(checkedKeys, halfCheckedKeys);
+  return checkedKeys;
+}
 /** 提交按钮 */
 function submitForm() {
   unref(roleRef).validate(valid => {
     if (valid) {
       if (form.value.roleId != undefined) {
+        form.value.deptIds = getDeptAllCheckedKeys();
         form.value.menuIds = getMenuAllCheckedKeys();
         updateRole(form.value).then(response => {
           proxy.$message.success("修改成功");
@@ -377,6 +452,7 @@ function submitForm() {
           getList();
         });
       } else {
+        form.value.deptIds = getDeptAllCheckedKeys();
         form.value.menuIds = getMenuAllCheckedKeys();
         addRole(form.value).then(response => {
           proxy.$message.success("新增成功");

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
-import { login, getInfo, logout } from "@/api/public";
+import { login, getLoginUserInfo, logout } from "@/api/public";
 import type { LoginParams } from "#/api";
 import type { SysUserData } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
@@ -45,7 +45,7 @@ export const useAuthStore = defineStore("auth", {
      */
     async getLoginUserInfo() {
       try {
-        const { data } = await getInfo();
+        const { data } = await getLoginUserInfo();
         this.userInfo = data.user;
         this.userId = data.user.userId;
         this.userName = data.user.userName;

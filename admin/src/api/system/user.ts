@@ -110,7 +110,7 @@ export function uploadAvatar(data: { avatar: string }) {
 
 // 查询授权角色
 export function getAuthRole(userId: number) {
-  return $http<never, { roles: SysRoleResponse[]; user: SysUserData }>({
+  return $http<never, { roles: SysRoleResponse[]; checkedKeys: number[] }>({
     url: "/system/user/authRole/" + userId,
     method: "get"
   });

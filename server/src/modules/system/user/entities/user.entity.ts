@@ -34,7 +34,7 @@ export class UserEntity extends BaseEntity {
   public avatar: string;
 
   @Exclude({ toPlainOnly: true }) // 输出屏蔽密码
-  @Column({ type: 'varchar', length: 50, comment: '用户登录密码' })
+  @Column({ type: 'varchar', length: 100, comment: '用户登录密码' })
   public password: string;
 
   @Column({ type: 'varchar', name: 'login_ip', length: 50, comment: '最后登录IP' })

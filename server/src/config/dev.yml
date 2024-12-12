@@ -25,14 +25,14 @@ cos:
 # 数据库配置
 db:
   mysql:
-    # host: '156.236.66.19'
-    # username: 'admin_test'
-    # password: 'fFE6yDDZKhJpxRKd'
-    # database: 'admin_test'
-    host: '127.0.0.1'
-    username: 'root'
-    password: '123456'
-    database: 'loca_test'
+    host: '156.236.66.19'
+    username: 'admin_temp'
+    password: 'SBFE2Ptkj24aECwH'
+    database: 'admin_temp'
+    # host: '127.0.0.1'
+    # username: 'root'
+    # password: '123456'
+    # database: 'loca_test'
     port: 3306
     charset: 'utf8mb4'
     # 是否启用日志记录
@@ -70,17 +70,11 @@ perm:
         { path: '/captchaImage', method: 'GET' },
         { path: '/register', method: 'POST' },
         { path: '/login', method: 'POST' },
-        { path: '/logout', method: 'POST' },
         { path: '/common/area/list', method: 'GET' },
         { path: '/system/config/refreshCache', method: 'Delete' },
         # { path: '/system/user/list', method: 'GET' },
         # { path: '/system/user/:userId', method: 'GET' },
       ]
-
-# 用户相关
-# 初始密码， 重置密码
-user:
-  initialPassword: '123456'
 
 # 发送邮箱配置
 mail:

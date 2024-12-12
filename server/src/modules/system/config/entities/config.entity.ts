@@ -17,7 +17,7 @@ export class SysConfigEntity extends BaseEntity {
   public configValue: string;
 
   //系统内置（0是 1否）
-  @Column({ type: 'enum', enum: YesNoEnum, default: YesNoEnum.NO, name: 'config_type', comment: '系统内置' })
+  @Column({ type: 'enum', enum: YesNoEnum, default: YesNoEnum.YES, name: 'config_type', comment: '系统内置' })
   public configType: YesNoEnum;
 
   @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })

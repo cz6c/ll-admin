@@ -336,7 +336,7 @@ export class UserService {
         },
       })) || [];
 
-    const metaData: RequestUserPayload = {
+    const tokenData: RequestUserPayload = {
       browser: clientInfo.browser,
       ipaddr: clientInfo.ipaddr,
       loginTime: loginDate,
@@ -345,7 +345,7 @@ export class UserService {
       user: data,
       roles,
     };
-    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${uuid}`, metaData, LOGIN_TOKEN_EXPIRESIN);
+    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`, tokenData, LOGIN_TOKEN_EXPIRESIN);
     return ResultData.ok(
       {
         token,

@@ -50,7 +50,7 @@ export class MainController {
   async captchaImage() {
     //是否开启验证码
     const enable = await this.configService.getConfigValue('sys.account.captchaEnabled');
-    const captchaEnabled: boolean = enable === 'true';
+    const captchaEnabled: boolean = enable.toLowerCase() === 'true';
     const data = {
       captchaEnabled,
       img: '',
@@ -99,13 +99,5 @@ export class MainController {
   @Get('getDicts/:type')
   getDicts(@Param('type') type: string) {
     return this.mainService.getDicts(type);
-  }
-
-  @ApiBearerAuth()
-  @ApiOperation({ summary: '退出登陆' })
-  @ApiResult()
-  @Post('/logout')
-  logout(@GetRequestUser() tokenData: RequestUserPayload) {
-    return this.mainService.logout(tokenData);
   }
 }

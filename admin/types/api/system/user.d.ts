@@ -57,9 +57,9 @@ export type UpdatePwdDto = {
   newPassword: string;
 };
 
-export type UserProfile = Required<SysUserData> &
-  BaseResponse & {
-    dept: SysDeptResponse;
-    roles: Array<SysRoleResponse>;
-    posts: Array<SysPostResponse>;
-  };
+export type UserProfile = {
+  user: Required<SysUserData> & BaseResponse;
+  dept: SysDeptResponse;
+  roles: Array<SysRoleResponse>;
+  posts: Array<SysPostResponse>;
+};

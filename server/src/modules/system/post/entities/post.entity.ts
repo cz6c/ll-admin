@@ -14,4 +14,7 @@ export class SysPostEntity extends BaseEntity {
 
   @Column({ type: 'int', name: 'post_sort', default: 0, comment: '显示顺序' })
   public postSort: number;
+
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  public remark: string;
 }

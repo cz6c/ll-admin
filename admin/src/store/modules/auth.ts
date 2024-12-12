@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
-import { login, getLoginUserInfo, logout } from "@/api/public";
+import { login, getLoginUserInfo } from "@/api/public";
 import type { LoginParams } from "#/api";
 import type { SysUserData } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
@@ -61,7 +61,6 @@ export const useAuthStore = defineStore("auth", {
      * @description: 前端登出
      */
     webLogout() {
-      this.userId && logout();
       removeToken();
       this.$reset();
       setTimeout(() => {

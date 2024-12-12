@@ -27,13 +27,13 @@
               </div>
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="tree" /><span>所属部门：</span></div>
-                <div v-if="state.user.dept" class="value">
-                  {{ state.user.dept.deptName }} / {{ state.user.posts.map(c => c.postName).join(",") }}
+                <div v-if="state.dept" class="value">
+                  {{ state.dept.deptName }} / {{ state.posts.map(c => c.postName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="peoples" /><span>所属角色：</span></div>
-                <div class="value">{{ state.user.roles.map(c => c.roleName).join(",") }}</div>
+                <div class="value">{{ state.roles.map(c => c.roleName).join(",") }}</div>
               </div>
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="date" /><span>创建日期：</span></div>
@@ -76,13 +76,16 @@ defineOptions({
 });
 
 const activeTab = ref("userinfo");
-const state = reactive({
-  user: {} as UserProfile
+const state = ref<UserProfile>({
+  user: {} as UserProfile["user"],
+  dept: {} as UserProfile["dept"],
+  roles: [],
+  posts: []
 });
 
 function getUser() {
   getUserProfile().then(response => {
-    state.user = response.data;
+    state.value = response.data;
   });
 }
 

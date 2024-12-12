@@ -9,8 +9,6 @@ import { MenuService } from '../system/menu/menu.service';
 import { StatusEnum } from '@/common/enum/dict';
 import { getEnum2Array } from '@/common/enum';
 import { ClientInfoDto } from '../monitor/loginlog/dto';
-import { CacheEnum } from '@/common/enum/loca';
-import { RequestUserPayload } from '@/common/decorator';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
@@ -45,14 +43,6 @@ export class MainService {
     loginLog.msg = loginRes.msg;
     this.loginlogService.create(loginLog);
     return loginRes;
-  }
-  /**
-   * 退出登陆
-   * @param tokenData
-   */
-  async logout(tokenData: RequestUserPayload) {
-    await this.redisService.del(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
-    return ResultData.ok();
   }
   /**
    * 注册

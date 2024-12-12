@@ -11,13 +11,6 @@ export function login(data: LoginParams) {
     data
   });
 }
-// 登出
-export function logout() {
-  return $http({
-    url: "/logout",
-    method: "post"
-  });
-}
 // 注册
 export function register(data: LoginParams) {
   return $http<LoginParams, never>({

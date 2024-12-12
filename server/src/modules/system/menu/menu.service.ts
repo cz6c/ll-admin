@@ -21,11 +21,21 @@ export class MenuService {
     private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>,
   ) {}
 
+  /**
+   * @description: 菜单管理-创建
+   * @param {CreateMenuDto} createMenuDto
+   * @return
+   */
   async create(createMenuDto: CreateMenuDto) {
-    const res = await this.sysMenuEntityRep.save(createMenuDto);
-    return ResultData.ok(res);
+    await this.sysMenuEntityRep.save(createMenuDto);
+    return ResultData.ok();
   }
 
+  /**
+   * @description: 菜单管理-列表
+   * @param {ListMenuDto} query
+   * @return
+   */
   async findAll(query: ListMenuDto) {
     const entity = this.sysMenuEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -44,6 +54,10 @@ export class MenuService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 菜单管理-树
+   * @return
+   */
   async treeSelect() {
     const res = await this.sysMenuEntityRep.find({
       where: {
@@ -62,9 +76,9 @@ export class MenuService {
   /**
    * @description: 根据角色ID查询菜单
    * @param {number} roleId
-   * @return {*}
+   * @return
    */
-  async roleMenuTreeSelect(roleId: number): Promise<any> {
+  async roleMenuTreeSelect(roleId: number) {
     const res = await this.sysMenuEntityRep.find({
       where: {
         delFlag: DelFlagEnum.NORMAL,
@@ -89,6 +103,11 @@ export class MenuService {
     });
   }
 
+  /**
+   * @description: 菜单管理-详情
+   * @param {number} menuId
+   * @return
+   */
   async findOne(menuId: number) {
     const res = await this.sysMenuEntityRep.findOne({
       where: {
@@ -99,21 +118,36 @@ export class MenuService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 菜单管理-修改
+   * @param {UpdateMenuDto} updateMenuDto
+   * @return
+   */
   async update(updateMenuDto: UpdateMenuDto) {
-    const res = await this.sysMenuEntityRep.update({ menuId: updateMenuDto.menuId }, updateMenuDto);
-    return ResultData.ok(res);
+    await this.sysMenuEntityRep.update({ menuId: updateMenuDto.menuId }, updateMenuDto);
+    return ResultData.ok();
   }
 
+  /**
+   * @description: 菜单管理-删除
+   * @param {number} menuId
+   * @return
+   */
   async remove(menuId: number) {
-    const data = await this.sysMenuEntityRep.update(
+    await this.sysMenuEntityRep.update(
       { menuId: menuId },
       {
         delFlag: DelFlagEnum.DELETE,
       },
     );
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 
+  /**
+   * @description: 构建查询菜单列表
+   * @param {FindManyOptions} where
+   * @return
+   */
   async findMany(where: FindManyOptions<SysMenuEntity>) {
     return await this.sysMenuEntityRep.find(where);
   }

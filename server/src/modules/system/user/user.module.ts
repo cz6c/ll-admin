@@ -7,14 +7,13 @@ import { UserController } from './user.controller';
 import { UserEntity } from './entities/user.entity';
 import { SysUserWithPostEntity } from './entities/user-post.entity';
 import { SysUserWithRoleEntity } from './entities/user-role.entity';
-import { SysDeptEntity } from '../dept/entities/dept.entity';
 import { SysRoleEntity } from '../role/entities/role.entity';
 import { SysPostEntity } from '../post/entities/post.entity';
 
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, SysDeptEntity, SysRoleEntity, SysPostEntity, SysUserWithPostEntity, SysUserWithRoleEntity]),
+    TypeOrmModule.forFeature([UserEntity, SysRoleEntity, SysPostEntity, SysUserWithPostEntity, SysUserWithRoleEntity]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => ({

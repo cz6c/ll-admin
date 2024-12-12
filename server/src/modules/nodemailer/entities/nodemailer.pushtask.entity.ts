@@ -24,7 +24,7 @@ export class NodemailerPushTaskEntity extends BaseEntity {
   public pushModel: PushModelEnum;
 
   // 定期推送 根据这个字段判断 1每日 2每周 3每月 推送
-  @Column({ type: 'enum', enum: PushIntervalEnum, nullable: true, name: 'push_interval', comment: '定期推送间隔' })
+  @Column({ type: 'enum', enum: PushIntervalEnum, default: PushIntervalEnum.EVERYDAY, name: 'push_interval', comment: '定期推送间隔' })
   public pushInterval: PushIntervalEnum;
   // 每日时 时间  每周时 周几,时间  每月时 几号,时间
   @Column({ type: 'varchar', name: 'start_date', length: 50, default: '', comment: '定期推送时间' })

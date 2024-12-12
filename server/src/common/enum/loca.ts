@@ -13,18 +13,13 @@ export enum CacheEnum {
    */
   CAPTCHA_CODE_KEY = 'captcha_codes:',
 
-  /**
-   * 登录账户密码错误次数 redis key
-   */
-  PWD_ERR_CNT_KEY = 'pwd_err_cnt:',
+  // /**
+  //  * 登录账户密码错误次数 redis key
+  //  */
+  // PWD_ERR_CNT_KEY = 'pwd_err_cnt:',
 
-  /**
-   * 微信code存储
-   */
-  MA_CODE = 'ma_code:',
-
-  /**
-   * 字典管理 cache key
-   */
-  SYS_DICT_KEY = 'sys_dict:',
+  // /**
+  //  * 微信code存储
+  //  */
+  // MA_CODE = 'ma_code:',
 }

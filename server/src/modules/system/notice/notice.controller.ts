@@ -1,55 +1,47 @@
 import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { NoticeService } from './notice.service';
-import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from './dto/index';
+import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto, SysNoticeVO } from './dto/index';
+import { ApiResult } from '@/common/decorator';
 
 @ApiTags('通知公告')
+@ApiBearerAuth()
 @Controller('system/notice')
 export class NoticeController {
   constructor(private readonly noticeService: NoticeService) {}
 
-  @ApiOperation({
-    summary: '通知公告-创建',
-  })
-  @ApiBody({
-    type: CreateNoticeDto,
-  })
+  @ApiOperation({ summary: '通知公告-创建' })
+  @ApiBody({ type: CreateNoticeDto })
+  @ApiResult()
   @Post()
   create(@Body() createConfigDto: CreateNoticeDto) {
     return this.noticeService.create(createConfigDto);
   }
 
-  @ApiOperation({
-    summary: '通知公告-列表',
-  })
-  @ApiBody({
-    type: ListNoticeDto,
-    required: true,
-  })
+  @ApiOperation({ summary: '通知公告-列表' })
+  @ApiBody({ type: ListNoticeDto })
+  @ApiResult(SysNoticeVO, true, true)
   @Get('/list')
   findAll(@Query() query: ListNoticeDto) {
     return this.noticeService.findAll(query);
   }
 
-  @ApiOperation({
-    summary: '通知公告-详情',
-  })
+  @ApiOperation({ summary: '通知公告-详情' })
+  @ApiResult(SysNoticeVO)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.noticeService.findOne(+id);
   }
 
-  @ApiOperation({
-    summary: '通知公告-更新',
-  })
+  @ApiOperation({ summary: '通知公告-更新' })
+  @ApiBody({ type: UpdateNoticeDto })
+  @ApiResult()
   @Put()
   update(@Body() updateNoticeDto: UpdateNoticeDto) {
     return this.noticeService.update(updateNoticeDto);
   }
 
-  @ApiOperation({
-    summary: '通知公告-删除',
-  })
+  @ApiOperation({ summary: '通知公告-删除' })
   @Delete(':id')
   remove(@Param('id') ids: string) {
     const noticeIds = ids.split(',').map((id) => +id);

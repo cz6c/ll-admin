@@ -49,7 +49,4 @@ export class SysMenuEntity extends BaseEntity {
   //菜单类型（M菜单 F按钮）
   @Column({ type: 'enum', enum: MenuTypeEnum, default: MenuTypeEnum.M, name: 'menu_type', comment: '菜单类型' })
   public menuType: MenuTypeEnum;
-
-  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
-  public remark: string;
 }

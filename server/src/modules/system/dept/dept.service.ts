@@ -17,6 +17,11 @@ export class DeptService {
     private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
   ) {}
 
+  /**
+   * @description: 部门管理-创建
+   * @param {CreateDeptDto} createDeptDto
+   * @return
+   */
   async create(createDeptDto: CreateDeptDto) {
     if (createDeptDto.parentId) {
       const parent = await this.sysDeptEntityRep.findOne({
@@ -36,6 +41,11 @@ export class DeptService {
     return ResultData.ok();
   }
 
+  /**
+   * @description: 部门管理-列表
+   * @param {ListDeptDto} query
+   * @return
+   */
   async findAll(query: ListDeptDto) {
     const entity = this.sysDeptEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -51,6 +61,10 @@ export class DeptService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 部门管理-树
+   * @return
+   */
   async treeSelect() {
     const res = await this.sysDeptEntityRep.find({
       where: {
@@ -66,6 +80,11 @@ export class DeptService {
     return ResultData.ok(tree);
   }
 
+  /**
+   * @description: 部门管理-详情
+   * @param {number} deptId
+   * @return
+   */
   async findOne(deptId: number) {
     const data = await this.sysDeptEntityRep.findOne({
       where: {
@@ -74,6 +93,95 @@ export class DeptService {
       },
     });
     return ResultData.ok(data);
+  }
+
+  /**
+   * @description: 部门管理-修改部门下拉列表
+   * @param {number} id
+   * @return
+   */
+  async findListExclude(id: number) {
+    const data = await this.sysDeptEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+    });
+    // 过滤 ancestors 中出现id的数据
+    const arr = data.filter((item) => {
+      const ancestors = item.ancestors.split(',');
+      return ancestors.findIndex((_) => +_ === id) === -1;
+    });
+    return ResultData.ok(arr);
+  }
+
+  /**
+   * @description: 部门管理-更新
+   * @param {UpdateDeptDto} updateDeptDto
+   * @return
+   */
+  async update(updateDeptDto: UpdateDeptDto) {
+    if (updateDeptDto.parentId && updateDeptDto.parentId !== 0) {
+      const parent = await this.sysDeptEntityRep.findOne({
+        where: {
+          deptId: updateDeptDto.parentId,
+          delFlag: DelFlagEnum.NORMAL,
+        },
+        select: ['ancestors'],
+      });
+      if (!parent) {
+        return ResultData.fail(500, '父级部门不存在');
+      }
+      const ancestors = parent.ancestors ? `${parent.ancestors},${updateDeptDto.parentId}` : `${updateDeptDto.parentId}`;
+      Object.assign(updateDeptDto, { ancestors: ancestors });
+    }
+    await this.sysDeptEntityRep.update({ deptId: updateDeptDto.deptId }, updateDeptDto);
+    return ResultData.ok();
+  }
+
+  /**
+   * @description: 部门管理-删除
+   * @param {number} deptId
+   * @return
+   */
+  async remove(deptId: number) {
+    await this.sysDeptEntityRep.update(
+      { deptId: deptId },
+      {
+        delFlag: DelFlagEnum.DELETE,
+      },
+    );
+    return ResultData.ok();
+  }
+
+  /**
+   * @description: 查询所有部门以及角色已关联的部门数据 --用于自定义数据权限范围
+   * @param {number} roleId
+   * @return
+   */
+  async roleDeptTreeSelect(roleId: number) {
+    // 查询所有部门数据
+    const res = await this.sysDeptEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+    });
+    const tree = listToTree(res, {
+      id: 'deptId',
+    });
+
+    // 查询角色id已关联的部门
+    const deptIds = await this.sysRoleWithDeptEntityRep.find({
+      where: { roleId: roleId },
+      select: ['deptId'],
+    });
+    const checkedKeys = deptIds.map((item) => {
+      return item.deptId;
+    });
+
+    return ResultData.ok({
+      depts: tree,
+      checkedKeys: checkedKeys,
+    });
   }
 
   /**
@@ -113,76 +221,5 @@ export class DeptService {
       console.error('Failed to query department IDs:', error);
       throw new Error('Querying department IDs failed');
     }
-  }
-
-  async findListExclude(id: number) {
-    console.log('🚀 ~ DeptService ~ findListExclude ~ id:', id);
-    //TODO 需排出ancestors 中不出现id的数据
-    const data = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-    });
-    return ResultData.ok(data);
-  }
-
-  async update(updateDeptDto: UpdateDeptDto) {
-    if (updateDeptDto.parentId && updateDeptDto.parentId !== 0) {
-      const parent = await this.sysDeptEntityRep.findOne({
-        where: {
-          deptId: updateDeptDto.parentId,
-          delFlag: DelFlagEnum.NORMAL,
-        },
-        select: ['ancestors'],
-      });
-      if (!parent) {
-        return ResultData.fail(500, '父级部门不存在');
-      }
-      const ancestors = parent.ancestors ? `${parent.ancestors},${updateDeptDto.parentId}` : `${updateDeptDto.parentId}`;
-      Object.assign(updateDeptDto, { ancestors: ancestors });
-    }
-    await this.sysDeptEntityRep.update({ deptId: updateDeptDto.deptId }, updateDeptDto);
-    return ResultData.ok();
-  }
-
-  async remove(deptId: number) {
-    const data = await this.sysDeptEntityRep.update(
-      { deptId: deptId },
-      {
-        delFlag: DelFlagEnum.DELETE,
-      },
-    );
-    return ResultData.ok(data);
-  }
-
-  /**
-   * @description: 查询所有部门以及角色已关联的部门数据 --用于自定义数据权限范围
-   * @param {number} roleId
-   * @return
-   */
-  async roleDeptTreeSelect(roleId: number) {
-    // 查询所有部门数据
-    const res = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-    });
-    const tree = listToTree(res, {
-      id: 'deptId',
-    });
-
-    // 查询角色id已关联的部门
-    const deptIds = await this.sysRoleWithDeptEntityRep.find({
-      where: { roleId: roleId },
-      select: ['deptId'],
-    });
-    const checkedKeys = deptIds.map((item) => {
-      return item.deptId;
-    });
-
-    return ResultData.ok({
-      depts: tree,
-      checkedKeys: checkedKeys,
-    });
   }
 }

@@ -4,12 +4,8 @@ import type {
   SysRoleResponse,
   SysRoleListResponse,
   SysRoleData,
-  ChangeStatusDto,
-  AuthUserCancelAllDto,
-  AuthUserSelectAllDto,
-  AuthUserCancelDto
+  ChangeStatusDto
 } from "#/api/system/role";
-import type { AllocatedListDto, SysUserListResponse } from "#/api/system/user";
 
 // 查询角色列表
 export function listRole(params: ListRoleDto) {
@@ -60,50 +56,5 @@ export function delRole(roleId: number) {
   return $http({
     url: "/system/role/" + roleId,
     method: "delete"
-  });
-}
-
-// 查询角色已授权用户列表
-export function allocatedUserList(params: AllocatedListDto) {
-  return $http<never, SysUserListResponse>({
-    url: "/system/role/authUser/allocatedList",
-    method: "get",
-    params
-  });
-}
-
-// 查询角色未授权用户列表
-export function unallocatedUserList(params: AllocatedListDto) {
-  return $http<never, SysUserListResponse>({
-    url: "/system/role/authUser/unallocatedList",
-    method: "get",
-    params
-  });
-}
-
-// 取消用户授权角色
-export function authUserCancel(data: AuthUserCancelDto) {
-  return $http<AuthUserCancelDto, never>({
-    url: "/system/role/authUser/cancel",
-    method: "put",
-    data
-  });
-}
-
-// 批量取消用户授权角色
-export function authUserCancelAll(data: AuthUserCancelAllDto) {
-  return $http<AuthUserCancelAllDto, never>({
-    url: "/system/role/authUser/cancelAll",
-    method: "put",
-    data
-  });
-}
-
-// 授权用户选择
-export function authUserSelectAll(data: AuthUserSelectAllDto) {
-  return $http<AuthUserSelectAllDto, never>({
-    url: "/system/role/authUser/selectAll",
-    method: "put",
-    data
   });
 }

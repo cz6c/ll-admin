@@ -6,7 +6,6 @@ import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from './dto/index';
 import { SysConfigEntity } from './entities/config.entity';
-import { RedisService } from '@/modules/redis/redis.service';
 import { DelFlagEnum, YesNoEnum } from '@/common/enum/dict';
 
 @Injectable()
@@ -14,13 +13,23 @@ export class ConfigService {
   constructor(
     @InjectRepository(SysConfigEntity)
     private readonly sysConfigEntityRep: Repository<SysConfigEntity>,
-    private readonly redisService: RedisService,
   ) {}
+
+  /**
+   * @description: 参数设置-创建
+   * @param {CreateConfigDto} createConfigDto
+   * @return
+   */
   async create(createConfigDto: CreateConfigDto) {
     await this.sysConfigEntityRep.save(createConfigDto);
     return ResultData.ok();
   }
 
+  /**
+   * @description: 参数设置-列表
+   * @param {ListConfigDto} query
+   * @return
+   */
   async findAll(query: ListConfigDto) {
     const entity = this.sysConfigEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -53,6 +62,11 @@ export class ConfigService {
     });
   }
 
+  /**
+   * @description: 参数设置-详情(id)
+   * @param {number} configId
+   * @return
+   */
   async findOne(configId: number) {
     const data = await this.sysConfigEntityRep.findOne({
       where: {
@@ -62,16 +76,11 @@ export class ConfigService {
     return ResultData.ok(data);
   }
 
-  async getConfigValue(configKey: string) {
-    const data = await this.sysConfigEntityRep.findOne({
-      where: {
-        configKey: configKey,
-      },
-      select: ['configValue', 'configKey'],
-    });
-    return data?.configValue;
-  }
-
+  /**
+   * @description: 参数设置-更新
+   * @param {UpdateConfigDto} updateConfigDto
+   * @return
+   */
   async update(updateConfigDto: UpdateConfigDto) {
     await this.sysConfigEntityRep.update(
       {
@@ -82,6 +91,11 @@ export class ConfigService {
     return ResultData.ok();
   }
 
+  /**
+   * @description: 参数设置-删除
+   * @param {number} configIds
+   * @return
+   */
   async remove(configIds: number[]) {
     const list = await this.sysConfigEntityRep.find({
       where: {
@@ -94,13 +108,13 @@ export class ConfigService {
     if (item) {
       return ResultData.fail(500, `内置参数【${item.configKey}】不能删除`);
     }
-    const data = await this.sysConfigEntityRep.update(
+    await this.sysConfigEntityRep.update(
       { configId: In(configIds) },
       {
         delFlag: DelFlagEnum.DELETE,
       },
     );
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 
   /**
@@ -129,5 +143,20 @@ export class ConfigService {
       },
     };
     ExportTable(options, res);
+  }
+
+  /**
+   * @description: 参数设置-详情(key)
+   * @param {string} configKey
+   * @return
+   */
+  async getConfigValue(configKey: string) {
+    const data = await this.sysConfigEntityRep.findOne({
+      where: {
+        configKey: configKey,
+      },
+      select: ['configValue', 'configKey'],
+    });
+    return data?.configValue;
   }
 }

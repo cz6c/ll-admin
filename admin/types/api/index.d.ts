@@ -38,3 +38,10 @@ export interface BaseResponse {
   //备注
   remark: string;
 }
+
+export type SysDictData = {
+  dictLabel: string;
+  dictValue: string;
+};
+
+export type SysDictResponse = Required<SysDictData>;

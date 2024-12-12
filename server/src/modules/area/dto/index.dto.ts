@@ -1,11 +1,5 @@
 import { IsNumber, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AreaEntity } from '../entities/area.entity';
-
-export class AeraVO extends AreaEntity {
-  @ApiPropertyOptional({ type: [AreaEntity], description: 'children' })
-  readonly children: AreaEntity[];
-}
 
 // 列表查询
 export class AeraListParamsDto {
@@ -16,4 +10,32 @@ export class AeraListParamsDto {
   @ApiProperty({ description: 'level' })
   @IsNumber()
   readonly level: 1 | 2 | 3;
+}
+
+export class AeraVO {
+  @ApiProperty({ type: String, description: '名称' })
+  public name: string;
+
+  @ApiProperty({ type: String, description: '区code' })
+  public code: string;
+
+  @ApiProperty({ type: String, description: '省code' })
+  public provinceCode: string;
+
+  @ApiProperty({ type: String, description: '市code' })
+  public cityCode: string;
+}
+
+export class AeraTreeVO {
+  @ApiProperty({ type: String, description: '名称' })
+  public name: string;
+
+  @ApiProperty({ type: String, description: 'code' })
+  public code: string;
+
+  @ApiProperty({ type: String, description: '父code' })
+  public parentCode: string;
+
+  @ApiPropertyOptional({ type: [AeraTreeVO], description: 'children' })
+  readonly children: AeraTreeVO[];
 }

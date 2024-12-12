@@ -1,20 +1,18 @@
 import { Controller, Get, Post, Body, Res, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { LoginlogService } from './loginlog.service';
 import { ListLoginlogDto } from './dto/index';
+import { ApiResult } from '@/common/decorator';
 
-@ApiTags('登录日志')
+@ApiTags('系统监控')
+@ApiBearerAuth()
 @Controller('monitor/logininfor')
 export class LoginlogController {
   constructor(private readonly loginlogService: LoginlogService) {}
-  @ApiOperation({
-    summary: '登录日志-列表',
-  })
-  @ApiBody({
-    type: ListLoginlogDto,
-    required: true,
-  })
+
+  @ApiOperation({ summary: '登录日志-列表' })
+  @ApiResult()
   @Get('/list')
   findAll(@Query() query: ListLoginlogDto) {
     return this.loginlogService.findAll(query);

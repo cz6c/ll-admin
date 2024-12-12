@@ -25,7 +25,6 @@ import { MainModule } from './modules/main/main.module';
 import { CacheModule } from './modules/monitor/cache/cache.module';
 import { LoginlogModule } from './modules/monitor/loginlog/loginlog.module';
 import { OperlogModule } from './modules/monitor/operlog/operlog.module';
-import { OnlineModule } from './modules/monitor/online/online.module';
 import { ServerModule } from './modules/monitor/server/server.module';
 
 @Global()
@@ -84,7 +83,6 @@ import { ServerModule } from './modules/monitor/server/server.module';
     CacheModule,
     LoginlogModule,
     OperlogModule,
-    OnlineModule,
     ServerModule,
   ],
   providers: [

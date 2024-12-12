@@ -41,6 +41,10 @@ export class LoginlogService {
       entity.andWhere(`entity.userName LIKE "%${query.userName}%"`);
     }
 
+    if (query.status) {
+      entity.andWhere('user.status = :status', { status: query.status });
+    }
+
     if (query?.beginTime && query?.endTime) {
       entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }

@@ -4,10 +4,14 @@ import { SUCCESS_CODE } from '@/common/utils/result';
 import { UserService } from '../system/user/user.service';
 import { LoginlogService } from '../monitor/loginlog/loginlog.service';
 import { AxiosService } from '@/plugins/axios.service';
-import { RegisterDto, LoginDto, ClientInfoDto } from './dto/index';
+import { RegisterDto, LoginDto } from './dto/index';
 import { MenuService } from '../system/menu/menu.service';
 import { StatusEnum } from '@/common/enum/dict';
 import { getEnum2Array } from '@/common/enum';
+import { ClientInfoDto } from '../monitor/loginlog/dto';
+import { CacheEnum } from '@/common/enum/loca';
+import { RequestUserPayload } from '@/common/decorator';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class MainService {
@@ -16,6 +20,7 @@ export class MainService {
     private readonly loginlogService: LoginlogService,
     private readonly axiosService: AxiosService,
     private readonly menuService: MenuService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -29,6 +34,7 @@ export class MainService {
       userName: user.userName,
       status: StatusEnum.NORMAL,
       msg: '',
+      loginLocation: '',
     };
     try {
       const loginLocation = await this.axiosService.getIpAddress(clientInfo.ipaddr);
@@ -42,20 +48,10 @@ export class MainService {
   }
   /**
    * 退出登陆
-   * @param clientInfo
+   * @param tokenData
    */
-  async logout(clientInfo: ClientInfoDto) {
-    const loginLog = {
-      ...clientInfo,
-      userName: '',
-      status: StatusEnum.NORMAL,
-      msg: '退出成功',
-    };
-    try {
-      const loginLocation = await this.axiosService.getIpAddress(clientInfo.ipaddr);
-      loginLog.loginLocation = loginLocation;
-    } catch (error) {}
-    this.loginlogService.create(loginLog);
+  async logout(tokenData: RequestUserPayload) {
+    await this.redisService.del(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
     return ResultData.ok();
   }
   /**

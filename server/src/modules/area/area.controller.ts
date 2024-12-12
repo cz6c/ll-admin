@@ -1,10 +1,11 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AreaService } from './area.service';
-import { AeraListParamsDto, AeraVO } from './dto/index.dto';
+import { AeraListParamsDto, AeraTreeVO, AeraVO } from './dto/index.dto';
 import { ApiResult } from '@/common/decorator';
 
 @ApiTags('通用')
+@ApiBearerAuth()
 @Controller('common/area')
 export class AreaController {
   constructor(private readonly areaService: AreaService) {}
@@ -17,6 +18,7 @@ export class AreaController {
   }
 
   @ApiOperation({ summary: 'area trees' })
+  @ApiResult(AeraTreeVO, true)
   @Get('trees')
   async findTrees() {
     return await this.areaService.findTrees();

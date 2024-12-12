@@ -1,10 +1,11 @@
 import { Controller, Get, Post, Body, Query, UploadedFile, UseInterceptors, HttpCode } from '@nestjs/common';
 import { UploadService } from './upload.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 import { ChunkFileDto, ChunkMergeFileDto, FileUploadDto, uploadIdDto } from './dto/index';
 
 @ApiTags('通用')
+@ApiBearerAuth()
 @Controller('common/upload')
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
@@ -14,14 +15,8 @@ export class UploadController {
    * @param file
    * @returns
    */
-  @ApiOperation({
-    summary: '文件上传',
-  })
-  @ApiBody({
-    type: FileUploadDto,
-    required: true,
-  })
-  @HttpCode(200)
+  @ApiOperation({ summary: '文件上传' })
+  @ApiBody({ type: FileUploadDto })
   @Post()
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))

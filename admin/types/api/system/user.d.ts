@@ -36,12 +36,6 @@ export type SysUserListParams = ListParams & {
   status?: string;
 };
 
-export type AllocatedListDto = ListParams & {
-  userName?: string;
-  phonenumber?: string;
-  roleId?: number;
-};
-
 export type ResetPwdDto = {
   userId: number;
   password: string;
@@ -55,7 +49,6 @@ export type ChangeStatusDto = {
 export type UpdateProfileDto = {
   nickName: string;
   email: string;
-  phonenumber: string;
   sex: string;
 };
 

@@ -12,11 +12,22 @@ export class NoticeService {
     @InjectRepository(SysNoticeEntity)
     private readonly sysNoticeEntityRep: Repository<SysNoticeEntity>,
   ) {}
+
+  /**
+   * @description: 通知公告-创建
+   * @param {CreateNoticeDto} createNoticeDto
+   * @return
+   */
   async create(createNoticeDto: CreateNoticeDto) {
     await this.sysNoticeEntityRep.save(createNoticeDto);
     return ResultData.ok();
   }
 
+  /**
+   * @description: 通知公告-列表
+   * @param {ListNoticeDto} query
+   * @return
+   */
   async findAll(query: ListNoticeDto) {
     const entity = this.sysNoticeEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -46,6 +57,11 @@ export class NoticeService {
     });
   }
 
+  /**
+   * @description: 通知公告-详情
+   * @param {number} noticeId
+   * @return
+   */
   async findOne(noticeId: number) {
     const data = await this.sysNoticeEntityRep.findOne({
       where: {
@@ -55,6 +71,11 @@ export class NoticeService {
     return ResultData.ok(data);
   }
 
+  /**
+   * @description: 通知公告-更新
+   * @param {UpdateNoticeDto} updateNoticeDto
+   * @return
+   */
   async update(updateNoticeDto: UpdateNoticeDto) {
     await this.sysNoticeEntityRep.update(
       {
@@ -65,13 +86,18 @@ export class NoticeService {
     return ResultData.ok();
   }
 
+  /**
+   * @description: 通知公告-删除
+   * @param {number} noticeIds
+   * @return
+   */
   async remove(noticeIds: number[]) {
-    const data = await this.sysNoticeEntityRep.update(
+    await this.sysNoticeEntityRep.update(
       { noticeId: In(noticeIds) },
       {
         delFlag: DelFlagEnum.DELETE,
       },
     );
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 }

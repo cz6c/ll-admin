@@ -130,18 +130,6 @@ export default [
     redirect: "noRedirect",
     children: [
       {
-        name: "Online",
-        path: "/monitor/online",
-        hidden: false,
-        component: "monitor/online/index",
-        meta: {
-          title: "在线用户",
-          icon: "online",
-          noCache: false,
-          link: null
-        }
-      },
-      {
         name: "Server",
         path: "/monitor/server",
         hidden: false,

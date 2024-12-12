@@ -28,15 +28,3 @@ export type ChangeStatusDto = {
   roleId: number;
   status: string;
 };
-
-export type AuthUserCancelDto = {
-  roleId: number;
-  userId: number;
-};
-
-export type AuthUserCancelAllDto = {
-  roleId: number;
-  userIds: string;
-};
-
-export type AuthUserSelectAllDto = AuthUserCancelAllDto;

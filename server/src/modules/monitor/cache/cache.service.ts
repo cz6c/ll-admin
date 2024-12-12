@@ -20,24 +20,18 @@ export class CacheService {
       cacheValue: '',
       remark: '验证码',
     },
-    {
-      cacheName: 'pwd_err_cnt:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '密码错误次数',
-    },
-    {
-      cacheName: 'ma_code:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '微信code存储',
-    },
-    {
-      cacheName: 'sys_dict:',
-      cacheKey: '',
-      cacheValue: '',
-      remark: '数据字典',
-    },
+    // {
+    //   cacheName: 'pwd_err_cnt:',
+    //   cacheKey: '',
+    //   cacheValue: '',
+    //   remark: '密码错误次数',
+    // },
+    // {
+    //   cacheName: 'ma_code:',
+    //   cacheKey: '',
+    //   cacheValue: '',
+    //   remark: '微信code存储',
+    // },
   ];
 
   async getNames() {

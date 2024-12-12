@@ -6,6 +6,9 @@ export class MonitorLoginlogEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'info_id', comment: '访问ID' })
   public infoId: number;
 
+  @CreateDateColumn({ type: 'datetime', name: 'login_time', default: null, comment: '访问时间' })
+  public loginTime: Date;
+
   @Column({ type: 'varchar', name: 'user_name', length: 50, default: '', comment: '用户账号' })
   public userName: string;
 
@@ -20,9 +23,6 @@ export class MonitorLoginlogEntity {
 
   @Column({ type: 'varchar', name: 'os', length: 50, default: '', comment: '操作系统' })
   public os: string;
-
-  @CreateDateColumn({ type: 'timestamp', name: 'login_time', comment: '访问时间' })
-  public loginTime: Date;
 
   //提示消息
   @Column({ type: 'varchar', name: 'msg', length: 255, default: '', comment: '提示消息' })

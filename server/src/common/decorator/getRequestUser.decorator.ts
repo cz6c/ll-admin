@@ -1,16 +1,15 @@
-import { SysRoleEntity } from '@/modules/system/role/entities/role.entity';
-import { UserEntity } from '@/modules/system/user/entities/user.entity';
+import { SysRoleVo } from '@/modules/system/role/dto';
+import { UserVo } from '@/modules/system/user/dto';
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export interface RequestUserPayload {
   browser: string;
   ipaddr: string;
-  loginLocation: string;
   loginTime: Date;
   os: string;
   token: string;
-  user: UserEntity;
-  roles: Array<SysRoleEntity>;
+  user: UserVo;
+  roles: Array<SysRoleVo>;
 }
 
 export const GetRequestUser = createParamDecorator((key: keyof RequestUserPayload, context: ExecutionContext) => {

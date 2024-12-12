@@ -29,10 +29,10 @@
       <!--用户数据-->
       <el-col :span="20" :xs="24">
         <el-form ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
-          <el-form-item label="用户名称" prop="userName">
+          <el-form-item label="用户账号" prop="userName">
             <el-input
               v-model="queryParams.userName"
-              placeholder="请输入用户名称"
+              placeholder="请输入用户账号"
               clearable
               style="width: 240px"
               @keyup.enter="handleQuery"
@@ -90,7 +90,7 @@
           <el-table-column key="userId" label="用户编号" align="center" prop="userId" />
           <el-table-column
             key="userName"
-            label="用户名称"
+            label="用户账号"
             align="center"
             prop="userName"
             :show-overflow-tooltip="true"
@@ -167,27 +167,46 @@
       <el-form ref="userRef" :model="form" :rules="rules" label-width="80px">
         <el-row>
           <el-col :span="12">
-            <el-form-item label="用户昵称" prop="nickName">
-              <el-input v-model="form.nickName" placeholder="请输入用户昵称" maxlength="30" />
+            <el-form-item label="用户账号" prop="userName">
+              <el-input v-model="form.userName" placeholder="请输入用户账号" maxlength="30" :disabled="form.userId" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="归属部门" prop="deptId">
-              <el-tree-select
-                v-model="form.deptId"
-                :data="deptOptions"
-                :props="{ label: 'deptName', children: 'children' }"
-                value-key="deptId"
-                placeholder="请选择归属部门"
-                check-strictly
+            <el-form-item label="用户密码" prop="password">
+              <el-input
+                v-model="form.password"
+                placeholder="请输入用户密码"
+                type="password"
+                maxlength="20"
+                :show-password="!form.userId"
+                :disabled="form.userId"
               />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row>
           <el-col :span="12">
+            <el-form-item label="用户昵称" prop="nickName">
+              <el-input v-model="form.nickName" placeholder="请输入用户昵称" maxlength="30" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="用户性别">
+              <el-select v-model="form.sex" placeholder="请选择">
+                <el-option v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row>
+          <el-col :span="12">
             <el-form-item label="手机号码" prop="phonenumber">
-              <el-input v-model="form.phonenumber" placeholder="请输入手机号码" maxlength="11" />
+              <el-input
+                v-model="form.phonenumber"
+                placeholder="请输入手机号码"
+                maxlength="11"
+                :disabled="form.userId"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -198,28 +217,15 @@
         </el-row>
         <el-row>
           <el-col :span="12">
-            <el-form-item v-if="form.userId == undefined" label="用户名称" prop="userName">
-              <el-input v-model="form.userName" placeholder="请输入用户名称" maxlength="30" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item v-if="form.userId == undefined" label="用户密码" prop="password">
-              <el-input
-                v-model="form.password"
-                placeholder="请输入用户密码"
-                type="password"
-                maxlength="20"
-                show-password
+            <el-form-item label="归属部门" prop="deptId">
+              <el-tree-select
+                v-model="form.deptId"
+                :data="deptOptions"
+                :props="{ label: 'deptName', children: 'children' }"
+                value-key="deptId"
+                placeholder="请选择归属部门"
+                check-strictly
               />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="用户性别">
-              <el-select v-model="form.sex" placeholder="请选择">
-                <el-option v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -237,22 +243,6 @@
           </el-col>
         </el-row>
         <el-row>
-          <el-col :span="12">
-            <el-form-item label="用户类型">
-              <el-radio-group v-model="form.userType">
-                <el-radio v-for="dict in UserTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="状态">
-              <el-radio-group v-model="form.status">
-                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
           <el-col :span="24">
             <el-form-item label="角色">
               <el-select v-model="form.roleIds" multiple placeholder="请选择">
@@ -264,6 +254,22 @@
                   :disabled="item.status == 1"
                 />
               </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row>
+          <el-col :span="12">
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="用户类型">
+              <el-radio-group v-model="form.userType">
+                <el-radio v-for="dict in UserTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
+              </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
@@ -367,11 +373,11 @@ const data = reactive({
   },
   rules: {
     userName: [
-      { required: true, message: "用户名称不能为空", trigger: "blur" },
+      { required: true, message: "用户账号不能为空", trigger: "blur" },
       {
         min: 2,
         max: 20,
-        message: "用户名称长度必须介于 2 和 20 之间",
+        message: "用户账号长度必须介于 2 和 20 之间",
         trigger: "blur"
       }
     ],
@@ -393,6 +399,7 @@ const data = reactive({
       }
     ],
     phonenumber: [
+      { required: true, message: "手机号码不能为空", trigger: "blur" },
       {
         pattern: /^1[3|4|5|6|7|8|9][0-9]\d{8}$/,
         message: "请输入正确的手机号码",

@@ -40,7 +40,7 @@ export class RoleService {
     });
     entity.insert().values(values).execute();
 
-    return ResultData.ok(res);
+    return ResultData.ok();
   }
 
   /**
@@ -129,8 +129,8 @@ export class RoleService {
     entity.insert().values(values).execute();
 
     delete (updateRoleDto as any).menuIds;
-    const res = await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, updateRoleDto);
-    return ResultData.ok(res);
+    await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, updateRoleDto);
+    return ResultData.ok();
   }
 
   /**
@@ -139,13 +139,13 @@ export class RoleService {
    * @return
    */
   async changeStatus(changeStatusDto: ChangeStatusDto) {
-    const res = await this.sysRoleEntityRep.update(
+    await this.sysRoleEntityRep.update(
       { roleId: changeStatusDto.roleId },
       {
         status: changeStatusDto.status,
       },
     );
-    return ResultData.ok(res);
+    return ResultData.ok();
   }
 
   /**
@@ -154,13 +154,13 @@ export class RoleService {
    * @return
    */
   async remove(roleIds: number[]) {
-    const data = await this.sysRoleEntityRep.update(
+    await this.sysRoleEntityRep.update(
       { roleId: In(roleIds) },
       {
         delFlag: DelFlagEnum.DELETE,
       },
     );
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 
   /**

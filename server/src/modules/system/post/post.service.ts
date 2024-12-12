@@ -14,11 +14,22 @@ export class PostService {
     @InjectRepository(SysPostEntity)
     private readonly sysPostEntityRep: Repository<SysPostEntity>,
   ) {}
+
+  /**
+   * @description: 创建岗位
+   * @param {CreatePostDto} createPostDto
+   * @return
+   */
   async create(createPostDto: CreatePostDto) {
     await this.sysPostEntityRep.save(createPostDto);
     return ResultData.ok();
   }
 
+  /**
+   * @description: 岗位管理-列表
+   * @param {ListPostDto} query
+   * @return
+   */
   async findAll(query: ListPostDto) {
     const entity = this.sysPostEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
@@ -48,6 +59,11 @@ export class PostService {
     });
   }
 
+  /**
+   * @description: 岗位管理-详情
+   * @param {number} postId
+   * @return
+   */
   async findOne(postId: number) {
     const res = await this.sysPostEntityRep.findOne({
       where: {
@@ -58,19 +74,29 @@ export class PostService {
     return ResultData.ok(res);
   }
 
+  /**
+   * @description: 岗位管理-更新
+   * @param {UpdatePostDto} updatePostDto
+   * @return
+   */
   async update(updatePostDto: UpdatePostDto) {
-    const res = await this.sysPostEntityRep.update({ postId: updatePostDto.postId }, updatePostDto);
-    return ResultData.ok(res);
+    await this.sysPostEntityRep.update({ postId: updatePostDto.postId }, updatePostDto);
+    return ResultData.ok();
   }
 
+  /**
+   * @description: 岗位管理-删除
+   * @param {string} postIds
+   * @return
+   */
   async remove(postIds: string[]) {
-    const data = await this.sysPostEntityRep.update(
+    await this.sysPostEntityRep.update(
       { postId: In(postIds) },
       {
         delFlag: DelFlagEnum.DELETE,
       },
     );
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 
   /**

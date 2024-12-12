@@ -1,15 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
 import { ServerService } from './server.service';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
-@ApiTags('系统监控-服务监控')
+@ApiTags('系统监控')
+@ApiBearerAuth()
 @Controller('monitor/server')
 export class ServerController {
   constructor(private readonly serverService: ServerService) {}
-  @ApiOperation({
-    summary: '在线用户-列表',
-  })
-  @ApiResponse({ status: 200, description: '返回成功' })
+
+  @ApiOperation({ summary: '服务器信息' })
   @Get()
   getInfo() {
     return this.serverService.getInfo();

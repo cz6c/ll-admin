@@ -1,4 +1,4 @@
-import { Injectable, HttpException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
@@ -42,7 +42,7 @@ export class AreaService {
     );
   }
 
-  // 通过code和层级查地址列表
+  // 通过code和层级查子级地址列表
   async findAllChildrenByCode(params: AeraListParamsDto) {
     if (params.level === 1) {
       const list = await this.provinceRepository.find();
@@ -60,21 +60,5 @@ export class AreaService {
       });
       return ResultData.ok(list);
     }
-  }
-
-  // 地址详情
-  async findOne(code: string, type: 'province' | 'city' | 'area') {
-    const typeMap = {
-      province: this.provinceRepository,
-      city: this.cityRepository,
-      area: this.areaRepository,
-    };
-    const item = await typeMap[type].findOne({
-      where: { code },
-    });
-    if (!item) {
-      throw new HttpException(`code为${code}的${type}数据不存在`, 200);
-    }
-    return item;
   }
 }

@@ -1,14 +1,14 @@
-import { Controller, Get, Post, Body, HttpCode, Request, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Request, Param } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import * as Useragent from 'useragent';
 import { MainService } from './main.service';
-import { RegisterDto, LoginDto } from './dto/index';
+import { RegisterDto, LoginDto, TokenVo, LoginUserInfoVo, DictVo, RoutersVo, CaptchaImageVo } from './dto/index';
 import { createMath } from '@/common/utils/captcha';
 import { ResultData } from '@/common/utils/result';
 import { GenerateUUID } from '@/common/utils/index';
 import { RedisService } from '@/modules/redis/redis.service';
 import { ConfigService } from '@/modules/system/config/config.service';
-import { GetRequestUser, RequestUserPayload } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 import { CacheEnum } from '@/common/enum/loca';
 
 @ApiTags('登录鉴权')
@@ -19,68 +19,33 @@ export class MainController {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
   ) {}
-  @ApiOperation({
-    summary: '用户登陆',
-  })
-  @ApiBody({
-    type: LoginDto,
-    required: true,
-  })
+
+  @ApiOperation({ summary: '用户登陆' })
+  @ApiBody({ type: LoginDto })
+  @ApiResult(TokenVo)
   @Post('/login')
-  @HttpCode(200)
   login(@Body() user: LoginDto, @Request() req) {
     const agent = Useragent.parse(req.headers['user-agent']);
     const os = agent.os.toJSON().family;
     const browser = agent.toAgent();
     const clientInfo = {
-      userAgent: req.headers['user-agent'],
       ipaddr: req.ip,
       browser: browser,
       os: os,
-      loginLocation: '',
     };
     return this.mainService.login(user, clientInfo);
   }
 
-  @ApiOperation({
-    summary: '退出登陆',
-  })
-  @ApiBody({
-    type: LoginDto,
-    required: true,
-  })
-  @Post('/logout')
-  @HttpCode(200)
-  logout(@Request() req) {
-    const agent = Useragent.parse(req.headers['user-agent']);
-    const os = agent.os.toJSON().family;
-    const browser = agent.toAgent();
-    const clientInfo = {
-      userAgent: req.headers['user-agent'],
-      ipaddr: req.ip,
-      browser: browser,
-      os: os,
-      loginLocation: '',
-    };
-    return this.mainService.logout(clientInfo);
-  }
-
-  @ApiOperation({
-    summary: '用户注册',
-  })
-  @ApiBody({
-    type: RegisterDto,
-    required: true,
-  })
+  @ApiOperation({ summary: '用户注册' })
+  @ApiBody({ type: RegisterDto })
+  @ApiResult()
   @Post('/register')
-  @HttpCode(200)
   register(@Body() user: RegisterDto) {
     return this.mainService.register(user);
   }
 
-  @ApiOperation({
-    summary: '获取验证图片',
-  })
+  @ApiOperation({ summary: '获取验证图片' })
+  @ApiResult(CaptchaImageVo)
   @Get('/captchaImage')
   async captchaImage() {
     //是否开启验证码
@@ -104,9 +69,9 @@ export class MainController {
     }
   }
 
-  @ApiOperation({
-    summary: '获取登录用户信息',
-  })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取登录用户信息' })
+  @ApiResult(LoginUserInfoVo)
   @Get('/getLoginUserInfo')
   async getLoginUserInfo(@GetRequestUser() tokenData: RequestUserPayload) {
     const roles = tokenData.roles.map((item) => item.roleKey);
@@ -120,19 +85,27 @@ export class MainController {
     };
   }
 
-  @ApiOperation({
-    summary: '路由信息',
-  })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '路由信息' })
+  @ApiResult(RoutersVo, true)
   @Get('/getRouters')
   getRouters(@GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.mainService.getRouters(user.userId);
   }
 
-  @ApiOperation({
-    summary: '根据类型获取字典定义',
-  })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '根据类型获取字典定义' })
+  @ApiResult(DictVo, true)
   @Get('getDicts/:type')
   getDicts(@Param('type') type: string) {
     return this.mainService.getDicts(type);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '退出登陆' })
+  @ApiResult()
+  @Post('/logout')
+  logout(@GetRequestUser() tokenData: RequestUserPayload) {
+    return this.mainService.logout(tokenData);
   }
 }

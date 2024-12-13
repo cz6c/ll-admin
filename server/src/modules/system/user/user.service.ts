@@ -48,12 +48,14 @@ export class UserService {
   ) {
     this.salt = bcrypt.genSaltSync(10);
   }
+
   /**
-   * 后台创建用户
-   * @param createUserDto
-   * @returns
+   * @description: 后台创建用户
+   * @param {CreateUserDto} createUserDto
+   * @param {number} userId
+   * @return
    */
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, userId: number) {
     const loginDate = GetNowDate();
 
     // 密码加密
@@ -62,7 +64,7 @@ export class UserService {
     }
 
     // 保存用户
-    const res = await this.userRepo.save({ ...createUserDto, loginDate });
+    const res = await this.userRepo.save({ ...createUserDto, loginDate, createBy: userId });
 
     // 批量关联岗位
     const postEntity = this.sysUserWithPostEntityRep.createQueryBuilder('postEntity');
@@ -273,7 +275,7 @@ export class UserService {
     delete updateUserDto.postIds;
 
     //更新用户信息
-    const data = await this.userRepo.update({ userId: updateUserDto.userId }, updateUserDto);
+    const data = await this.userRepo.update({ userId: updateUserDto.userId }, { ...updateUserDto, updateBy: userId });
     return ResultData.ok(data);
   }
 
@@ -320,6 +322,7 @@ export class UserService {
       },
       {
         loginDate: loginDate,
+        updateBy: data.userId,
       },
     );
 
@@ -439,11 +442,12 @@ export class UserService {
   }
 
   /**
-   * 重置密码
-   * @param body
-   * @returns
+   * @description: 重置密码
+   * @param {ResetPwdDto} body
+   * @param {*} userId
+   * @return
    */
-  async resetPwd(body: ResetPwdDto) {
+  async resetPwd(body: ResetPwdDto, userId: number) {
     if (body.userId === 1) {
       return ResultData.fail(500, '系统用户不能重置密码');
     }
@@ -456,26 +460,28 @@ export class UserService {
       },
       {
         password: body.password,
+        updateBy: userId,
       },
     );
     return ResultData.ok();
   }
 
   /**
-   * 批量删除用户
-   * @param ids
-   * @returns
+   * @description: 批量删除用户
+   * @param {number} ids
+   * @param {number} userId
+   * @return
    */
-  async remove(ids: number[]) {
+  async remove(ids: number[], userId: number) {
     // 忽略系统角色的删除
-    const data = await this.userRepo.update(
+    await this.userRepo.update(
       { userId: In(ids), userType: Not(UserTypeEnum.SYS) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
-    console.log('🚀 ~ UserService ~ remove ~ data:', data);
-    return ResultData.ok(data);
+    return ResultData.ok();
   }
 
   /**
@@ -530,11 +536,12 @@ export class UserService {
   }
 
   /**
-   * 修改用户状态
-   * @param changeStatusDto
-   * @returns
+   * @description: 修改用户状态
+   * @param {ChangeStatusDto} changeStatusDto
+   * @param {number} userId
+   * @return
    */
-  async changeStatus(changeStatusDto: ChangeStatusDto) {
+  async changeStatus(changeStatusDto: ChangeStatusDto, userId: number) {
     const userData = await this.userRepo.findOne({
       where: {
         userId: changeStatusDto.userId,
@@ -549,6 +556,7 @@ export class UserService {
       { userId: changeStatusDto.userId },
       {
         status: changeStatusDto.status,
+        updateBy: userId,
       },
     );
     return ResultData.ok();
@@ -601,7 +609,7 @@ export class UserService {
    * @return
    */
   async updateProfile(tokenData: RequestUserPayload, updateProfileDto: UpdateProfileDto) {
-    await this.userRepo.update({ userId: tokenData.user.userId }, updateProfileDto);
+    await this.userRepo.update({ userId: tokenData.user.userId }, { ...updateProfileDto, updateBy: tokenData.user.userId });
     const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
     userData.user.nickName = updateProfileDto.nickName;
     userData.user.email = updateProfileDto.email;
@@ -617,7 +625,7 @@ export class UserService {
    * @return
    */
   async updateAvatar(tokenData: RequestUserPayload, avatar: string) {
-    await this.userRepo.update({ userId: tokenData.user.userId }, { avatar: avatar });
+    await this.userRepo.update({ userId: tokenData.user.userId }, { avatar: avatar, updateBy: tokenData.user.userId });
     const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
     userData.user.avatar = avatar;
     await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`, userData);
@@ -644,7 +652,7 @@ export class UserService {
       return ResultData.fail(500, '修改密码失败，旧密码错误');
     }
     const password = await bcrypt.hashSync(updatePwdDto.newPassword, this.salt);
-    await this.userRepo.update({ userId: tokenData.user.userId }, { password: password });
+    await this.userRepo.update({ userId: tokenData.user.userId }, { password: password, updateBy: tokenData.user.userId });
     return ResultData.ok();
   }
 

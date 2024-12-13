@@ -16,10 +16,11 @@ export class NoticeService {
   /**
    * @description: 通知公告-创建
    * @param {CreateNoticeDto} createNoticeDto
+   * @param {number} userId
    * @return
    */
-  async create(createNoticeDto: CreateNoticeDto) {
-    await this.sysNoticeEntityRep.save(createNoticeDto);
+  async create(createNoticeDto: CreateNoticeDto, userId: number) {
+    await this.sysNoticeEntityRep.save({ ...createNoticeDto, createBy: userId });
     return ResultData.ok();
   }
 
@@ -74,14 +75,15 @@ export class NoticeService {
   /**
    * @description: 通知公告-更新
    * @param {UpdateNoticeDto} updateNoticeDto
+   * @param {number} userId
    * @return
    */
-  async update(updateNoticeDto: UpdateNoticeDto) {
+  async update(updateNoticeDto: UpdateNoticeDto, userId: number) {
     await this.sysNoticeEntityRep.update(
       {
         noticeId: updateNoticeDto.noticeId,
       },
-      updateNoticeDto,
+      { ...updateNoticeDto, updateBy: userId },
     );
     return ResultData.ok();
   }
@@ -89,13 +91,15 @@ export class NoticeService {
   /**
    * @description: 通知公告-删除
    * @param {number} noticeIds
+   * @param {number} userId
    * @return
    */
-  async remove(noticeIds: number[]) {
+  async remove(noticeIds: number[], userId: number) {
     await this.sysNoticeEntityRep.update(
       { noticeId: In(noticeIds) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

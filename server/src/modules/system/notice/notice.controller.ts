@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { NoticeService } from './notice.service';
 import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto, SysNoticeVO } from './dto/index';
-import { ApiResult } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('通知公告')
 @ApiBearerAuth()
@@ -14,8 +14,8 @@ export class NoticeController {
   @ApiBody({ type: CreateNoticeDto })
   @ApiResult()
   @Post()
-  create(@Body() createConfigDto: CreateNoticeDto) {
-    return this.noticeService.create(createConfigDto);
+  create(@Body() createConfigDto: CreateNoticeDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.noticeService.create(createConfigDto, user.userId);
   }
 
   @ApiOperation({ summary: '通知公告-列表' })
@@ -37,14 +37,16 @@ export class NoticeController {
   @ApiBody({ type: UpdateNoticeDto })
   @ApiResult()
   @Put()
-  update(@Body() updateNoticeDto: UpdateNoticeDto) {
-    return this.noticeService.update(updateNoticeDto);
+  update(@Body() updateNoticeDto: UpdateNoticeDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.noticeService.update(updateNoticeDto, user.userId);
   }
 
   @ApiOperation({ summary: '通知公告-删除' })
   @Delete(':id')
-  remove(@Param('id') ids: string) {
-    const noticeIds = ids.split(',').map((id) => +id);
-    return this.noticeService.remove(noticeIds);
+  remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.noticeService.remove(
+      ids.split(',').map((id) => +id),
+      user.userId,
+    );
   }
 }

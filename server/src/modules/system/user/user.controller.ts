@@ -59,8 +59,8 @@ export class UserController {
   @ApiBody({ type: CreateUserDto })
   @ApiResult()
   @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.userService.create(createUserDto);
+  create(@Body() createUserDto: CreateUserDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.userService.create(createUserDto, user.userId);
   }
 
   @ApiOperation({ summary: '用户-列表' })
@@ -99,8 +99,8 @@ export class UserController {
   @ApiResult()
   @RequireRole('admin')
   @Put('changeStatus')
-  changeStatus(@Body() changeStatusDto: ChangeStatusDto) {
-    return this.userService.changeStatus(changeStatusDto);
+  changeStatus(@Body() changeStatusDto: ChangeStatusDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.userService.changeStatus(changeStatusDto, user.userId);
   }
 
   @ApiOperation({ summary: '用户-更新' })
@@ -116,16 +116,19 @@ export class UserController {
   @ApiResult()
   @RequireRole('admin')
   @Put('resetPwd')
-  resetPwd(@Body() body: ResetPwdDto) {
-    return this.userService.resetPwd(body);
+  resetPwd(@Body() body: ResetPwdDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.userService.resetPwd(body, user.userId);
   }
 
   @ApiOperation({ summary: '用户-删除' })
   @ApiResult()
   @RequireRole('admin')
   @Delete(':id')
-  remove(@Param('id') ids: string) {
-    return this.userService.remove(ids.split(',').map((id) => +id));
+  remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.userService.remove(
+      ids.split(',').map((id) => +id),
+      user.userId,
+    );
   }
 
   @ApiOperation({ summary: '导出用户信息数据为xlsx' })

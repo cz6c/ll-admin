@@ -18,10 +18,11 @@ export class PostService {
   /**
    * @description: 创建岗位
    * @param {CreatePostDto} createPostDto
+   * @param {number} userId
    * @return
    */
-  async create(createPostDto: CreatePostDto) {
-    await this.sysPostEntityRep.save(createPostDto);
+  async create(createPostDto: CreatePostDto, userId: number) {
+    await this.sysPostEntityRep.save({ ...createPostDto, createBy: userId });
     return ResultData.ok();
   }
 
@@ -77,23 +78,26 @@ export class PostService {
   /**
    * @description: 岗位管理-更新
    * @param {UpdatePostDto} updatePostDto
+   * @param {number} userId
    * @return
    */
-  async update(updatePostDto: UpdatePostDto) {
-    await this.sysPostEntityRep.update({ postId: updatePostDto.postId }, updatePostDto);
+  async update(updatePostDto: UpdatePostDto, userId: number) {
+    await this.sysPostEntityRep.update({ postId: updatePostDto.postId }, { ...updatePostDto, updateBy: userId });
     return ResultData.ok();
   }
 
   /**
    * @description: 岗位管理-删除
-   * @param {string} postIds
+   * @param {number} postIds
+   * @param {number} userId
    * @return
    */
-  async remove(postIds: string[]) {
+  async remove(postIds: number[], userId: number) {
     await this.sysPostEntityRep.update(
       { postId: In(postIds) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

@@ -23,12 +23,13 @@ export class RoleService {
   ) {}
 
   /**
-   * @description:创建角色
+   * @description: 创建角色
    * @param {CreateRoleDto} createRoleDto
+   * @param {number} userId
    * @return
    */
-  async create(createRoleDto: CreateRoleDto) {
-    const res = await this.sysRoleEntityRep.save(createRoleDto);
+  async create(createRoleDto: CreateRoleDto, userId: number) {
+    const res = await this.sysRoleEntityRep.save({ ...createRoleDto, createBy: userId });
 
     // 关联菜单
     const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
@@ -101,9 +102,10 @@ export class RoleService {
   /**
    * @description: 更新角色
    * @param {UpdateRoleDto} updateRoleDto
+   * @param {number} userId
    * @return
    */
-  async update(updateRoleDto: UpdateRoleDto) {
+  async update(updateRoleDto: UpdateRoleDto, userId: number) {
     const hasId = await this.sysRoleWithMenuEntityRep.findOne({
       where: {
         roleId: updateRoleDto.roleId,
@@ -129,20 +131,22 @@ export class RoleService {
     entity.insert().values(values).execute();
 
     delete (updateRoleDto as any).menuIds;
-    await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, updateRoleDto);
+    await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, { ...updateRoleDto, updateBy: userId });
     return ResultData.ok();
   }
 
   /**
    * @description: 更新角色状态
    * @param {ChangeStatusDto} changeStatusDto
+   * @param {number} userId
    * @return
    */
-  async changeStatus(changeStatusDto: ChangeStatusDto) {
+  async changeStatus(changeStatusDto: ChangeStatusDto, userId: number) {
     await this.sysRoleEntityRep.update(
       { roleId: changeStatusDto.roleId },
       {
         status: changeStatusDto.status,
+        updateBy: userId,
       },
     );
     return ResultData.ok();
@@ -151,13 +155,15 @@ export class RoleService {
   /**
    * @description: 批量删除角色
    * @param {number} roleIds
+   * @param {number} userId
    * @return
    */
-  async remove(roleIds: number[]) {
+  async remove(roleIds: number[], userId: number) {
     await this.sysRoleEntityRep.update(
       { roleId: In(roleIds) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

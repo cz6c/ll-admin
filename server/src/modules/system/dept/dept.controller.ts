@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Put, Param, Query, Delete } from '@nestjs/
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { DeptService } from './dept.service';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto, SysDeptVo, RoleDeptTreeSelectVo, DeptTreeVo } from './dto/index';
-import { ApiResult } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('部门管理')
 @ApiBearerAuth()
@@ -14,8 +14,8 @@ export class DeptController {
   @ApiBody({ type: CreateDeptDto })
   @ApiResult()
   @Post()
-  create(@Body() createDeptDto: CreateDeptDto) {
-    return this.deptService.create(createDeptDto);
+  create(@Body() createDeptDto: CreateDeptDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.deptService.create(createDeptDto, user.userId);
   }
 
   @ApiOperation({ summary: '部门管理-列表' })
@@ -57,14 +57,14 @@ export class DeptController {
   @ApiBody({ type: UpdateDeptDto })
   @ApiResult()
   @Put()
-  update(@Body() updateDeptDto: UpdateDeptDto) {
-    return this.deptService.update(updateDeptDto);
+  update(@Body() updateDeptDto: UpdateDeptDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.deptService.update(updateDeptDto, user.userId);
   }
 
   @ApiOperation({ summary: '部门管理-删除' })
   @ApiResult()
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.deptService.remove(+id);
+  remove(@Param('id') id: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.deptService.remove(+id, user.userId);
   }
 }

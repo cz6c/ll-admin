@@ -77,9 +77,10 @@ export class NodemailerService {
   /**
    * @description:邮箱推送任务-创建
    * @param {CreateNodemailerPushTaskDto} createNodemailerPushTaskDto
+   * @param {number} userId
    * @return
    */
-  async createPushTask(createNodemailerPushTaskDto: CreateNodemailerPushTaskDto) {
+  async createPushTask(createNodemailerPushTaskDto: CreateNodemailerPushTaskDto, userId: number) {
     const list = await this.nodemailerPushTaskEntity.find({
       where: {
         pushtaskName: createNodemailerPushTaskDto.pushtaskName,
@@ -87,7 +88,7 @@ export class NodemailerService {
       },
     });
     if (list.length > 0) return ResultData.fail(400, '任务名称已存在');
-    const res = await this.nodemailerPushTaskEntity.save(createNodemailerPushTaskDto);
+    const res = await this.nodemailerPushTaskEntity.save({ ...createNodemailerPushTaskDto, createBy: userId });
     this.handleTask(res);
     return ResultData.ok();
   }
@@ -136,10 +137,11 @@ export class NodemailerService {
   /**
    * @description: 邮箱推送任务-更新
    * @param {UpdateNodemailerPushTaskDto} updateNodemailerPushTaskDto
+   * @param {number} userId
    * @return
    */
-  async updatePushTask(updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto) {
-    await this.nodemailerPushTaskEntity.update({ pushtaskId: updateNodemailerPushTaskDto.pushtaskId }, updateNodemailerPushTaskDto);
+  async updatePushTask(updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto, userId: number) {
+    await this.nodemailerPushTaskEntity.update({ pushtaskId: updateNodemailerPushTaskDto.pushtaskId }, { ...updateNodemailerPushTaskDto, updateBy: userId });
     const item = await this.nodemailerPushTaskEntity.findOne({
       where: {
         pushtaskId: updateNodemailerPushTaskDto.pushtaskId,
@@ -154,9 +156,10 @@ export class NodemailerService {
   /**
    * @description: 邮箱推送任务-切换状态
    * @param {ChangeStatusDto} changeStatusDto
+   * @param {number} userId
    * @return
    */
-  async switchStatus(changeStatusDto: ChangeStatusDto) {
+  async switchStatus(changeStatusDto: ChangeStatusDto, userId: number) {
     const item = await this.nodemailerPushTaskEntity.findOne({
       where: {
         pushtaskId: changeStatusDto.pushtaskId,
@@ -164,7 +167,7 @@ export class NodemailerService {
       },
     });
     if (item.status === changeStatusDto.status) return ResultData.ok();
-    await this.nodemailerPushTaskEntity.update({ pushtaskId: changeStatusDto.pushtaskId }, { status: changeStatusDto.status });
+    await this.nodemailerPushTaskEntity.update({ pushtaskId: changeStatusDto.pushtaskId }, { status: changeStatusDto.status, updateBy: userId });
     if (changeStatusDto.status === StatusEnum.NORMAL) {
       this.startCronJob(item.pushtaskName);
     } else {
@@ -176,13 +179,15 @@ export class NodemailerService {
   /**
    * @description: 邮箱推送任务-删除
    * @param {number[]} ids
+   * @param {number} userId
    * @return
    */
-  async removePushTask(ids: number[]) {
+  async removePushTask(ids: number[], userId: number) {
     await this.nodemailerPushTaskEntity.update(
       { pushtaskId: In(ids) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     for (let index = 0; index < ids.length; index++) {

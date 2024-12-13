@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { PostService } from './post.service';
 import { CreatePostDto, UpdatePostDto, ListPostDto, SysPostVo } from './dto/index';
 import { Response } from 'express';
-import { ApiResult } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('岗位管理')
 @ApiBearerAuth()
@@ -15,8 +15,8 @@ export class PostController {
   @ApiBody({ type: CreatePostDto })
   @ApiResult()
   @Post('/')
-  create(@Body() createPostDto: CreatePostDto) {
-    return this.postService.create(createPostDto);
+  create(@Body() createPostDto: CreatePostDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.postService.create(createPostDto, user.userId);
   }
 
   @ApiOperation({ summary: '岗位管理-列表' })
@@ -37,16 +37,18 @@ export class PostController {
   @ApiBody({ type: UpdatePostDto })
   @ApiResult()
   @Put('/')
-  update(@Body() updatePostDto: UpdatePostDto) {
-    return this.postService.update(updatePostDto);
+  update(@Body() updatePostDto: UpdatePostDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.postService.update(updatePostDto, user.userId);
   }
 
   @ApiOperation({ summary: '岗位管理-删除' })
   @ApiResult()
   @Delete('/:ids')
-  remove(@Param('ids') ids: string) {
-    const menuIds = ids.split(',').map((id) => id);
-    return this.postService.remove(menuIds);
+  remove(@Param('ids') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.postService.remove(
+      ids.split(',').map((id) => +id),
+      user.userId,
+    );
   }
 
   @ApiOperation({ summary: '导出岗位管理xlsx文件' })

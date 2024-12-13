@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from './config.service';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto, SysConfigVo } from './dto/index';
-import { ApiResult } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('参数设置')
 @ApiBearerAuth()
@@ -15,8 +15,8 @@ export class ConfigController {
   @ApiBody({ type: CreateConfigDto })
   @ApiResult()
   @Post()
-  create(@Body() createConfigDto: CreateConfigDto) {
-    return this.configService.create(createConfigDto);
+  create(@Body() createConfigDto: CreateConfigDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.configService.create(createConfigDto, user.userId);
   }
 
   @ApiOperation({ summary: '参数设置-列表' })
@@ -38,16 +38,18 @@ export class ConfigController {
   @ApiBody({ type: UpdateConfigDto })
   @ApiResult()
   @Put()
-  update(@Body() updateConfigDto: UpdateConfigDto) {
-    return this.configService.update(updateConfigDto);
+  update(@Body() updateConfigDto: UpdateConfigDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.configService.update(updateConfigDto, user.userId);
   }
 
   @ApiOperation({ summary: '参数设置-删除' })
   @ApiResult()
   @Delete(':id')
-  remove(@Param('id') ids: string) {
-    const configIds = ids.split(',').map((id) => +id);
-    return this.configService.remove(configIds);
+  remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.configService.remove(
+      ids.split(',').map((id) => +id),
+      user.userId,
+    );
   }
 
   @ApiOperation({ summary: '导出参数管理为xlsx文件' })

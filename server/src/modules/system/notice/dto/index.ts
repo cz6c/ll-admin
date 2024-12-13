@@ -43,8 +43,8 @@ export class ListNoticeDto extends PagingDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
-  createBy?: string;
+  @IsNumber()
+  createBy?: number;
 }
 
 export class SysNoticeVO extends BaseVO {

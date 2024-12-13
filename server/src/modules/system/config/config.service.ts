@@ -18,10 +18,11 @@ export class ConfigService {
   /**
    * @description: 参数设置-创建
    * @param {CreateConfigDto} createConfigDto
+   * @param {number} userId
    * @return
    */
-  async create(createConfigDto: CreateConfigDto) {
-    await this.sysConfigEntityRep.save(createConfigDto);
+  async create(createConfigDto: CreateConfigDto, userId: number) {
+    await this.sysConfigEntityRep.save({ ...createConfigDto, createBy: userId });
     return ResultData.ok();
   }
 
@@ -79,14 +80,15 @@ export class ConfigService {
   /**
    * @description: 参数设置-更新
    * @param {UpdateConfigDto} updateConfigDto
+   * @param {number} userId
    * @return
    */
-  async update(updateConfigDto: UpdateConfigDto) {
+  async update(updateConfigDto: UpdateConfigDto, userId: number) {
     await this.sysConfigEntityRep.update(
       {
         configId: updateConfigDto.configId,
       },
-      updateConfigDto,
+      { ...updateConfigDto, updateBy: userId },
     );
     return ResultData.ok();
   }
@@ -94,9 +96,10 @@ export class ConfigService {
   /**
    * @description: 参数设置-删除
    * @param {number} configIds
+   * @param {number} userId
    * @return
    */
-  async remove(configIds: number[]) {
+  async remove(configIds: number[], userId: number) {
     const list = await this.sysConfigEntityRep.find({
       where: {
         configId: In(configIds),
@@ -112,6 +115,7 @@ export class ConfigService {
       { configId: In(configIds) },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

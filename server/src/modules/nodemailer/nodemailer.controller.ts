@@ -10,7 +10,7 @@ import {
   NodemailerPushLogVO,
   ChangeStatusDto,
 } from './dto/index';
-import { ApiResult } from '@/common/decorator';
+import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('邮箱推送任务管理')
 @ApiBearerAuth()
@@ -22,8 +22,8 @@ export class NodemailerController {
   @ApiBody({ type: CreateNodemailerPushTaskDto })
   @ApiResult()
   @Post('/')
-  create(@Body() createNodemailerPushTaskDto: CreateNodemailerPushTaskDto) {
-    return this.nodemailerService.createPushTask(createNodemailerPushTaskDto);
+  create(@Body() createNodemailerPushTaskDto: CreateNodemailerPushTaskDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.nodemailerService.createPushTask(createNodemailerPushTaskDto, user.userId);
   }
 
   @ApiOperation({ summary: '邮箱推送任务-列表' })
@@ -44,24 +44,26 @@ export class NodemailerController {
   @ApiBody({ type: UpdateNodemailerPushTaskDto })
   @ApiResult()
   @Put('/')
-  update(@Body() updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto) {
-    return this.nodemailerService.updatePushTask(updateNodemailerPushTaskDto);
+  update(@Body() updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.nodemailerService.updatePushTask(updateNodemailerPushTaskDto, user.userId);
   }
 
   @ApiOperation({ summary: '邮箱推送任务-切换状态' })
   @ApiBody({ type: ChangeStatusDto })
   @ApiResult()
   @Put('/switchStatus')
-  switchStatus(@Body() data: ChangeStatusDto) {
-    return this.nodemailerService.switchStatus(data);
+  switchStatus(@Body() data: ChangeStatusDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.nodemailerService.switchStatus(data, user.userId);
   }
 
   @ApiOperation({ summary: '邮箱推送任务-删除' })
   @ApiResult()
   @Delete('/:ids')
-  remove(@Param('ids') ids: string) {
-    const _ids = ids.split(',').map((id) => +id);
-    return this.nodemailerService.removePushTask(_ids);
+  remove(@Param('ids') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.nodemailerService.removePushTask(
+      ids.split(',').map((id) => +id),
+      user.userId,
+    );
   }
 
   @ApiOperation({ summary: '邮箱推送任务-日志列表' })

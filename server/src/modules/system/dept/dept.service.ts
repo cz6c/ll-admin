@@ -20,9 +20,10 @@ export class DeptService {
   /**
    * @description: 部门管理-创建
    * @param {CreateDeptDto} createDeptDto
+   * @param {number} userId
    * @return
    */
-  async create(createDeptDto: CreateDeptDto) {
+  async create(createDeptDto: CreateDeptDto, userId: number) {
     if (createDeptDto.parentId) {
       const parent = await this.sysDeptEntityRep.findOne({
         where: {
@@ -37,7 +38,7 @@ export class DeptService {
       const ancestors = parent.ancestors ? `${parent.ancestors},${createDeptDto.parentId}` : `${createDeptDto.parentId}`;
       Object.assign(createDeptDto, { ancestors: ancestors });
     }
-    await this.sysDeptEntityRep.save(createDeptDto);
+    await this.sysDeptEntityRep.save({ ...createDeptDto, createBy: userId });
     return ResultData.ok();
   }
 
@@ -117,9 +118,10 @@ export class DeptService {
   /**
    * @description: 部门管理-更新
    * @param {UpdateDeptDto} updateDeptDto
+   * @param {number} userId
    * @return
    */
-  async update(updateDeptDto: UpdateDeptDto) {
+  async update(updateDeptDto: UpdateDeptDto, userId: number) {
     if (updateDeptDto.parentId && updateDeptDto.parentId !== 0) {
       const parent = await this.sysDeptEntityRep.findOne({
         where: {
@@ -134,20 +136,22 @@ export class DeptService {
       const ancestors = parent.ancestors ? `${parent.ancestors},${updateDeptDto.parentId}` : `${updateDeptDto.parentId}`;
       Object.assign(updateDeptDto, { ancestors: ancestors });
     }
-    await this.sysDeptEntityRep.update({ deptId: updateDeptDto.deptId }, updateDeptDto);
+    await this.sysDeptEntityRep.update({ deptId: updateDeptDto.deptId }, { ...updateDeptDto, updateBy: userId });
     return ResultData.ok();
   }
 
   /**
    * @description: 部门管理-删除
    * @param {number} deptId
+   * @param {number} userId
    * @return
    */
-  async remove(deptId: number) {
+  async remove(deptId: number, userId: number) {
     await this.sysDeptEntityRep.update(
       { deptId: deptId },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

@@ -24,10 +24,11 @@ export class MenuService {
   /**
    * @description: 菜单管理-创建
    * @param {CreateMenuDto} createMenuDto
+   * @param {number} userId
    * @return
    */
-  async create(createMenuDto: CreateMenuDto) {
-    await this.sysMenuEntityRep.save(createMenuDto);
+  async create(createMenuDto: CreateMenuDto, userId: number) {
+    await this.sysMenuEntityRep.save({ ...createMenuDto, createBy: userId });
     return ResultData.ok();
   }
 
@@ -121,23 +122,26 @@ export class MenuService {
   /**
    * @description: 菜单管理-修改
    * @param {UpdateMenuDto} updateMenuDto
+   * @param {number} userId
    * @return
    */
-  async update(updateMenuDto: UpdateMenuDto) {
-    await this.sysMenuEntityRep.update({ menuId: updateMenuDto.menuId }, updateMenuDto);
+  async update(updateMenuDto: UpdateMenuDto, userId: number) {
+    await this.sysMenuEntityRep.update({ menuId: updateMenuDto.menuId }, { ...updateMenuDto, updateBy: userId });
     return ResultData.ok();
   }
 
   /**
    * @description: 菜单管理-删除
    * @param {number} menuId
+   * @param {number} userId
    * @return
    */
-  async remove(menuId: number) {
+  async remove(menuId: number, userId: number) {
     await this.sysMenuEntityRep.update(
       { menuId: menuId },
       {
         delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
       },
     );
     return ResultData.ok();

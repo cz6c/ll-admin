@@ -21,7 +21,7 @@ export function getNotice(noticeId: number) {
 // 新增公告
 export function addNotice(data: SysNoticeData) {
   return $http<SysNoticeData, never>({
-    url: "/system/notice",
+    url: "/system/notice/create",
     method: "post",
     data
   });
@@ -30,8 +30,8 @@ export function addNotice(data: SysNoticeData) {
 // 修改公告
 export function updateNotice(data: SysNoticeData) {
   return $http<SysNoticeData, never>({
-    url: "/system/notice",
-    method: "put",
+    url: "/system/notice/update",
+    method: "post",
     data
   });
 }
@@ -39,7 +39,7 @@ export function updateNotice(data: SysNoticeData) {
 // 删除公告
 export function delNotice(noticeIds: string) {
   return $http({
-    url: "/system/notice/" + noticeIds,
-    method: "delete"
+    url: "/system/notice/delete/" + noticeIds,
+    method: "get"
   });
 }

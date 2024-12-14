@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { NodemailerService } from './nodemailer.service';
 import {
@@ -43,7 +43,7 @@ export class NodemailerController {
   @ApiOperation({ summary: '邮箱推送任务-更新' })
   @ApiBody({ type: UpdateNodemailerPushTaskDto })
   @ApiResult()
-  @Put('/')
+  @Post('/update')
   update(@Body() updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.nodemailerService.updatePushTask(updateNodemailerPushTaskDto, user.userId);
   }
@@ -51,14 +51,14 @@ export class NodemailerController {
   @ApiOperation({ summary: '邮箱推送任务-切换状态' })
   @ApiBody({ type: ChangeStatusDto })
   @ApiResult()
-  @Put('/switchStatus')
+  @Post('/switchStatus')
   switchStatus(@Body() data: ChangeStatusDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.nodemailerService.switchStatus(data, user.userId);
   }
 
   @ApiOperation({ summary: '邮箱推送任务-删除' })
   @ApiResult()
-  @Delete('/:ids')
+  @Get('/:ids')
   remove(@Param('ids') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.nodemailerService.removePushTask(
       ids.split(',').map((id) => +id),

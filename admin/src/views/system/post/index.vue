@@ -218,7 +218,7 @@ function handleAdd() {
 /** 修改按钮操作 */
 function handleUpdate(row) {
   reset();
-  const postId = row.postId || ids.value;
+  const postId = row?.postId || ids.value;
   getPost(postId).then(response => {
     form.value = response.data;
     open.value = true;
@@ -251,7 +251,7 @@ function handleDelete(row) {
   proxy.$modal
     .confirm('是否确认删除岗位编号为"' + postIds + '"的数据项？')
     .then(function () {
-      return delPost(postIds);
+      return delPost(postIds.join(","));
     })
     .then(() => {
       getList();

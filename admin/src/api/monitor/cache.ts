@@ -37,7 +37,7 @@ export function getCacheValue(cacheName: string, cacheKey: string) {
 export function clearCacheName(cacheName: string) {
   return $http({
     url: "/monitor/cache/clearCacheName/" + cacheName,
-    method: "delete"
+    method: "get"
   });
 }
 
@@ -45,6 +45,6 @@ export function clearCacheName(cacheName: string) {
 export function clearCacheKey(cacheKey: string) {
   return $http({
     url: "/monitor/cache/clearCacheKey/" + cacheKey,
-    method: "delete"
+    method: "get"
   });
 }

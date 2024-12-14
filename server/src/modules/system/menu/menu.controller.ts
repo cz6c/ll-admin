@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Put, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { MenuService } from './menu.service';
 import { CreateMenuDto, UpdateMenuDto, ListMenuDto, SysMenuVo, MenuTreeVo, RoleMenuTreeSelect } from './dto/index';
@@ -13,7 +13,7 @@ export class MenuController {
   @ApiOperation({ summary: '菜单管理-创建' })
   @ApiBody({ type: CreateMenuDto })
   @ApiResult()
-  @Post()
+  @Post('/create')
   create(@Body() createMenuDto: CreateMenuDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.menuService.create(createMenuDto, user.userId);
   }
@@ -41,23 +41,23 @@ export class MenuController {
 
   @ApiOperation({ summary: '菜单管理-详情' })
   @ApiResult(SysMenuVo)
-  @Get(':menuId')
-  findOne(@Param('menuId') menuId: string) {
-    return this.menuService.findOne(+menuId);
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.menuService.findOne(+id);
   }
 
   @ApiOperation({ summary: '菜单管理-修改' })
   @ApiBody({ type: UpdateMenuDto })
   @ApiResult()
-  @Put()
+  @Post('/update')
   update(@Body() updateMenuDto: UpdateMenuDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.menuService.update(updateMenuDto, user.userId);
   }
 
   @ApiOperation({ summary: '菜单管理-删除' })
   @ApiResult()
-  @Delete(':menuId')
-  remove(@Param('menuId') menuId: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
-    return this.menuService.remove(+menuId, user.userId);
+  @Get('/delete/:id')
+  remove(@Param('id') id: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+    return this.menuService.remove(+id, user.userId);
   }
 }

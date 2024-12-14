@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from './config.service';
@@ -14,7 +14,7 @@ export class ConfigController {
   @ApiOperation({ summary: '参数设置-创建' })
   @ApiBody({ type: CreateConfigDto })
   @ApiResult()
-  @Post()
+  @Post('/create')
   create(@Body() createConfigDto: CreateConfigDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.configService.create(createConfigDto, user.userId);
   }
@@ -37,14 +37,14 @@ export class ConfigController {
   @ApiOperation({ summary: '参数设置-更新' })
   @ApiBody({ type: UpdateConfigDto })
   @ApiResult()
-  @Put()
+  @Post('/update')
   update(@Body() updateConfigDto: UpdateConfigDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.configService.update(updateConfigDto, user.userId);
   }
 
   @ApiOperation({ summary: '参数设置-删除' })
   @ApiResult()
-  @Delete(':id')
+  @Get('/delete/:id')
   remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.configService.remove(
       ids.split(',').map((id) => +id),

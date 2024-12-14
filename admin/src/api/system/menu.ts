@@ -37,7 +37,7 @@ export function roleMenuTreeSelect(roleId: number) {
 // 新增菜单
 export function addMenu(data: SysMenuData) {
   return $http<SysMenuData, never>({
-    url: `/system/menu`,
+    url: `/system/menu/create`,
     method: "post",
     data: data
   });
@@ -46,8 +46,8 @@ export function addMenu(data: SysMenuData) {
 // 修改菜单
 export function updateMenu(data: SysMenuData) {
   return $http<SysMenuData, never>({
-    url: `/system/menu`,
-    method: "put",
+    url: `/system/menu/update`,
+    method: "post",
     data: data
   });
 }
@@ -55,7 +55,7 @@ export function updateMenu(data: SysMenuData) {
 // 删除菜单
 export function delMenu(menuId: number) {
   return $http({
-    url: `/system/menu/${menuId}`,
-    method: "delete"
+    url: `/system/menu/delete/${menuId}`,
+    method: "get"
   });
 }

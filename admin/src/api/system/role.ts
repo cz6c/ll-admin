@@ -27,7 +27,7 @@ export function getRole(roleId: number) {
 // 新增角色
 export function addRole(data: SysRoleData) {
   return $http<SysRoleData, never>({
-    url: "/system/role",
+    url: "/system/role/create",
     method: "post",
     data
   });
@@ -36,8 +36,8 @@ export function addRole(data: SysRoleData) {
 // 修改角色
 export function updateRole(data: SysRoleData) {
   return $http<SysRoleData, never>({
-    url: "/system/role",
-    method: "put",
+    url: "/system/role/update",
+    method: "post",
     data
   });
 }
@@ -46,15 +46,15 @@ export function updateRole(data: SysRoleData) {
 export function changeRoleStatus(data: ChangeStatusDto) {
   return $http<ChangeStatusDto, never>({
     url: "/system/role/changeStatus",
-    method: "put",
+    method: "post",
     data
   });
 }
 
 // 删除角色
-export function delRole(roleId: number) {
+export function delRole(roleIds: string) {
   return $http({
-    url: "/system/role/" + roleId,
+    url: "/system/role/delete/" + roleIds,
     method: "delete"
   });
 }

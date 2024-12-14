@@ -45,7 +45,7 @@ export function getDept(deptId: number) {
 // 新增部门
 export function addDept(data: SysDeptData) {
   return $http<SysDeptData, never>({
-    url: "/system/dept",
+    url: "/system/dept/create",
     method: "post",
     data
   });
@@ -54,8 +54,8 @@ export function addDept(data: SysDeptData) {
 // 修改部门
 export function updateDept(data: SysDeptData) {
   return $http<SysDeptData, never>({
-    url: "/system/dept",
-    method: "put",
+    url: "/system/dept/update",
+    method: "post",
     data
   });
 }
@@ -63,7 +63,7 @@ export function updateDept(data: SysDeptData) {
 // 删除部门
 export function delDept(deptId: number) {
   return $http({
-    url: "/system/dept/" + deptId,
-    method: "delete"
+    url: "/system/dept/delete/" + deptId,
+    method: "get"
   });
 }

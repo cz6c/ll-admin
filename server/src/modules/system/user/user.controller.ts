@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Query, Res, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { Response } from 'express';
@@ -34,7 +34,7 @@ export class UserController {
   @ApiOperation({ summary: '个人中心-修改用户信息' })
   @ApiBody({ type: UpdateProfileDto })
   @ApiResult()
-  @Put('/profile')
+  @Post('/profile')
   updateProfile(@GetRequestUser() tokenData: RequestUserPayload, @Body() updateProfileDto: UpdateProfileDto) {
     return this.userService.updateProfile(tokenData, updateProfileDto);
   }
@@ -42,7 +42,7 @@ export class UserController {
   @ApiOperation({ summary: '个人中心-修改用户头像' })
   @ApiBody({ type: UpdateAvatarDto })
   @ApiResult()
-  @Put('/profile/avatar')
+  @Post('/profile/avatar')
   updateAvatar(@GetRequestUser() tokenData: RequestUserPayload, @Body() body: UpdateAvatarDto) {
     return this.userService.updateAvatar(tokenData, body.avatar);
   }
@@ -50,7 +50,7 @@ export class UserController {
   @ApiOperation({ summary: '个人中心-修改密码' })
   @ApiBody({ type: UpdatePwdDto })
   @ApiResult()
-  @Put('/profile/updatePwd')
+  @Post('/profile/updatePwd')
   updatePwd(@GetRequestUser() tokenData: RequestUserPayload, @Body() updatePwdDto: UpdatePwdDto) {
     return this.userService.updatePwd(tokenData, updatePwdDto);
   }
@@ -65,7 +65,7 @@ export class UserController {
 
   @ApiOperation({ summary: '用户-列表' })
   @ApiResult(UserVo, true, true)
-  @Get('list')
+  @Get('/list')
   findAll(@Query() query: ListUserDto, @GetRequestUser() tokenData: RequestUserPayload) {
     return this.userService.findAll(query, tokenData);
   }
@@ -73,7 +73,7 @@ export class UserController {
   @ApiOperation({ summary: '用户-分配角色列表' })
   @ApiResult(AuthRoleVo)
   @RequireRole('admin')
-  @Get('authRole/:id')
+  @Get('/authRole/:id')
   getAuthRole(@Param('id') id: string) {
     return this.userService.getAuthRole(+id);
   }
@@ -82,14 +82,14 @@ export class UserController {
   @RequireRole('admin')
   @ApiBody({ type: UpdateAuthRoleDto })
   @ApiResult()
-  @Put('authRole')
+  @Post('/updateAuthRole')
   updateAuthRole(@Body() data: UpdateAuthRoleDto) {
     return this.userService.updateAuthRole(data);
   }
 
   @ApiOperation({ summary: '用户-详情' })
   @ApiResult(UserVo)
-  @Get(':userId')
+  @Get('/:userId')
   findOne(@Param('userId') userId: string) {
     return this.userService.findOne(+userId);
   }
@@ -98,7 +98,7 @@ export class UserController {
   @ApiBody({ type: ChangeStatusDto })
   @ApiResult()
   @RequireRole('admin')
-  @Put('changeStatus')
+  @Post('/changeStatus')
   changeStatus(@Body() changeStatusDto: ChangeStatusDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.changeStatus(changeStatusDto, user.userId);
   }
@@ -106,7 +106,7 @@ export class UserController {
   @ApiOperation({ summary: '用户-更新' })
   @ApiBody({ type: UpdateUserDto })
   @ApiResult()
-  @Put()
+  @Post('/update')
   update(@Body() updateUserDto: UpdateUserDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.update(updateUserDto, user.userId);
   }
@@ -115,7 +115,7 @@ export class UserController {
   @ApiBody({ type: ResetPwdDto })
   @ApiResult()
   @RequireRole('admin')
-  @Put('resetPwd')
+  @Post('/resetPwd')
   resetPwd(@Body() body: ResetPwdDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.resetPwd(body, user.userId);
   }
@@ -123,7 +123,7 @@ export class UserController {
   @ApiOperation({ summary: '用户-删除' })
   @ApiResult()
   @RequireRole('admin')
-  @Delete(':id')
+  @Get('/delete/:id')
   remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.userService.remove(
       ids.split(',').map((id) => +id),

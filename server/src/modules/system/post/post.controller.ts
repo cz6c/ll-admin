@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Res, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Res, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { PostService } from './post.service';
 import { CreatePostDto, UpdatePostDto, ListPostDto, SysPostVo } from './dto/index';
@@ -14,7 +14,7 @@ export class PostController {
   @ApiOperation({ summary: '岗位管理-创建' })
   @ApiBody({ type: CreatePostDto })
   @ApiResult()
-  @Post('/')
+  @Post('/create')
   create(@Body() createPostDto: CreatePostDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.postService.create(createPostDto, user.userId);
   }
@@ -36,14 +36,14 @@ export class PostController {
   @ApiOperation({ summary: '岗位管理-更新' })
   @ApiBody({ type: UpdatePostDto })
   @ApiResult()
-  @Put('/')
+  @Post('/update')
   update(@Body() updatePostDto: UpdatePostDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.postService.update(updatePostDto, user.userId);
   }
 
   @ApiOperation({ summary: '岗位管理-删除' })
   @ApiResult()
-  @Delete('/:ids')
+  @Get('/delete/:ids')
   remove(@Param('ids') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.postService.remove(
       ids.split(',').map((id) => +id),

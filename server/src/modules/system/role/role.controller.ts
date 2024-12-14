@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Query, Delete, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { RoleService } from './role.service';
 import { Response } from 'express';
@@ -14,7 +14,7 @@ export class RoleController {
   @ApiOperation({ summary: '角色管理-创建' })
   @ApiBody({ type: CreateRoleDto })
   @ApiResult()
-  @Post()
+  @Post('/create')
   create(@Body() createRoleDto: CreateRoleDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.roleService.create(createRoleDto, user.userId);
   }
@@ -36,7 +36,7 @@ export class RoleController {
   @ApiOperation({ summary: '角色管理-修改' })
   @ApiBody({ type: UpdateRoleDto })
   @ApiResult()
-  @Put()
+  @Post('/update')
   update(@Body() updateRoleDto: UpdateRoleDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.roleService.update(updateRoleDto, user.userId);
   }
@@ -44,15 +44,15 @@ export class RoleController {
   @ApiOperation({ summary: '角色管理-切换状态' })
   @ApiBody({ type: ChangeStatusDto })
   @ApiResult()
-  @Put('changeStatus')
+  @Post('/changeStatus')
   changeStatus(@Body() changeStatusDto: ChangeStatusDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.roleService.changeStatus(changeStatusDto, user.userId);
   }
 
   @ApiOperation({ summary: '角色管理-删除' })
   @ApiResult()
-  @Delete(':id')
-  remove(@Param('id') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
+  @Get('/delete/:ids')
+  remove(@Param('ids') ids: string, @GetRequestUser('user') user: RequestUserPayload['user']) {
     return this.roleService.remove(
       ids.split(',').map((id) => +id),
       user.userId,

@@ -21,7 +21,7 @@ export function getPost(postId: number) {
 // 新增岗位
 export function addPost(data: SysPostData) {
   return $http<SysPostData, never>({
-    url: "/system/post",
+    url: "/system/post/create",
     method: "post",
     data
   });
@@ -30,8 +30,8 @@ export function addPost(data: SysPostData) {
 // 修改岗位
 export function updatePost(data: SysPostData) {
   return $http<SysPostData, never>({
-    url: "/system/post",
-    method: "put",
+    url: "/system/post/update",
+    method: "post",
     data: data
   });
 }
@@ -39,7 +39,7 @@ export function updatePost(data: SysPostData) {
 // 删除岗位
 export function delPost(postIds: string) {
   return $http({
-    url: "/system/post/" + postIds,
-    method: "delete"
+    url: "/system/post/delete/" + postIds,
+    method: "get"
   });
 }

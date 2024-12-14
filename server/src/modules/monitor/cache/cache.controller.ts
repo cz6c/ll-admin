@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CacheService } from './cache.service';
 
@@ -33,13 +33,13 @@ export class CacheController {
   }
 
   @ApiOperation({ summary: '清理缓存名称' })
-  @Delete('/clearCacheName/:cacheName')
+  @Get('/clearCacheName/:cacheName')
   clearCacheName(@Param('cacheName') cacheName: string) {
     return this.cacheService.clearCacheName(cacheName);
   }
 
   @ApiOperation({ summary: '清理缓存键名' })
-  @Delete('/clearCacheKey/:cacheKey')
+  @Get('/clearCacheKey/:cacheKey')
   clearCacheKey(@Param('cacheKey') cacheKey: string) {
     return this.cacheService.clearCacheKey(cacheKey);
   }

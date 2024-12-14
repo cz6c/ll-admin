@@ -21,7 +21,7 @@ export function getConfig(configId: number) {
 // 新增参数配置
 export function addConfig(data: SysConfigData) {
   return $http<SysConfigData, never>({
-    url: "/system/config",
+    url: "/system/config/create",
     method: "post",
     data
   });
@@ -30,8 +30,8 @@ export function addConfig(data: SysConfigData) {
 // 修改参数配置
 export function updateConfig(data: SysConfigData) {
   return $http<SysConfigData, never>({
-    url: "/system/config",
-    method: "put",
+    url: "/system/config/update",
+    method: "post",
     data
   });
 }
@@ -39,7 +39,7 @@ export function updateConfig(data: SysConfigData) {
 // 删除参数配置
 export function delConfig(configIds: string) {
   return $http({
-    url: "/system/config/" + configIds,
-    method: "delete"
+    url: "/system/config/delete/" + configIds,
+    method: "get"
   });
 }

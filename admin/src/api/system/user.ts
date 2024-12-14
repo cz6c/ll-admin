@@ -41,8 +41,8 @@ export function addUser(data: SysUserData) {
 // 修改用户
 export function updateUser(data: SysUserData) {
   return $http<SysUserData, never>({
-    url: `/system/user`,
-    method: "put",
+    url: `/system/user/update`,
+    method: "post",
     data
   });
 }
@@ -50,8 +50,8 @@ export function updateUser(data: SysUserData) {
 // 删除用户
 export function delUser(userIds: string) {
   return $http<never, SysUserResponse>({
-    url: `/system/user/${userIds}`,
-    method: "delete"
+    url: `/system/user/delete/${userIds}`,
+    method: "get"
   });
 }
 
@@ -59,7 +59,7 @@ export function delUser(userIds: string) {
 export function resetUserPwd(data: ResetPwdDto) {
   return $http<ResetPwdDto, never>({
     url: `/system/user/resetPwd`,
-    method: "put",
+    method: "post",
     data
   });
 }
@@ -68,7 +68,7 @@ export function resetUserPwd(data: ResetPwdDto) {
 export function changeUserStatus(data: ChangeStatusDto) {
   return $http<ChangeStatusDto, never>({
     url: `/system/user/changeStatus`,
-    method: "put",
+    method: "post",
     data
   });
 }
@@ -85,7 +85,7 @@ export function getUserProfile() {
 export function updateUserProfile(data: UpdateProfileDto) {
   return $http<UpdateProfileDto, never>({
     url: `/system/user/profile`,
-    method: "put",
+    method: "post",
     data
   });
 }
@@ -94,7 +94,7 @@ export function updateUserProfile(data: UpdateProfileDto) {
 export function updateUserPwd(data: UpdatePwdDto) {
   return $http<UpdatePwdDto, never>({
     url: "/system/user/profile/updatePwd",
-    method: "put",
+    method: "post",
     data
   });
 }
@@ -103,7 +103,7 @@ export function updateUserPwd(data: UpdatePwdDto) {
 export function uploadAvatar(data: { avatar: string }) {
   return $http<{ avatar: string }, never>({
     url: "/system/user/profile/avatar",
-    method: "put",
+    method: "post",
     data
   });
 }
@@ -119,8 +119,8 @@ export function getAuthRole(userId: number) {
 // 保存授权角色
 export function updateAuthRole(data: { userId: number; roleIds: number[] }) {
   return $http<{ userId: number; roleIds: number[] }, never>({
-    url: "/system/user/authRole",
-    method: "put",
+    url: "/system/user/updateAuthRole",
+    method: "post",
     data
   });
 }

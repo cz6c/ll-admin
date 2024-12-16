@@ -1,21 +1,20 @@
 import type { BaseResponse, ListParams, ListResponse } from "#/api/index.d";
 
-export type SysRoleData = {
+export type UpdateRoleDto = {
   roleId: number;
   roleName: string;
   roleKey: string;
-  menuIds?: Array<number>;
-  deptIds?: Array<number>;
-  roleSort?: number;
-  status?: string;
-  dataScope?: string;
+  menuIds: Array<number>;
+  deptIds: Array<number>;
+  roleSort: number;
+  status: string;
+  dataScope: string;
   remark?: string;
   menuCheckStrictly?: boolean;
   deptCheckStrictly?: boolean;
 };
 
-export type SysRoleResponse = Required<SysRoleData> & BaseResponse;
-export type SysRoleListResponse = ListResponse<SysRoleResponse>;
+export type ChangeStatusDto = Pick<UpdateRoleDto, "roleId" | "status">;
 
 export type ListRoleDto = ListParams & {
   roleName?: string;
@@ -24,7 +23,6 @@ export type ListRoleDto = ListParams & {
   roleId?: string;
 };
 
-export type ChangeStatusDto = {
-  roleId: number;
-  status: string;
-};
+export type SysRoleVo = Required<UpdateRoleDto> & BaseResponse;
+
+export type SysRoleListResponse = ListResponse<SysRoleVo>;

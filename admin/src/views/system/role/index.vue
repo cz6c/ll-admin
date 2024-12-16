@@ -88,9 +88,6 @@
           <el-tooltip v-if="scope.row.roleId !== 1" content="删除" placement="top">
             <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)" />
           </el-tooltip>
-          <el-tooltip v-if="scope.row.roleId !== 1" content="分配用户" placement="top">
-            <el-button v-auth="'authUser'" link type="primary" icon="User" @click="handleAuthUser(scope.row)" />
-          </el-tooltip>
         </template>
       </el-table-column>
     </el-table>
@@ -181,11 +178,11 @@
 
 <script setup lang="ts">
 import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
-import { roleMenuTreeSelect, treeSelect as menuTreeSelect } from "@/api/system/menu";
+import { roleMenuTreeSelect, menuTreeSelect } from "@/api/system/menu";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance } from "element-plus";
-import { roleDeptTreeSelect, treeSelect as deptTreeSelect } from "@/api/system/dept";
+import { roleDeptTreeSelect, deptTreeSelect } from "@/api/system/dept";
 
 defineOptions({
   name: "Role"
@@ -269,11 +266,11 @@ function resetQuery() {
 }
 /** 删除按钮操作 */
 function handleDelete(row) {
-  const roleIds = row?.roleId ? [row.roleId] : ids.value;
+  const roleIds = (row ? [row.roleId] : ids.value).join(",");
   proxy.$modal
     .confirm('是否确认删除角色编号为"' + roleIds + '"的数据项?')
     .then(function () {
-      return delRole(roleIds.join(","));
+      return delRole(roleIds);
     })
     .then(() => {
       getList();
@@ -311,10 +308,6 @@ function handleStatusChange(row) {
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";
     });
-}
-/** 分配用户 */
-function handleAuthUser(row) {
-  router.push("/system/role/authUser?roleId=" + row.roleId);
 }
 /** 查询菜单树结构 */
 function getMenuTreeSelect() {
@@ -378,12 +371,12 @@ function handleUpdate(row) {
       /** 根据角色ID查询菜单树结构 */
       roleMenuTreeSelect(roleId).then(res => {
         menuOptions.value = res.data.menus;
-        menuRef.value.setCheckedKeys(res.data.checkedKeys, true);
+        menuRef.value.setCheckedKeys(res.data.checkedIds, true);
       });
       /** 根据角色ID查询部门树结构 */
       roleDeptTreeSelect(roleId).then(res => {
         deptOptions.value = res.data.depts;
-        deptRef.value.setCheckedKeys(res.data.checkedKeys, true);
+        deptRef.value.setCheckedKeys(res.data.checkedIds, true);
       });
     });
     title.value = "修改角色";

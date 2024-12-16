@@ -85,7 +85,7 @@ export class SysDeptVo extends BaseVO {
 
 export class DeptTreeVo extends SysDeptVo {
   @ApiProperty({ description: '子级列表', example: [] })
-  children: SysDeptVo[];
+  children: DeptTreeVo[];
 }
 
 export class RoleDeptTreeSelectVo {
@@ -93,5 +93,5 @@ export class RoleDeptTreeSelectVo {
   depts: DeptTreeVo[];
 
   @ApiProperty({ description: '角色已绑定部门ids', example: [] })
-  checkedKeys: number[];
+  checkedIds: number[];
 }

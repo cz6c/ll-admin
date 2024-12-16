@@ -6,7 +6,6 @@ import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
 import { MonitorLoginlogEntity } from './entities/loginlog.entity';
 import { CreateLoginlogDto, ListLoginlogDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum/dict';
 
 @Injectable()
 export class LoginlogService {
@@ -31,7 +30,7 @@ export class LoginlogService {
    */
   async findAll(query: ListLoginlogDto) {
     const entity = this.monitorLoginlogEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    // entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.ipaddr) {
       entity.andWhere(`entity.ipaddr LIKE "%${query.ipaddr}%"`);
@@ -49,6 +48,7 @@ export class LoginlogService {
       entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
     }
 
+    // 列表排序
     if (query.orderByColumn && query.order) {
       const key = query.order === 'ascending' ? 'ASC' : 'DESC';
       entity.orderBy(`entity.${query.orderByColumn}`, key);

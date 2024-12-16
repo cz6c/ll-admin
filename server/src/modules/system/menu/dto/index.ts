@@ -149,7 +149,7 @@ export class SysMenuVo extends BaseVO {
 
 export class MenuTreeVo extends SysMenuVo {
   @ApiProperty({ description: '子级列表', example: [] })
-  children: SysMenuVo[];
+  children: MenuTreeVo[];
 }
 
 export class RoleMenuTreeSelect {
@@ -157,5 +157,5 @@ export class RoleMenuTreeSelect {
   menus: MenuTreeVo[];
 
   @ApiProperty({ description: '角色已绑定菜单ids', example: [] })
-  checkedKeys: number[];
+  checkedIds: number[];
 }

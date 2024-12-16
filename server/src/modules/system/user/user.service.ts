@@ -11,7 +11,7 @@ import { ExportTable } from '@/common/utils/export';
 import { DataScopeEnum, DelFlagEnum, StatusEnum } from '@/common/enum/dict';
 import { LOGIN_TOKEN_EXPIRESIN } from '@/common/constant/index';
 import { ResultData } from '@/common/utils/result';
-import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto, UpdateAuthRoleDto, UserVo } from './dto/index';
+import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto } from './dto/index';
 import { RegisterDto, LoginDto } from '../../main/dto/index';
 
 import { UserEntity } from './entities/user.entity';
@@ -26,7 +26,6 @@ import { ConfigService } from '../config/config.service';
 import { RequestUserPayload } from '@/common/decorator/getRequestUser.decorator';
 import { UserTypeEnum } from '@/common/enum/dict';
 import { CacheEnum } from '@/common/enum/loca';
-import { SysDeptVo } from '../dept/dto';
 import { ClientInfoDto } from '@/modules/monitor/loginlog/dto';
 @Injectable()
 export class UserService {
@@ -200,7 +199,7 @@ export class UserService {
     const roleIds = await this.getRoleIds([userId]);
 
     return ResultData.ok({
-      data,
+      ...data,
       postIds,
       roleIds,
     });
@@ -486,57 +485,6 @@ export class UserService {
   }
 
   /**
-   * @description: 查询所有角色以及用户已关联的角色数据 --用户分配角色使用
-   * @param {number} userId
-   * @return
-   */
-  async getAuthRole(userId: number) {
-    const allRoles = await this.roleService.findRoles({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-    });
-
-    const roleIds = await this.getRoleIds([userId]);
-
-    return ResultData.ok({
-      roles: allRoles,
-      checkedKeys: roleIds,
-    });
-  }
-
-  /**
-   * 更新用户角色信息
-   * @param data
-   * @returns
-   */
-  async updateAuthRole(data: UpdateAuthRoleDto) {
-    if (data.roleIds?.length > 0) {
-      //用户已有角色,先删除所有关联角色
-      const hasRoletId = await this.sysUserWithRoleEntityRep.findOne({
-        where: {
-          userId: data.userId,
-        },
-        select: ['roleId'],
-      });
-      if (hasRoletId) {
-        await this.sysUserWithRoleEntityRep.delete({
-          userId: data.userId,
-        });
-      }
-      const roleEntity = this.sysUserWithRoleEntityRep.createQueryBuilder('roleEntity');
-      const roleValues = data.roleIds.map((id) => {
-        return {
-          userId: data.userId,
-          roleId: id,
-        };
-      });
-      roleEntity.insert().values(roleValues).execute();
-    }
-    return ResultData.ok();
-  }
-
-  /**
    * @description: 修改用户状态
    * @param {ChangeStatusDto} changeStatusDto
    * @param {number} userId
@@ -599,8 +547,8 @@ export class UserService {
         },
       })) || [];
 
-    const data = (await entity.getOne()) as unknown as UserVo & { dept: SysDeptVo };
-    return ResultData.ok({ user: data, dept: data.dept, roles, posts });
+    const data = await entity.getOne();
+    return ResultData.ok({ ...data, roles, posts });
   }
 
   /**

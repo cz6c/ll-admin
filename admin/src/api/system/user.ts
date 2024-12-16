@@ -1,16 +1,15 @@
 import { $http } from "@/utils/request";
 import type {
-  SysUserData,
-  SysUserResponse,
+  UpdateUserDto,
   SysUserListParams,
   SysUserListResponse,
   ResetPwdDto,
   ChangeStatusDto,
-  UserProfile,
+  UserProfileVo,
   UpdateProfileDto,
-  UpdatePwdDto
+  UpdatePwdDto,
+  UserInfoVo
 } from "#/api/system/user";
-import type { SysRoleResponse } from "#/api/system/role";
 
 // 查询用户列表
 export function listUser(params: SysUserListParams) {
@@ -23,15 +22,15 @@ export function listUser(params: SysUserListParams) {
 
 // 查询用户详细
 export function getUser(userId: number) {
-  return $http<never, SysUserResponse>({
+  return $http<never, UserInfoVo>({
     url: `/system/user/${userId}`,
     method: "get"
   });
 }
 
 // 新增用户
-export function addUser(data: SysUserData) {
-  return $http<SysUserData, never>({
+export function addUser(data: UpdateUserDto) {
+  return $http<UpdateUserDto, never>({
     url: `/system/user`,
     method: "post",
     data
@@ -39,8 +38,8 @@ export function addUser(data: SysUserData) {
 }
 
 // 修改用户
-export function updateUser(data: SysUserData) {
-  return $http<SysUserData, never>({
+export function updateUser(data: UpdateUserDto) {
+  return $http<UpdateUserDto, never>({
     url: `/system/user/update`,
     method: "post",
     data
@@ -49,7 +48,7 @@ export function updateUser(data: SysUserData) {
 
 // 删除用户
 export function delUser(userIds: string) {
-  return $http<never, SysUserResponse>({
+  return $http({
     url: `/system/user/delete/${userIds}`,
     method: "get"
   });
@@ -75,7 +74,7 @@ export function changeUserStatus(data: ChangeStatusDto) {
 
 // 查询用户个人信息
 export function getUserProfile() {
-  return $http<never, UserProfile>({
+  return $http<never, UserProfileVo>({
     url: `/system/user/profile`,
     method: "get"
   });
@@ -103,23 +102,6 @@ export function updateUserPwd(data: UpdatePwdDto) {
 export function uploadAvatar(data: { avatar: string }) {
   return $http<{ avatar: string }, never>({
     url: "/system/user/profile/avatar",
-    method: "post",
-    data
-  });
-}
-
-// 查询授权角色
-export function getAuthRole(userId: number) {
-  return $http<never, { roles: SysRoleResponse[]; checkedKeys: number[] }>({
-    url: "/system/user/authRole/" + userId,
-    method: "get"
-  });
-}
-
-// 保存授权角色
-export function updateAuthRole(data: { userId: number; roleIds: number[] }) {
-  return $http<{ userId: number; roleIds: number[] }, never>({
-    url: "/system/user/updateAuthRole",
     method: "post",
     data
   });

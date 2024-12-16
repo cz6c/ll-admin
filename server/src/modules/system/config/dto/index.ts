@@ -1,7 +1,7 @@
 import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseVO, PagingDto } from '@/common/dto/index';
-import { YesNoEnum, StatusEnum } from '@/common/enum/dict';
+import { YesNoEnum } from '@/common/enum/dict';
 
 export class CreateConfigDto {
   @ApiProperty({ required: true })
@@ -22,10 +22,6 @@ export class CreateConfigDto {
   @ApiProperty({ required: true })
   @IsEnum(YesNoEnum)
   configType: YesNoEnum;
-
-  @ApiProperty({ required: true })
-  @IsEnum(StatusEnum)
-  status: StatusEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()

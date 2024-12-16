@@ -146,9 +146,6 @@
               <el-tooltip v-if="scope.row.userId !== 1" content="重置密码" placement="top">
                 <el-button v-auth="'resetPwd'" link type="primary" icon="Key" @click="handleResetPwd(scope.row)" />
               </el-tooltip>
-              <el-tooltip v-if="scope.row.userId !== 1" content="分配角色" placement="top">
-                <el-button v-auth="'edit'" link type="primary" icon="CircleCheck" @click="handleAuthRole(scope.row)" />
-              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
@@ -307,8 +304,7 @@
 import { changeUserStatus, listUser, resetUserPwd, delUser, getUser, updateUser, addUser } from "@/api/system/user";
 import { listRole } from "@/api/system/role";
 import { listPost } from "@/api/system/post";
-import { listDept } from "@/api/system/dept";
-import { listToTree } from "@/utils/tree";
+import { deptTreeSelect } from "@/api/system/dept";
 import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules, TreeInstance } from "element-plus";
@@ -317,7 +313,6 @@ import ImportTemp from "@/components/ImportTemp/index.vue";
 defineOptions({
   name: "User"
 });
-const router = useRouter();
 const { proxy } = getCurrentInstance();
 
 const { UserSexEnum, StatusEnum, UserTypeEnum } = toRefs(useDict("UserSexEnum", "StatusEnum", "UserTypeEnum"));
@@ -423,8 +418,8 @@ watch(deptName, val => {
 });
 /** 查询部门下拉树结构 */
 function getDeptTree() {
-  listDept().then(response => {
-    deptOptions.value = listToTree(response.data, { id: "deptId" });
+  deptTreeSelect().then(response => {
+    deptOptions.value = response.data;
   });
 }
 /** 节点单击事件 */
@@ -463,7 +458,7 @@ function handleSelectionChange(selection) {
 }
 /** 删除按钮操作 */
 function handleDelete(row) {
-  const userIds = row.userId || ids.value.join(",");
+  const userIds = (row ? [row.userId] : ids.value).join(",");
   proxy.$modal
     .confirm('是否确认删除用户编号为"' + userIds + '"的数据项？')
     .then(function () {
@@ -505,11 +500,6 @@ function handleStatusChange(row) {
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";
     });
-}
-/** 跳转角色分配 */
-function handleAuthRole(row) {
-  const userId = row.userId;
-  router.push("/system/user/authRole?userId=" + userId);
 }
 /** 重置密码按钮操作 */
 function handleResetPwd(row) {
@@ -577,13 +567,9 @@ function handleUpdate(row) {
   const userId = row.userId;
   getUser(userId).then(res => {
     getPostAndRoleAllFn();
-    const response = res.data;
-    form.value = response.data;
-    form.value.postIds = response.postIds;
-    form.value.roleIds = response.roleIds;
+    form.value = { ...res.data, password: "******" };
     open.value = true;
     title.value = "修改用户";
-    form.value.password = "";
   });
 }
 /** 提交按钮 */

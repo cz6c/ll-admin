@@ -184,7 +184,7 @@ export class DeptService {
 
     return ResultData.ok({
       depts: tree,
-      checkedKeys: checkedKeys,
+      checkedIds: checkedKeys,
     });
   }
 

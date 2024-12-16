@@ -3,20 +3,7 @@ import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { Response } from 'express';
 import { ApiResult, GetRequestUser, RequestUserPayload, RequireRole } from '@/common/decorator';
-import {
-  CreateUserDto,
-  UpdateUserDto,
-  ListUserDto,
-  ChangeStatusDto,
-  ResetPwdDto,
-  UpdateProfileDto,
-  UpdatePwdDto,
-  UpdateAuthRoleDto,
-  UpdateAvatarDto,
-  UserVo,
-  UserProfileVo,
-  AuthRoleVo,
-} from './dto/index';
+import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto, UpdateAvatarDto, UserVo, UserProfileVo, UserInfoVo } from './dto/index';
 
 @ApiTags('用户管理')
 @ApiBearerAuth()
@@ -70,25 +57,8 @@ export class UserController {
     return this.userService.findAll(query, tokenData);
   }
 
-  @ApiOperation({ summary: '用户-分配角色列表' })
-  @ApiResult(AuthRoleVo)
-  @RequireRole('admin')
-  @Get('/authRole/:id')
-  getAuthRole(@Param('id') id: string) {
-    return this.userService.getAuthRole(+id);
-  }
-
-  @ApiOperation({ summary: '用户-分配角色' })
-  @RequireRole('admin')
-  @ApiBody({ type: UpdateAuthRoleDto })
-  @ApiResult()
-  @Post('/updateAuthRole')
-  updateAuthRole(@Body() data: UpdateAuthRoleDto) {
-    return this.userService.updateAuthRole(data);
-  }
-
   @ApiOperation({ summary: '用户-详情' })
-  @ApiResult(UserVo)
+  @ApiResult(UserInfoVo)
   @Get('/:userId')
   findOne(@Param('userId') userId: string) {
     return this.userService.findOne(+userId);

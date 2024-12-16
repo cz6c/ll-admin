@@ -1,7 +1,7 @@
 import { $http } from "@/utils/request";
 import type { LoginParams, SysDictResponse } from "#/api";
 import type { AppRouteRecordRaw } from "#/utils";
-import type { SysUserData } from "#/api/system/user.d";
+import type { UserVo } from "#/api/system/user.d";
 
 // 登录
 export function login(data: LoginParams) {
@@ -28,7 +28,7 @@ export function getCodeImg() {
 }
 // 获取当前用户信息
 export function getLoginUserInfo() {
-  return $http<never, SysUserData>({
+  return $http<never, UserVo>({
     url: "/getLoginUserInfo",
     method: "get"
   });

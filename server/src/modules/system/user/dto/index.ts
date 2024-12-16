@@ -104,16 +104,6 @@ export class UpdatePwdDto {
   newPassword: string;
 }
 
-export class UpdateAuthRoleDto {
-  @ApiProperty({ required: true })
-  @IsNumber()
-  userId: number;
-
-  @ApiProperty({ required: true })
-  @IsArray()
-  roleIds: Array<number>;
-}
-
 export class ListUserDto extends PagingDto {
   @ApiProperty({ required: false })
   @IsOptional()
@@ -156,6 +146,9 @@ export class UserVo extends BaseVO {
   @ApiProperty({ description: '部门ID', example: 101 })
   public deptId: number;
 
+  @ApiProperty({ description: '部门信息', example: {} })
+  dept?: SysDeptVo;
+
   @ApiProperty({ description: '用户账号', example: 'user123' })
   public userName: string;
 
@@ -195,24 +188,18 @@ export class UserVo extends BaseVO {
   public remark: string;
 }
 
-export class UserProfileVo {
-  @ApiProperty({ description: '用户信息', example: {} })
-  user: UserVo;
+export class UserInfoVo extends UserVo {
+  @ApiProperty({ description: '角色信息ids', example: [] })
+  roleIds: number[];
 
-  @ApiProperty({ description: '部门信息', example: {} })
-  dept: SysDeptVo;
+  @ApiProperty({ description: '岗位信息ids', example: [] })
+  postIds: number[];
+}
 
+export class UserProfileVo extends UserVo {
   @ApiProperty({ description: '角色信息', example: [] })
   roles: SysRoleVo[];
 
   @ApiProperty({ description: '岗位信息', example: [] })
   posts: SysPostVo[];
-}
-
-export class AuthRoleVo {
-  @ApiProperty({ description: '角色列表', example: [] })
-  roles: SysRoleVo[];
-
-  @ApiProperty({ description: '用户已绑定角色ids', example: [] })
-  checkedKeys: number[];
 }

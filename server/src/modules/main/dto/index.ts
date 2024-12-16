@@ -1,6 +1,5 @@
 import { IsString, Length, IsOptional } from 'class-validator';
 import { ApiProperty, PickType } from '@nestjs/swagger';
-import { UserVo } from '@/modules/system/user/dto';
 
 export class LoginDto {
   @ApiProperty({ required: true })
@@ -40,14 +39,6 @@ export class CaptchaImageVo {
 
   @ApiProperty({ description: '验证码唯一标识' })
   public uuid: string;
-}
-
-export class LoginUserInfoVo {
-  @ApiProperty({ description: '角色权限标识列表' })
-  public roles: string[];
-
-  @ApiProperty({ description: '用户信息' })
-  public user: UserVo;
 }
 
 export class RouteMeta {

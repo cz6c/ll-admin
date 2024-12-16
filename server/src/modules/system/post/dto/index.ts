@@ -67,4 +67,7 @@ export class SysPostVo extends BaseVO {
 
   @ApiProperty({ description: '显示顺序', example: 1 })
   public postSort: number;
+
+  @ApiProperty({ description: '备注', example: 'll-admin项目经理' })
+  public remark: string;
 }

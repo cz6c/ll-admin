@@ -247,11 +247,11 @@ function submitForm() {
 }
 /** 删除按钮操作 */
 function handleDelete(row) {
-  const postIds = row.postId || ids.value;
+  const postIds = (row ? [row.postId] : ids.value).join(",");
   proxy.$modal
     .confirm('是否确认删除岗位编号为"' + postIds + '"的数据项？')
     .then(function () {
-      return delPost(postIds.join(","));
+      return delPost(postIds);
     })
     .then(() => {
       getList();

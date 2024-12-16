@@ -17,8 +17,8 @@ export interface ListResponse<T> {
 export interface LoginParams {
   userName: string;
   password: string;
-  code: string;
-  uuid: string;
+  code?: string;
+  uuid?: string;
 }
 
 // 公共数据
@@ -35,13 +35,9 @@ export interface BaseResponse {
   updateBy: string;
   // 更新时间
   updateTime: Date;
-  //备注
-  remark: string;
 }
 
-export type SysDictData = {
+export type SysDictResponse = {
   dictLabel: string;
   dictValue: string;
 };
-
-export type SysDictResponse = Required<SysDictData>;

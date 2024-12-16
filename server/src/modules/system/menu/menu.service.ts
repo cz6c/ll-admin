@@ -100,7 +100,7 @@ export class MenuService {
     });
     return ResultData.ok({
       menus: tree,
-      checkedKeys: checkedKeys,
+      checkedIds: checkedKeys,
     });
   }
 

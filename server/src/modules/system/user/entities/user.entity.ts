@@ -1,5 +1,5 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
-import { Exclude } from 'class-transformer';
+// import { Exclude } from 'class-transformer';
 import { BaseEntity } from '@/common/entities/base';
 import { UserSexEnum, UserTypeEnum } from '@/common/enum/dict';
 
@@ -33,7 +33,7 @@ export class UserEntity extends BaseEntity {
   @Column({ type: 'varchar', name: 'avatar', default: '', comment: '头像地址' })
   public avatar: string;
 
-  @Exclude({ toPlainOnly: true }) // 输出屏蔽密码
+  // @Exclude() // 输出屏蔽密码
   @Column({ type: 'varchar', length: 100, comment: '用户登录密码' })
   public password: string;
 

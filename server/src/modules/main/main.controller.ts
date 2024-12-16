@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Request, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import * as Useragent from 'useragent';
 import { MainService } from './main.service';
-import { RegisterDto, LoginDto, TokenVo, LoginUserInfoVo, DictVo, RoutersVo, CaptchaImageVo } from './dto/index';
+import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo } from './dto/index';
 import { createMath } from '@/common/utils/captcha';
 import { ResultData } from '@/common/utils/result';
 import { GenerateUUID } from '@/common/utils/index';
@@ -10,6 +10,7 @@ import { RedisService } from '@/modules/redis/redis.service';
 import { ConfigService } from '@/modules/system/config/config.service';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 import { CacheEnum } from '@/common/enum/loca';
+import { UserVo } from '../system/user/dto';
 
 @ApiTags('登录鉴权')
 @Controller('/')
@@ -71,7 +72,7 @@ export class MainController {
 
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取登录用户信息' })
-  @ApiResult(LoginUserInfoVo)
+  @ApiResult(UserVo)
   @Get('/getLoginUserInfo')
   async getLoginUserInfo(@GetRequestUser() tokenData: RequestUserPayload) {
     return {

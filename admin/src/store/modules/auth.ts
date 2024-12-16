@@ -2,12 +2,12 @@ import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
 import { login, getLoginUserInfo } from "@/api/public";
 import type { LoginParams } from "#/api";
-import type { SysUserData } from "#/api/system/user.d";
+import type { UserVo } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 
 interface authStoreState {
-  userInfo: SysUserData;
+  userInfo: UserVo;
   userId: number;
   userName: string;
   avatar: string;

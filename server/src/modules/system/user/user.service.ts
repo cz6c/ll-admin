@@ -448,8 +448,9 @@ export class UserService {
    * @return
    */
   async resetPwd(body: ResetPwdDto, userId: number) {
+    //不能修改超级管理员
     if (body.userId === 1) {
-      return ResultData.fail(500, '系统用户不能重置密码');
+      return ResultData.fail(500, '非法操作');
     }
     if (body.password) {
       body.password = await bcrypt.hashSync(body.password, this.salt);

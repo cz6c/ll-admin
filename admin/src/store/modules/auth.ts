@@ -11,7 +11,6 @@ interface authStoreState {
   userId: number;
   userName: string;
   avatar: string;
-  roles: string[];
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -20,9 +19,7 @@ export const useAuthStore = defineStore("auth", {
     userInfo: null,
     userId: 0,
     userName: "",
-    avatar: "",
-    // 角色权限
-    roles: []
+    avatar: ""
   }),
   actions: {
     /**
@@ -46,11 +43,10 @@ export const useAuthStore = defineStore("auth", {
     async getLoginUserInfo() {
       try {
         const { data } = await getLoginUserInfo();
-        this.userInfo = data.user;
-        this.userId = data.user.userId;
-        this.userName = data.user.userName;
-        this.avatar = data.user.avatar;
-        this.roles = data.roles;
+        this.userInfo = data;
+        this.userId = data.userId;
+        this.userName = data.userName;
+        this.avatar = data.avatar;
         return data;
       } catch (error) {
         return Promise.reject(error);

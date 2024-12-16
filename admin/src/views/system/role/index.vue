@@ -112,7 +112,7 @@
         <el-form-item prop="roleKey">
           <template #label>
             <span>
-              <el-tooltip content="控制器中定义的权限字符，如：@PreAuthorize(`@ss.hasRole('admin')`)" placement="top">
+              <el-tooltip content="控制器中定义的权限字符，如：admin对应服务端@RequireRole('admin')" placement="top">
                 <el-icon><question-filled /></el-icon>
               </el-tooltip>
               权限字符

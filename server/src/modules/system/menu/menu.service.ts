@@ -163,9 +163,8 @@ export class MenuService {
    */
   async getMenuListByUserId(userId: number) {
     let menuWidthRoleList = [];
-    const roleIds = await this.userService.getRoleIds([userId]);
-    if (roleIds.includes(1)) {
-      // 超管roleId=1，所有菜单权限
+    if (userId === 1) {
+      // 超级管理员所有菜单权限
       menuWidthRoleList = await this.sysMenuEntityRep.find({
         where: {
           delFlag: DelFlagEnum.NORMAL,
@@ -174,6 +173,7 @@ export class MenuService {
         select: ['menuId'],
       });
     } else {
+      const roleIds = await this.userService.getRoleIds([userId]);
       // 查询角色绑定的菜单
       menuWidthRoleList = await this.sysRoleWithMenuEntityRep.find({
         where: { roleId: In(roleIds) },

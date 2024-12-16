@@ -74,14 +74,10 @@ export class MainController {
   @ApiResult(LoginUserInfoVo)
   @Get('/getLoginUserInfo')
   async getLoginUserInfo(@GetRequestUser() tokenData: RequestUserPayload) {
-    const roles = tokenData.roles.map((item) => item.roleKey);
     return {
       msg: '操作成功',
       code: 200,
-      data: {
-        roles: roles,
-        user: tokenData.user,
-      },
+      data: tokenData.user,
     };
   }
 

@@ -7,73 +7,50 @@ defineOptions({
 });
 
 type ElButtonProps = Parameters<(typeof ElButton)["setup"]>[0];
-type TypeOrFn<T, P> = P | ((row: T) => P);
-type BtnOptions<T = any> = {
-  btnText?: string;
-  btnHide?: TypeOrFn<T, boolean>;
-  btnDisabled?: TypeOrFn<T, boolean>;
-  btnClick?: TypeOrFn<T, void>;
-  showOverflow?: boolean;
-  tooltipDisabled?: TypeOrFn<T, boolean>;
-  tooltipContent?: (row: T) => string;
+export type BtnOptionsProps<T = any> = {
+  btnText: string;
+  props: Partial<ElButtonProps>;
+  authCode?: string;
+  visible?: (data: { row: T }) => boolean;
+  disabled?: (data: { row: T }) => boolean;
+  handleClick?: (data: { row: T }) => void;
+  disabledTooltip?: string;
 };
-export type BtnOptionsProps<T = any> = Partial<ElButtonProps> & BtnOptions<T>;
 
-const {
-  row,
-  options,
-  textBtn = false
-} = defineProps<{
-  row: any;
+const { options, data } = defineProps<{
   options: BtnOptionsProps;
-  textBtn?: boolean;
+  data?: any;
 }>();
 
+const disabledCom = computed(() => {
+  return options.props.disabled || (isFunction(options.disabled) && options.disabled(data));
+});
+
 // 按钮点击事件
-function btnClick() {
-  isFunction(options.btnClick) && options.btnClick(row);
+function handleClick() {
+  isFunction(options.handleClick) && options.handleClick(data);
 }
-
-// 解析pros 如果是方法取执行后返回值
-function AnalysisProp(prop: keyof BtnOptions) {
-  return isFunction(prop) ? options[prop](row) : options[prop];
-}
-
-console.log(options);
 </script>
 <template>
-  <div v-if="!AnalysisProp('btnHide')">
+  <div>
     <el-tooltip
-      v-if="options.showOverflow"
+      v-if="options.disabledTooltip"
       effect="light"
       trigger="hover"
       placement="top"
       :enterable="false"
-      :disabled="AnalysisProp('tooltipDisabled')"
+      :disabled="!disabledCom"
     >
       <template v-slot:content>
-        <p v-html="options.tooltipContent(row)" />
+        <p style="color: #f56c6c" v-html="options.disabledTooltip" />
       </template>
       <div>
-        <el-button
-          v-bind="options"
-          :size="options.size || 'small'"
-          :disabled="options.disabled || AnalysisProp('btnDisabled')"
-          :text="textBtn"
-          @click.stop="btnClick"
-        >
+        <el-button v-bind="options.props" :disabled="disabledCom" @click.stop="handleClick">
           {{ options.btnText }}
         </el-button>
       </div>
     </el-tooltip>
-    <el-button
-      v-else
-      v-bind="options"
-      :size="options.size || 'small'"
-      :disabled="options.disabled || AnalysisProp('btnDisabled')"
-      :text="textBtn"
-      @click.stop="btnClick"
-    >
+    <el-button v-else v-bind="options.props" :disabled="disabledCom" @click.stop="handleClick">
       {{ options.btnText }}
     </el-button>
   </div>

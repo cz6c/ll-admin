@@ -9,10 +9,11 @@ import { useAuthStore } from "@/store/modules/auth";
  * @description: 判断是否有按钮级权限
  * @param {string} value
  */
-function hasPermission(value: string | string[]): boolean {
-  if (!productConfig.isDynamicAddedRoute) return true; // 未开启动态路由不进行处理
+export function hasPermission(value: string | string[]): boolean {
+  if (!productConfig.isDynamicAddedRoute) return true; // 未开启动态路由不处理
+  if (value === "default") return true; // 默认code不处理
   const userStore = useAuthStore();
-  if (userStore.userId === 1) return true; // 超级管理员不进行处理
+  if (userStore.userId === 1) return true; // 超级管理员不处理
   const perms = router.currentRoute.value.meta.perms as string[];
   if (!isArray(value)) {
     return perms.includes(value);

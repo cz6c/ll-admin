@@ -134,7 +134,7 @@ const gridOptions = reactive<VxeGridProps<RowVO>>({
     refresh: {
       queryMethod: () => {
         console.log("🚀 ~ refresh:");
-        return getTableData();
+        return handleQuery();
       }
     }
   },
@@ -173,38 +173,40 @@ const apiQuery = reactive<ListParams & { name: string }>({
   name: "Test"
 });
 
-const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, getTableData } = useTable(
+const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, handleQuery } = useTable(
   gridOptions,
   getListApi,
   apiQuery
 );
 console.log("🚀 ~ gridOptions:", gridOptions);
 
-getTableData();
+handleQuery();
 
 const rowButtons: BtnOptionsProps<RowVO>[] = [
   {
-    type: "primary",
+    props: {
+      type: "primary"
+    },
     btnText: "添加",
-    btnDisabled: row => {
+    disabled: ({ row }) => {
       return row.name === "Test1";
     },
-    btnClick: row => {
+    handleClick: row => {
       console.log(row);
     },
-    showOverflow: true,
-    tooltipContent: row => {
+    disabledTooltip: ({ row }) => {
       return `<span>添加</span>`;
     }
   },
   {
-    type: "warning",
+    props: {
+      type: "warning"
+    },
     btnText: "移出",
-    btnClick: row => {
+    handleClick: ({ row }) => {
       console.log(row);
     },
-    showOverflow: true,
-    tooltipContent: row => {
+    disabledTooltip: ({ row }) => {
       return `移出`;
     }
   }

@@ -2,12 +2,13 @@ import type { VxeGridInstance, VxeGridProps, VxeGridListeners } from "vxe-table"
 import $message from "@/utils/message";
 import { isFunction, isNull, isUnDef } from "@/utils/is";
 import type { ListParams } from "#/api";
+import { cloneDeep } from "lodash-es";
 
 export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQuery: ListParams) {
-  gridOptions.align = "center";
   const gridRef = ref<VxeGridInstance<T>>();
   const expandAll = ref(false);
   const selectRows = ref<T[]>([]);
+  const apiQueryDefault = cloneDeep(apiQuery);
 
   /**
    * @description: 展开收缩全部行
@@ -38,10 +39,14 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
     try {
       gridOptions.loading = true;
       let params = {
-        ...apiQuery,
         pageNum: gridOptions.pagerConfig.currentPage,
-        pageSize: gridOptions.pagerConfig.pageSize
+        pageSize: gridOptions.pagerConfig.pageSize,
+        ...apiQuery
       };
+      const dateRange = Array.isArray(params.dateRange) ? params.dateRange : [];
+      params["beginTime"] = dateRange[0];
+      params["endTime"] = dateRange[1];
+      delete params.dateRange;
       for (const key in params) {
         if (isUnDef(params[key]) || isNull(params[key])) {
           // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -57,6 +62,22 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
     } finally {
       gridOptions.loading = false;
     }
+  }
+
+  /**
+   * @description: 列表搜索
+   */
+  function resetPageSearch() {
+    gridOptions.pagerConfig.currentPage = 1;
+    getTableData();
+  }
+
+  /**
+   * @description: 重置搜索参数
+   */
+  function resetQuerySearch() {
+    Object.assign(apiQuery, apiQueryDefault);
+    resetPageSearch();
   }
 
   // 公共列表事件
@@ -86,6 +107,7 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
     expandAll,
     expandAllChange,
     selectRows,
-    getTableData
+    resetPageSearch,
+    resetQuerySearch
   };
 }

@@ -47,15 +47,13 @@ a {
 .cz-card {
   border-radius: 8px;
   background-color: #fff;
+  padding: 0 16px;
 }
 
 .main-container {
   // 页面样式
   .app-page {
-    border-radius: 8px;
-    background-color: #fff;
     margin: 16px;
-    padding: 16px;
     box-sizing: border-box;
     /* 50= navbar  50  */
     height: calc(100vh - 50px - 36px);

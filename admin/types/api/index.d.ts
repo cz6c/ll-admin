@@ -2,6 +2,7 @@
 export interface ListParams {
   pageNum?: number;
   pageSize?: number;
+  dateRange?: string[];
   beginTime?: string;
   endTime?: string;
   orderByColumn?: string;

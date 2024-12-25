@@ -93,7 +93,7 @@ export function filterTree(tree: any[], callBack: (n: any) => boolean, config: P
         // 递归调用 对含有children项  进行再次调用自身函数 listFilter
         node[children] = node[children] && listFilter(node[children]);
         // 执行传入的回调 callBack 进行过滤
-        return callBack(node) || (node[children] && node[children].length);
+        return callBack(node);
       });
   }
   return listFilter(tree);

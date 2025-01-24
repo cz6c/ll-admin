@@ -18,18 +18,11 @@ export class MenuController {
     return this.menuService.create(createMenuDto, user.userId);
   }
 
-  @ApiOperation({ summary: '菜单管理-列表' })
-  @ApiResult(SysMenuVo, true)
-  @Get('/list')
-  findAll(@Query() query: ListMenuDto) {
-    return this.menuService.findAll(query);
-  }
-
   @ApiOperation({ summary: '菜单管理-树' })
   @ApiResult(MenuTreeVo, true)
   @Get('/treeSelect')
-  treeSelect() {
-    return this.menuService.treeSelect();
+  treeSelect(@Query() query: ListMenuDto) {
+    return this.menuService.treeSelect(query);
   }
 
   @ApiOperation({ summary: '菜单管理-角色-树' })

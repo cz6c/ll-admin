@@ -1,24 +1,21 @@
 import type { VxeGridInstance, VxeGridProps, VxeGridListeners } from "vxe-table";
 import $message from "@/utils/message";
-import { isFunction, isNull, isUnDef } from "@/utils/is";
-import type { ListParams } from "#/api";
+import { isFunction } from "@/utils/is";
 import { cloneDeep } from "lodash-es";
 
-export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQuery: ListParams) {
+interface UseTableOpt<T> {
+  gridOptions: VxeGridProps<T>;
+  getListApi: Fn;
+  apiQuery: Record<string, any>;
+  beforFn?: Fn;
+  afterFn?: Fn;
+}
+
+export function useTable<T>({ gridOptions, getListApi, apiQuery, beforFn, afterFn }: UseTableOpt<T>) {
   const gridRef = ref<VxeGridInstance<T>>();
-  const expandAll = ref(false);
   const selectRows = ref<T[]>([]);
   const apiQueryDefault = cloneDeep(apiQuery);
-
-  /**
-   * @description: 展开收缩全部行
-   * @param {boolean} val
-   */
-  function expandAllChange(val: boolean) {
-    expandAll.value = val;
-    unref(expandAll) && unref(gridRef).setAllTreeExpand(true);
-    !unref(expandAll) && unref(gridRef).clearTreeExpand();
-  }
+  const isPager = !!gridOptions.pagerConfig;
 
   /**
    * @description: 处理列表勾选
@@ -38,24 +35,28 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
   async function getTableData() {
     try {
       gridOptions.loading = true;
-      let params = {
-        pageNum: gridOptions.pagerConfig.currentPage,
-        pageSize: gridOptions.pagerConfig.pageSize,
-        ...apiQuery
-      };
-      const dateRange = Array.isArray(params.dateRange) ? params.dateRange : [];
-      params["beginTime"] = dateRange[0];
-      params["endTime"] = dateRange[1];
-      delete params.dateRange;
-      for (const key in params) {
-        if (isUnDef(params[key]) || isNull(params[key])) {
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-          delete params[key];
-        }
+      let params = { ...apiQuery };
+      // 处理日期区间
+      if (Object.keys(params).includes("dateRange")) {
+        const dateRange = Array.isArray(params.dateRange) ? params.dateRange : [];
+        params["beginTime"] = dateRange[0];
+        params["endTime"] = dateRange[1];
+        delete params.dateRange;
       }
+      // 处理分页
+      if (isPager) {
+        params.pageNum = gridOptions.pagerConfig.currentPage;
+        params.pageSize = gridOptions.pagerConfig.pageSize;
+      }
+      // 前置钩子 列表参数处理
+      if (beforFn && isFunction(beforFn)) params = beforFn(params);
       const { data } = getListApi && isFunction(getListApi) && (await getListApi(params));
-      gridOptions.data = data.list ?? data;
-      gridOptions.pagerConfig.total = data.total;
+      // 后置钩子 列表数据处理
+      let list = isPager ? data.list : data;
+      if (afterFn && isFunction(afterFn)) list = afterFn(list);
+      gridOptions.data = list;
+      console.log("🚀 ~ getTableData ~ gridOptions.data:", gridOptions.data);
+      if (isPager) gridOptions.pagerConfig.total = data.total;
     } catch (error: any) {
       console.log(error);
       $message.warning(error.message);
@@ -65,49 +66,49 @@ export function useTable<T>(gridOptions: VxeGridProps<T>, getListApi: Fn, apiQue
   }
 
   /**
-   * @description: 列表搜索
+   * @description: 初始化列表搜索
    */
-  function resetPageSearch() {
-    gridOptions.pagerConfig.currentPage = 1;
+  function initListSearch() {
+    if (isPager) gridOptions.pagerConfig.currentPage = 1;
     getTableData();
   }
 
   /**
-   * @description: 重置搜索参数
+   * @description: 重置列表搜索
    */
-  function resetQuerySearch() {
+  function resetListSearch() {
     Object.assign(apiQuery, apiQueryDefault);
-    resetPageSearch();
+    initListSearch();
   }
 
   // 公共列表事件
   const gridEvents: VxeGridListeners<T> = {
+    // 排序
     sortChange({ field, order }) {
       apiQuery.orderByColumn = field;
       apiQuery.order = order === "asc" ? "ascending" : order === "desc" ? "descending" : null;
-      gridOptions.pagerConfig.currentPage = 1;
-      getTableData();
+      initListSearch();
     },
-    pageChange({ pageSize, currentPage }) {
-      gridOptions.pagerConfig.currentPage = currentPage;
-      gridOptions.pagerConfig.pageSize = pageSize;
-      getTableData();
-    },
+    // 勾选
     checkboxChange() {
       handleCheckBox();
     },
     checkboxAll() {
       handleCheckBox();
+    },
+    // 分页
+    pageChange({ pageSize, currentPage }) {
+      gridOptions.pagerConfig.currentPage = currentPage;
+      gridOptions.pagerConfig.pageSize = pageSize;
+      getTableData();
     }
   };
 
   return {
     gridRef,
     gridEvents,
-    expandAll,
-    expandAllChange,
     selectRows,
-    resetPageSearch,
-    resetQuerySearch
+    initListSearch,
+    resetListSearch
   };
 }

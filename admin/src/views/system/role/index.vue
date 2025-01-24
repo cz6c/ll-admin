@@ -1,279 +1,233 @@
-<template>
-  <div class="app-page">
-    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
-      <el-form-item label="角色名称" prop="roleName">
-        <el-input
-          v-model="queryParams.roleName"
-          placeholder="请输入角色名称"
-          clearable
-          style="width: 240px"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="权限字符" prop="roleKey">
-        <el-input
-          v-model="queryParams.roleKey"
-          placeholder="请输入权限字符"
-          clearable
-          style="width: 240px"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" placeholder="角色状态" clearable style="width: 240px">
-          <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="创建时间" style="width: 308px">
-        <el-date-picker
-          v-model="dateRange"
-          value-format="YYYY-MM-DD"
-          type="daterange"
-          range-separator="-"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
-        <el-button icon="Refresh" @click="resetQuery">重置</el-button>
-      </el-form-item>
-    </el-form>
-    <el-row :gutter="10" class="mb8">
-      <el-col :span="1.5">
-        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'edit'" type="success" plain icon="Edit" :disabled="single" @click="handleUpdate">
-          修改
-        </el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">
-          删除
-        </el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
-      </el-col>
-    </el-row>
-
-    <!-- 表格数据 -->
-    <el-table v-loading="loading" :data="roleList" @selection-change="handleSelectionChange">
-      <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="角色编号" prop="roleId" width="120" />
-      <el-table-column label="角色名称" prop="roleName" :show-overflow-tooltip="true" width="150" />
-      <el-table-column label="权限字符" prop="roleKey" :show-overflow-tooltip="true" width="150" />
-      <el-table-column label="显示顺序" prop="roleSort" width="100" />
-      <el-table-column label="状态" align="center" width="100">
-        <template #default="scope">
-          <el-switch
-            v-model="scope.row.status"
-            active-value="0"
-            inactive-value="1"
-            @change="handleStatusChange(scope.row)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" align="center" prop="createTime">
-        <template #default="scope">
-          <span>{{ parseTime(scope.row.createTime) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
-        <template #default="scope">
-          <el-tooltip v-if="scope.row.roleId !== 1" content="修改" placement="top">
-            <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)" />
-          </el-tooltip>
-          <el-tooltip v-if="scope.row.roleId !== 1" content="删除" placement="top">
-            <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)" />
-          </el-tooltip>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <pagination
-      v-show="total > 0"
-      v-model:page="queryParams.pageNum"
-      v-model:limit="queryParams.pageSize"
-      :total="total"
-      @pagination="getList"
-    />
-
-    <!-- 添加或修改角色配置对话框 -->
-    <el-dialog v-model="open" :title="title" width="500px" append-to-body>
-      <el-form ref="roleRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="角色名称" prop="roleName">
-          <el-input v-model="form.roleName" placeholder="请输入角色名称" />
-        </el-form-item>
-        <el-form-item prop="roleKey">
-          <template #label>
-            <span>
-              <el-tooltip content="控制器中定义的权限字符，如：admin对应服务端@RequireRole('admin')" placement="top">
-                <el-icon><question-filled /></el-icon>
-              </el-tooltip>
-              权限字符
-            </span>
-          </template>
-          <el-input v-model="form.roleKey" placeholder="请输入权限字符" />
-        </el-form-item>
-        <el-form-item label="数据权限" prop="dataScope">
-          <el-select v-model="form.dataScope" placeholder="数据权限范围">
-            <el-option v-for="dict in DataScopeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="数据权限范围">
-          <el-checkbox v-model="deptExpand" @change="handleCheckedTreeExpand($event, 1)">展开/折叠</el-checkbox>
-          <el-checkbox v-model="deptNodeAll" @change="handleCheckedTreeNodeAll($event, 1)">全选/全不选</el-checkbox>
-          <el-checkbox v-model="form.deptCheckStrictly" @change="handleCheckedTreeConnect($event, 1)">
-            父子联动
-          </el-checkbox>
-          <el-tree
-            ref="deptRef"
-            class="tree-border"
-            :data="deptOptions"
-            show-checkbox
-            node-key="deptId"
-            :check-strictly="!form.deptCheckStrictly"
-            :props="{ label: 'deptName', children: 'children' }"
-          />
-        </el-form-item>
-        <el-form-item label="菜单权限">
-          <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event, 2)">展开/折叠</el-checkbox>
-          <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event, 2)">全选/全不选</el-checkbox>
-          <el-checkbox v-model="form.menuCheckStrictly" @change="handleCheckedTreeConnect($event, 2)">
-            父子联动
-          </el-checkbox>
-          <el-tree
-            ref="menuRef"
-            class="tree-border"
-            :data="menuOptions"
-            show-checkbox
-            node-key="menuId"
-            :check-strictly="!form.menuCheckStrictly"
-            :props="{ label: 'menuName', children: 'children' }"
-          />
-        </el-form-item>
-        <el-form-item label="角色顺序" prop="roleSort">
-          <el-input-number v-model="form.roleSort" controls-position="right" :min="0" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
-          <el-button @click="cancel">取 消</el-button>
-        </div>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { addRole, changeRoleStatus, delRole, getRole, listRole, updateRole } from "@/api/system/role";
-import { roleMenuTreeSelect, menuTreeSelect } from "@/api/system/menu";
-import { parseTime, addDateRange } from "@/utils";
+<script setup lang="tsx">
+import { changeRoleStatus, delRole, listRole } from "@/api/system/role";
+import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
-import { FormInstance } from "element-plus";
-import { roleDeptTreeSelect, deptTreeSelect } from "@/api/system/dept";
+import EditRoleForm from "./components/EditRoleForm.vue";
+import { SearchProps } from "@/components/SearchForm/type";
+import { VxeGridProps } from "vxe-table";
+import { useTable } from "@/hooks/useVxetable";
+import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
+import { ListRoleDto, SysRoleVo } from "#/api/system/role";
 
 defineOptions({
   name: "Role"
 });
-const router = useRouter();
 const { proxy } = getCurrentInstance();
+const route = useRoute();
 
-const { StatusEnum, DataScopeEnum } = toRefs(useDict("StatusEnum", "DataScopeEnum"));
+const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const roleList = ref([]);
-const open = ref(false);
-const loading = ref(true);
-const showSearch = ref(true);
-const ids = ref([]);
-const single = ref(true);
-const multiple = ref(true);
-const total = ref(0);
-const title = ref("");
-const dateRange = ref([]);
-const menuOptions = ref([]);
-const menuExpand = ref(false);
-const menuNodeAll = ref(false);
-const menuRef = ref(null);
-const deptOptions = ref([]);
-const deptExpand = ref(false);
-const deptNodeAll = ref(false);
-const deptRef = ref(null);
-
-const queryRef = ref(null);
-const roleRef = ref(null);
-const data = reactive({
-  form: {
-    roleId: undefined,
-    roleName: undefined,
-    roleKey: undefined,
-    roleSort: 0,
-    dataScope: "1",
-    status: "0",
-    menuIds: [],
-    deptIds: [],
-    menuCheckStrictly: true,
-    deptCheckStrictly: true,
-    remark: undefined
+const searchList = reactive<SearchProps[]>([
+  {
+    el: "input",
+    prop: "roleName",
+    label: "角色名称"
   },
-  queryParams: {
-    pageNum: 1,
-    pageSize: 10,
-    roleName: undefined,
-    roleKey: undefined,
-    status: undefined
+  {
+    el: "input",
+    prop: "roleKey",
+    label: "权限字符"
   },
-  rules: {
-    roleName: [{ required: true, message: "角色名称不能为空", trigger: "blur" }],
-    roleKey: [{ required: true, message: "权限字符不能为空", trigger: "blur" }],
-    dataScope: [{ required: true, message: "数据权限不能为空", trigger: "blur" }],
-    roleSort: [{ required: true, message: "角色顺序不能为空", trigger: "blur" }]
+  {
+    el: "select",
+    prop: "status",
+    label: "角色状态",
+    options: StatusEnum
+  },
+  {
+    el: "date-picker",
+    prop: "dateRange",
+    label: "创建时间",
+    props: {
+      type: "daterange",
+      valueFormat: "YYYY-MM-DD",
+      rangeSeparator: "-",
+      startPlaceholder: "开始日期",
+      endPlaceholder: "结束日期"
+    }
   }
+]);
+const apiQuery = reactive<ListRoleDto>({
+  dateRange: null,
+  beginTime: null,
+  endTime: null,
+  orderByColumn: null,
+  order: null,
+  roleName: undefined,
+  roleKey: undefined,
+  status: undefined
 });
 
-const { queryParams, form, rules } = toRefs(data);
+const toolbarButtons: BtnOptionsProps[] = [
+  {
+    btnText: "新增",
+    props: {
+      type: "primary",
+      plain: true,
+      icon: "Plus"
+    },
+    authCode: "add",
+    handleClick: () => {
+      handleAdd();
+    }
+  },
+  {
+    btnText: "删除",
+    props: {
+      type: "danger",
+      plain: true,
+      icon: "Delete"
+    },
+    authCode: "remove",
+    handleClick: () => {
+      handleDelete();
+    },
+    disabled: () => {
+      return !selectRows.value.length;
+    },
+    disabledTooltip: `请先勾选删除项`
+  },
+  {
+    btnText: "导出",
+    props: {
+      type: "warning",
+      plain: true,
+      icon: "Download"
+    },
+    authCode: "export",
+    handleClick: () => {
+      handleExport();
+    }
+  }
+];
 
-/** 查询角色列表 */
-function getList() {
-  loading.value = true;
-  listRole(addDateRange(queryParams.value, dateRange.value)).then(response => {
-    roleList.value = response.data.list;
-    total.value = response.data.total;
-    loading.value = false;
-  });
-}
-/** 搜索按钮操作 */
-function handleQuery() {
-  queryParams.value.pageNum = 1;
-  getList();
-}
+const gridOptions = reactive<VxeGridProps<SysRoleVo>>({
+  height: "auto",
+  loading: true,
+  checkboxConfig: {
+    reserve: true
+  },
+  pagerConfig: {
+    total: 0,
+    currentPage: 1,
+    pageSize: 10
+  },
+  toolbarConfig: {
+    refresh: {
+      queryMethod: () => {
+        return initListSearch();
+      }
+    },
+    slots: {
+      buttons: "toolbar_buttons"
+    }
+  },
+  id: route.path, // 用户个性化记忆功能，必须确保 id 是整个全局唯一的
+  customConfig: {
+    storage: true, // 存储key VXE_CUSTOM_STORE
+    checkMethod({ column }) {
+      return !["checkbox", "tools"].includes(column.field);
+    }
+  },
+  columns: [
+    { field: "checkbox", type: "checkbox", width: 60, fixed: "left" },
+    { field: "roleId", title: "角色编号" },
+    { field: "roleName", title: "角色名称" },
+    { field: "roleKey", title: "权限字符" },
+    { field: "roleSort", title: "显示顺序" },
+    {
+      field: "status",
+      title: "状态",
+      slots: {
+        default({ row }) {
+          return (
+            <el-switch
+              v-model={row.status}
+              active-value="0"
+              inactive-value="1"
+              onChange={() => handleStatusChange(row)}
+            />
+          );
+        }
+      }
+    },
+    {
+      field: "createTime",
+      title: "创建时间",
+      width: 150,
+      formatter: ({ row }) => {
+        return parseTime(row.createTime);
+      }
+    },
+    {
+      field: "tools",
+      title: "操作",
+      width: 210,
+      fixed: "right",
+      slots: {
+        default: "tools_slot"
+      }
+    }
+  ],
+  data: []
+});
+
+const { gridRef, gridEvents, selectRows, initListSearch, resetListSearch } = useTable({
+  gridOptions,
+  getListApi: listRole,
+  apiQuery
+});
+
+const rowButtons: BtnOptionsProps<SysRoleVo>[] = [
+  {
+    btnText: "修改",
+    props: {
+      type: "primary",
+      plain: true,
+      icon: "Edit"
+    },
+    authCode: "edit",
+    disabled: ({ row }) => {
+      return row.roleId === 1;
+    },
+    disabledTooltip: `禁止修改超级管理员角色`,
+    handleClick: ({ row }) => {
+      handleUpdate(row);
+    }
+  },
+  {
+    btnText: "删除",
+    props: {
+      type: "danger",
+      plain: true,
+      icon: "Delete"
+    },
+    authCode: "remove",
+    disabled: ({ row }) => {
+      return row.roleId === 1;
+    },
+    disabledTooltip: `禁止删除超级管理员角色`,
+    handleClick: ({ row }) => {
+      handleDelete(row);
+    }
+  }
+];
+
 /** 重置按钮操作 */
-function resetQuery() {
-  dateRange.value = [];
-  resetForm(queryRef.value);
-  handleQuery();
+function handleReset() {
+  resetListSearch();
 }
 /** 删除按钮操作 */
-function handleDelete(row) {
-  const roleIds = (row ? [row.roleId] : ids.value).join(",");
+function handleDelete(row = null) {
+  const ids = unref(selectRows).map(item => item.roleId);
+  const roleIds = (row ? [row.roleId] : ids).join(",");
   proxy.$modal
     .confirm('是否确认删除角色编号为"' + roleIds + '"的数据项?')
     .then(function () {
       return delRole(roleIds);
     })
     .then(() => {
-      getList();
+      initListSearch();
       proxy.$message.success("删除成功");
     })
     .catch(() => {});
@@ -283,16 +237,12 @@ function handleExport() {
   proxy.$file.download(
     "system/role/export",
     {
-      ...queryParams.value
+      pageNum: gridOptions.pagerConfig.currentPage,
+      pageSize: gridOptions.pagerConfig.pageSize,
+      ...apiQuery
     },
     `role_${new Date().getTime()}.xlsx`
   );
-}
-/** 多选框选中数据 */
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.roleId);
-  single.value = selection.length != 1;
-  multiple.value = !selection.length;
 }
 /** 角色状态修改 */
 function handleStatusChange(row) {
@@ -309,158 +259,55 @@ function handleStatusChange(row) {
       row.status = row.status === "0" ? "1" : "0";
     });
 }
-/** 查询菜单树结构 */
-function getMenuTreeSelect() {
-  menuTreeSelect().then(response => {
-    menuOptions.value = response.data;
-  });
-}
-/** 查询部门树结构 */
-function getDeptTreeSelect() {
-  deptTreeSelect().then(response => {
-    deptOptions.value = response.data;
-  });
-}
-/** 重置新增的表单以及其他数据  */
-function reset() {
-  if (menuRef.value != undefined) {
-    menuRef.value.setCheckedKeys([]);
-  }
-  menuExpand.value = false;
-  menuNodeAll.value = false;
-  if (deptRef.value != undefined) {
-    deptRef.value.setCheckedKeys([]);
-  }
-  deptExpand.value = false;
-  deptNodeAll.value = false;
-  form.value = {
-    roleId: undefined,
-    roleName: undefined,
-    roleKey: undefined,
-    roleSort: 0,
-    dataScope: "1",
-    status: "0",
-    menuIds: [],
-    deptIds: [],
-    menuCheckStrictly: true,
-    deptCheckStrictly: true,
-    remark: undefined
-  };
-  resetForm(roleRef.value);
-}
-function resetForm(formEl: FormInstance | undefined) {
-  formEl && formEl.resetFields();
-}
+
+initListSearch();
+
+/*** 角色编辑弹窗参数 */
+const editDialog = reactive({
+  // 是否显示弹出层
+  open: false,
+  // 弹出层标题
+  title: "",
+  roleId: undefined
+});
+
 /** 添加角色 */
 function handleAdd() {
-  reset();
-  getMenuTreeSelect();
-  getDeptTreeSelect();
-  open.value = true;
-  title.value = "添加角色";
+  editDialog.roleId = undefined;
+  editDialog.open = true;
+  editDialog.title = "添加角色";
 }
 /** 修改角色 */
 function handleUpdate(row) {
-  reset();
-  const roleId = row.roleId || ids.value;
-  getRole(roleId).then(response => {
-    form.value = response.data;
-    form.value.roleSort = Number(form.value.roleSort);
-    open.value = true;
-    nextTick(() => {
-      /** 根据角色ID查询菜单树结构 */
-      roleMenuTreeSelect(roleId).then(res => {
-        menuOptions.value = res.data.menus;
-        menuRef.value.setCheckedKeys(res.data.checkedIds, true);
-      });
-      /** 根据角色ID查询部门树结构 */
-      roleDeptTreeSelect(roleId).then(res => {
-        deptOptions.value = res.data.depts;
-        deptRef.value.setCheckedKeys(res.data.checkedIds, true);
-      });
-    });
-    title.value = "修改角色";
-  });
+  editDialog.roleId = row.roleId;
+  editDialog.open = true;
+  editDialog.title = "修改角色";
 }
-/** 树权限（展开/折叠）*/
-function handleCheckedTreeExpand(value, type) {
-  if (type === 1) {
-    let treeList = deptOptions.value;
-    let key = deptRef.value.store.key;
-    for (let i = 0; i < treeList.length; i++) {
-      deptRef.value.store.nodesMap[treeList[i][key]].expanded = value;
-    }
-  } else {
-    let treeList = menuOptions.value;
-    let key = menuRef.value.store.key;
-    for (let i = 0; i < treeList.length; i++) {
-      menuRef.value.store.nodesMap[treeList[i][key]].expanded = value;
-    }
-  }
-}
-/** 树权限（全选/全不选） */
-function handleCheckedTreeNodeAll(value, type) {
-  if (type === 1) {
-    deptRef.value.setCheckedNodes(value ? deptOptions.value : []);
-  } else {
-    menuRef.value.setCheckedNodes(value ? menuOptions.value : []);
-  }
-}
-/** 树权限（父子联动） */
-function handleCheckedTreeConnect(value, type) {
-  if (type === 1) {
-    form.value.deptCheckStrictly = value ? true : false;
-  } else {
-    form.value.menuCheckStrictly = value ? true : false;
-  }
-}
-/** 所有勾选菜单节点数据 */
-function getMenuAllCheckedKeys() {
-  // 目前被选中的菜单节点
-  let checkedKeys = menuRef.value.getCheckedKeys();
-  // 半选中的菜单节点
-  let halfCheckedKeys = menuRef.value.getHalfCheckedKeys();
-  checkedKeys.unshift.apply(checkedKeys, halfCheckedKeys);
-  return checkedKeys;
-}
-/** 所有勾选菜单节点数据 */
-function getDeptAllCheckedKeys() {
-  // 目前被选中的菜单节点
-  let checkedKeys = deptRef.value.getCheckedKeys();
-  // 半选中的菜单节点
-  let halfCheckedKeys = deptRef.value.getHalfCheckedKeys();
-  checkedKeys.unshift.apply(checkedKeys, halfCheckedKeys);
-  return checkedKeys;
-}
-/** 提交按钮 */
-function submitForm() {
-  unref(roleRef).validate(valid => {
-    if (valid) {
-      if (form.value.roleId != undefined) {
-        form.value.deptIds = getDeptAllCheckedKeys();
-        form.value.menuIds = getMenuAllCheckedKeys();
-        updateRole(form.value).then(response => {
-          proxy.$message.success("修改成功");
-          open.value = false;
-          getList();
-        });
-      } else {
-        form.value.deptIds = getDeptAllCheckedKeys();
-        form.value.menuIds = getMenuAllCheckedKeys();
-        addRole(form.value).then(response => {
-          proxy.$message.success("新增成功");
-          open.value = false;
-          getList();
-        });
-      }
-    }
-  });
-}
-/** 取消按钮 */
-function cancel() {
-  open.value = false;
-  reset();
-}
-
-getList();
 </script>
+
+<template>
+  <div class="app-page cz-card pt-16">
+    <!-- 表格数据 -->
+    <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
+      <template #form>
+        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+      </template>
+      <template #toolbar_buttons>
+        <ToolButtons :buttons="toolbarButtons" size="default" />
+      </template>
+      <template #tools_slot="data">
+        <ToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
+      </template>
+    </vxe-grid>
+
+    <!-- 添加或修改角色配置对话框 -->
+    <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
+      <EditRoleForm
+        v-if="editDialog.open"
+        :roleId="editDialog.roleId"
+        @success="initListSearch"
+        @cancel="editDialog.open = false"
+      />
+    </el-dialog>
+  </div>
+</template>

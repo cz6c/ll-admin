@@ -22,6 +22,34 @@ export class RoleService {
     private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
   ) {}
 
+  // 关联菜单
+  sysRoleWithMenu(menuIds: number[], roleId: number) {
+    if (menuIds.length > 0) {
+      const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
+      const values = menuIds.map((id) => {
+        return {
+          roleId: roleId,
+          menuId: id,
+        };
+      });
+      entity.insert().values(values).execute();
+    }
+  }
+
+  sysRoleWithDept(deptIds: number[], roleId: number) {
+    // 关联部门
+    if (deptIds.length > 0) {
+      const entity = this.sysRoleWithDeptEntityRep.createQueryBuilder('entity');
+      const values = deptIds.map((id) => {
+        return {
+          roleId: roleId,
+          deptId: id,
+        };
+      });
+      entity.insert().values(values).execute();
+    }
+  }
+
   /**
    * @description: 创建角色
    * @param {CreateRoleDto} createRoleDto
@@ -29,17 +57,14 @@ export class RoleService {
    * @return
    */
   async create(createRoleDto: CreateRoleDto, userId: number) {
+    const { menuIds, deptIds } = createRoleDto;
+    delete createRoleDto.menuIds;
+    delete createRoleDto.deptIds;
+
     const res = await this.sysRoleEntityRep.save({ ...createRoleDto, createBy: userId });
 
-    // 关联菜单
-    const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
-    const values = createRoleDto.menuIds.map((id) => {
-      return {
-        roleId: res.roleId,
-        menuId: id,
-      };
-    });
-    entity.insert().values(values).execute();
+    this.sysRoleWithMenu(menuIds, res.roleId);
+    this.sysRoleWithDept(deptIds, res.roleId);
 
     return ResultData.ok();
   }
@@ -106,31 +131,42 @@ export class RoleService {
    * @return
    */
   async update(updateRoleDto: UpdateRoleDto, userId: number) {
+    const { menuIds, deptIds } = updateRoleDto;
+    delete updateRoleDto.menuIds;
+    delete updateRoleDto.deptIds;
+
+    // 关联菜单
     const hasId = await this.sysRoleWithMenuEntityRep.findOne({
       where: {
         roleId: updateRoleDto.roleId,
       },
-      select: ['roleId'],
+      select: ['menuId'],
     });
-
     //角色已关联菜单 先删除关联
     if (hasId) {
       await this.sysRoleWithMenuEntityRep.delete({
         roleId: updateRoleDto.roleId,
       });
     }
-
     // 角色重新关联菜单 TODO 后续改造为事务
-    const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
-    const values = updateRoleDto.menuIds.map((id) => {
-      return {
-        roleId: updateRoleDto.roleId,
-        menuId: id,
-      };
-    });
-    entity.insert().values(values).execute();
+    this.sysRoleWithMenu(menuIds, updateRoleDto.roleId);
 
-    delete (updateRoleDto as any).menuIds;
+    // 关联部门
+    const hasId1 = await this.sysRoleWithDeptEntityRep.findOne({
+      where: {
+        roleId: updateRoleDto.roleId,
+      },
+      select: ['deptId'],
+    });
+    //角色已关联部门 先删除关联
+    if (hasId1) {
+      await this.sysRoleWithDeptEntityRep.delete({
+        roleId: updateRoleDto.roleId,
+      });
+    }
+    // 角色重新关联部门 TODO 后续改造为事务
+    this.sysRoleWithDept(deptIds, updateRoleDto.roleId);
+
     await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, { ...updateRoleDto, updateBy: userId });
     return ResultData.ok();
   }
@@ -159,8 +195,9 @@ export class RoleService {
    * @return
    */
   async remove(roleIds: number[], userId: number) {
+    // 忽略系统角色的删除
     await this.sysRoleEntityRep.update(
-      { roleId: In(roleIds) },
+      { roleId: In(roleIds.filter((id) => id !== 1)) },
       {
         delFlag: DelFlagEnum.DELETE,
         updateBy: userId,

@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
 import $message from "@/utils/message";
 import { WebStorage } from "@/utils/storage";
+import { isNull, isUnDef } from "./is";
 
 export const errorCode = {
   "401": "认证失败，无法访问系统资源",
@@ -25,15 +26,9 @@ const service = axios.create({
 service.interceptors.request.use(
   config => {
     config.headers.Authorization = config.headers.Authorization || `Bearer ${getToken()}`;
-    // get请求映射params参数
-    if (config.method === "get" && config.params) {
-      let url = config.url + "?" + tansParams(config.params);
-      config.params = {};
-      config.url = url;
-    }
     // 是否需要防止数据重复提交 默认false 处理
     const isRepeatSubmit = config.headers?.repeatSubmit;
-    if (!isRepeatSubmit && (config.method === "post" || config.method === "put")) {
+    if (!isRepeatSubmit && config.method === "post") {
       const requestObj = {
         url: config.url,
         data: typeof config.data === "object" ? JSON.stringify(config.data) : config.data,
@@ -126,16 +121,25 @@ export function $http<P extends Record<string, any>, R>(config: AxiosRequestConf
 
 export const createGet = <P extends Record<string, any>, R>(url: string, config: AxiosRequestConfig = {}) => {
   return (params?: P): Promise<Response<R>> => {
+    // get请求映射params参数
     return service.request({
       method: "get",
-      url,
-      params,
+      url: params ? url + "?" + tansParams(params) : url,
       ...config
     });
   };
 };
 export const createPost = <P extends Record<string, any>, R>(url: string, config: AxiosRequestConfig = {}) => {
   return (data?: P): Promise<Response<R>> => {
+    // post请求参数处理
+    if (data) {
+      for (const key in data) {
+        if (isUnDef(data[key]) || isNull(data[key])) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+          delete data[key];
+        }
+      }
+    }
     return service.request({
       method: "post",
       url,

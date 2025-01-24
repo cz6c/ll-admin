@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsArray, Length, IsOptional, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber } from 'class-validator';
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import { BaseVO, PagingDto } from '@/common/dto/index';
 import { DataScopeEnum, StatusEnum } from '@/common/enum/dict';
@@ -39,16 +39,6 @@ export class CreateRoleDto {
   @IsString()
   @Length(0, 500)
   remark?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsBoolean()
-  menuCheckStrictly?: boolean;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsBoolean()
-  deptCheckStrictly?: boolean;
 }
 
 export class UpdateRoleDto extends CreateRoleDto {
@@ -103,12 +93,6 @@ export class SysRoleVo extends BaseVO {
     example: DataScopeEnum.DATA_SCOPE_ALL,
   })
   public dataScope: DataScopeEnum;
-
-  @ApiProperty({ description: '菜单树选择项是否关联显示', example: false })
-  public menuCheckStrictly: boolean;
-
-  @ApiProperty({ description: '部门树选择项是否关联显示', example: false })
-  public deptCheckStrictly: boolean;
 
   @ApiProperty({ description: '备注', example: '这是管理员角色的备注' })
   public remark: string;

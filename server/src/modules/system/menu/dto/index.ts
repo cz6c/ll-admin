@@ -84,11 +84,6 @@ export class ListMenuDto {
   @IsOptional()
   @IsEnum(StatusEnum)
   status?: StatusEnum;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsNumber()
-  parentId?: number;
 }
 
 export class SysMenuVo extends BaseVO {

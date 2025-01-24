@@ -10,8 +10,6 @@ export type UpdateRoleDto = {
   status: string;
   dataScope: string;
   remark?: string;
-  menuCheckStrictly?: boolean;
-  deptCheckStrictly?: boolean;
 };
 
 export type ChangeStatusDto = Pick<UpdateRoleDto, "roleId" | "status">;

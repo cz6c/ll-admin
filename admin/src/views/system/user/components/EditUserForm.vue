@@ -82,7 +82,10 @@ async function getInfo() {
   getPostAndRoleAllFn();
   if (props.userId) {
     const { data } = await getUser(props.userId);
-    form.value = { ...data, password: "******" };
+    for (const key of Object.keys(form.value)) {
+      form.value[key] = data[key];
+    }
+    form.value.password = "******";
   } else {
     form.value.password = initPassword.value;
   }

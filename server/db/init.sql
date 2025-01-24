@@ -381,8 +381,6 @@ CREATE TABLE `sys_role` (
   `role_sort` int NOT NULL DEFAULT '0' COMMENT '显示顺序',
   `role_key` varchar(100) COLLATE utf8mb4_general_ci NOT NULL COMMENT '角色权限字符串',
   `data_scope` enum('1','2','3','4','5') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '1' COMMENT '数据范围',
-  `menu_check_strictly` tinyint NOT NULL DEFAULT '0' COMMENT '菜单树选择项是否关联显示',
-  `dept_check_strictly` tinyint NOT NULL DEFAULT '0' COMMENT '部门树选择项是否关联显示',
   `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
   PRIMARY KEY (`role_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='角色信息表';
@@ -394,7 +392,7 @@ CREATE TABLE `sys_role` (
 
 LOCK TABLES `sys_role` WRITE;
 /*!40000 ALTER TABLE `sys_role` DISABLE KEYS */;
-INSERT INTO `sys_role` VALUES ('0','0',1,'2024-08-10 09:34:00.000000',NULL,'2024-12-12 16:55:52.912763',1,'超级管理员',1,'admin','1',1,1,'超级管理员'),('0','0',1,'2024-08-10 09:34:00.000000',NULL,'2024-12-12 16:55:52.917253',2,'普通角色',2,'common','2',1,1,'普通角色');
+INSERT INTO `sys_role` VALUES ('0','0',1,'2024-08-10 09:34:00.000000',NULL,'2024-12-12 16:55:52.912763',1,'超级管理员',1,'admin','1','超级管理员'),('0','0',1,'2024-08-10 09:34:00.000000',NULL,'2024-12-12 16:55:52.917253',2,'普通角色',2,'common','2','普通角色');
 /*!40000 ALTER TABLE `sys_role` ENABLE KEYS */;
 UNLOCK TABLES;
 

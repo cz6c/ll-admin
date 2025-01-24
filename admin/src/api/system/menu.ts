@@ -1,15 +1,6 @@
 import { $http } from "@/utils/request";
 import type { SysMenuListParams, UpdateMenuDto, SysMenuVo, MenuTreeVo, RoleMenuTreeSelect } from "#/api/system/menu";
 
-// 查询菜单列表
-export function getMenuList(params?: SysMenuListParams) {
-  return $http<never, SysMenuVo[]>({
-    url: `/system/menu/list`,
-    method: "get",
-    params
-  });
-}
-
 // 查询菜单详细
 export function getMenuDetail(menuId: number) {
   return $http<never, SysMenuVo>({
@@ -19,10 +10,11 @@ export function getMenuDetail(menuId: number) {
 }
 
 // 查询菜单下拉树结构
-export function menuTreeSelect() {
+export function menuTreeSelect(params?: SysMenuListParams) {
   return $http<never, MenuTreeVo[]>({
     url: `/system/menu/treeSelect`,
-    method: "get"
+    method: "get",
+    params
   });
 }
 

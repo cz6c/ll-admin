@@ -35,10 +35,7 @@ VxeUI.setConfig({
   grid: {
     toolbarConfig: {
       zoom: true,
-      custom: true,
-      slots: {
-        buttons: "toolbar_buttons"
-      }
+      custom: true
     },
     zoomConfig: {
       escRestore: true

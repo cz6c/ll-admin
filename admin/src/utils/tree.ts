@@ -59,7 +59,7 @@ export function treeToList(tree: any[], config: Partial<TreeHelperConfig> = {}):
  * @param tree 树
  * @param callBack 回调
  * @param config 树节点属性配置
- * @return
+ * @return 树节点
  */
 export function findNode(
   tree: any[],
@@ -81,7 +81,7 @@ export function findNode(
  * @param tree 树
  * @param callBack 回调 过滤节点处理
  * @param config 树节点属性配置
- * @return
+ * @return 树
  */
 export function filterTree(tree: any[], callBack: (n: any) => boolean, config: Partial<TreeHelperConfig> = {}): any[] {
   config = getConfig(config);
@@ -93,7 +93,8 @@ export function filterTree(tree: any[], callBack: (n: any) => boolean, config: P
         // 递归调用 对含有children项  进行再次调用自身函数 listFilter
         node[children] = node[children] && listFilter(node[children]);
         // 执行传入的回调 callBack 进行过滤
-        return callBack(node);
+        // 如果没有通过 callBack 的检查，但节点有子节点，并且至少有一个子节点通过了过滤，则当前节点也会被保留，因为它至少有一个有效的子节点。
+        return callBack(node) || (node[children] && node[children].length);
       });
   }
   return listFilter(tree);
@@ -122,7 +123,7 @@ export function forEachTree(tree: any[], callBack: (n: any) => any, config: Part
  * @param tree 树
  * @param conversion 提取方法
  * @param config 树节点属性配置
- * @return 指定结构树
+ * @return 树
  */
 export function treeMap(tree: any[], conversion: (n: any) => any, config: Partial<TreeHelperConfig> = {}): any[] {
   config = getConfig(config);
@@ -145,11 +146,11 @@ export function treeMap(tree: any[], conversion: (n: any) => any, config: Partia
 }
 
 /**
- * @description: 在树结构中查找树某个节点在树中的路径
+ * @description: 在树结构中查找树某个节点在树中的全路径
  * @param tree 树
  * @param callBack 回调 用于判断节点是否符合条件，返回true就终止遍历,代表已找到
  * @param config 树节点属性配置
- * @return 第一个满足条件节点路径数组
+ * @return 节点全路径数组（第一个满足条件）
  */
 export function findPath(tree: any[], callBack: (n: any) => any, config: Partial<TreeHelperConfig> = {}): any[] | null {
   config = getConfig(config);
@@ -175,11 +176,11 @@ export function findPath(tree: any[], callBack: (n: any) => any, config: Partial
 }
 
 /**
- * @description: 在树结构中查找所有满足特定条件的路径
+ * @description: 在树结构中查找所有满足特定条件的全路径
  * @param tree 树
  * @param callBack 回调，用于判断当前节点是否符合条件
  * @param config 树节点属性配置
- * @return 所有满足条件节点所在路径，二维数组
+ * @return [节点全路径数组]（所有满足条件,二维数组）
  */
 export function findPathAll(tree: any, callBack: (n: any) => any, config: Partial<TreeHelperConfig> = {}) {
   config = getConfig(config);

@@ -20,12 +20,6 @@ export class SysRoleEntity extends BaseEntity {
   @Column({ type: 'enum', enum: DataScopeEnum, default: DataScopeEnum.DATA_SCOPE_ALL, name: 'data_scope', comment: '数据范围' })
   public dataScope: DataScopeEnum;
 
-  @Column({ type: 'boolean', name: 'menu_check_strictly', default: false, comment: '菜单树选择项是否关联显示' })
-  public menuCheckStrictly: boolean;
-
-  @Column({ type: 'boolean', name: 'dept_check_strictly', default: false, comment: '部门树选择项是否关联显示' })
-  public deptCheckStrictly: boolean;
-
   @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
   public remark: string;
 }

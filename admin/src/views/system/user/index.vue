@@ -50,7 +50,7 @@ const searchList = reactive<SearchProps[]>([
     }
   }
 ]);
-const queryParams = reactive<SysUserListParams>({
+const apiQuery = reactive<SysUserListParams>({
   dateRange: null,
   beginTime: null,
   endTime: null,
@@ -131,8 +131,11 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
   toolbarConfig: {
     refresh: {
       queryMethod: () => {
-        return resetPageSearch();
+        return initListSearch();
       }
+    },
+    slots: {
+      buttons: "toolbar_buttons"
     }
   },
   id: route.path, // 用户个性化记忆功能，必须确保 id 是整个全局唯一的
@@ -143,7 +146,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
     }
   },
   columns: [
-    { field: "checkbox", type: "checkbox", width: 60 },
+    { field: "checkbox", type: "checkbox", width: 60, fixed: "left" },
     { field: "userId", title: "用户编号" },
     { field: "userName", title: "用户账号" },
     { field: "nickName", title: "用户昵称" },
@@ -204,12 +207,11 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
   data: []
 });
 
-const { gridRef, gridEvents, selectRows, resetPageSearch, resetQuerySearch } = useTable(
+const { gridRef, gridEvents, selectRows, initListSearch, resetListSearch } = useTable({
   gridOptions,
-  listUser,
-  queryParams
-);
-console.log("🚀 ~ gridOptions:", gridOptions);
+  getListApi: listUser,
+  apiQuery
+});
 
 const rowButtons: BtnOptionsProps<UserVo>[] = [
   {
@@ -284,13 +286,13 @@ async function getDeptTree() {
 /** 节点单击事件 */
 function handleNodeClick(data) {
   let key = unref(deptTreeRef).store.key;
-  queryParams.deptId = data[key];
-  resetPageSearch();
+  apiQuery.deptId = data[key];
+  initListSearch();
 }
 
 /** 重置按钮操作 */
 function handleReset() {
-  resetQuerySearch();
+  resetListSearch();
   unref(deptTreeRef).setCurrentKey(null);
 }
 
@@ -306,7 +308,7 @@ function handleDelete(row = null) {
       return delUser(userIds);
     })
     .then(() => {
-      resetPageSearch();
+      initListSearch();
       proxy.$message.success("删除成功");
     })
     .catch(() => {});
@@ -364,7 +366,7 @@ function handleExport() {
     {
       pageNum: gridOptions.pagerConfig.currentPage,
       pageSize: gridOptions.pagerConfig.pageSize,
-      ...queryParams
+      ...apiQuery
     },
     `user_${new Date().getTime()}.xlsx`
   );
@@ -380,6 +382,7 @@ const editDialog = reactive({
 });
 /** 新增按钮操作 */
 function handleAdd() {
+  editDialog.userId = undefined;
   editDialog.open = true;
   editDialog.title = "添加用户";
 }
@@ -390,7 +393,7 @@ function handleUpdate(row) {
   editDialog.title = "修改用户";
 }
 
-resetPageSearch();
+initListSearch();
 getDeptTree();
 </script>
 
@@ -399,7 +402,7 @@ getDeptTree();
     <!--用户数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="queryParams" @search="resetPageSearch" @reset="handleReset" />
+        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />
@@ -438,7 +441,7 @@ getDeptTree();
         v-if="editDialog.open"
         :deptOptions="deptOptions"
         :userId="editDialog.userId"
-        @success="resetPageSearch"
+        @success="initListSearch"
         @cancel="editDialog.open = false"
       />
     </el-dialog>
@@ -449,7 +452,7 @@ getDeptTree();
         importUrl="/system/user/importData"
         importTempUrl="system/user/importTemplate"
         filePrefix="user_"
-        @success="resetPageSearch"
+        @success="initListSearch"
         @cancel="uploadDialog.open = false"
       />
     </el-dialog>

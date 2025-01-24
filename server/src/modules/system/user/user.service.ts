@@ -48,6 +48,34 @@ export class UserService {
     this.salt = bcrypt.genSaltSync(10);
   }
 
+  // 批量关联岗位
+  sysUserWithPost(postIds: number[], userId: number) {
+    if (postIds.length > 0) {
+      const postEntity = this.sysUserWithPostEntityRep.createQueryBuilder('postEntity');
+      const postValues = postIds.map((id) => {
+        return {
+          userId: userId,
+          postId: id,
+        };
+      });
+      postEntity.insert().values(postValues).execute();
+    }
+  }
+
+  // 批量关联角色
+  sysUserWithRole(roleIds: number[], userId: number) {
+    if (roleIds.length > 0) {
+      const roleEntity = this.sysUserWithRoleEntityRep.createQueryBuilder('roleEntity');
+      const roleValues = roleIds.map((id) => {
+        return {
+          userId: userId,
+          roleId: id,
+        };
+      });
+      roleEntity.insert().values(roleValues).execute();
+    }
+  }
+
   /**
    * @description: 后台创建用户
    * @param {CreateUserDto} createUserDto
@@ -62,28 +90,15 @@ export class UserService {
       createUserDto.password = await bcrypt.hashSync(createUserDto.password, this.salt);
     }
 
+    const { postIds, roleIds } = createUserDto;
+    delete createUserDto.postIds;
+    delete createUserDto.roleIds;
+
     // 保存用户
     const res = await this.userRepo.save({ ...createUserDto, loginDate, createBy: userId });
 
-    // 批量关联岗位
-    const postEntity = this.sysUserWithPostEntityRep.createQueryBuilder('postEntity');
-    const postValues = createUserDto.postIds.map((id) => {
-      return {
-        userId: res.userId,
-        postId: id,
-      };
-    });
-    postEntity.insert().values(postValues).execute();
-
-    // 批量关联角色
-    const roleEntity = this.sysUserWithRoleEntityRep.createQueryBuilder('roleEntity');
-    const roleValues = createUserDto.roleIds.map((id) => {
-      return {
-        userId: res.userId,
-        roleId: id,
-      };
-    });
-    roleEntity.insert().values(roleValues).execute();
+    this.sysUserWithPost(postIds, res.userId);
+    this.sysUserWithRole(roleIds, res.userId);
 
     return ResultData.ok();
   }
@@ -223,55 +238,38 @@ export class UserService {
       delete updateUserDto.status;
     }
 
-    if (updateUserDto?.postIds?.length > 0) {
-      //用户已有岗位,先删除所有关联岗位
-      const hasPostId = await this.sysUserWithPostEntityRep.findOne({
-        where: {
-          userId: updateUserDto.userId,
-        },
-        select: ['postId'],
-      });
-
-      if (hasPostId) {
-        await this.sysUserWithPostEntityRep.delete({
-          userId: updateUserDto.userId,
-        });
-      }
-      const postEntity = this.sysUserWithPostEntityRep.createQueryBuilder('postEntity');
-      const postValues = updateUserDto.postIds.map((id) => {
-        return {
-          userId: updateUserDto.userId,
-          postId: id,
-        };
-      });
-      postEntity.insert().values(postValues).execute();
-    }
-
-    if (updateUserDto?.roleIds?.length > 0) {
-      //用户已有角色,先删除所有关联角色
-      const hasRoletId = await this.sysUserWithRoleEntityRep.findOne({
-        where: {
-          userId: updateUserDto.userId,
-        },
-        select: ['roleId'],
-      });
-      if (hasRoletId) {
-        await this.sysUserWithRoleEntityRep.delete({
-          userId: updateUserDto.userId,
-        });
-      }
-      const roleEntity = this.sysUserWithRoleEntityRep.createQueryBuilder('roleEntity');
-      const roleValues = updateUserDto.roleIds.map((id) => {
-        return {
-          userId: updateUserDto.userId,
-          roleId: id,
-        };
-      });
-      roleEntity.insert().values(roleValues).execute();
-    }
-
-    delete updateUserDto.roleIds;
+    const { postIds, roleIds } = updateUserDto;
     delete updateUserDto.postIds;
+    delete updateUserDto.roleIds;
+
+    //用户已有岗位,先删除所有关联岗位
+    const hasPostId = await this.sysUserWithPostEntityRep.findOne({
+      where: {
+        userId: updateUserDto.userId,
+      },
+      select: ['postId'],
+    });
+
+    if (hasPostId) {
+      await this.sysUserWithPostEntityRep.delete({
+        userId: updateUserDto.userId,
+      });
+    }
+    this.sysUserWithPost(postIds, updateUserDto.userId);
+
+    //用户已有角色,先删除所有关联角色
+    const hasRoletId = await this.sysUserWithRoleEntityRep.findOne({
+      where: {
+        userId: updateUserDto.userId,
+      },
+      select: ['roleId'],
+    });
+    if (hasRoletId) {
+      await this.sysUserWithRoleEntityRep.delete({
+        userId: updateUserDto.userId,
+      });
+    }
+    this.sysUserWithRole(roleIds, updateUserDto.userId);
 
     //更新用户信息
     const data = await this.userRepo.update({ userId: updateUserDto.userId }, { ...updateUserDto, updateBy: userId });

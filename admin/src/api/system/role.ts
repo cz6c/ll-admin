@@ -49,6 +49,6 @@ export function changeRoleStatus(data: ChangeStatusDto) {
 export function delRole(roleIds: string) {
   return $http({
     url: "/system/role/delete/" + roleIds,
-    method: "delete"
+    method: "get"
   });
 }

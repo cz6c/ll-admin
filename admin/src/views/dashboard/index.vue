@@ -134,7 +134,7 @@ const gridOptions = reactive<VxeGridProps<RowVO>>({
     refresh: {
       queryMethod: () => {
         console.log("🚀 ~ refresh:");
-        return handleQuery();
+        return initListSearch();
       }
     }
   },
@@ -173,14 +173,10 @@ const apiQuery = reactive<ListParams & { name: string }>({
   name: "Test"
 });
 
-const { gridRef, gridEvents, expandAll, expandAllChange, selectRows, handleQuery } = useTable(
-  gridOptions,
-  getListApi,
-  apiQuery
-);
+const { gridRef, gridEvents, selectRows, initListSearch } = useTable({ gridOptions, getListApi, apiQuery });
 console.log("🚀 ~ gridOptions:", gridOptions);
 
-handleQuery();
+initListSearch();
 
 const rowButtons: BtnOptionsProps<RowVO>[] = [
   {
@@ -194,9 +190,7 @@ const rowButtons: BtnOptionsProps<RowVO>[] = [
     handleClick: row => {
       console.log(row);
     },
-    disabledTooltip: ({ row }) => {
-      return `<span>添加</span>`;
-    }
+    disabledTooltip: `添加`
   },
   {
     props: {
@@ -206,9 +200,7 @@ const rowButtons: BtnOptionsProps<RowVO>[] = [
     handleClick: ({ row }) => {
       console.log(row);
     },
-    disabledTooltip: ({ row }) => {
-      return `移出`;
-    }
+    disabledTooltip: `移出`
   }
 ];
 </script>
@@ -216,16 +208,6 @@ const rowButtons: BtnOptionsProps<RowVO>[] = [
 <template>
   <div class="app-page home">
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
-      <template #treeNode_header>
-        <el-tooltip effect="dark" :content="expandAll ? '一键折叠' : '一键展开'" placement="top">
-          <div>
-            <i
-              :class="['vxe-tree--node-btn vxe-table-icon-caret-right', expandAll ? 'rotate90' : '']"
-              @click="expandAllChange(!expandAll)"
-            />
-          </div>
-        </el-tooltip>
-      </template>
       <template #tools="{ row }">
         <ToolButtons :buttons="rowButtons" :row="row" :maxShowNum="1" />
       </template>

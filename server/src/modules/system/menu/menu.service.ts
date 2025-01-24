@@ -33,11 +33,11 @@ export class MenuService {
   }
 
   /**
-   * @description: 菜单管理-列表
+   * @description: 菜单管理-树
    * @param {ListMenuDto} query
    * @return
    */
-  async findAll(query: ListMenuDto) {
+  async treeSelect(query: ListMenuDto) {
     const entity = this.sysMenuEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
@@ -47,27 +47,8 @@ export class MenuService {
     if (query.status) {
       entity.andWhere('entity.status = :status', { status: query.status });
     }
-    if (query.parentId || query.parentId === 0) {
-      entity.andWhere('entity.parentId = :parentId', { parentId: query.parentId });
-    }
     entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
-    return ResultData.ok(res);
-  }
-
-  /**
-   * @description: 菜单管理-树
-   * @return
-   */
-  async treeSelect() {
-    const res = await this.sysMenuEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-      order: {
-        orderNum: 'ASC',
-      },
-    });
     const tree = listToTree(res, {
       id: 'menuId',
     });
@@ -116,7 +97,13 @@ export class MenuService {
         menuId: menuId,
       },
     });
-    return ResultData.ok(res);
+    const parent = await this.sysMenuEntityRep.findOne({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+        menuId: res.parentId,
+      },
+    });
+    return ResultData.ok({ ...res, parentName: parent?.menuName || '主菜单' });
   }
 
   /**

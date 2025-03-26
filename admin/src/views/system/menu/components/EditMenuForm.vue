@@ -145,7 +145,7 @@ getInfo();
     <el-form ref="menuRef" :model="form" :rules="rules" label-width="100px">
       <el-row>
         <el-col :span="24">
-          <el-form-item label="上级菜单">
+          <el-form-item v-if="form.parentName" label="上级菜单">
             {{ form.parentName }}
           </el-form-item>
         </el-col>

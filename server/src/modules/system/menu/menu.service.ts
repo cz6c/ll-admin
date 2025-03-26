@@ -97,13 +97,17 @@ export class MenuService {
         menuId: menuId,
       },
     });
-    const parent = await this.sysMenuEntityRep.findOne({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-        menuId: res.parentId,
-      },
-    });
-    return ResultData.ok({ ...res, parentName: parent?.menuName || '主菜单' });
+    let parentName = '';
+    if (res.parentId !== 0) {
+      const parent = await this.sysMenuEntityRep.findOne({
+        where: {
+          delFlag: DelFlagEnum.NORMAL,
+          menuId: res.parentId,
+        },
+      });
+      parentName = parent.menuName;
+    }
+    return ResultData.ok({ ...res, parentName });
   }
 
   /**

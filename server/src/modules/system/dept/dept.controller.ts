@@ -18,18 +18,18 @@ export class DeptController {
     return this.deptService.create(createDeptDto, user.userId);
   }
 
-  @ApiOperation({ summary: '部门管理-列表' })
-  @ApiResult(SysDeptVo, true)
-  @Get('/list')
-  findAll(@Query() query: ListDeptDto) {
-    return this.deptService.findAll(query);
-  }
+  // @ApiOperation({ summary: '部门管理-列表' })
+  // @ApiResult(SysDeptVo, true)
+  // @Get('/list')
+  // findAll(@Query() query: ListDeptDto) {
+  //   return this.deptService.findAll(query);
+  // }
 
   @ApiOperation({ summary: '部门管理-树' })
   @ApiResult(DeptTreeVo, true)
   @Get('/treeSelect')
-  treeSelect() {
-    return this.deptService.treeSelect();
+  treeSelect(@Query() query: ListDeptDto) {
+    return this.deptService.treeSelect(query);
   }
 
   @ApiOperation({ summary: '部门管理-角色部门树' })
@@ -44,13 +44,6 @@ export class DeptController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.deptService.findOne(+id);
-  }
-
-  @ApiOperation({ summary: '部门管理-修改部门下拉列表' })
-  @ApiResult(SysDeptVo, true)
-  @Get('/list/exclude/:id')
-  findListExclude(@Param('id') id: string) {
-    return this.deptService.findListExclude(+id);
   }
 
   @ApiOperation({ summary: '部门管理-更新' })

@@ -43,11 +43,10 @@ export class DeptService {
   }
 
   /**
-   * @description: 部门管理-列表
-   * @param {ListDeptDto} query
+   * @description: 部门管理-树
    * @return
    */
-  async findAll(query: ListDeptDto) {
+  async treeSelect(query: ListDeptDto) {
     const entity = this.sysDeptEntityRep.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
@@ -59,22 +58,6 @@ export class DeptService {
     }
     entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
-    return ResultData.ok(res);
-  }
-
-  /**
-   * @description: 部门管理-树
-   * @return
-   */
-  async treeSelect() {
-    const res = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-      order: {
-        orderNum: 'ASC',
-      },
-    });
     const tree = listToTree(res, {
       id: 'deptId',
     });
@@ -87,32 +70,23 @@ export class DeptService {
    * @return
    */
   async findOne(deptId: number) {
-    const data = await this.sysDeptEntityRep.findOne({
+    const res = await this.sysDeptEntityRep.findOne({
       where: {
+        delFlag: DelFlagEnum.NORMAL,
         deptId: deptId,
-        delFlag: DelFlagEnum.NORMAL,
       },
     });
-    return ResultData.ok(data);
-  }
-
-  /**
-   * @description: 部门管理-修改部门下拉列表
-   * @param {number} id
-   * @return
-   */
-  async findListExclude(id: number) {
-    const data = await this.sysDeptEntityRep.find({
-      where: {
-        delFlag: DelFlagEnum.NORMAL,
-      },
-    });
-    // 过滤 ancestors 中出现id的数据
-    const arr = data.filter((item) => {
-      const ancestors = item.ancestors.split(',');
-      return ancestors.findIndex((_) => +_ === id) === -1;
-    });
-    return ResultData.ok(arr);
+    let parentName = '';
+    if (res.parentId !== 0) {
+      const parent = await this.sysDeptEntityRep.findOne({
+        where: {
+          delFlag: DelFlagEnum.NORMAL,
+          deptId: res.parentId,
+        },
+      });
+      parentName = parent.deptName;
+    }
+    return ResultData.ok({ ...res, parentName });
   }
 
   /**

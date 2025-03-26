@@ -1,5 +1,6 @@
 <script setup lang="tsx">
 import { changeRoleStatus, delRole, listRole } from "@/api/system/role";
+import { ListRoleDto, SysRoleVo } from "#/api/system/role";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import EditRoleForm from "./components/EditRoleForm.vue";
@@ -7,7 +8,6 @@ import { SearchProps } from "@/components/SearchForm/type";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
-import { ListRoleDto, SysRoleVo } from "#/api/system/role";
 
 defineOptions({
   name: "Role"

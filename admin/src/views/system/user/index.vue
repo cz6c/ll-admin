@@ -1,12 +1,12 @@
 <script setup lang="tsx">
 import { changeUserStatus, listUser, resetUserPwd, delUser } from "@/api/system/user";
+import { SysUserListParams, UserVo } from "#/api/system/user";
 import { deptTreeSelect } from "@/api/system/dept";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
 import { VxeGridProps } from "vxe-table";
-import { SysUserListParams, UserVo } from "#/api/system/user";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditUserForm from "./components/EditUserForm.vue";

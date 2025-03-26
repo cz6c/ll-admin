@@ -1,9 +1,9 @@
 <script setup lang="tsx">
 import { delMenu, menuTreeSelect } from "@/api/system/menu";
+import { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
 import { SearchProps } from "@/components/SearchForm/type";
-import { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -253,8 +253,8 @@ const editDialog = reactive({
 /** 新增按钮操作 */
 function handleAdd(row, isPerm = false) {
   editDialog.menuId = undefined;
-  editDialog.parentId = row?.menuId ? row.menuId : 0;
-  editDialog.parentName = row?.menuName ? row.menuName : "主菜单";
+  editDialog.parentId = row ? row.menuId : 0;
+  editDialog.parentName = row ? row.menuName : "";
   editDialog.isPerm = isPerm;
   editDialog.title = !isPerm ? "添加菜单" : "添加功能";
   editDialog.open = true;

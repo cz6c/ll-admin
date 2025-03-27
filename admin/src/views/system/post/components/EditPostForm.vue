@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post";
+import { addPost, getPost, updatePost } from "@/api/system/post";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
 defineOptions({
@@ -13,8 +13,6 @@ const props = defineProps({
 const $emit = defineEmits(["success", "cancel"]);
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
-
-const initPassword = ref(undefined);
 
 const postRef = ref<FormInstance>(null);
 const data = reactive({

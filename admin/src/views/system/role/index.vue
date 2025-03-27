@@ -51,8 +51,6 @@ const apiQuery = reactive<ListRoleDto>({
   dateRange: null,
   beginTime: null,
   endTime: null,
-  orderByColumn: null,
-  order: null,
   roleName: undefined,
   roleKey: undefined,
   status: undefined

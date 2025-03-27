@@ -86,10 +86,6 @@ export class RoleService {
       entity.andWhere(`entity.roleKey LIKE "%${query.roleKey}%"`);
     }
 
-    if (query.roleId) {
-      entity.andWhere('entity.roleId = :roleId', { roleId: query.roleId });
-    }
-
     if (query.status) {
       entity.andWhere('entity.status = :status', { status: query.status });
     }

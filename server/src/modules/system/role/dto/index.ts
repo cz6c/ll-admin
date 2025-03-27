@@ -66,12 +66,6 @@ export class ListRoleDto extends PagingDto {
   @IsOptional()
   @IsEnum(StatusEnum)
   status?: StatusEnum;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @Length(0, 100)
-  roleId?: string;
 }
 
 export class SysRoleVo extends BaseVO {

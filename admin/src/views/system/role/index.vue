@@ -213,6 +213,8 @@ const rowButtons: BtnOptionsProps<SysRoleVo>[] = [
   }
 ];
 
+initListSearch();
+
 /** 重置按钮操作 */
 function handleReset() {
   resetListSearch();
@@ -260,8 +262,6 @@ function handleStatusChange(row) {
     });
 }
 
-initListSearch();
-
 /*** 角色编辑弹窗参数 */
 const editDialog = reactive({
   // 是否显示弹出层
@@ -300,7 +300,7 @@ function handleUpdate(row) {
       </template>
     </vxe-grid>
 
-    <!-- 添加或修改角色配置对话框 -->
+    <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
       <EditRoleForm
         v-if="editDialog.open"

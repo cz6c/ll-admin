@@ -283,7 +283,7 @@ function handleUpdate(row, isPerm = false) {
       </template>
     </vxe-grid>
 
-    <!-- 添加或修改菜单对话框 -->
+    <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
       <EditMenuForm
         v-if="editDialog.open"

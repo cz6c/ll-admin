@@ -40,7 +40,7 @@ const searchList = reactive<SearchProps[]>([
   {
     el: "date-picker",
     prop: "dateRange",
-    label: "下单时间",
+    label: "注册时间",
     props: {
       type: "daterange",
       valueFormat: "YYYY-MM-DD",
@@ -399,7 +399,7 @@ getDeptTree();
 
 <template>
   <div class="app-page cz-card pt-16">
-    <!--用户数据-->
+    <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
         <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
@@ -435,7 +435,7 @@ getDeptTree();
       </template>
     </vxe-grid>
 
-    <!-- 添加或修改用户配置对话框 -->
+    <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
       <EditUserForm
         v-if="editDialog.open"
@@ -445,7 +445,7 @@ getDeptTree();
         @cancel="editDialog.open = false"
       />
     </el-dialog>
-    <!-- 用户导入对话框 -->
+    <!-- 导入对话框 -->
     <el-dialog v-model="uploadDialog.open" :title="uploadDialog.title" width="400px" append-to-body>
       <ImportTemp
         v-if="uploadDialog.open"

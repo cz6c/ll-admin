@@ -1,252 +1,195 @@
-<template>
-  <div class="app-page">
-    <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true">
-      <el-form-item label="岗位编码" prop="postCode">
-        <el-input
-          v-model="queryParams.postCode"
-          placeholder="请输入岗位编码"
-          clearable
-          style="width: 200px"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="岗位名称" prop="postName">
-        <el-input
-          v-model="queryParams.postName"
-          placeholder="请输入岗位名称"
-          clearable
-          style="width: 200px"
-          @keyup.enter="handleQuery"
-        />
-      </el-form-item>
-      <el-form-item label="状态" prop="status">
-        <el-select v-model="queryParams.status" placeholder="岗位状态" clearable style="width: 200px">
-          <el-option v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
-        <el-button icon="Refresh" @click="resetQuery">重置</el-button>
-      </el-form-item>
-    </el-form>
-
-    <el-row :gutter="10" class="mb8">
-      <el-col :span="1.5">
-        <el-button v-auth="'add'" type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'edit'" type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
-          >修改</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
-          >删除</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
-      </el-col>
-    </el-row>
-
-    <el-table v-loading="loading" :data="postList" @selection-change="handleSelectionChange">
-      <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="岗位编号" align="center" prop="postId" />
-      <el-table-column label="岗位编码" align="center" prop="postCode" />
-      <el-table-column label="岗位名称" align="center" prop="postName" />
-      <el-table-column label="岗位排序" align="center" prop="postSort" />
-      <el-table-column label="状态" align="center" prop="status">
-        <template #default="scope">
-          <dict-tag :options="StatusEnum" :value="scope.row.status" />
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" align="center" prop="createTime" width="180">
-        <template #default="scope">
-          <span>{{ parseTime(scope.row.createTime) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" align="center" class-name="small-padding fixed-width">
-        <template #default="scope">
-          <el-button v-auth="'edit'" link type="primary" icon="Edit" @click="handleUpdate(scope.row)">修改</el-button>
-          <el-button v-auth="'remove'" link type="primary" icon="Delete" @click="handleDelete(scope.row)">
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <pagination
-      v-show="total > 0"
-      v-model:page="queryParams.pageNum"
-      v-model:limit="queryParams.pageSize"
-      :total="total"
-      @pagination="getList"
-    />
-
-    <!-- 添加或修改岗位对话框 -->
-    <el-dialog v-model="open" :title="title" width="500px" append-to-body>
-      <el-form ref="postRef" :model="form" :rules="rules" label-width="80px">
-        <el-form-item label="岗位名称" prop="postName">
-          <el-input v-model="form.postName" placeholder="请输入岗位名称" />
-        </el-form-item>
-        <el-form-item label="岗位编码" prop="postCode">
-          <el-input v-model="form.postCode" placeholder="请输入编码名称" />
-        </el-form-item>
-        <el-form-item label="岗位顺序" prop="postSort">
-          <el-input-number v-model="form.postSort" controls-position="right" :min="0" />
-        </el-form-item>
-        <el-form-item label="岗位状态" prop="status">
-          <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="备注" prop="remark">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
-          <el-button @click="cancel">取 消</el-button>
-        </div>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { listPost, addPost, delPost, getPost, updatePost } from "@/api/system/post";
+<script setup lang="tsx">
+import { listPost, delPost } from "@/api/system/post";
+import { ListPostDto, SysPostVo } from "#/api/system/post";
 import { parseTime } from "@/utils";
 import { useDict } from "@/hooks/useDict";
-import { FormInstance } from "element-plus";
+import { VxeGridProps } from "vxe-table";
+import { useTable } from "@/hooks/useVxetable";
+import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
+import EditPostForm from "./components/EditPostForm.vue";
+import { SearchProps } from "@/components/SearchForm/type";
 
 defineOptions({
   name: "Post"
 });
 const { proxy } = getCurrentInstance();
+const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const postList = ref([]);
-const open = ref(false);
-const loading = ref(true);
-const showSearch = ref(true);
-const ids = ref([]);
-const single = ref(true);
-const multiple = ref(true);
-const total = ref(0);
-const title = ref("");
-
-const postRef = ref(null);
-const queryRef = ref(null);
-const data = reactive({
-  form: {
-    postId: undefined,
-    postCode: undefined,
-    postName: undefined,
-    postSort: 0,
-    status: "0",
-    remark: undefined
+const searchList = reactive<SearchProps[]>([
+  {
+    el: "input",
+    prop: "postCode",
+    label: "岗位编码"
   },
-  queryParams: {
-    pageNum: 1,
-    pageSize: 10,
-    postCode: undefined,
-    postName: undefined,
-    status: undefined
+  {
+    el: "input",
+    prop: "postName",
+    label: "岗位名称"
   },
-  rules: {
-    postName: [{ required: true, message: "岗位名称不能为空", trigger: "blur" }],
-    postCode: [{ required: true, message: "岗位编码不能为空", trigger: "blur" }],
-    postSort: [{ required: true, message: "岗位顺序不能为空", trigger: "blur" }]
+  {
+    el: "select",
+    prop: "status",
+    label: "状态",
+    options: StatusEnum
   }
+]);
+const apiQuery = reactive<ListPostDto>({
+  postCode: undefined,
+  postName: undefined,
+  status: undefined
 });
 
-const { queryParams, form, rules } = toRefs(data);
+const toolbarButtons: BtnOptionsProps[] = [
+  {
+    btnText: "新增",
+    props: {
+      type: "primary",
+      plain: true,
+      icon: "Plus"
+    },
+    authCode: "add",
+    handleClick: () => {
+      handleAdd();
+    }
+  },
+  {
+    btnText: "删除",
+    props: {
+      type: "danger",
+      plain: true,
+      icon: "Delete"
+    },
+    authCode: "remove",
+    handleClick: () => {
+      handleDelete();
+    },
+    disabled: () => {
+      return !selectRows.value.length;
+    },
+    disabledTooltip: `请先勾选删除项`
+  },
+  {
+    btnText: "导出",
+    props: {
+      type: "warning",
+      plain: true,
+      icon: "Download"
+    },
+    authCode: "export",
+    handleClick: () => {
+      handleExport();
+    }
+  }
+];
 
-/** 查询岗位列表 */
-function getList() {
-  loading.value = true;
-  listPost(queryParams.value).then(response => {
-    postList.value = response.data.list;
-    total.value = response.data.total;
-    loading.value = false;
-  });
-}
-/** 取消按钮 */
-function cancel() {
-  open.value = false;
-  reset();
-}
-/** 表单重置 */
-function reset() {
-  form.value = {
-    postId: undefined,
-    postCode: undefined,
-    postName: undefined,
-    postSort: 0,
-    status: "0",
-    remark: undefined
-  };
-  resetForm(postRef.value);
-}
-function resetForm(formEl: FormInstance | undefined) {
-  formEl && formEl.resetFields();
-}
-/** 搜索按钮操作 */
-function handleQuery() {
-  queryParams.value.pageNum = 1;
-  getList();
-}
-/** 重置按钮操作 */
-function resetQuery() {
-  resetForm(queryRef.value);
-  handleQuery();
-}
-/** 多选框选中数据 */
-function handleSelectionChange(selection) {
-  ids.value = selection.map(item => item.postId);
-  single.value = selection.length != 1;
-  multiple.value = !selection.length;
-}
-/** 新增按钮操作 */
-function handleAdd() {
-  reset();
-  open.value = true;
-  title.value = "添加岗位";
-}
-/** 修改按钮操作 */
-function handleUpdate(row) {
-  reset();
-  const postId = row?.postId || ids.value;
-  getPost(postId).then(response => {
-    form.value = response.data;
-    open.value = true;
-    title.value = "修改岗位";
-  });
-}
-/** 提交按钮 */
-function submitForm() {
-  unref(postRef).validate(valid => {
-    if (valid) {
-      if (form.value.postId != undefined) {
-        updatePost(form.value).then(response => {
-          proxy.$message.success("修改成功");
-          open.value = false;
-          getList();
-        });
-      } else {
-        addPost(form.value).then(response => {
-          proxy.$message.success("新增成功");
-          open.value = false;
-          getList();
-        });
+const gridOptions = reactive<VxeGridProps<SysPostVo>>({
+  height: "auto",
+  loading: true,
+  checkboxConfig: {
+    reserve: true
+  },
+  pagerConfig: {
+    total: 0,
+    currentPage: 1,
+    pageSize: 10
+  },
+  toolbarConfig: {
+    refresh: {
+      queryMethod: () => {
+        return initListSearch();
+      }
+    },
+    slots: {
+      buttons: "toolbar_buttons"
+    }
+  },
+  id: route.path, // 用户个性化记忆功能，必须确保 id 是整个全局唯一的
+  customConfig: {
+    storage: true, // 存储key VXE_CUSTOM_STORE
+    checkMethod({ column }) {
+      return !["checkbox", "tools"].includes(column.field);
+    }
+  },
+  columns: [
+    { field: "checkbox", type: "checkbox", width: 60, fixed: "left" },
+    { field: "postId", title: "岗位编号" },
+    { field: "postCode", title: "岗位编码" },
+    { field: "postName", title: "岗位名称" },
+    { field: "postSort", title: "岗位排序" },
+    {
+      field: "status",
+      title: "状态",
+      slots: {
+        default({ row }) {
+          return <dict-tag options={StatusEnum.value} value={row.status} />;
+        }
+      }
+    },
+    {
+      field: "createTime",
+      title: "创建时间",
+      width: 150,
+      formatter: ({ row }) => {
+        return parseTime(row.createTime);
+      }
+    },
+    {
+      field: "tools",
+      title: "操作",
+      width: 210,
+      fixed: "right",
+      slots: {
+        default: "tools_slot"
       }
     }
-  });
+  ],
+  data: []
+});
+
+const { gridRef, gridEvents, selectRows, initListSearch, resetListSearch } = useTable({
+  gridOptions,
+  getListApi: listPost,
+  apiQuery
+});
+
+const rowButtons: BtnOptionsProps<SysPostVo>[] = [
+  {
+    btnText: "修改",
+    props: {
+      type: "primary",
+      plain: true,
+      icon: "Edit"
+    },
+    authCode: "edit",
+    handleClick: ({ row }) => {
+      handleUpdate(row);
+    }
+  },
+  {
+    btnText: "删除",
+    props: {
+      type: "danger",
+      plain: true,
+      icon: "Delete"
+    },
+    authCode: "remove",
+    handleClick: ({ row }) => {
+      handleDelete(row);
+    }
+  }
+];
+
+initListSearch();
+
+/** 重置按钮操作 */
+function handleReset() {
+  resetListSearch();
 }
+
 /** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row = null) {
   const postIds = (row ? [row.postId] : ids.value).join(",");
   proxy.$modal
     .confirm('是否确认删除岗位编号为"' + postIds + '"的数据项？')
@@ -254,21 +197,70 @@ function handleDelete(row) {
       return delPost(postIds);
     })
     .then(() => {
-      getList();
+      initListSearch();
       proxy.$message.success("删除成功");
     })
     .catch(() => {});
 }
+
 /** 导出按钮操作 */
 function handleExport() {
   proxy.$file.download(
     "system/post/export",
     {
-      ...queryParams.value
+      pageNum: gridOptions.pagerConfig.currentPage,
+      pageSize: gridOptions.pagerConfig.pageSize,
+      ...apiQuery
     },
     `post_${new Date().getTime()}.xlsx`
   );
 }
 
-getList();
+/*** 用户编辑弹窗参数 */
+const editDialog = reactive({
+  // 是否显示弹出层（用户导入）
+  open: false,
+  // 弹出层标题（用户导入）
+  title: "",
+  postId: undefined
+});
+/** 新增按钮操作 */
+function handleAdd() {
+  editDialog.postId = undefined;
+  editDialog.open = true;
+  editDialog.title = "添加岗位";
+}
+/** 修改按钮操作 */
+function handleUpdate(row) {
+  editDialog.postId = row.postId;
+  editDialog.open = true;
+  editDialog.title = "修改岗位";
+}
 </script>
+
+<template>
+  <div class="app-page cz-card pt-16">
+    <!--表格数据-->
+    <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
+      <template #form>
+        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+      </template>
+      <template #toolbar_buttons>
+        <ToolButtons :buttons="toolbarButtons" size="default" />
+      </template>
+      <template #tools_slot="data">
+        <ToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
+      </template>
+    </vxe-grid>
+
+    <!-- 添加或修改对话框 -->
+    <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
+      <EditPostForm
+        v-if="editDialog.open"
+        :postId="editDialog.postId"
+        @success="initListSearch"
+        @cancel="editDialog.open = false"
+      />
+    </el-dialog>
+  </div>
+</template>

@@ -1,7 +1,7 @@
 <template>
   <div class="app-page">
-    <el-row>
-      <el-col :span="12" class="card-box">
+    <el-row :gutter="10">
+      <el-col :span="12">
         <el-card>
           <template #header
             ><Cpu style="width: 1em; height: 1em; vertical-align: middle" />
@@ -60,7 +60,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12" class="card-box">
+      <el-col :span="12">
         <el-card>
           <template #header
             ><Tickets style="width: 1em; height: 1em; vertical-align: middle" />
@@ -136,7 +136,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="24" class="card-box">
+      <el-col :span="24" class="mt-10">
         <el-card>
           <template #header
             ><Monitor style="width: 1em; height: 1em; vertical-align: middle" />
@@ -186,44 +186,8 @@
           </div>
         </el-card>
       </el-col>
-      <!-- 
-      <el-col :span="24" class="card-box">
-        <el-card>
-          <template #header><CoffeeCup style="width: 1em; height: 1em; vertical-align: middle;" /> <span style="vertical-align: middle;">Java虚拟机信息</span></template>
-          <div class="el-table el-table--enable-row-hover el-table--medium">
-            <table cellspacing="0" style="width: 100%;table-layout:fixed;">
-              <tbody>
-                <tr>
-                  <td class="el-table__cell is-leaf"><div class="cell">Java名称</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.name }}</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell">Java版本</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.version }}</div></td>
-                </tr>
-                <tr>
-                  <td class="el-table__cell is-leaf"><div class="cell">启动时间</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.startTime }}</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell">运行时长</div></td>
-                  <td class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.runTime }}</div></td>
-                </tr>
-                <tr>
-                  <td colspan="1" class="el-table__cell is-leaf"><div class="cell">安装路径</div></td>
-                  <td colspan="3" class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.home }}</div></td>
-                </tr>
-                <tr>
-                  <td colspan="1" class="el-table__cell is-leaf"><div class="cell">项目路径</div></td>
-                  <td colspan="3" class="el-table__cell is-leaf"><div class="cell" v-if="server.sys">{{ server.sys.userDir }}</div></td>
-                </tr>
-                <tr>
-                  <td colspan="1" class="el-table__cell is-leaf"><div class="cell">运行参数</div></td>
-                  <td colspan="3" class="el-table__cell is-leaf"><div class="cell" v-if="server.jvm">{{ server.jvm.inputArgs }}</div></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </el-card>
-      </el-col> -->
 
-      <el-col :span="24" class="card-box">
+      <el-col :span="24" class="mt-10">
         <el-card>
           <template #header
             ><MessageBox style="width: 1em; height: 1em; vertical-align: middle" />

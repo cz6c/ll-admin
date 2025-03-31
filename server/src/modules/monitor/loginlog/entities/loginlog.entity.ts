@@ -1,4 +1,4 @@
-import { StatusEnum } from '@/common/enum/dict';
+import { SuccessErrorEnum } from '@/common/enum/dict';
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
 @Entity('sys_logininfor', { comment: '系统访问记录' })
@@ -28,7 +28,7 @@ export class MonitorLoginlogEntity {
   @Column({ type: 'varchar', name: 'msg', length: 255, default: '', comment: '提示消息' })
   public msg: string;
 
-  //0正常 1停用
-  @Column({ type: 'enum', enum: StatusEnum, default: StatusEnum.NORMAL, name: 'status', comment: '状态' })
-  public status: StatusEnum;
+  //0失败 1成功
+  @Column({ type: 'enum', enum: SuccessErrorEnum, default: SuccessErrorEnum.SUCCESS, name: 'status', comment: '状态' })
+  public status: SuccessErrorEnum;
 }

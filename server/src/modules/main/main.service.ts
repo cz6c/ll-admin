@@ -6,7 +6,7 @@ import { LoginlogService } from '../monitor/loginlog/loginlog.service';
 import { AxiosService } from '@/plugins/axios.service';
 import { RegisterDto, LoginDto } from './dto/index';
 import { MenuService } from '../system/menu/menu.service';
-import { StatusEnum } from '@/common/enum/dict';
+import { SuccessErrorEnum } from '@/common/enum/dict';
 import { getEnum2Array } from '@/common/enum';
 import { ClientInfoDto } from '../monitor/loginlog/dto';
 import { RedisService } from '../redis/redis.service';
@@ -30,7 +30,7 @@ export class MainService {
     const loginLog = {
       ...clientInfo,
       userName: user.userName,
-      status: StatusEnum.NORMAL,
+      status: SuccessErrorEnum.SUCCESS,
       msg: '',
       loginLocation: '',
     };
@@ -39,7 +39,7 @@ export class MainService {
       loginLog.loginLocation = loginLocation;
     } catch (error) {}
     const loginRes = await this.userService.login(user, loginLog);
-    loginLog.status = loginRes.code === SUCCESS_CODE ? StatusEnum.NORMAL : StatusEnum.STOP;
+    loginLog.status = loginRes.code === SUCCESS_CODE ? SuccessErrorEnum.SUCCESS : SuccessErrorEnum.FAIL;
     loginLog.msg = loginRes.msg;
     this.loginlogService.create(loginLog);
     return loginRes;

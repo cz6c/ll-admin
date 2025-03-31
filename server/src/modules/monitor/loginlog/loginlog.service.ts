@@ -41,7 +41,7 @@ export class LoginlogService {
     }
 
     if (query.status) {
-      entity.andWhere('user.status = :status', { status: query.status });
+      entity.andWhere('entity.status = :status', { status: query.status });
     }
 
     if (query?.beginTime && query?.endTime) {

@@ -1,7 +1,7 @@
 import { IsString, Length, IsOptional, IsEnum } from 'class-validator';
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import { PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum/dict';
+import { SuccessErrorEnum } from '@/common/enum/dict';
 
 export class CreateLoginlogDto {
   @ApiProperty({ required: true })
@@ -35,8 +35,8 @@ export class CreateLoginlogDto {
   msg: string;
 
   @ApiProperty({ required: true })
-  @IsEnum(StatusEnum)
-  status: StatusEnum;
+  @IsEnum(SuccessErrorEnum)
+  status: SuccessErrorEnum;
 }
 
 export class ClientInfoDto extends PickType(CreateLoginlogDto, ['ipaddr', 'os', 'browser'] as const) {}
@@ -56,8 +56,8 @@ export class ListLoginlogDto extends PagingDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsEnum(StatusEnum)
-  status: StatusEnum;
+  @IsEnum(SuccessErrorEnum)
+  status: SuccessErrorEnum;
 }
 
 export class MonitorLoginlogVO {
@@ -87,8 +87,8 @@ export class MonitorLoginlogVO {
 
   @ApiProperty({
     description: '状态（0正常 1停用）',
-    enum: StatusEnum,
-    example: StatusEnum.NORMAL,
+    enum: SuccessErrorEnum,
+    example: SuccessErrorEnum.SUCCESS,
   })
-  public status: StatusEnum;
+  public status: SuccessErrorEnum;
 }

@@ -1,7 +1,7 @@
 <template>
   <div class="app-page">
-    <el-row>
-      <el-col :span="24" class="card-box">
+    <el-row :gutter="10">
+      <el-col :span="24" class="mb-10">
         <el-card>
           <template #header
             ><Monitor style="width: 1em; height: 1em; vertical-align: middle" />

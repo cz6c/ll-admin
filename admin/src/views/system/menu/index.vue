@@ -8,6 +8,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditMenuForm from "./components/EditMenuForm.vue";
+import { findPath } from "@/utils/tree";
 
 defineOptions({
   name: "MenuIndex"
@@ -254,7 +255,12 @@ const editDialog = reactive({
 function handleAdd(row, isPerm = false) {
   editDialog.menuId = undefined;
   editDialog.parentId = row ? row.menuId : 0;
-  editDialog.parentName = row ? row.menuName : "";
+  // editDialog.parentName = row ? row.menuName : "";
+  editDialog.parentName = row
+    ? findPath(gridOptions.data, c => c.menuName === row.menuName)
+        .map(c => c.menuName)
+        .join(">")
+    : "";
   editDialog.isPerm = isPerm;
   editDialog.title = !isPerm ? "添加菜单" : "添加功能";
   editDialog.open = true;

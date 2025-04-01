@@ -8,6 +8,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditDeptForm from "./components/EditDeptForm.vue";
+import { findPath } from "@/utils/tree";
 
 defineOptions({
   name: "Dept"
@@ -147,9 +148,6 @@ const rowButtons: BtnOptionsProps<DeptTreeVo>[] = [
       icon: "Plus"
     },
     authCode: "add",
-    // visible: ({ row }) => {
-    //   return row.menuType === "M" && row.parentId === 0;
-    // },
     handleClick: ({ row }) => {
       handleAdd(row);
     }
@@ -214,7 +212,11 @@ const editDialog = reactive({
 function handleAdd(row) {
   editDialog.deptId = undefined;
   editDialog.parentId = row ? row.deptId : 0;
-  editDialog.parentName = row ? row.deptName : "";
+  editDialog.parentName = row
+    ? findPath(gridOptions.data, c => c.deptName === row.deptName)
+        .map(c => c.deptName)
+        .join(">")
+    : "";
   editDialog.title = row ? "添加子部门" : "添加部门";
   editDialog.open = true;
 }

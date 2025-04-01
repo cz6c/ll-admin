@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
 import { DataScopeEnum, DelFlagEnum } from '@/common/enum/dict';
 import { listToTree } from '@/common/utils/tree';
 import { SysRoleWithDeptEntity } from '../role/entities/role-dept.entity';
+import { Uniq } from '@/common/utils';
 
 @Injectable()
 export class DeptService {
@@ -33,7 +34,7 @@ export class DeptService {
         select: ['ancestors'],
       });
       if (!parent) {
-        return ResultData.fail(500, '父级部门不存在');
+        return ResultData.fail(500, '父级不存在');
       }
       const ancestors = parent.ancestors ? `${parent.ancestors},${createDeptDto.parentId}` : `${createDeptDto.parentId}`;
       Object.assign(createDeptDto, { ancestors: ancestors });
@@ -58,7 +59,24 @@ export class DeptService {
     }
     entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
-    const tree = listToTree(res, {
+    // 获取查询结果的所有祖级节点
+    let ancestors = [];
+    if (query.deptName || query.status) {
+      let ids = [];
+      // 合并祖级ids 去重
+      ids = Uniq(res.reduce((pre, cur) => pre.concat(cur.ancestors.split(',').map((c) => +c)), []));
+      // 过滤掉查询结果
+      ids = ids.filter((c) => !res.some((z) => z.deptId === c));
+      if (ids.length > 0) {
+        ancestors = await this.sysDeptEntityRep.find({
+          where: {
+            deptId: In(ids),
+            delFlag: DelFlagEnum.NORMAL,
+          },
+        });
+      }
+    }
+    const tree = listToTree(res.concat(ancestors), {
       id: 'deptId',
     });
     return ResultData.ok(tree);
@@ -77,14 +95,15 @@ export class DeptService {
       },
     });
     let parentName = '';
-    if (res.parentId !== 0) {
-      const parent = await this.sysDeptEntityRep.findOne({
+    if (res.ancestors) {
+      const parents = await this.sysDeptEntityRep.find({
         where: {
+          deptId: In(res.ancestors.split(',').map((c) => +c)),
           delFlag: DelFlagEnum.NORMAL,
-          deptId: res.parentId,
         },
+        select: ['deptName'],
       });
-      parentName = parent.deptName;
+      parentName = parents.map((c) => c.deptName).join('>');
     }
     return ResultData.ok({ ...res, parentName });
   }
@@ -105,7 +124,7 @@ export class DeptService {
         select: ['ancestors'],
       });
       if (!parent) {
-        return ResultData.fail(500, '父级部门不存在');
+        return ResultData.fail(500, '父级不存在');
       }
       const ancestors = parent.ancestors ? `${parent.ancestors},${updateDeptDto.parentId}` : `${updateDeptDto.parentId}`;
       Object.assign(updateDeptDto, { ancestors: ancestors });
@@ -123,6 +142,26 @@ export class DeptService {
   async remove(deptId: number, userId: number) {
     await this.sysDeptEntityRep.update(
       { deptId: deptId },
+      {
+        delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
+      },
+    );
+    // 同步删除子集
+    const all = await this.sysDeptEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+      select: ['deptId', 'ancestors'],
+    });
+    const ids = all.filter((c) =>
+      c.ancestors
+        .split(',')
+        .map((c) => +c)
+        .includes(deptId),
+    );
+    await this.sysDeptEntityRep.update(
+      { deptId: In(ids.map((c) => c.deptId)) },
       {
         delFlag: DelFlagEnum.DELETE,
         updateBy: userId,

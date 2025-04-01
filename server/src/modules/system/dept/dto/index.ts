@@ -64,7 +64,7 @@ export class SysDeptVo extends BaseVO {
   @ApiProperty({ description: '父部门ID', example: 0 })
   public parentId: number;
 
-  @ApiProperty({ description: '祖级列表（用于表示部门层级关系）', example: '0,1,2' })
+  @ApiProperty({ description: '祖级列表（表示层级关系）', example: '0,1,2' })
   public ancestors: string;
 
   @ApiProperty({ description: '部门名称', example: '人力资源部' })

@@ -9,7 +9,6 @@ export type UpdateDeptDto = {
   status: string;
   phone?: string;
   email?: string;
-  ancestors?: string;
 };
 
 export type ListDeptDto = {

@@ -13,6 +13,9 @@ export class SysMenuEntity extends BaseEntity {
   @Column({ type: 'int', name: 'parent_id', comment: '父菜单ID' })
   public parentId: number;
 
+  @Column({ type: 'varchar', name: 'ancestors', length: 50, default: '0', comment: '祖级列表' })
+  public ancestors: string;
+
   @Column({ type: 'int', name: 'order_num', default: 0, comment: '显示顺序' })
   public orderNum: number;
 

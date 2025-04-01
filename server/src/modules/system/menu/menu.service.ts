@@ -28,6 +28,20 @@ export class MenuService {
    * @return
    */
   async create(createMenuDto: CreateMenuDto, userId: number) {
+    if (createMenuDto.parentId) {
+      const parent = await this.sysMenuEntityRep.findOne({
+        where: {
+          menuId: createMenuDto.parentId,
+          delFlag: DelFlagEnum.NORMAL,
+        },
+        select: ['ancestors'],
+      });
+      if (!parent) {
+        return ResultData.fail(500, '父级不存在');
+      }
+      const ancestors = parent.ancestors ? `${parent.ancestors},${createMenuDto.parentId}` : `${createMenuDto.parentId}`;
+      Object.assign(createMenuDto, { ancestors: ancestors });
+    }
     await this.sysMenuEntityRep.save({ ...createMenuDto, createBy: userId });
     return ResultData.ok();
   }
@@ -49,7 +63,24 @@ export class MenuService {
     }
     entity.orderBy('entity.orderNum', 'ASC');
     const res = await entity.getMany();
-    const tree = listToTree(res, {
+    // 获取查询结果的所有祖级节点
+    let ancestors = [];
+    if (query.menuName || query.status) {
+      let ids = [];
+      // 合并祖级ids 去重
+      ids = Uniq(res.reduce((pre, cur) => pre.concat(cur.ancestors.split(',').map((c) => +c)), []));
+      // 过滤掉查询结果
+      ids = ids.filter((c) => !res.some((z) => z.menuId === c));
+      if (ids.length > 0) {
+        ancestors = await this.sysMenuEntityRep.find({
+          where: {
+            menuId: In(ids),
+            delFlag: DelFlagEnum.NORMAL,
+          },
+        });
+      }
+    }
+    const tree = listToTree(res.concat(ancestors), {
       id: 'menuId',
     });
     return ResultData.ok(tree);
@@ -98,14 +129,15 @@ export class MenuService {
       },
     });
     let parentName = '';
-    if (res.parentId !== 0) {
-      const parent = await this.sysMenuEntityRep.findOne({
+    if (res.ancestors) {
+      const parents = await this.sysMenuEntityRep.find({
         where: {
+          menuId: In(res.ancestors.split(',').map((c) => +c)),
           delFlag: DelFlagEnum.NORMAL,
-          menuId: res.parentId,
         },
+        select: ['menuName'],
       });
-      parentName = parent.menuName;
+      parentName = parents.map((c) => c.menuName).join('>');
     }
     return ResultData.ok({ ...res, parentName });
   }
@@ -117,6 +149,20 @@ export class MenuService {
    * @return
    */
   async update(updateMenuDto: UpdateMenuDto, userId: number) {
+    if (updateMenuDto.parentId && updateMenuDto.parentId !== 0) {
+      const parent = await this.sysMenuEntityRep.findOne({
+        where: {
+          menuId: updateMenuDto.parentId,
+          delFlag: DelFlagEnum.NORMAL,
+        },
+        select: ['ancestors'],
+      });
+      if (!parent) {
+        return ResultData.fail(500, '父级不存在');
+      }
+      const ancestors = parent.ancestors ? `${parent.ancestors},${updateMenuDto.parentId}` : `${updateMenuDto.parentId}`;
+      Object.assign(updateMenuDto, { ancestors: ancestors });
+    }
     await this.sysMenuEntityRep.update({ menuId: updateMenuDto.menuId }, { ...updateMenuDto, updateBy: userId });
     return ResultData.ok();
   }
@@ -130,6 +176,26 @@ export class MenuService {
   async remove(menuId: number, userId: number) {
     await this.sysMenuEntityRep.update(
       { menuId: menuId },
+      {
+        delFlag: DelFlagEnum.DELETE,
+        updateBy: userId,
+      },
+    );
+    // 同步删除子集
+    const all = await this.sysMenuEntityRep.find({
+      where: {
+        delFlag: DelFlagEnum.NORMAL,
+      },
+      select: ['menuId', 'ancestors'],
+    });
+    const ids = all.filter((c) =>
+      c.ancestors
+        .split(',')
+        .map((c) => +c)
+        .includes(menuId),
+    );
+    await this.sysMenuEntityRep.update(
+      { menuId: In(ids.map((c) => c.menuId)) },
       {
         delFlag: DelFlagEnum.DELETE,
         updateBy: userId,

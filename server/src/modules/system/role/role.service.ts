@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindManyOptions } from 'typeorm';
+import { Repository, In, FindManyOptions, EntityManager } from 'typeorm';
 import { Response } from 'express';
 import { ResultData } from '@/common/utils/result';
 import { ExportTable } from '@/common/utils/export';
@@ -20,35 +20,8 @@ export class RoleService {
     private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>,
     @InjectRepository(SysRoleWithDeptEntity)
     private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
+    private entityManager: EntityManager,
   ) {}
-
-  // 关联菜单
-  sysRoleWithMenu(menuIds: number[], roleId: number) {
-    if (menuIds.length > 0) {
-      const entity = this.sysRoleWithMenuEntityRep.createQueryBuilder('entity');
-      const values = menuIds.map((id) => {
-        return {
-          roleId: roleId,
-          menuId: id,
-        };
-      });
-      entity.insert().values(values).execute();
-    }
-  }
-
-  sysRoleWithDept(deptIds: number[], roleId: number) {
-    // 关联部门
-    if (deptIds.length > 0) {
-      const entity = this.sysRoleWithDeptEntityRep.createQueryBuilder('entity');
-      const values = deptIds.map((id) => {
-        return {
-          roleId: roleId,
-          deptId: id,
-        };
-      });
-      entity.insert().values(values).execute();
-    }
-  }
 
   /**
    * @description: 创建角色
@@ -61,12 +34,29 @@ export class RoleService {
     delete createRoleDto.menuIds;
     delete createRoleDto.deptIds;
 
-    const res = await this.sysRoleEntityRep.save({ ...createRoleDto, createBy: userId });
+    return this.entityManager
+      .transaction(async (manager) => {
+        const role = await manager.save(SysRoleEntity, { ...createRoleDto, createBy: userId });
 
-    this.sysRoleWithMenu(menuIds, res.roleId);
-    this.sysRoleWithDept(deptIds, res.roleId);
+        if (menuIds?.length > 0) {
+          await manager.insert(
+            SysRoleWithMenuEntity,
+            menuIds.map((menuId) => ({ roleId: role.roleId, menuId })),
+          );
+        }
 
-    return ResultData.ok();
+        if (deptIds?.length > 0) {
+          await manager.insert(
+            SysRoleWithDeptEntity,
+            deptIds.map((deptId) => ({ roleId: role.roleId, deptId })),
+          );
+        }
+
+        return ResultData.ok();
+      })
+      .catch((err) => {
+        return ResultData.fail(400, '角色创建失败', err);
+      });
   }
 
   /**
@@ -131,40 +121,34 @@ export class RoleService {
     delete updateRoleDto.menuIds;
     delete updateRoleDto.deptIds;
 
-    // 关联菜单
-    const hasId = await this.sysRoleWithMenuEntityRep.findOne({
-      where: {
-        roleId: updateRoleDto.roleId,
-      },
-      select: ['menuId'],
-    });
-    //角色已关联菜单 先删除关联
-    if (hasId) {
-      await this.sysRoleWithMenuEntityRep.delete({
-        roleId: updateRoleDto.roleId,
-      });
-    }
-    // 角色重新关联菜单 TODO 后续改造为事务
-    this.sysRoleWithMenu(menuIds, updateRoleDto.roleId);
+    return this.entityManager
+      .transaction(async (manager) => {
+        // 1. 更新角色基本信息
+        await manager.update(SysRoleEntity, { roleId: updateRoleDto.roleId }, { ...updateRoleDto, updateBy: userId });
 
-    // 关联部门
-    const hasId1 = await this.sysRoleWithDeptEntityRep.findOne({
-      where: {
-        roleId: updateRoleDto.roleId,
-      },
-      select: ['deptId'],
-    });
-    //角色已关联部门 先删除关联
-    if (hasId1) {
-      await this.sysRoleWithDeptEntityRep.delete({
-        roleId: updateRoleDto.roleId,
-      });
-    }
-    // 角色重新关联部门 TODO 后续改造为事务
-    this.sysRoleWithDept(deptIds, updateRoleDto.roleId);
+        // 2. 处理菜单关联
+        await manager.delete(SysRoleWithMenuEntity, { roleId: updateRoleDto.roleId });
+        if (menuIds?.length > 0) {
+          await manager.insert(
+            SysRoleWithMenuEntity,
+            menuIds.map((menuId) => ({ roleId: updateRoleDto.roleId, menuId })),
+          );
+        }
 
-    await this.sysRoleEntityRep.update({ roleId: updateRoleDto.roleId }, { ...updateRoleDto, updateBy: userId });
-    return ResultData.ok();
+        // 3. 处理部门关联
+        await manager.delete(SysRoleWithDeptEntity, { roleId: updateRoleDto.roleId });
+        if (deptIds?.length > 0) {
+          await manager.insert(
+            SysRoleWithDeptEntity,
+            deptIds.map((deptId) => ({ roleId: updateRoleDto.roleId, deptId })),
+          );
+        }
+
+        return ResultData.ok();
+      })
+      .catch((err) => {
+        return ResultData.fail(400, '角色更新失败', err);
+      });
   }
 
   /**

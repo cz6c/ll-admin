@@ -4,11 +4,11 @@ import { ProductItem } from "@/api/product/spu/index.d";
 import GenerateSku from "./components/GenerateSku.vue";
 import { useCategory } from "@/views/product/category/useCategory";
 import { FormItem, FormViewInstance } from "@/components/FormView/index.d";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "SpuForm"
 });
-const { proxy } = getCurrentInstance();
 
 const { options, getCategoryTrees } = useCategory();
 getCategoryTrees();
@@ -128,7 +128,7 @@ const sumbit = () => {
     try {
       await api(json);
       loading.value = false;
-      proxy.$message.success("提交成功");
+      $feedback.message.success("提交成功");
       router.go(-1);
     } catch (error) {
       loading.value = false;

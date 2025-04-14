@@ -2,6 +2,7 @@
 import { listNotice, delNotice } from "@/api/system/notice";
 import { ListNoticeDto, SysNoticeVo } from "#/api/system/notice";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -12,7 +13,7 @@ import { SearchProps } from "@/components/SearchForm/type";
 defineOptions({
   name: "Notice"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { StatusEnum, NoticeTypeEnum } = toRefs(useDict("StatusEnum", "NoticeTypeEnum"));
@@ -203,14 +204,14 @@ function handleReset() {
 function handleDelete(row = null) {
   const ids = unref(selectRows).map(item => item.noticeId);
   const noticeIds = (row ? [row.noticeId] : ids).join(",");
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除公告编号为"' + noticeIds + '"的数据项？')
     .then(function () {
       return delNotice(noticeIds);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }

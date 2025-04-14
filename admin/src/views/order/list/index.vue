@@ -7,11 +7,11 @@ import { getOrderListApi, delOrderApi } from "@/api/order";
 import { OrderItem, OrderState, PayChannel } from "@/api/order/index.d";
 import { dayjs } from "element-plus";
 import { enumToOpts } from "@/utils";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "OrderList"
 });
-const { proxy } = getCurrentInstance();
 
 const getListApi = getOrderListApi;
 const delApi = delOrderApi;
@@ -182,9 +182,9 @@ async function del(id: string) {
       try {
         await delApi({ id });
         getList();
-        proxy.$message.success(`删除成功`);
+        $feedback.message.success(`删除成功`);
       } catch (error: any) {
-        proxy.$message.error(error.message);
+        $feedback.message.error(error.message);
       }
     })
     .catch();

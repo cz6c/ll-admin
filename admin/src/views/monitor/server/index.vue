@@ -1,6 +1,7 @@
 <template>
   <div class="app-page">
-    <el-row :gutter="10">
+    <el-button class="mb-10" @click="print">打印</el-button>
+    <el-row ref="printRef" :gutter="10">
       <el-col :span="12">
         <el-card>
           <template #header
@@ -255,18 +256,25 @@
 
 <script setup>
 import { getServer } from "@/api/monitor/server";
+import Print from "@/utils/print";
+import $feedback from "@/utils/feedback";
 
 const server = ref({});
-const { proxy } = getCurrentInstance();
 
 function getList() {
-  proxy.$modal.loading("正在加载服务监控数据，请稍候！");
+  $feedback.loading("正在加载服务监控数据，请稍候！");
   getServer().then(response => {
     console.log(response);
     server.value = response.data;
-    proxy.$modal.closeLoading();
+    $feedback.closeLoading();
   });
 }
 
 getList();
+
+const printRef = ref(null);
+
+const print = () => {
+  new Print(printRef.value);
+};
 </script>

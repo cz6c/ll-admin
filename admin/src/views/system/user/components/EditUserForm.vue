@@ -4,10 +4,11 @@ import { listRole } from "@/api/system/role";
 import { listPost } from "@/api/system/post";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
+
 defineOptions({
   name: "EditUserForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   deptOptions: { type: Array, default: () => [] },
@@ -103,7 +104,7 @@ function submitForm() {
     if (valid) {
       const flag = form.value.userId != undefined;
       flag ? await updateUser(form.value) : await addUser(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

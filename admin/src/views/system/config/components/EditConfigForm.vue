@@ -2,10 +2,11 @@
 import { addConfig, getConfig, updateConfig } from "@/api/system/config";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
+
 defineOptions({
   name: "EditConfigForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   configId: { type: Number }
@@ -48,7 +49,7 @@ function submitForm() {
     if (valid) {
       const flag = form.value.configId != undefined;
       flag ? await updateConfig(form.value) : await addConfig(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

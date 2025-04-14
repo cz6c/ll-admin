@@ -2,6 +2,8 @@
 import { changeRoleStatus, delRole, listRole } from "@/api/system/role";
 import { ListRoleDto, SysRoleVo } from "#/api/system/role";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
+import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import EditRoleForm from "./components/EditRoleForm.vue";
 import { SearchProps } from "@/components/SearchForm/type";
@@ -12,7 +14,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 defineOptions({
   name: "Role"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
@@ -221,20 +223,20 @@ function handleReset() {
 function handleDelete(row = null) {
   const ids = unref(selectRows).map(item => item.roleId);
   const roleIds = (row ? [row.roleId] : ids).join(",");
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除角色编号为"' + roleIds + '"的数据项?')
     .then(function () {
       return delRole(roleIds);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "system/role/export",
     {
       pageNum: gridOptions.pagerConfig.currentPage,
@@ -247,13 +249,13 @@ function handleExport() {
 /** 角色状态修改 */
 function handleStatusChange(row) {
   let text = row.status === "0" ? "启用" : "停用";
-  proxy.$modal
+  $feedback
     .confirm('确认要"' + text + '""' + row.roleName + '"角色吗?')
     .then(function () {
       return changeRoleStatus({ roleId: row.roleId, status: row.status });
     })
     .then(() => {
-      proxy.$message.success(text + "成功");
+      $feedback.message.success(text + "成功");
     })
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";

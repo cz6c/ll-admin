@@ -1,6 +1,6 @@
 import type { ListParams } from "#/api/index.d";
 import { isFunction } from "@/utils/is";
-import $message from "@/utils/message";
+import $feedback from "@/utils/feedback";
 import { cloneDeep } from "lodash-es";
 
 export interface Params {
@@ -40,7 +40,7 @@ export function useTable({ getListApi, apiQuery, beforeFetch, afterFetch }: Para
       }
     } catch (error: any) {
       console.log(error);
-      $message.warning(error.message);
+      $feedback.message.warning(error.message);
     } finally {
       state.loading = false;
     }

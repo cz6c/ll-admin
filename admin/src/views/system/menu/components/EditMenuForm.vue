@@ -3,11 +3,11 @@ import { updateMenu, addMenu, getMenuDetail } from "@/api/system/menu";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules, ClickOutside as vClickOutside } from "element-plus";
 import IconSelect from "@/components/IconSelect/index.vue";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "EditMenuForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   menuId: { type: Number },
@@ -99,7 +99,7 @@ function submitForm() {
     if (valid) {
       const flag = form.value.menuId != undefined;
       flag ? await updateMenu(form.value) : await addMenu(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

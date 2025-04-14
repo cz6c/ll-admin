@@ -2,6 +2,8 @@
 import { listConfig, delConfig } from "@/api/system/config";
 import { ListConfigDto, SysConfigVo } from "#/api/system/config";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
+import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -12,7 +14,7 @@ import { SearchProps } from "@/components/SearchForm/type";
 defineOptions({
   name: "Config"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { YesNoEnum } = toRefs(useDict("YesNoEnum"));
@@ -208,21 +210,21 @@ function handleReset() {
 function handleDelete(row = null) {
   const ids = unref(selectRows).map(item => item.configId);
   const configIds = (row ? [row.configId] : ids).join(",");
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除参数编号为"' + configIds + '"的数据项？')
     .then(function () {
       return delConfig(configIds);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }
 
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "system/config/export",
     {
       pageNum: gridOptions.pagerConfig.currentPage,

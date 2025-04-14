@@ -3,6 +3,8 @@ import { changeUserStatus, listUser, resetUserPwd, delUser } from "@/api/system/
 import { SysUserListParams, UserVo } from "#/api/system/user";
 import { deptTreeSelect } from "@/api/system/dept";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
+import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
@@ -15,7 +17,7 @@ import { SearchProps } from "@/components/SearchForm/type";
 defineOptions({
   name: "User"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { UserSexEnum, StatusEnum, UserTypeEnum } = toRefs(useDict("UserSexEnum", "StatusEnum", "UserTypeEnum"));
@@ -302,27 +304,27 @@ function handleDelete(row = null) {
     .filter(({ userType }) => userType !== "00")
     .map(item => item.userId);
   const userIds = (row ? [row.userId] : ids).join(",");
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除用户编号为"' + userIds + '"的数据项？')
     .then(() => {
       return delUser(userIds);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 用户状态修改  */
 function handleStatusChange(row) {
   let text = row.status === "0" ? "启用" : "停用";
-  proxy.$modal
+  $feedback
     .confirm('确认要"' + text + '""' + row.userName + '"用户吗?')
     .then(() => {
       return changeUserStatus({ userId: row.userId, status: row.status });
     })
     .then(() => {
-      proxy.$message.success(text + "成功");
+      $feedback.message.success(text + "成功");
     })
     .catch(function () {
       row.status = row.status === "0" ? "1" : "0";
@@ -341,7 +343,7 @@ function handleResetPwd(row) {
       return resetUserPwd({ userId: row.userId, password: value });
     })
     .then(() => {
-      proxy.$message.success("修改成功");
+      $feedback.message.success("修改成功");
     })
     .catch(() => {});
 }
@@ -361,7 +363,7 @@ function handleImport() {
 
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "system/user/export",
     {
       pageNum: gridOptions.pagerConfig.currentPage,

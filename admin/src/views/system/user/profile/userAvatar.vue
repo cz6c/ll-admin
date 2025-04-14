@@ -57,12 +57,13 @@
 import { uploadAvatar } from "@/api/system/user";
 import { uploadImg } from "@/api/public";
 import { useAuthStore } from "@/store/modules/auth";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "UserAvatar"
 });
+
 const authStore = useAuthStore();
-const { proxy } = getCurrentInstance();
 const cropperRef = ref(null);
 
 const open = ref(false);
@@ -113,7 +114,7 @@ const nowFile = ref(null);
 /** 上传预处理 */
 function beforeUpload(file) {
   if (file.type.indexOf("image/") == -1) {
-    proxy.$message.error("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
+    $feedback.message.error("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
   } else {
     nowFile.value = file;
     const reader = new FileReader();
@@ -137,7 +138,7 @@ function sumbit() {
       options.img = response.data.url;
       authStore.avatar = options.img;
       uploadAvatar({ avatar: options.img });
-      proxy.$message.success("修改成功");
+      $feedback.message.success("修改成功");
       visible.value = false;
       authStore.getLoginUserInfo();
     });

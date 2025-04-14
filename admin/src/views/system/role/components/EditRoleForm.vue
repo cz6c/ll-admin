@@ -4,10 +4,11 @@ import { roleDeptTreeSelect, deptTreeSelect } from "@/api/system/dept";
 import { roleMenuTreeSelect, menuTreeSelect } from "@/api/system/menu";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
+
 defineOptions({
   name: "EditRoleForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   roleId: { type: Number }
@@ -132,7 +133,7 @@ function submitForm() {
       form.value.menuIds = getMenuAllCheckedKeys();
       const flag = form.value.roleId != undefined;
       flag ? await updateRole(form.value) : await addRole(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

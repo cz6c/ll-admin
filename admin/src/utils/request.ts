@@ -4,7 +4,7 @@ import { getToken } from "@/utils/auth";
 import { tansParams } from "@/utils";
 import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
-import $message from "@/utils/message";
+import $feedback from "@/utils/feedback";
 import { WebStorage } from "@/utils/storage";
 import { isNull, isUnDef } from "./is";
 
@@ -83,7 +83,7 @@ service.interceptors.response.use(
         webLogout();
         router.replace({ name: RouterEnum.BASE_LOGIN_NAME });
       }
-      $message.error(msg);
+      $feedback.message.error(msg);
       return Promise.reject(new Error(msg || "Error"));
     } else {
       return res;
@@ -96,11 +96,11 @@ service.interceptors.response.use(
       const { webLogout } = useAuthStore();
       webLogout();
       router.replace({ name: RouterEnum.BASE_LOGIN_NAME });
-      $message.error("登录超时");
+      $feedback.message.error("登录超时");
       return;
     }
     const message = err.data ? err.data.message : err.statusText;
-    $message.error(message);
+    $feedback.message.error(message);
     console.log("err" + message); // for debug
     return Promise.reject(new Error(message || "Error"));
   }

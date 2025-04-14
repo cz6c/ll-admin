@@ -2,6 +2,7 @@
 import { deptTreeSelect, delDept } from "@/api/system/dept";
 import { DeptTreeVo, ListDeptDto } from "#/api/system/dept";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchProps } from "@/components/SearchForm/type";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
@@ -13,7 +14,7 @@ import { findPath } from "@/utils/tree";
 defineOptions({
   name: "Dept"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
@@ -185,14 +186,14 @@ function expandAllChange() {
 
 /** 删除按钮操作 */
 function handleDelete(row) {
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除名称为"' + row.deptName + '"的数据项?')
     .then(function () {
       return delDept(row.deptId);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }

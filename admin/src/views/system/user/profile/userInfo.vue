@@ -24,6 +24,7 @@ import { updateUserProfile } from "@/api/system/user";
 import { useDict } from "@/hooks/useDict";
 import { useAuthStore } from "@/store/modules/auth";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "UserInfo"
@@ -53,7 +54,7 @@ function submit() {
   unref(userRef).validate(valid => {
     if (valid) {
       updateUserProfile(unref(user)).then(response => {
-        proxy.$message.success("修改成功");
+        $feedback.message.success("修改成功");
         authStore.getLoginUserInfo();
       });
     }

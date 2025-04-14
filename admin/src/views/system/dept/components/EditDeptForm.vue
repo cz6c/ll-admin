@@ -2,11 +2,11 @@
 import { getDept, addDept, updateDept } from "@/api/system/dept";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "EditDeptForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   deptId: { type: Number },
@@ -72,7 +72,7 @@ function submitForm() {
     if (valid) {
       const flag = form.value.deptId != undefined;
       flag ? await updateDept(form.value) : await addDept(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

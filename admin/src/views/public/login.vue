@@ -62,11 +62,11 @@ import { getCodeImg } from "@/api/public";
 import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
 import { productConfig } from "@/config";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "Login"
 });
-const { proxy } = getCurrentInstance();
 
 const BASE_TITLE = computed(() => {
   return productConfig.title;
@@ -129,7 +129,7 @@ function handleLogin() {
         });
         loading.value = false;
       } catch (error: any) {
-        proxy.$message.warning(error.message);
+        $feedback.message.warning(error.message);
         loading.value = false;
         // 重新获取验证码
         if (captchaEnabled.value) getCode();

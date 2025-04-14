@@ -2,6 +2,7 @@
 import { delMenu, menuTreeSelect } from "@/api/system/menu";
 import { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchProps } from "@/components/SearchForm/type";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
@@ -13,7 +14,7 @@ import { findPath } from "@/utils/tree";
 defineOptions({
   name: "MenuIndex"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
@@ -227,14 +228,14 @@ function expandAllChange() {
 
 /** 删除按钮操作 */
 function handleDelete(row) {
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除名称为"' + row.menuName + '"的数据项?')
     .then(function () {
       return delMenu(row.menuId);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }

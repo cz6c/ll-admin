@@ -2,10 +2,11 @@
 import { getNotice, addNotice, updateNotice } from "@/api/system/notice";
 import { useDict } from "@/hooks/useDict";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
+
 defineOptions({
   name: "EditNoticeForm"
 });
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   noticeId: { type: Number }
@@ -46,7 +47,7 @@ function submitForm() {
     if (valid) {
       const flag = form.value.noticeId != undefined;
       flag ? await updateNotice(form.value) : await addNotice(form.value);
-      proxy.$message.success(flag ? "修改成功" : "新增成功");
+      $feedback.message.success(flag ? "修改成功" : "新增成功");
       $emit("success");
       $emit("cancel");
     }

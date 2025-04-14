@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { getToken } from "@/utils/auth";
 import { UploadFile } from "element-plus";
+import $file from "@/utils/file";
 
 defineOptions({
   name: "ImportTemp"
 });
-
-const { proxy } = getCurrentInstance();
 
 const props = defineProps({
   importUrl: { type: String, default: "" },
@@ -32,7 +31,7 @@ const uploadRef = ref(null);
 
 /** 下载模板操作 */
 function importTemplate() {
-  proxy.$file.download(props.importTempUrl, {}, `${props.filePrefix ?? ""}${new Date().getTime()}.xlsx`);
+  $file.download(props.importTempUrl, {}, `${props.filePrefix ?? ""}${new Date().getTime()}.xlsx`);
 }
 /**文件上传中处理 */
 const handleFileUploadProgress = () => {

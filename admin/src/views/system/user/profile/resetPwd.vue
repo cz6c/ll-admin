@@ -20,6 +20,7 @@
 import { updateUserPwd } from "@/api/system/user";
 import { useAuthStore } from "@/store/modules/auth";
 import { FormInstance, FormRules } from "element-plus";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "ResetPwd"
@@ -59,7 +60,7 @@ function submit() {
   unref(pwdRef).validate(valid => {
     if (valid) {
       updateUserPwd(user).then(response => {
-        proxy.$message.success("修改成功，请使用新密码重新登录");
+        $feedback.message.success("修改成功，请使用新密码重新登录");
         userStore.webLogout();
       });
     }

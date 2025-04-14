@@ -6,6 +6,7 @@ import { setupRouterGuard } from "@/router/guard";
 import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
 import { installPlugins } from "@/plugins";
+import "@/utils/sso";
 
 // css
 import "normalize.css";

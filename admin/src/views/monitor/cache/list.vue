@@ -108,11 +108,11 @@
 <script setup lang="ts">
 import { CacheData } from "#/api/monitor/cache";
 import { listCacheName, listCacheKey, getCacheValue, clearCacheName, clearCacheKey } from "@/api/monitor/cache";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "CacheList"
 });
-const { proxy } = getCurrentInstance();
 
 const cacheNames = ref([]);
 const cacheKeys = ref([]);
@@ -134,13 +134,13 @@ function getCacheNames() {
 /** 刷新缓存名称列表 */
 function refreshCacheNames() {
   getCacheNames();
-  proxy.$message.success("刷新缓存列表成功");
+  $feedback.message.success("刷新缓存列表成功");
 }
 
 /** 清理指定名称缓存 */
 function handleClearCacheName(row) {
   clearCacheName(row.cacheName).then(response => {
-    proxy.$message.success("清理缓存名称[" + row.cacheName + "]成功");
+    $feedback.message.success("清理缓存名称[" + row.cacheName + "]成功");
     getCacheKeys();
   });
 }
@@ -162,13 +162,13 @@ function getCacheKeys(row = undefined) {
 /** 刷新缓存键名列表 */
 function refreshCacheKeys() {
   getCacheKeys();
-  proxy.$message.success("刷新键名列表成功");
+  $feedback.message.success("刷新键名列表成功");
 }
 
 /** 清理指定键名缓存 */
 function handleClearCacheKey(cacheKey) {
   clearCacheKey(cacheKey).then(response => {
-    proxy.$message.success("清理缓存键名[" + cacheKey + "]成功");
+    $feedback.message.success("清理缓存键名[" + cacheKey + "]成功");
     getCacheKeys();
   });
 }

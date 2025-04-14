@@ -35,8 +35,8 @@
 <script setup>
 import { useSettingsStore } from "@/store/modules/settings";
 import { WebStorage } from "@/utils/storage";
+import $feedback from "@/utils/feedback";
 
-const { proxy } = getCurrentInstance();
 const settingsStore = useSettingsStore();
 const showSettings = ref(false);
 const theme = ref(settingsStore.theme);
@@ -63,17 +63,17 @@ function themeChange(val) {
   theme.value = val;
 }
 function saveSetting() {
-  proxy.$modal.loading("正在保存到本地，请稍候...");
+  $feedback.loading("正在保存到本地，请稍候...");
   let layoutSetting = {
     tagsView: storeSettings.value.tagsView,
     sidebarLogo: storeSettings.value.sidebarLogo,
     theme: storeSettings.value.theme
   };
   new WebStorage("localStorage").setItem("layout-setting", layoutSetting);
-  setTimeout(proxy.$modal.closeLoading(), 1000);
+  setTimeout($feedback.closeLoading(), 1000);
 }
 function resetSetting() {
-  proxy.$modal.loading("正在清除设置缓存并刷新，请稍候...");
+  $feedback.loading("正在清除设置缓存并刷新，请稍候...");
   new WebStorage("localStorage").removeItem("layout-setting");
   setTimeout("window.location.reload()", 1000);
 }

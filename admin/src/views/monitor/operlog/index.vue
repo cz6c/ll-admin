@@ -168,13 +168,14 @@
 
 <script setup lang="ts">
 import { list, delOperlog } from "@/api/monitor/operlog";
-import { parseTime, addDateRange, selectDictLabel } from "@/utils";
+import { parseTime, addDateRange } from "@/utils";
 import { useDict } from "@/hooks/useDict";
+import $feedback from "@/utils/feedback";
+import $file from "@/utils/file";
 
 defineOptions({
   name: "Operlog"
 });
-const { proxy } = getCurrentInstance();
 
 const { SuccessErrorEnum } = toRefs(useDict("SuccessErrorEnum"));
 
@@ -258,20 +259,20 @@ function handleView(row) {
 /** 删除按钮操作 */
 function handleDelete(row) {
   const operIds = row.operId || ids.value;
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除日志编号为"' + operIds + '"的数据项?')
     .then(function () {
       return delOperlog(operIds);
     })
     .then(() => {
       getList();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "monitor/operlog/export",
     {
       ...queryParams.value

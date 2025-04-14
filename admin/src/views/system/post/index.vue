@@ -2,6 +2,8 @@
 import { listPost, delPost } from "@/api/system/post";
 import { ListPostDto, SysPostVo } from "#/api/system/post";
 import { parseTime } from "@/utils";
+import $feedback from "@/utils/feedback";
+import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -12,7 +14,7 @@ import { SearchProps } from "@/components/SearchForm/type";
 defineOptions({
   name: "Post"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
@@ -192,21 +194,21 @@ function handleReset() {
 function handleDelete(row = null) {
   const ids = unref(selectRows).map(item => item.postId);
   const postIds = (row ? [row.postId] : ids).join(",");
-  proxy.$modal
+  $feedback
     .confirm('是否确认删除岗位编号为"' + postIds + '"的数据项？')
     .then(function () {
       return delPost(postIds);
     })
     .then(() => {
       initListSearch();
-      proxy.$message.success("删除成功");
+      $feedback.message.success("删除成功");
     })
     .catch(() => {});
 }
 
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "system/post/export",
     {
       pageNum: gridOptions.pagerConfig.currentPage,

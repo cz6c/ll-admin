@@ -2,6 +2,7 @@
 import { listLogininfor } from "@/api/monitor/logininfor";
 import { LoginlogListParams, MonitorLoginlogVO } from "#/api/monitor/logininfor";
 import { parseTime } from "@/utils";
+import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -11,7 +12,7 @@ import { SearchProps } from "@/components/SearchForm/type";
 defineOptions({
   name: "Logininfor"
 });
-const { proxy } = getCurrentInstance();
+
 const route = useRoute();
 
 const { SuccessErrorEnum } = toRefs(useDict("SuccessErrorEnum"));
@@ -141,7 +142,7 @@ function handleReset() {
 
 /** 导出按钮操作 */
 function handleExport() {
-  proxy.$file.download(
+  $file.download(
     "monitor/logininfor/export",
     {
       pageNum: gridOptions.pagerConfig.currentPage,

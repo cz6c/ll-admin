@@ -161,77 +161,31 @@ export function addDateRange(params, dateRange) {
   return search;
 }
 
-// 回显数据字典
-export function selectDictLabel(datas, value) {
-  if (value === undefined) {
+/**
+ * @description: 字符串格式化(%s )
+ * 可能的用例：sprintf("Hello, %s!", "World") → "Hello, World!"
+ * @param {*} str
+ * @return {*} str
+ */
+export function sprintf(str: string): string {
+  const args = [...arguments];
+
+  if (args.length < (str.match(/%s/g) || []).length) {
+    console.warn("参数数量不足");
     return "";
   }
-  var actions = [];
-  Object.keys(datas).some(key => {
-    if (datas[key].value == "" + value) {
-      actions.push(datas[key].label);
-      return true;
-    }
-  });
-  if (actions.length === 0) {
-    actions.push(value);
-  }
-  return actions.join("");
-}
 
-// 回显数据字典（字符串数组）
-export function selectDictLabels(datas, value, separator) {
-  if (value === undefined || value.length === 0) {
-    return "";
-  }
-  if (Array.isArray(value)) {
-    value = value.join(",");
-  }
-  var actions = [];
-  var currentSeparator = undefined === separator ? "," : separator;
-  var temp = value.split(currentSeparator);
-  Object.keys(value.split(currentSeparator)).some(val => {
-    var match = false;
-    Object.keys(datas).some(key => {
-      if (datas[key].value == "" + temp[val]) {
-        actions.push(datas[key].label + currentSeparator);
-        match = true;
-      }
-    });
-    if (!match) {
-      actions.push(temp[val] + currentSeparator);
-    }
+  return str.replace(/%s/g, () => {
+    const arg = args.shift();
+    return arg !== undefined ? arg : "";
   });
-  return actions.join("").substring(0, actions.join("").length - 1);
-}
-
-// 字符串格式化(%s )
-export function sprintf(str) {
-  var args = arguments,
-    flag = true,
-    i = 1;
-  str = str.replace(/%s/g, function () {
-    var arg = args[i++];
-    if (typeof arg === "undefined") {
-      flag = false;
-      return "";
-    }
-    return arg;
-  });
-  return flag ? str : "";
 }
 
 /**
- * @description: 转换字符串，undefined,null等转化为""
+ * @description: 递归合并数据
+ * @param {*} source
+ * @param {*} target
  */
-export function parseStrEmpty(str: string): string {
-  if (!str || str == "undefined" || str == "null") {
-    return "";
-  }
-  return str;
-}
-
-// 数据合并
 export function mergeRecursive(source, target) {
   for (var p in target) {
     try {
@@ -249,8 +203,10 @@ export function mergeRecursive(source, target) {
 
 /**
  * @description: get请求参数处理
+ * @param {Record} params
+ * @return {*} string
  */
-export function tansParams(params) {
+export function tansParams(params: Record<string, any>): string {
   let result = "";
   for (const propName of Object.keys(params)) {
     const value = params[propName];
@@ -270,4 +226,19 @@ export function tansParams(params) {
     }
   }
   return result.slice(0, -1);
+}
+
+/**
+ * @description: 解析url参数
+ * @param {*} url
+ * @return {*} Object
+ */
+export function getQueryParams(url: string): Record<string, string> {
+  const paramArr = url.slice(url.indexOf("?") + 1).split("&");
+  const params = {};
+  paramArr.map(param => {
+    const [key, val] = param.split("=");
+    params[key] = decodeURIComponent(val);
+  });
+  return params;
 }

@@ -18,6 +18,11 @@ import "virtual:svg-icons-register";
 // unocss
 import "virtual:uno.css";
 
+import { addPreventDefault } from "@/utils/preventDefault";
+
+const isProd = process.env.NODE_ENV === "production";
+isProd && addPreventDefault();
+
 const app = createApp(App);
 
 // 全局方法挂载

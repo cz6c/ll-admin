@@ -5,7 +5,7 @@ import { mapData } from "./data";
 import mapJson from "./map.json";
 
 defineOptions({
-  name: "Map1"
+  name: "EchartsMap"
 });
 
 withDefaults(
@@ -69,7 +69,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div ref="chartRef" :style="{ height, width }" class="chart-view" />
+  <div class="app-page">
+    <div ref="chartRef" :style="{ height, width }" class="chart-view" />
+  </div>
 </template>
 
 <style lang="scss" scoped>

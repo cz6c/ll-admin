@@ -141,7 +141,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div ref="wrapRef" class="amap-page" />
+  <div class="app-page">
+    <div ref="wrapRef" class="amap-page" />
+  </div>
 </template>
 
 <style lang="scss" scoped>

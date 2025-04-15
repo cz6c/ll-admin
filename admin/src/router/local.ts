@@ -1,5 +1,3 @@
-import type { AppRouteRecordRaw } from "#/utils";
-
 export default [
   {
     name: "System",
@@ -10,9 +8,10 @@ export default [
       title: "系统管理",
       icon: "system",
       noCache: false,
-      link: null
+      link: null,
+      activeMenu: "",
+      perms: []
     },
-    alwaysShow: true,
     redirect: "noRedirect",
     children: [
       {
@@ -24,15 +23,22 @@ export default [
           title: "用户管理",
           icon: "user",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
+        name: "Profile",
+        path: "/user/profile",
         hidden: true,
-        path: "/system/user/authRole",
-        component: "system/user/authRole",
-        name: "AuthRole",
-        meta: { title: "分配角色", activeMenu: "/system/user" }
+        component: "system/user/profile/index",
+        meta: {
+          title: "角色管理",
+          icon: "#",
+          noCache: false,
+          link: null,
+          activeMenu: ""
+        }
       },
       {
         name: "Role",
@@ -40,18 +46,12 @@ export default [
         hidden: false,
         component: "system/role/index",
         meta: {
-          title: "角色管理",
+          title: "菜单管理",
           icon: "peoples",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
-      },
-      {
-        hidden: true,
-        path: "/system/role/authUser",
-        component: "system/role/authUser",
-        name: "AuthUser",
-        meta: { title: "分配用户", activeMenu: "/system/role" }
       },
       {
         name: "Menu",
@@ -59,10 +59,11 @@ export default [
         hidden: false,
         component: "system/menu/index",
         meta: {
-          title: "菜单管理",
+          title: "部门管理",
           icon: "tree-table",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
@@ -71,10 +72,11 @@ export default [
         hidden: false,
         component: "system/dept/index",
         meta: {
-          title: "部门管理",
+          title: "岗位管理",
           icon: "tree",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
@@ -83,10 +85,11 @@ export default [
         hidden: false,
         component: "system/post/index",
         meta: {
-          title: "岗位管理",
+          title: "字典管理",
           icon: "post",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
@@ -98,7 +101,8 @@ export default [
           title: "参数设置",
           icon: "edit",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
@@ -110,7 +114,8 @@ export default [
           title: "通知公告",
           icon: "message",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       }
     ]
@@ -124,9 +129,10 @@ export default [
       title: "系统监控",
       icon: "monitor",
       noCache: false,
-      link: null
+      link: null,
+      activeMenu: "",
+      perms: []
     },
-    alwaysShow: true,
     redirect: "noRedirect",
     children: [
       {
@@ -138,7 +144,8 @@ export default [
           title: "服务监控",
           icon: "server",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
@@ -150,11 +157,12 @@ export default [
           title: "缓存监控",
           icon: "redis",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
         }
       },
       {
-        name: "CacheList",
+        name: "Cachelist",
         path: "/monitor/cacheList",
         hidden: false,
         component: "monitor/cache/list",
@@ -162,21 +170,79 @@ export default [
           title: "缓存列表",
           icon: "redis-list",
           noCache: false,
-          link: null
+          link: null,
+          activeMenu: ""
+        }
+      },
+      {
+        name: "Logininfor",
+        path: "/monitor/logininfor",
+        hidden: false,
+        component: "monitor/logininfor/index",
+        meta: {
+          title: "登录日志",
+          icon: "logininfor",
+          noCache: false,
+          link: null,
+          activeMenu: ""
         }
       }
     ]
   },
   {
-    name: "Https://nest-admin.dooring.vip",
-    path: "https://nest-admin.dooring.vip",
+    name: "Chart",
+    path: "/chart",
     hidden: false,
     component: "Layout",
     meta: {
-      title: "nest-admin官网",
+      title: "图表",
+      icon: "chart",
+      noCache: false,
+      link: null,
+      activeMenu: "",
+      perms: []
+    },
+    redirect: "noRedirect",
+    children: [
+      {
+        name: "AMap",
+        path: "/charts/aMap",
+        hidden: false,
+        component: "charts/aMap/index",
+        meta: {
+          title: "高德地图",
+          icon: "guide",
+          noCache: false,
+          link: null,
+          activeMenu: ""
+        }
+      },
+      {
+        name: "EchartsMap",
+        path: "/charts/map",
+        hidden: false,
+        component: "charts/map/index",
+        meta: {
+          title: "Echarts地图",
+          icon: "dashboard",
+          noCache: false,
+          link: null,
+          activeMenu: ""
+        }
+      }
+    ]
+  },
+  {
+    name: "",
+    path: "https://cn.vuejs.org",
+    hidden: false,
+    component: "Layout",
+    meta: {
+      title: "vue官网",
       icon: "guide",
       noCache: false,
-      link: "https://nest-admin.dooring.vip"
+      link: "https://cn.vuejs.org",
+      activeMenu: ""
     }
   }
-] as AppRouteRecordRaw[];
+];

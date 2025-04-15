@@ -229,16 +229,15 @@ export function tansParams(params: Record<string, any>): string {
 }
 
 /**
- * @description: 解析url参数
+ * @description: 提取url ?后参数
  * @param {*} url
- * @return {*} Object
  */
-export function getQueryParams(url: string): Record<string, string> {
-  const paramArr = url.slice(url.indexOf("?") + 1).split("&");
+export function getQueryParams(url: string) {
+  const regex = /[?&]+([^=&]+)=([^&]*)/gi;
   const params = {};
-  paramArr.map(param => {
-    const [key, val] = param.split("=");
-    params[key] = decodeURIComponent(val);
+  url.replace(regex, function (_, key, value) {
+    params[key] = decodeURIComponent(value);
+    return params[key];
   });
   return params;
 }

@@ -33,7 +33,7 @@ export default [
         hidden: true,
         component: "system/user/profile/index",
         meta: {
-          title: "角色管理",
+          title: "个人中心",
           icon: "#",
           noCache: false,
           link: null,
@@ -46,7 +46,7 @@ export default [
         hidden: false,
         component: "system/role/index",
         meta: {
-          title: "菜单管理",
+          title: "角色管理",
           icon: "peoples",
           noCache: false,
           link: null,
@@ -59,7 +59,7 @@ export default [
         hidden: false,
         component: "system/menu/index",
         meta: {
-          title: "部门管理",
+          title: "菜单管理",
           icon: "tree-table",
           noCache: false,
           link: null,
@@ -72,7 +72,7 @@ export default [
         hidden: false,
         component: "system/dept/index",
         meta: {
-          title: "岗位管理",
+          title: "部门管理",
           icon: "tree",
           noCache: false,
           link: null,
@@ -85,7 +85,7 @@ export default [
         hidden: false,
         component: "system/post/index",
         meta: {
-          title: "字典管理",
+          title: "岗位管理",
           icon: "post",
           noCache: false,
           link: null,
@@ -190,6 +190,19 @@ export default [
     ]
   },
   {
+    name: "",
+    path: "https://cn.vuejs.org",
+    hidden: false,
+    component: "Layout",
+    meta: {
+      title: "vue官网",
+      icon: "guide",
+      noCache: false,
+      link: "https://cn.vuejs.org",
+      activeMenu: ""
+    }
+  },
+  {
     name: "Chart",
     path: "/chart",
     hidden: false,
@@ -231,18 +244,5 @@ export default [
         }
       }
     ]
-  },
-  {
-    name: "",
-    path: "https://cn.vuejs.org",
-    hidden: false,
-    component: "Layout",
-    meta: {
-      title: "vue官网",
-      icon: "guide",
-      noCache: false,
-      link: "https://cn.vuejs.org",
-      activeMenu: ""
-    }
   }
 ];

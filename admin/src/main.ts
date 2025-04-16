@@ -7,6 +7,9 @@ import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
 import { installPlugins } from "@/plugins";
 import "@/utils/sso";
+import MQTTClientSingleton from "@/utils/mqtt";
+// 带重试机制的发布
+MQTTClientSingleton.safePublish("前端");
 
 // css
 import "normalize.css";

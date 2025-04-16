@@ -39,8 +39,6 @@ class MQTTClientSingleton {
       reconnectPeriod: 1000,
       ...clientOptions,
     };
-
-    this.initialize();
   }
 
   // 单例获取方法（带初始化参数）
@@ -54,13 +52,8 @@ class MQTTClientSingleton {
     return MQTTClientSingleton.instance;
   }
 
-  private initialize(): void {
-    this.isManualDisconnect = false;
-    this.currentReconnectAttempts = 0;
-    this.createClient();
-  }
-
-  private createClient(): void {
+  // 创建连接
+  public createClient(): void {
     this.client = mqtt.connect(this.connectUrl, this.options);
     this.setupEventListeners();
   }

@@ -7,9 +7,6 @@ import { ConfigService } from '@nestjs/config';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { mw as requestIpMw } from 'request-ip';
-import MQTTClientSingleton from './common/utils/mqtt';
-// 带重试机制的发布
-MQTTClientSingleton.safePublish('后端');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

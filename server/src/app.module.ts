@@ -4,6 +4,7 @@ import { ConfigService, ConfigModule } from '@nestjs/config';
 import configuration from './config/index';
 import { RedisClientOptions } from '@liaoliaots/nestjs-redis';
 import { RedisModule } from './modules/redis/redis.module';
+import { MqttModule } from './modules/mqtt/mqtt.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from 'src/common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -65,6 +66,7 @@ import { ServerModule } from './modules/monitor/server/server.module';
       },
       true,
     ),
+    MqttModule,
     // 功能插件
     PluginsModule,
     // 以下业务模块

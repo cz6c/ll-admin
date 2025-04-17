@@ -9,7 +9,6 @@ import { MenuService } from '../system/menu/menu.service';
 import { SuccessErrorEnum } from '@/common/enum/dict';
 import { getEnum2Array } from '@/common/enum';
 import { ClientInfoDto } from '../monitor/loginlog/dto';
-import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class MainService {
@@ -18,7 +17,6 @@ export class MainService {
     private readonly loginlogService: LoginlogService,
     private readonly axiosService: AxiosService,
     private readonly menuService: MenuService,
-    private readonly redisService: RedisService,
   ) {}
 
   /**

@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { RedisService } from '@/modules/redis/redis.service';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { RedisService } from './redis.service';
 import { Redis } from 'ioredis';
 
 @Injectable()
-export class RedisLockService {
-  private readonly client: Redis;
+export class RedisLockService implements OnApplicationShutdown {
+  private client: Redis;
+  private activeLocks = new Set<string>();
 
   constructor(private readonly redisService: RedisService) {
     this.client = this.redisService.getClient();
@@ -12,52 +13,56 @@ export class RedisLockService {
 
   /**
    * 获取分布式锁
-   * @param lockKey 锁名称
-   * @param instanceId 实例标识
-   * @param ttl 锁有效期(毫秒)
+   * @param key 锁标识
+   * @param ttl 锁有效期(ms)
+   * @param renewal 锁启动自动续期
    */
-  async acquireLock(lockKey: string, instanceId: string, ttl: number): Promise<boolean> {
-    const result = await this.client.set(
-      lockKey,
-      instanceId,
-      'PX', // 毫秒级TTL
-      ttl,
-      'NX', // 仅当不存在时设置
-    );
-    return result === 'OK';
+  async acquireLock(key: string, ttl: number, renewal = false): Promise<boolean> {
+    const instanceId = `instance_${process.pid || 0}`; // 当前实例的唯一标识
+    const result = await this.client.set(key, instanceId, 'PX', ttl, 'NX');
+
+    if (result === 'OK') {
+      this.activeLocks.add(key);
+      if (renewal) this.startRenewal(key, ttl);
+      return true;
+    }
+    return false;
   }
 
-  /**
-   * 释放分布式锁
-   * @param lockKey 锁名称
-   * @param instanceId 实例标识
-   */
-  async releaseLock(lockKey: string, instanceId: string): Promise<void> {
-    const script = `
-      if redis.call("GET", KEYS[1]) == ARGV[1] then
-        return redis.call("DEL", KEYS[1])
-      else
-        return 0
-      end
-    `;
-    await this.client.eval(script, 1, lockKey, instanceId);
+  /** 启动自动续期 */
+  private startRenewal(key: string, ttl: number) {
+    const timer = setInterval(async () => {
+      if (this.activeLocks.has(key)) {
+        const result = await this.client.pexpire(key, ttl);
+        console.log('🚀 ~ RedisLockService ~ timer ~ result:', result);
+        if (result !== 1) {
+          console.log(`[${key}] 锁续期失败`);
+          clearInterval(timer);
+        }
+      } else {
+        console.log(`[${key}] 锁已在执行后被释放`);
+        clearInterval(timer);
+      }
+    }, ttl * 0.8); // 在80% TTL时续期
   }
 
-  /**
-   * 续期锁有效期
-   * @param lockKey 锁名称
-   * @param instanceId 实例标识
-   * @param ttl 新的有效期(毫秒)
-   */
-  async renewLock(lockKey: string, instanceId: string, ttl: number): Promise<boolean> {
-    const script = `
-      if redis.call("GET", KEYS[1]) == ARGV[1] then
-        return redis.call("PEXPIRE", KEYS[1], ARGV[2])
-      else
-        return 0
-      end
-    `;
-    const result = await this.client.eval(script, 1, lockKey, instanceId, ttl);
-    return result === 1;
+  /** 释放锁 */
+  async releaseLock(key: string): Promise<void> {
+    this.activeLocks.delete(key);
+    await this.client.del(key);
+  }
+
+  /** 应用关闭时自动清理 */
+  async onApplicationShutdown() {
+    await Promise.all(Array.from(this.activeLocks).map((key) => this.releaseLock(key)));
+  }
+
+  // 任务状态监控
+  async getTaskStatus() {
+    const status: Record<string, boolean> = {};
+    for (const key of this.activeLocks) {
+      status[key] = (await this.client.exists(key)) === 1;
+    }
+    return status;
   }
 }

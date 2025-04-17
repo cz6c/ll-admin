@@ -2,23 +2,35 @@ import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AxiosService } from './axios.service';
 import { NodemailerService } from '@/modules/nodemailer/nodemailer.service';
-import { DistributedLock } from '@/common/decorator/redis-lock.decorator';
+import { RedisLockService } from '@/modules/redis/redis-lock.service';
 
 @Injectable()
 export class TaskService {
   constructor(
     private readonly nodemailerService: NodemailerService,
     private readonly axiosService: AxiosService,
+    private readonly lockService: RedisLockService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_SECONDS)
-  // @DistributedLock({
-  //   lockKey: 'test:task:lock',
-  //   ttl: 20000,
-  //   renewal: false,
-  // })
   async test() {
-    console.log('🚀 ~ TaskService ~ test');
+    const key = 'test:task:lock',
+      ttl = 5000;
+    let acquired = false;
+
+    try {
+      // 尝试获取锁
+      acquired = await this.lockService.acquireLock(key, ttl);
+      if (!acquired) return;
+      console.log('获得执行权');
+
+      const taskStatus = await this.lockService.getTaskStatus();
+      console.log('🚀 ~ TaskService ~ test ~ taskStatus:', taskStatus);
+    } catch (error) {
+      console.error('任务执行失败:', error);
+    } finally {
+      if (acquired) await this.lockService.releaseLock(key); // 执行后释放锁
+    }
   }
 
   // @Cron(new Date('2024-11-26 16:01:08'))
@@ -30,24 +42,34 @@ export class TaskService {
    * 工作日18点推送最新金价（带分布式锁控制）
    */
   @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
-  // @DistributedLock({
-  //   lockKey: 'gold_price:task:lock',
-  //   ttl: 30000,
-  //   renewal: false,
-  // })
   async getGoldInfo() {
-    const res = await this.axiosService.getGoldInfo();
+    const key = 'gold_price:task:lock',
+      ttl = 120 * 1000;
+    let acquired = false;
 
-    const html = this.buildEmailHtml(res);
-    const options = {
-      to: ['1272654068@qq.com', '769763659@qq.com'],
-      subject: '最新金价',
-      text: 'pushContent',
-      html,
-      pushTask: { remark: '工作日18点 推送最新金价' },
-    };
+    try {
+      // 尝试获取锁
+      acquired = await this.lockService.acquireLock(key, ttl);
+      if (!acquired) return;
+      console.log('获得执行权');
 
-    await this.nodemailerService.sendMail(options);
+      const res = await this.axiosService.getGoldInfo();
+
+      const html = this.buildEmailHtml(res);
+      const options = {
+        to: ['1272654068@qq.com', '769763659@qq.com'],
+        subject: '最新金价',
+        text: 'pushContent',
+        html,
+        pushTask: { remark: '工作日18点 推送最新金价' },
+      };
+
+      await this.nodemailerService.sendMail(options);
+    } catch (error) {
+      console.error('任务执行失败:', error);
+    } finally {
+      if (acquired) await this.lockService.releaseLock(key);
+    }
   }
 
   /**

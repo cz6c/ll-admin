@@ -25,7 +25,7 @@ export class NodemailerPushLogEntity {
   @Column({ type: 'varchar', name: 'push_title', length: 200, default: '', comment: '推送标题' })
   public pushTitle: string;
 
-  @Column({ type: 'varchar', name: 'push_content', length: 200, default: '', comment: '推送内容' })
+  @Column({ type: 'varchar', name: 'push_content', length: 1000, default: '', comment: '推送内容' })
   public pushContent: string;
 
   @Column({ type: 'varchar', name: 'remark', length: 500, default: null, comment: '备注' })

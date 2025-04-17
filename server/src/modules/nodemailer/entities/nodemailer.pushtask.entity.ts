@@ -16,7 +16,7 @@ export class NodemailerPushTaskEntity extends BaseEntity {
   @Column({ type: 'varchar', name: 'push_title', length: 200, default: '', comment: '推送标题' })
   public pushTitle: string;
 
-  @Column({ type: 'varchar', name: 'push_content', length: 200, default: '', comment: '推送内容' })
+  @Column({ type: 'varchar', name: 'push_content', length: 1000, default: '', comment: '推送内容' })
   public pushContent: string;
 
   // 1 定期推送  2 按时推送

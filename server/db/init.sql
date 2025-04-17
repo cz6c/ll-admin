@@ -3494,7 +3494,7 @@ CREATE TABLE
     `pushtask_name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '任务名称',
     `accept_email` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '接受邮箱',
     `push_title` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送标题',
-    `push_content` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送内容',
+    `push_content` varchar(1000) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送内容',
     `remark` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '备注',
     PRIMARY KEY (`pushlog_id`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '推送日志表';
@@ -3533,7 +3533,7 @@ CREATE TABLE
     `pushtask_name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '任务名称',
     `accept_email` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '接受邮箱',
     `push_title` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送标题',
-    `push_content` varchar(200) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送内容',
+    `push_content` varchar(1000) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '推送内容',
     `push_Model` enum ('1', '2') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '1' COMMENT '推送类型',
     `push_interval` enum ('1', '2', '3') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '1' COMMENT '定期推送间隔',
     `start_date` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '定期推送时间',

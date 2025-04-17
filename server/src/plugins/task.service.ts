@@ -12,11 +12,11 @@ export class TaskService {
   ) {}
 
   @Cron(CronExpression.EVERY_5_SECONDS)
-  @DistributedLock({
-    lockKey: 'test:task:lock',
-    ttl: 20000,
-    renewal: false,
-  })
+  // @DistributedLock({
+  //   lockKey: 'test:task:lock',
+  //   ttl: 20000,
+  //   renewal: false,
+  // })
   async test() {
     console.log('🚀 ~ TaskService ~ test');
   }
@@ -30,11 +30,11 @@ export class TaskService {
    * 工作日18点推送最新金价（带分布式锁控制）
    */
   @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
-  @DistributedLock({
-    lockKey: 'gold_price:task:lock',
-    ttl: 30000,
-    renewal: false,
-  })
+  // @DistributedLock({
+  //   lockKey: 'gold_price:task:lock',
+  //   ttl: 30000,
+  //   renewal: false,
+  // })
   async getGoldInfo() {
     const res = await this.axiosService.getGoldInfo();
 

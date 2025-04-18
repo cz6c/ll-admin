@@ -36,9 +36,6 @@ const options = {
 };
 
 export function createMath() {
-  // return svgCaptcha.create({
-  //   ...options,
-  // });
   return svgCaptcha.createMathExpr({
     ...options,
     mathMin: 1,

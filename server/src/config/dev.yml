@@ -70,10 +70,7 @@ perm:
         { path: '/captchaImage', method: 'GET' },
         { path: '/register', method: 'POST' },
         { path: '/login', method: 'POST' },
-        { path: '/common/area/list', method: 'GET' },
-        { path: '/system/config/refreshCache', method: 'Delete' },
-        # { path: '/system/user/list', method: 'GET' },
-        # { path: '/system/user/:userId', method: 'GET' },
+        { path: '/common/area/trees', method: 'GET' },
       ]
 
 # 发送邮箱配置

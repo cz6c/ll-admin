@@ -1,5 +1,6 @@
 // 控制token
 import { WebStorage } from "@/utils/storage";
+import { generateUUID } from "@/utils/index";
 
 const tokenStorage = new WebStorage("sessionStorage");
 
@@ -13,4 +14,19 @@ export function setToken(token: string) {
 
 export function removeToken() {
   return tokenStorage.removeItem("token");
+}
+
+const uuidStorage = new WebStorage("localStorage");
+
+/**
+ * @description: 获取设备唯一标识
+ * @return userId
+ */
+export function getPlatFormUUID() {
+  let userId = uuidStorage.getItem("platFormUUID") || "";
+  if (!userId) {
+    userId = generateUUID();
+    uuidStorage.setItem("platFormUUID", userId);
+  }
+  return userId;
 }

@@ -63,6 +63,7 @@ import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
 import { productConfig } from "@/config";
 import $feedback from "@/utils/feedback";
+import { getPlatFormUUID } from "@/utils/auth";
 
 defineOptions({
   name: "Login"
@@ -84,7 +85,7 @@ const loginForm = reactive({
   userName: "admin",
   rememberMe: false,
   code: "",
-  uuid: ""
+  uuid: getPlatFormUUID()
 });
 const rules: FormRules = {
   password: [{ required: true, message: "请输入密码", trigger: "blur" }],
@@ -139,7 +140,7 @@ function handleLogin() {
 }
 
 async function getCode() {
-  const { data } = await getCodeImg();
+  const { data } = await getCodeImg({ uuid: loginForm.uuid });
   captchaEnabled.value = data.captchaEnabled === undefined ? true : data.captchaEnabled;
   if (captchaEnabled.value) {
     codeUrl.value = data.img;

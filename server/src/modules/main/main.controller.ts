@@ -1,11 +1,10 @@
-import { Controller, Get, Post, Body, Request, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Request, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import * as Useragent from 'useragent';
 import { MainService } from './main.service';
 import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo } from './dto/index';
 import { createMath } from '@/common/utils/captcha';
 import { ResultData } from '@/common/utils/result';
-import { GenerateUUID } from '@/common/utils/index';
 import { RedisService } from '@/modules/redis/redis.service';
 import { ConfigService } from '@/modules/system/config/config.service';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
@@ -48,20 +47,19 @@ export class MainController {
   @ApiOperation({ summary: '获取验证图片' })
   @ApiResult(CaptchaImageVo)
   @Get('/captchaImage')
-  async captchaImage() {
+  async captchaImage(@Query('uuid') uuid: string) {
     //是否开启验证码
     const enable = await this.configService.getConfigValue('sys.account.captchaEnabled');
     const captchaEnabled: boolean = enable.toLowerCase() === 'true';
     const data = {
       captchaEnabled,
       img: '',
-      uuid: '',
+      uuid,
     };
     try {
-      if (captchaEnabled) {
+      if (captchaEnabled && data.uuid) {
         const captchaInfo = createMath();
         data.img = captchaInfo.data;
-        data.uuid = GenerateUUID();
         await this.redisService.set(CacheEnum.CAPTCHA_CODE_KEY + data.uuid, captchaInfo.text.toLowerCase(), 1000 * 60 * 5);
       }
       return ResultData.ok(data, '操作成功');

@@ -20,10 +20,11 @@ export function register(data: LoginParams) {
   });
 }
 // 获取验证图片
-export function getCodeImg() {
+export function getCodeImg(params: { uuid: string }) {
   return $http<never, { captchaEnabled: boolean; img: string; uuid: string }>({
     url: "/captchaImage",
-    method: "get"
+    method: "get",
+    params
   });
 }
 // 获取当前用户信息

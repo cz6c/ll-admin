@@ -36,10 +36,13 @@ const options = {
 };
 
 export function createMath() {
+  // return svgCaptcha.create({
+  //   ...options,
+  // });
   return svgCaptcha.createMathExpr({
     ...options,
     mathMin: 1,
-    mathMax: 50,
+    mathMax: 20,
     mathOperator: '+-',
   });
 }

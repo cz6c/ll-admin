@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { RedisService } from './redis.service';
 import { Redis } from 'ioredis';
+import { CacheEnum } from '@/common/enum/loca';
 
 @Injectable()
 export class RedisLockService implements OnApplicationShutdown {
@@ -11,6 +12,10 @@ export class RedisLockService implements OnApplicationShutdown {
     this.client = this.redisService.getClient();
   }
 
+  private composeKey(key: string): string {
+    return `${CacheEnum.DISTRIBUTED_LOCK_KEY}${key}`;
+  }
+
   /**
    * 获取分布式锁
    * @param key 锁标识
@@ -18,12 +23,13 @@ export class RedisLockService implements OnApplicationShutdown {
    * @param renewal 锁启动自动续期
    */
   async acquireLock(key: string, ttl: number, renewal = false): Promise<boolean> {
+    const k = this.composeKey(key);
     const instanceId = `instance_${process.pid || 0}`; // 当前实例的唯一标识
-    const result = await this.client.set(key, instanceId, 'PX', ttl, 'NX');
+    const result = await this.client.set(k, JSON.stringify({ instanceId, ttl, renewal }), 'PX', ttl, 'NX');
 
     if (result === 'OK') {
-      this.activeLocks.add(key);
-      if (renewal) this.startRenewal(key, ttl);
+      this.activeLocks.add(k);
+      if (renewal) this.startRenewal(k, ttl);
       return true;
     }
     return false;
@@ -34,13 +40,12 @@ export class RedisLockService implements OnApplicationShutdown {
     const timer = setInterval(async () => {
       if (this.activeLocks.has(key)) {
         const result = await this.client.pexpire(key, ttl);
-        console.log('🚀 ~ RedisLockService ~ timer ~ result:', result);
         if (result !== 1) {
           console.log(`[${key}] 锁续期失败`);
           clearInterval(timer);
         }
       } else {
-        console.log(`[${key}] 锁已在执行后被释放`);
+        console.log(`[${key}] 锁不存在或者执行后被释放`);
         clearInterval(timer);
       }
     }, ttl * 0.8); // 在80% TTL时续期
@@ -48,21 +53,13 @@ export class RedisLockService implements OnApplicationShutdown {
 
   /** 释放锁 */
   async releaseLock(key: string): Promise<void> {
-    this.activeLocks.delete(key);
-    await this.client.del(key);
+    const k = this.composeKey(key);
+    this.activeLocks.delete(k);
+    await this.client.del(k);
   }
 
   /** 应用关闭时自动清理 */
   async onApplicationShutdown() {
     await Promise.all(Array.from(this.activeLocks).map((key) => this.releaseLock(key)));
-  }
-
-  // 任务状态监控
-  async getTaskStatus() {
-    const status: Record<string, boolean> = {};
-    for (const key of this.activeLocks) {
-      status[key] = (await this.client.exists(key)) === 1;
-    }
-    return status;
   }
 }

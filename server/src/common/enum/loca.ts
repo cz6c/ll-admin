@@ -13,6 +13,11 @@ export enum CacheEnum {
    */
   CAPTCHA_CODE_KEY = 'captcha_codes:',
 
+  /**
+   * 分布式锁 redis key
+   */
+  DISTRIBUTED_LOCK_KEY = 'distributed_locks:',
+
   // /**
   //  * 登录账户密码错误次数 redis key
   //  */

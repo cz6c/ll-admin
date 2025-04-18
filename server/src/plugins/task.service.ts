@@ -23,9 +23,6 @@ export class TaskService {
       acquired = await this.lockService.acquireLock(key, ttl);
       if (!acquired) return;
       console.log('获得执行权');
-
-      const taskStatus = await this.lockService.getTaskStatus();
-      console.log('🚀 ~ TaskService ~ test ~ taskStatus:', taskStatus);
     } catch (error) {
       console.error('任务执行失败:', error);
     } finally {
@@ -44,7 +41,7 @@ export class TaskService {
   @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
   async getGoldInfo() {
     const key = 'gold_price:task:lock',
-      ttl = 120 * 1000;
+      ttl = 5 * 60 * 1000;
     let acquired = false;
 
     try {

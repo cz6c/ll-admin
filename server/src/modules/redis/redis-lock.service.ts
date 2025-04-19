@@ -1,10 +1,10 @@
-import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { RedisService } from './redis.service';
 import { Redis } from 'ioredis';
 import { CacheEnum } from '@/common/enum/loca';
 
 @Injectable()
-export class RedisLockService implements OnApplicationShutdown {
+export class RedisLockService {
   private client: Redis;
   private activeLocks = new Set<string>();
 
@@ -30,6 +30,7 @@ export class RedisLockService implements OnApplicationShutdown {
     if (result === 'OK') {
       this.activeLocks.add(k);
       if (renewal) this.startRenewal(k, ttl);
+      console.log(`[${k}], [${instanceId}] 获得执行权`);
       return true;
     }
     return false;
@@ -53,12 +54,24 @@ export class RedisLockService implements OnApplicationShutdown {
 
   /** 释放锁 */
   async releaseLock(key: string): Promise<void> {
-    const k = this.composeKey(key);
+    const k = key.includes(CacheEnum.DISTRIBUTED_LOCK_KEY) ? key : this.composeKey(key);
     this.activeLocks.delete(k);
-    await this.client.del(k);
+    const result = await this.client.del(k);
+    if (result !== 1) {
+      console.log(`[${k}] 释放锁失败`);
+    } else {
+      console.log(`[${k}] 锁释放成功`);
+    }
   }
 
-  /** 应用关闭时自动清理 */
+  async getLockKeys() {
+    const keys = await this.client.keys(`${CacheEnum.DISTRIBUTED_LOCK_KEY}*`);
+    console.log('🚀 ~ RedisLockService ~ getLockKeys ~ keys:', keys);
+  }
+
+  /**
+   * 应用关闭时执行
+   */
   async onApplicationShutdown() {
     await Promise.all(Array.from(this.activeLocks).map((key) => this.releaseLock(key)));
   }

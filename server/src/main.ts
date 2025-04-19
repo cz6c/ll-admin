@@ -7,6 +7,8 @@ import { ConfigService } from '@nestjs/config';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { mw as requestIpMw } from 'request-ip';
+import { RedisLockService } from './modules/redis/redis-lock.service';
+import { MqttService } from './plugins/mqtt.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -68,5 +70,36 @@ async function bootstrap() {
   console.log(`➜  运行环境：${process.env.NODE_ENV}`);
   console.log(`➜  服务地址：http://localhost:${port}${prefix}/`);
   console.log(`➜  swagger： http://localhost:${port}${prefix}/swagger-ui/`);
+
+  // 监听线程消息
+  process.on('message', async function (msg) {
+    // 处理进程关闭
+    if (msg == 'shutdown') {
+      console.log(`${process.pid} Closing all connections...`);
+
+      // 最大允许关闭时间
+      setTimeout(() => {
+        console.error('关闭超时，强制退出');
+        process.exit(1);
+      }, 9000); // 略小于 PM2 的 kill_timeout
+
+      const shutdownSteps = [
+        { action: '释放分布式锁', handler: () => app.get(RedisLockService).onApplicationShutdown() },
+        { action: '关闭MQTT连接', handler: () => app.get(MqttService).onApplicationShutdown() },
+        // { action: '关闭HTTP服务', handler: () => app.close() },
+      ];
+
+      for (const step of shutdownSteps) {
+        try {
+          console.log(`${process.pid} 执行步骤: ${step.action}`);
+          await step.handler();
+        } catch (err) {
+          console.error(`${process.pid} ${step.action} 失败`, err);
+        }
+      }
+      console.log(`${process.pid} Finished closing connections`);
+      process.exit(0);
+    }
+  });
 }
 bootstrap();

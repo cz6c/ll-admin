@@ -14,7 +14,7 @@ export class TaskService {
 
   @Cron(CronExpression.EVERY_5_SECONDS)
   async test() {
-    const key = 'test:task:lock',
+    const key = 'task:test',
       ttl = 5000;
     let acquired = false;
 
@@ -22,7 +22,8 @@ export class TaskService {
       // 尝试获取锁
       acquired = await this.lockService.acquireLock(key, ttl);
       if (!acquired) return;
-      console.log('获得执行权');
+
+      this.lockService.getLockKeys();
     } catch (error) {
       console.error('任务执行失败:', error);
     } finally {
@@ -40,7 +41,7 @@ export class TaskService {
    */
   @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
   async getGoldInfo() {
-    const key = 'gold_price:task:lock',
+    const key = 'task:gold_price',
       ttl = 5 * 60 * 1000;
     let acquired = false;
 
@@ -48,7 +49,6 @@ export class TaskService {
       // 尝试获取锁
       acquired = await this.lockService.acquireLock(key, ttl);
       if (!acquired) return;
-      console.log('获得执行权');
 
       const res = await this.axiosService.getGoldInfo();
 

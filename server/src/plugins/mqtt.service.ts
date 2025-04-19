@@ -1,11 +1,11 @@
-import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { RedisLockService } from '@/modules/redis/redis-lock.service';
 import MQTTClientSingleton from '@/common/utils/mqtt';
 
 @Injectable()
-export class MqttService implements OnApplicationBootstrap, OnApplicationShutdown {
-  private readonly LOCK_KEY = 'mqtt:subscription:lock'; // 分布式锁的存储键名
-  private readonly LOCK_TTL = 30 * 1000; // 锁的有效期
+export class MqttService implements OnApplicationBootstrap {
+  private readonly LOCK_KEY = 'mqtt:subscription'; // 分布式锁的存储键名
+  private readonly LOCK_TTL = 30 * 60 * 1000; // 锁的有效期
   private isLeader = false; // 是否是当前集群的 Leader
 
   constructor(private readonly lockService: RedisLockService) {}
@@ -18,12 +18,11 @@ export class MqttService implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   /**
-   * 应用关闭时自动执行
+   * 应用关闭时执行
    */
   async onApplicationShutdown() {
     if (this.isLeader) {
       await MQTTClientSingleton.disconnect(); // 优雅关闭 MQTT 连接
-      await this.lockService.releaseLock(this.LOCK_KEY);
     }
   }
 

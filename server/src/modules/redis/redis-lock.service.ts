@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from './redis.service';
 import { Redis } from 'ioredis';
 import { CacheEnum } from '@/common/enum/loca';
 
 @Injectable()
 export class RedisLockService {
+  private readonly logger = new Logger(RedisLockService.name);
   private client: Redis;
   private activeLocks = new Set<string>();
 
@@ -30,7 +31,7 @@ export class RedisLockService {
     if (result === 'OK') {
       this.activeLocks.add(k);
       if (renewal) this.startRenewal(k, ttl);
-      console.log(`[${k}], [${instanceId}] 获得执行权`);
+      this.logger.log(`[${k}], [${instanceId}] 获得执行权`);
       return true;
     }
     return false;
@@ -42,11 +43,11 @@ export class RedisLockService {
       if (this.activeLocks.has(key)) {
         const result = await this.client.pexpire(key, ttl);
         if (result !== 1) {
-          console.log(`[${key}] 锁续期失败`);
+          this.logger.log(`[${key}] 锁续期失败`);
           clearInterval(timer);
         }
       } else {
-        console.log(`[${key}] 锁不存在或者执行后被释放`);
+        this.logger.log(`[${key}] 锁不存在或者执行后被释放`);
         clearInterval(timer);
       }
     }, ttl * 0.8); // 在80% TTL时续期
@@ -58,15 +59,15 @@ export class RedisLockService {
     this.activeLocks.delete(k);
     const result = await this.client.del(k);
     if (result !== 1) {
-      console.log(`[${k}] 释放锁失败`);
+      this.logger.log(`[${k}] 释放锁失败`);
     } else {
-      console.log(`[${k}] 锁释放成功`);
+      this.logger.log(`[${k}] 锁释放成功`);
     }
   }
 
   async getLockKeys() {
     const keys = await this.client.keys(`${CacheEnum.DISTRIBUTED_LOCK_KEY}*`);
-    console.log('🚀 ~ RedisLockService ~ getLockKeys ~ keys:', keys);
+    this.logger.log(`🚀 ~ RedisLockService ~ getLockKeys ~ keys: ${keys}`);
   }
 
   /**

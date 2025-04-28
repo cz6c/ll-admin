@@ -9,9 +9,12 @@ import helmet from 'helmet';
 import { mw as requestIpMw } from 'request-ip';
 import { RedisLockService } from './modules/redis/redis-lock.service';
 import { MqttService } from './plugins/mqtt.service';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
+  app.useLogger(logger);
   const config = app.get(ConfigService);
 
   // 开启跨域资源共享
@@ -67,19 +70,19 @@ async function bootstrap() {
   const port = config.get<number>('app.port') || 3000;
   await app.listen(port);
 
-  console.log(`➜  运行环境：${process.env.NODE_ENV}`);
-  console.log(`➜  服务地址：http://localhost:${port}${prefix}/`);
-  console.log(`➜  swagger： http://localhost:${port}${prefix}/swagger-ui/`);
+  logger.log(`➜  运行环境：${process.env.NODE_ENV}`);
+  logger.log(`➜  服务地址：http://localhost:${port}${prefix}/`);
+  logger.log(`➜  swagger： http://localhost:${port}${prefix}/swagger-ui/`);
 
   // 监听线程消息
   process.on('message', async function (msg) {
     // 处理进程关闭
     if (msg == 'shutdown') {
-      console.log(`${process.pid} Closing all connections...`);
+      logger.log(`${process.pid} Closing all connections...`);
 
       // 最大允许关闭时间
       setTimeout(() => {
-        console.error('关闭超时，强制退出');
+        logger.error('关闭超时，强制退出');
         process.exit(1);
       }, 9000); // 略小于 PM2 的 kill_timeout
 
@@ -91,13 +94,13 @@ async function bootstrap() {
 
       for (const step of shutdownSteps) {
         try {
-          console.log(`${process.pid} 执行步骤: ${step.action}`);
+          logger.log(`${process.pid} 执行步骤: ${step.action}`);
           await step.handler();
         } catch (err) {
-          console.error(`${process.pid} ${step.action} 失败`, err);
+          logger.error(`${process.pid} ${step.action} 失败`, err);
         }
       }
-      console.log(`${process.pid} Finished closing connections`);
+      logger.log(`${process.pid} Finished closing connections`);
       process.exit(0);
     }
   });

@@ -1,18 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AxiosService } from './axios.service';
+import { AxiosService } from '../../plugins/axios.service';
 import { NodemailerService } from '@/modules/nodemailer/nodemailer.service';
 import { RedisLockService } from '@/modules/redis/redis-lock.service';
+import { TaskService } from '@/modules/tasks/task.service';
+// import { TaskTypeEnum } from '@/common/enum/dict';
 
 @Injectable()
-export class TaskService {
+export class LocalTask {
+  private readonly logger = new Logger(LocalTask.name);
   constructor(
     private readonly nodemailerService: NodemailerService,
+    private readonly tasksService: TaskService,
     private readonly axiosService: AxiosService,
     private readonly lockService: RedisLockService,
   ) {}
 
-  @Cron(CronExpression.EVERY_5_SECONDS)
+  @Cron(CronExpression.EVERY_30_SECONDS)
   async test() {
     const key = 'task:test',
       ttl = 5000;
@@ -25,15 +29,21 @@ export class TaskService {
 
       this.lockService.getLockKeys();
     } catch (error) {
-      console.error('任务执行失败:', error);
+      this.logger.error('任务执行失败:', error);
     } finally {
       if (acquired) await this.lockService.releaseLock(key); // 执行后释放锁
     }
   }
 
-  // @Cron(new Date('2024-11-26 16:01:08'))
+  // @Cron(new Date('2025-04-25 16:48:30'))
   // async test1() {
-  //   console.log('🚀 ~ TaskService ~ test1');
+  //   this.tasksService.createTask({
+  //     taskName: 'test_loop',
+  //     payload: 'test_loop',
+  //     taskType: TaskTypeEnum.LOOP,
+  //     executeAt: new Date('2025-04-25 16:48:50'),
+  //     cronExpression: '*/30 * * * * *',
+  //   });
   // }
 
   /**
@@ -63,7 +73,7 @@ export class TaskService {
 
       await this.nodemailerService.sendMail(options);
     } catch (error) {
-      console.error('任务执行失败:', error);
+      this.logger.error('任务执行失败:', error);
     } finally {
       if (acquired) await this.lockService.releaseLock(key);
     }

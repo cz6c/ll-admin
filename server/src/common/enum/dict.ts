@@ -224,3 +224,49 @@ export const PushInterval = {
   [PushIntervalEnum.WEEKLY]: '每周',
   [PushIntervalEnum.MONTHLY]: '每月',
 };
+
+/**
+ * 任务类型:1一次,2循环
+ */
+export enum TaskTypeEnum {
+  /**
+   * 一次
+   */
+  ONCE = '1',
+  /**
+   * 循环
+   */
+  LOOP = '2',
+}
+export const TaskType = {
+  [TaskTypeEnum.ONCE]: '一次',
+  [TaskTypeEnum.LOOP]: '循环',
+};
+
+/**
+ * 任务执行状态:1挂起,2执行,3完成,4失败
+ */
+export enum TaskStatusEnum {
+  /**
+   * 挂起
+   */
+  PENDING = '1',
+  /**
+   * 执行
+   */
+  EXECUTING = '2',
+  /**
+   * 完成
+   */
+  COMPLET = '3',
+  /**
+   * 失败
+   */
+  FAIL = '4',
+}
+export const TaskStatus = {
+  [TaskStatusEnum.PENDING]: '挂起',
+  [TaskStatusEnum.EXECUTING]: '执行',
+  [TaskStatusEnum.COMPLET]: '完成',
+  [TaskStatusEnum.FAIL]: '失败',
+};

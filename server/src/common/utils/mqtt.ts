@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import mqtt, { type MqttClient, type IClientOptions, type IClientPublishOptions } from 'mqtt';
 
 type ConnectOptions = {
@@ -11,6 +12,7 @@ type QueueItem = {
 };
 
 class MQTTClientSingleton {
+  private readonly logger = new Logger(MQTTClientSingleton.name);
   private static instance: MQTTClientSingleton | null = null;
   private client: MqttClient | null = null;
   private connectUrl: string;
@@ -63,22 +65,22 @@ class MQTTClientSingleton {
 
     this.client
       .on('connect', () => {
-        console.log('连接成功');
+        this.logger.log('连接成功');
         this.currentReconnectAttempts = 0;
         this.processMessageQueue();
         this.client.subscribe(this.topic, { qos: this.qos }, (error) => {
           if (error) {
-            console.log('subscribe error:', error);
+            this.logger.log('subscribe error:', error);
             return;
           }
-          console.log(`Subscribe to topic '${this.topic}'`);
+          this.logger.log(`Subscribe to topic '${this.topic}'`);
         });
       })
       .on('message', (topic, payload) => {
         this.handleMessage(topic, payload);
       })
       .on('error', (error) => {
-        console.error('连接error', error);
+        this.logger.error('连接error', error);
       })
       .on('reconnect', () => {
         this.handleReconnect();
@@ -92,7 +94,7 @@ class MQTTClientSingleton {
 
   // 处理消息
   private handleMessage(topic: string, payload: Buffer): void {
-    console.log(`收到消息 [${topic}]: ${payload.toString()}`);
+    this.logger.log(`收到消息 [${topic}]: ${payload.toString()}`);
   }
 
   // 重新连接
@@ -108,12 +110,12 @@ class MQTTClientSingleton {
     );
 
     if (this.currentReconnectAttempts >= this.maxReconnectAttempts!) {
-      console.error('达到最大重连次数，停止尝试');
+      this.logger.error('达到最大重连次数，停止尝试');
       return;
     }
 
     this.reconnectTimer = setTimeout(() => {
-      console.log(`第 ${this.currentReconnectAttempts} 次重连，${delay}ms 后尝试`);
+      this.logger.log(`第 ${this.currentReconnectAttempts} 次重连，${delay}ms 后尝试`);
     }, delay);
   }
 
@@ -130,14 +132,14 @@ class MQTTClientSingleton {
     return new Promise((resolve) => {
       if (!this.client) {
         this.messageQueue.push({ payload });
-        console.error('消息已加入队列等待发送');
+        this.logger.error('消息已加入队列等待发送');
         return resolve();
       }
 
       this.client.publish(this.topic, payload, { qos: this.qos }, (error) => {
         if (error) {
           this.messageQueue.push({ payload });
-          console.error(`发布失败: ${error.message}`);
+          this.logger.error(`发布失败: ${error.message}`);
         }
         resolve();
       });

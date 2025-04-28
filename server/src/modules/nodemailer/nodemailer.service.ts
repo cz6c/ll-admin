@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
@@ -22,6 +22,7 @@ import { DelFlagEnum, PushIntervalEnum, PushModelEnum, SuccessErrorEnum, StatusE
 
 @Injectable()
 export class NodemailerService {
+  private readonly logger = new Logger(NodemailerService.name);
   private transporter: nodemailer.Transporter;
   private mailConfig;
   constructor(
@@ -276,7 +277,7 @@ export class NodemailerService {
       this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.SUCCESS });
     } catch (error) {
       this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.FAIL });
-      console.log('🚀 sendMail ~ error:', error);
+      this.logger.error('🚀 sendMail ~ error:', error);
     }
   }
 }

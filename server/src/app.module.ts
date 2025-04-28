@@ -7,7 +7,12 @@ import { RedisModule } from './modules/redis/redis.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from 'src/common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule';
+import { WinstonModule } from 'nest-winston';
+import { winstonConfig } from './config/winston.config';
 import { PluginsModule } from './plugins/plugins.module';
+import { TaskModule } from './modules/tasks/task.module';
 
 import { NodemailerModule } from './modules/nodemailer/nodemailer.module';
 import { AreaModule } from './modules/area/area.module';
@@ -65,9 +70,22 @@ import { ServerModule } from './modules/monitor/server/server.module';
       },
       true,
     ),
+    // 任务队列
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => ({
+        redis: config.get('redis'),
+      }),
+    }),
+    // 任务调度
+    ScheduleModule.forRoot(),
+    // 系统日志
+    WinstonModule.forRoot(winstonConfig()),
     // 功能插件
     PluginsModule,
     // 以下业务模块
+    TaskModule,
     NodemailerModule,
     AreaModule,
     UploadModule,

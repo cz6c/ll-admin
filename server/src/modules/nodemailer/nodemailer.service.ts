@@ -19,10 +19,11 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { isArray } from '@/common/utils/is';
 import { DelFlagEnum, PushIntervalEnum, PushModelEnum, SuccessErrorEnum, StatusEnum } from '@/common/enum/dict';
+import { TaskService } from '@/modules/tasks/task.service';
 
 @Injectable()
-export class NodemailerService {
-  private readonly logger = new Logger(NodemailerService.name);
+export class PushTaskService {
+  private readonly logger = new Logger(PushTaskService.name);
   private transporter: nodemailer.Transporter;
   private mailConfig;
   constructor(
@@ -33,6 +34,7 @@ export class NodemailerService {
     // 定时任务注册器
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly configService: ConfigService,
+    private readonly tasksService: TaskService,
   ) {
     this.mailConfig = this.configService.get('mail');
     this.transporter = nodemailer.createTransport(this.mailConfig);

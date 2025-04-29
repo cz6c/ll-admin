@@ -2,7 +2,7 @@ import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from '@/common/entities/base';
 import { PushIntervalEnum, PushModelEnum } from '@/common/enum/dict';
 
-@Entity('nodemailer_pushtask', { comment: '邮件推送任务表' })
+@Entity('pushtask', { comment: '邮件推送任务表' })
 export class NodemailerPushTaskEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'pushtask_id', comment: '任务ID' })
   public pushtaskId: number;

@@ -1,7 +1,7 @@
 import { SuccessErrorEnum } from '@/common/enum/dict';
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity('nodemailer_pushlog', { comment: '推送日志表' })
+@Entity('pushlog', { comment: '推送日志表' })
 export class NodemailerPushLogEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'pushlog_id', comment: '推送日志id' })
   public pushlogId: number;

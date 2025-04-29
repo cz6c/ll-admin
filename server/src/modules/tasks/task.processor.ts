@@ -5,6 +5,7 @@ import { RedisLockService } from '../redis/redis-lock.service';
 import { TaskEntity } from './entities/task.entity';
 import { Logger } from '@nestjs/common';
 import { TaskTypeEnum } from '@/common/enum/dict';
+import { NodemailerService } from '@/plugins/nodemailer.service';
 
 // 处理 tasks 队列中作业的工作进程(消费者)
 @Processor('tasks')
@@ -13,6 +14,7 @@ export class TaskProcessor {
   constructor(
     private readonly taskService: TaskService,
     private readonly lockService: RedisLockService,
+    private readonly nodemailerService: NodemailerService,
   ) {}
 
   // execute-task 任务处理器
@@ -45,9 +47,15 @@ export class TaskProcessor {
 
   private async executeTaskLogic(task: TaskEntity) {
     // 实际业务逻辑执行
-    this.logger.log(`执行任务 ${task.taskId}: ${task.taskName}`);
-    // ...执行逻辑...
-    // 模拟耗时操作
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (task.taskName.includes('nodemailer')) {
+      const res = JSON.parse(task.payload);
+      const options = { to: res.acceptEmail, subject: res.pushTitle, text: res.pushContent, pushTask: res };
+      await this.nodemailerService.sendMail(options);
+    } else {
+      this.logger.log(`执行任务 ${task.taskId}: ${task.taskName}`);
+      // ...执行逻辑...
+      // 模拟耗时操作
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
 }

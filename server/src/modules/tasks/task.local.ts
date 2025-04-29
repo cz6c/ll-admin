@@ -1,19 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AxiosService } from '../../plugins/axios.service';
-import { NodemailerService } from '@/modules/nodemailer/nodemailer.service';
 import { RedisLockService } from '@/modules/redis/redis-lock.service';
 import { TaskService } from '@/modules/tasks/task.service';
 // import { TaskTypeEnum } from '@/common/enum/dict';
+import { NodemailerService } from '@/plugins/nodemailer.service';
 
 @Injectable()
 export class LocalTask {
   private readonly logger = new Logger(LocalTask.name);
   constructor(
-    private readonly nodemailerService: NodemailerService,
     private readonly tasksService: TaskService,
     private readonly axiosService: AxiosService,
     private readonly lockService: RedisLockService,
+    private readonly nodemailerService: NodemailerService,
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)

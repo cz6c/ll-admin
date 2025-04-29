@@ -3477,6 +3477,49 @@ VALUES
 UNLOCK TABLES;
 
 --
+-- Table structure for table `task`
+--
+DROP TABLE IF EXISTS `task`;
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+
+/*!50503 SET character_set_client = utf8mb4 */;
+
+CREATE TABLE
+  `task` (
+    `status` enum ('0', '1') NOT NULL DEFAULT '0' COMMENT '状态',
+    `del_flag` enum ('0', '1') NOT NULL DEFAULT '0' COMMENT '删除标志',
+    `create_by` int (11) DEFAULT NULL COMMENT '创建者',
+    `create_time` datetime (6) DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间',
+    `update_by` int (11) DEFAULT NULL COMMENT '更新者',
+    `update_time` datetime (6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间',
+    `task_id` int (11) NOT NULL AUTO_INCREMENT COMMENT '任务ID',
+    `task_name` varchar(50) NOT NULL COMMENT '任务名称',
+    `payload` text NOT NULL COMMENT 'JSON 序列化的任务参数',
+    `task_type` enum ('1', '2') NOT NULL DEFAULT '1' COMMENT '任务类型',
+    `execute_at` datetime NOT NULL COMMENT '执行时间',
+    `cron_expression` varchar(50) DEFAULT NULL COMMENT '定时任务表达式',
+    `task_status` enum ('1', '2', '3', '4') NOT NULL DEFAULT '1' COMMENT '任务状态',
+    `retries` int (11) NOT NULL DEFAULT '0' COMMENT '任务重试计数',
+    `max_retries` int (11) NOT NULL DEFAULT '3' COMMENT '任务最大重试次数',
+    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    PRIMARY KEY (`task_id`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 7 DEFAULT CHARSET = utf8mb4 COMMENT = '任务队列表';
+
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `task`
+--
+LOCK TABLES `task` WRITE;
+
+/*!40000 ALTER TABLE `task` DISABLE KEYS */;
+
+/*!40000 ALTER TABLE `task` ENABLE KEYS */;
+
+UNLOCK TABLES;
+
+--
 -- Table structure for table `nodemailer_pushlog`
 --
 DROP TABLE IF EXISTS `nodemailer_pushlog`;

@@ -2,17 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
-import { NodemailerPushTaskEntity } from './entities/nodemailer.pushtask.entity';
-import { NodemailerPushLogEntity } from './entities/nodemailer.pushlog.entity';
-import {
-  CreateNodemailerPushTaskDto,
-  UpdateNodemailerPushTaskDto,
-  ListNodemailerPushTaskDto,
-  ListNodemailerPushLogDto,
-  CreateNodemailerPushLogDto,
-  SendMailOptionsType,
-  ChangeStatusDto,
-} from './dto/index';
+import { PushTaskEntity } from './entities/pushtask.entity';
+import { PushLogEntity } from './entities/pushlog.entity';
+import { CreatePushTaskDto, UpdatePushTaskDto, ListPushTaskDto, ListPushLogDto, CreatePushLogDto, SendMailOptionsType, ChangeStatusDto } from './dto/index';
 import { CronJob } from 'cron';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -27,10 +19,10 @@ export class PushTaskService {
   private transporter: nodemailer.Transporter;
   private mailConfig;
   constructor(
-    @InjectRepository(NodemailerPushTaskEntity)
-    private readonly nodemailerPushTaskEntity: Repository<NodemailerPushTaskEntity>,
-    @InjectRepository(NodemailerPushLogEntity)
-    private readonly nodemailerPushLogEntity: Repository<NodemailerPushLogEntity>,
+    @InjectRepository(PushTaskEntity)
+    private readonly nodemailerPushTaskEntity: Repository<PushTaskEntity>,
+    @InjectRepository(PushLogEntity)
+    private readonly nodemailerPushLogEntity: Repository<PushLogEntity>,
     // 定时任务注册器
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly configService: ConfigService,
@@ -41,7 +33,7 @@ export class PushTaskService {
   }
 
   // 处理定时任务
-  handleTask(res: NodemailerPushTaskEntity) {
+  handleTask(res: PushTaskEntity) {
     // 注册定时任务发送邮件
     let cronTime: string | Date = '';
     let once = false;
@@ -79,29 +71,29 @@ export class PushTaskService {
 
   /**
    * @description:邮箱推送任务-创建
-   * @param {CreateNodemailerPushTaskDto} createNodemailerPushTaskDto
+   * @param {CreatePushTaskDto} createPushTaskDto
    * @param {number} userId
    * @return
    */
-  async createPushTask(createNodemailerPushTaskDto: CreateNodemailerPushTaskDto, userId: number) {
+  async createPushTask(createPushTaskDto: CreatePushTaskDto, userId: number) {
     const list = await this.nodemailerPushTaskEntity.find({
       where: {
-        pushtaskName: createNodemailerPushTaskDto.pushtaskName,
+        pushtaskName: createPushTaskDto.pushtaskName,
         delFlag: DelFlagEnum.NORMAL,
       },
     });
     if (list.length > 0) return ResultData.fail(400, '任务名称已存在');
-    const res = await this.nodemailerPushTaskEntity.save({ ...createNodemailerPushTaskDto, createBy: userId });
+    const res = await this.nodemailerPushTaskEntity.save({ ...createPushTaskDto, createBy: userId });
     this.handleTask(res);
     return ResultData.ok();
   }
 
   /**
    * @description: 邮箱推送任务-列表
-   * @param {ListNodemailerPushTaskDto} query
+   * @param {ListPushTaskDto} query
    * @return
    */
-  async findAllPushTask(query: ListNodemailerPushTaskDto) {
+  async findAllPushTask(query: ListPushTaskDto) {
     const entity = this.nodemailerPushTaskEntity.createQueryBuilder('entity');
     entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
@@ -139,15 +131,15 @@ export class PushTaskService {
 
   /**
    * @description: 邮箱推送任务-更新
-   * @param {UpdateNodemailerPushTaskDto} updateNodemailerPushTaskDto
+   * @param {UpdatePushTaskDto} updatePushTaskDto
    * @param {number} userId
    * @return
    */
-  async updatePushTask(updateNodemailerPushTaskDto: UpdateNodemailerPushTaskDto, userId: number) {
-    await this.nodemailerPushTaskEntity.update({ pushtaskId: updateNodemailerPushTaskDto.pushtaskId }, { ...updateNodemailerPushTaskDto, updateBy: userId });
+  async updatePushTask(updatePushTaskDto: UpdatePushTaskDto, userId: number) {
+    await this.nodemailerPushTaskEntity.update({ pushtaskId: updatePushTaskDto.pushtaskId }, { ...updatePushTaskDto, updateBy: userId });
     const item = await this.nodemailerPushTaskEntity.findOne({
       where: {
-        pushtaskId: updateNodemailerPushTaskDto.pushtaskId,
+        pushtaskId: updatePushTaskDto.pushtaskId,
         delFlag: DelFlagEnum.NORMAL,
       },
     });
@@ -205,10 +197,10 @@ export class PushTaskService {
 
   /**
    * @description: 邮箱推送任务-日志列表
-   * @param {ListNodemailerPushLogDto} query
+   * @param {ListPushLogDto} query
    * @return
    */
-  async findAllPushLog(query: ListNodemailerPushLogDto) {
+  async findAllPushLog(query: ListPushLogDto) {
     const entity = this.nodemailerPushLogEntity.createQueryBuilder('entity');
 
     if (query.pushtaskName) {
@@ -233,11 +225,11 @@ export class PushTaskService {
 
   /**
    * @description: 插入推送日志
-   * @param {CreateNodemailerPushLogDto} createNodemailerPushLogDto
+   * @param {CreatePushLogDto} createPushLogDto
    * @return
    */
-  async createPushLog(createNodemailerPushLogDto: CreateNodemailerPushLogDto) {
-    await this.nodemailerPushLogEntity.save(createNodemailerPushLogDto);
+  async createPushLog(createPushLogDto: CreatePushLogDto) {
+    await this.nodemailerPushLogEntity.save(createPushLogDto);
   }
 
   // 注册任务

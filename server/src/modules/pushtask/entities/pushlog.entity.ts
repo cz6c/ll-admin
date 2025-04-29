@@ -2,7 +2,7 @@ import { SuccessErrorEnum } from '@/common/enum/dict';
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('pushlog', { comment: '推送日志表' })
-export class NodemailerPushLogEntity {
+export class PushLogEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'pushlog_id', comment: '推送日志id' })
   public pushlogId: number;
 

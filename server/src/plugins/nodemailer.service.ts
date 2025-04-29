@@ -1,7 +1,7 @@
+import { SendMailOptionsType } from '@/modules/pushtask/dto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
-import { SendMailOptionsType } from '@/modules/nodemailer/dto';
 
 @Injectable()
 export class NodemailerService {

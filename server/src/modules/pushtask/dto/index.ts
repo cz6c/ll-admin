@@ -3,7 +3,7 @@ import { ApiProperty, PickType } from '@nestjs/swagger';
 import { BaseVO, PagingDto } from '@/common/dto/index';
 import { PushIntervalEnum, PushModelEnum, SuccessErrorEnum, StatusEnum } from '@/common/enum/dict';
 
-export class CreateNodemailerPushTaskDto {
+export class CreatePushTaskDto {
   @ApiProperty({ required: true })
   @IsString()
   @Length(0, 50)
@@ -53,15 +53,15 @@ export class CreateNodemailerPushTaskDto {
   remark?: string;
 }
 
-export class UpdateNodemailerPushTaskDto extends CreateNodemailerPushTaskDto {
+export class UpdatePushTaskDto extends CreatePushTaskDto {
   @ApiProperty({ required: true })
   @IsNumber()
   pushtaskId: number;
 }
 
-export class ChangeStatusDto extends PickType(UpdateNodemailerPushTaskDto, ['pushtaskId', 'status'] as const) {}
+export class ChangeStatusDto extends PickType(UpdatePushTaskDto, ['pushtaskId', 'status'] as const) {}
 
-export class ListNodemailerPushTaskDto extends PagingDto {
+export class ListPushTaskDto extends PagingDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -69,7 +69,7 @@ export class ListNodemailerPushTaskDto extends PagingDto {
   pushtaskName?: string;
 }
 
-export class CreateNodemailerPushLogDto {
+export class CreatePushLogDto {
   @ApiProperty({ required: true })
   @IsEnum(SuccessErrorEnum)
   pushStatus: SuccessErrorEnum;
@@ -106,14 +106,14 @@ export class CreateNodemailerPushLogDto {
   remark?: string;
 }
 
-export class ListNodemailerPushLogDto extends ListNodemailerPushTaskDto {
+export class ListPushLogDto extends ListPushTaskDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsEnum(SuccessErrorEnum)
   pushStatus?: SuccessErrorEnum;
 }
 
-export class NodemailerPushTaskVO extends BaseVO {
+export class PushTaskVO extends BaseVO {
   @ApiProperty({ description: '任务ID', example: 1 })
   public pushtaskId: number;
 
@@ -153,7 +153,7 @@ export class NodemailerPushTaskVO extends BaseVO {
   public remark: string;
 }
 
-export class NodemailerPushLogVO {
+export class PushLogVO {
   @ApiProperty({ description: '推送日志ID', example: 1 })
   public pushlogId: number;
 

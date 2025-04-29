@@ -14,7 +14,7 @@ import { winstonConfig } from './config/winston.config';
 import { PluginsModule } from './plugins/plugins.module';
 import { TaskModule } from './modules/tasks/task.module';
 
-import { NodemailerModule } from './modules/nodemailer/nodemailer.module';
+import { PushTaskModule } from './modules/pushtask/pushtask.module';
 import { AreaModule } from './modules/area/area.module';
 import { UploadModule } from './modules/upload/upload.module';
 
@@ -86,7 +86,7 @@ import { ServerModule } from './modules/monitor/server/server.module';
     PluginsModule,
     // 以下业务模块
     TaskModule,
-    NodemailerModule,
+    PushTaskModule,
     AreaModule,
     UploadModule,
     AuthModule,

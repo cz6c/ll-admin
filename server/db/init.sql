@@ -3520,16 +3520,16 @@ LOCK TABLES `task` WRITE;
 UNLOCK TABLES;
 
 --
--- Table structure for table `nodemailer_pushlog`
+-- Table structure for table `pushlog`
 --
-DROP TABLE IF EXISTS `nodemailer_pushlog`;
+DROP TABLE IF EXISTS `pushlog`;
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 
 /*!50503 SET character_set_client = utf8mb4 */;
 
 CREATE TABLE
-  `nodemailer_pushlog` (
+  `pushlog` (
     `pushlog_id` int NOT NULL AUTO_INCREMENT COMMENT '推送日志id',
     `create_time` datetime (6) DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间',
     `push_status` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '推送状态',
@@ -3545,27 +3545,27 @@ CREATE TABLE
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `nodemailer_pushlog`
+-- Dumping data for table `pushlog`
 --
-LOCK TABLES `nodemailer_pushlog` WRITE;
+LOCK TABLES `pushlog` WRITE;
 
-/*!40000 ALTER TABLE `nodemailer_pushlog` DISABLE KEYS */;
+/*!40000 ALTER TABLE `pushlog` DISABLE KEYS */;
 
-/*!40000 ALTER TABLE `nodemailer_pushlog` ENABLE KEYS */;
+/*!40000 ALTER TABLE `pushlog` ENABLE KEYS */;
 
 UNLOCK TABLES;
 
 --
--- Table structure for table `nodemailer_pushtask`
+-- Table structure for table `pushtask`
 --
-DROP TABLE IF EXISTS `nodemailer_pushtask`;
+DROP TABLE IF EXISTS `pushtask`;
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 
 /*!50503 SET character_set_client = utf8mb4 */;
 
 CREATE TABLE
-  `nodemailer_pushtask` (
+  `pushtask` (
     `status` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '状态',
     `del_flag` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '删除标志',
     `create_by` int DEFAULT NULL COMMENT '创建者',
@@ -3588,13 +3588,13 @@ CREATE TABLE
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `nodemailer_pushtask`
+-- Dumping data for table `pushtask`
 --
-LOCK TABLES `nodemailer_pushtask` WRITE;
+LOCK TABLES `pushtask` WRITE;
 
-/*!40000 ALTER TABLE `nodemailer_pushtask` DISABLE KEYS */;
+/*!40000 ALTER TABLE `pushtask` DISABLE KEYS */;
 
-/*!40000 ALTER TABLE `nodemailer_pushtask` ENABLE KEYS */;
+/*!40000 ALTER TABLE `pushtask` ENABLE KEYS */;
 
 UNLOCK TABLES;
 

@@ -3,7 +3,7 @@ import { BaseEntity } from '@/common/entities/base';
 import { PushIntervalEnum, PushModelEnum } from '@/common/enum/dict';
 
 @Entity('pushtask', { comment: '邮件推送任务表' })
-export class NodemailerPushTaskEntity extends BaseEntity {
+export class PushTaskEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: 'int', name: 'pushtask_id', comment: '任务ID' })
   public pushtaskId: number;
 

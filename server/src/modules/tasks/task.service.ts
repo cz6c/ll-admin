@@ -31,7 +31,7 @@ export class TaskService {
 
   // 动态添加任务到调度器
   scheduleTask(task: TaskEntity) {
-    const jobName = `task_${task.taskId}`;
+    const jobName = `job_${task.taskName}`;
 
     // 存在相同的任务先删除
     if (this.schedulerRegistry.doesExist('cron', jobName)) {
@@ -49,13 +49,28 @@ export class TaskService {
   }
 
   // 从队列中移除待处理任务
-  async removeTask(taskId: number) {
+  async removeTask(task: TaskEntity) {
+    const jobName = `job_${task.taskName}`;
+    this.schedulerRegistry.deleteCronJob(jobName);
     const jobs = await this.taskQueue.getJobs(['waiting', 'delayed']);
     for (const job of jobs) {
-      if (job.data.taskId === taskId) {
+      if (job.data.taskId === task.taskId) {
         await job.remove();
       }
     }
+  }
+
+  // 删除任务
+  public deleteCron(name: string) {
+    this.schedulerRegistry.getCronJob(name) && this.schedulerRegistry.deleteCronJob(name);
+  }
+  // 暂停CronJob
+  public stopCronJob(name: string) {
+    this.schedulerRegistry.getCronJob(name)?.stop();
+  }
+  // 启动CronJob
+  public startCronJob(name: string) {
+    this.schedulerRegistry.getCronJob(name)?.start();
   }
 
   /**
@@ -165,7 +180,7 @@ export class TaskService {
       });
 
       // 从队列中移除待处理任务
-      await this.removeTask(taskId);
+      await this.removeTask(task);
     } finally {
       await this.lockService.releaseLock(lockKey);
     }

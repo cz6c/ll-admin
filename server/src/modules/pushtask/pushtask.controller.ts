@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { PushTaskService } from './pushtask.service';
-import { CreatePushTaskDto, UpdatePushTaskDto, ListPushTaskDto, ListPushLogDto, PushTaskVO, PushLogVO, ChangeStatusDto } from './dto/index';
+import { CreatePushTaskDto, ListPushTaskDto, PushTaskVO, ChangeStatusDto } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
 @ApiTags('邮箱推送任务管理')
@@ -32,14 +32,6 @@ export class PushTaskController {
     return this.pushTaskService.findOnePushTask(+id);
   }
 
-  @ApiOperation({ summary: '邮箱推送任务-更新' })
-  @ApiBody({ type: UpdatePushTaskDto })
-  @ApiResult()
-  @Post('/update')
-  update(@Body() updatePushTaskDto: UpdatePushTaskDto, @GetRequestUser('user') user: RequestUserPayload['user']) {
-    return this.pushTaskService.updatePushTask(updatePushTaskDto, user.userId);
-  }
-
   @ApiOperation({ summary: '邮箱推送任务-切换状态' })
   @ApiBody({ type: ChangeStatusDto })
   @ApiResult()
@@ -56,12 +48,5 @@ export class PushTaskController {
       ids.split(',').map((id) => +id),
       user.userId,
     );
-  }
-
-  @ApiOperation({ summary: '邮箱推送任务-日志列表' })
-  @ApiResult(PushLogVO, true, true)
-  @Get('/logList')
-  findAllLog(@Query() query: ListPushLogDto) {
-    return this.pushTaskService.findAllPushLog(query);
   }
 }

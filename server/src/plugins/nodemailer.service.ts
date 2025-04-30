@@ -1,7 +1,18 @@
-import { SendMailOptionsType } from '@/modules/pushtask/dto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+
+export interface SendMailOptionsType {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html?: string;
+  pushTask: {
+    pushtaskId?: number;
+    pushtaskName?: string;
+    remark?: string;
+  };
+}
 
 @Injectable()
 export class NodemailerService {
@@ -18,13 +29,7 @@ export class NodemailerService {
 
   // 发送邮件
   async sendMail(options: SendMailOptionsType) {
-    const { to, subject, text, html, pushTask } = options;
-    // const pushLog = {
-    //   acceptEmail: isArray(to) ? to.join(',') : to,
-    //   pushTitle: subject,
-    //   pushContent: html || text,
-    //   ...pushTask,
-    // };
+    const { to, subject, text, html } = options;
     try {
       const mailOptions = {
         from: this.mailConfig.auth.user,
@@ -34,9 +39,7 @@ export class NodemailerService {
         html,
       };
       await this.transporter.sendMail(mailOptions);
-      // this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.SUCCESS });
     } catch (error) {
-      // this.createPushLog({ ...pushLog, pushStatus: SuccessErrorEnum.FAIL });
       this.logger.error('🚀 sendMail ~ error:', error);
     }
   }

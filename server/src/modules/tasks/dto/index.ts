@@ -27,12 +27,6 @@ export class CreateTaskDto {
   @Length(0, 50)
   @IsOptional()
   cronExpression?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @Length(0, 500)
-  @IsOptional()
-  remark?: string;
 }
 
 export class UpdateTaskDto extends CreateTaskDto {

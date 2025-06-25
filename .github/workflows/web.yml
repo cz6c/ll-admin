@@ -33,7 +33,7 @@ jobs:
 
       - name: Install And build
         run: |
-          cd admin
+          cd apps/admin
           pnpm install
           pnpm run build:prod
 
@@ -46,7 +46,7 @@ jobs:
           # SCP参数
           ARGS: "-avzr --delete"
           # 源目录
-          SOURCE: "/admin/dist/"
+          SOURCE: "apps/admin/dist/"
           # 服务器ip
           REMOTE_HOST: ${{ secrets.SERVER_HOST }}
           # 用户

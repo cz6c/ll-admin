@@ -5,7 +5,17 @@
   "license": "MIT",
   "scripts": {
     "prepare": "husky install",
-    "cz": "git add . && czg"
+    "cz": "git add . && czg",
+    "build-config": "pnpm --filter @packages/config build",
+    "build-common": "pnpm --filter @packages/common build",
+    "dev-admin": "pnpm --filter @apps/admin dev",
+    "dev-server": "pnpm --filter @apps/server start:dev",
+    "turbo": "pnpm turbo run build",
+    "preinstall": "npx only-allow pnpm"
+  },
+  "dependencies": {
+    "@packages/config": "workspace:^",
+    "@packages/common": "workspace:^"
   },
   "devDependencies": {
     "@commitlint/cli": "^17.8.1",

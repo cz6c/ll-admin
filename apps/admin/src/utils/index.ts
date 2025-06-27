@@ -1,4 +1,4 @@
-import { isArray, isNumber } from "@/utils/is";
+import { isArray, isNumber } from "@packages/common";
 
 /**
  * @description 生成唯一 uuid

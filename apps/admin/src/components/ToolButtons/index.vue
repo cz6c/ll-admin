@@ -4,7 +4,7 @@ defineOptions({
 });
 import { hasPermission } from "@/directives/modules/permission";
 import { BtnOptionsProps } from "./ToolButton.vue";
-import { isFunction } from "@/utils/is";
+import { isFunction } from "@packages/common";
 
 const {
   buttons,

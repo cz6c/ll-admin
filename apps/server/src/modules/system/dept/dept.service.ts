@@ -5,7 +5,7 @@ import { ResultData } from '@/common/utils/result';
 import { SysDeptEntity } from './entities/dept.entity';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto } from './dto/index';
 import { DataScopeEnum, DelFlagEnum } from '@/common/enum/dict';
-import { listToTree } from '@/common/utils/tree';
+import { listToTree } from '@packages/common';
 import { SysRoleWithDeptEntity } from '../role/entities/role-dept.entity';
 import { Uniq } from '@/common/utils';
 

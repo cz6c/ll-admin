@@ -8,7 +8,7 @@ interface TreeHelperConfig {
 const DEFAULT_CONFIG: TreeHelperConfig = {
   id: "id",
   children: "children",
-  pid: "parentId"
+  pid: "parentId",
 };
 
 // 获取配置。  Object.assign 从一个或多个源对象复制到目标对象
@@ -23,7 +23,7 @@ const getConfig = (config: Partial<TreeHelperConfig>) => Object.assign({}, DEFAU
 export function listToTree(list: any[], config: Partial<TreeHelperConfig> = {}): any[] {
   const conf = getConfig(config) as TreeHelperConfig;
   const nodeMap = new Map();
-  const result = [];
+  const result: any[] = [];
   const { id, children, pid } = conf;
 
   for (const node of list) {
@@ -89,7 +89,7 @@ export function filterTree(tree: any[], callBack: (n: any) => boolean, config: P
   function listFilter(list: any[]) {
     return list
       .map((node: any) => ({ ...node }))
-      .filter(node => {
+      .filter((node) => {
         // 递归调用 对含有children项  进行再次调用自身函数 listFilter
         node[children] = node[children] && listFilter(node[children]);
         // 执行传入的回调 callBack 进行过滤
@@ -134,15 +134,15 @@ export function treeMap(tree: any[], conversion: (n: any) => any, config: Partia
     if (haveChildren) {
       return {
         ...conversionData,
-        [children]: data[children].map((i: number) => treeMapEach(i, conversion, children))
+        [children]: data[children].map((i: number) => treeMapEach(i, conversion, children)),
       };
     } else {
       return {
-        ...conversionData
+        ...conversionData,
       };
     }
   }
-  return tree.map(item => treeMapEach(item, conversion, children));
+  return tree.map((item) => treeMapEach(item, conversion, children));
 }
 
 /**
@@ -211,7 +211,7 @@ export function findPathAll(tree: any, callBack: (n: any) => any, config: Partia
  * @param parentNode 父节点
  */
 export function eachTree(tree: any[], callBack: (n: any, p: any) => any, parentNode: any = {}) {
-  tree.forEach(element => {
+  tree.forEach((element) => {
     const newNode = callBack(element, parentNode) || element;
     if (element.children) {
       eachTree(element.children, callBack, newNode);

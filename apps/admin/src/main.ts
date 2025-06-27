@@ -11,6 +11,9 @@ import MQTTClientSingleton from "@/utils/mqtt";
 // 带重试机制的发布
 MQTTClientSingleton.safePublish("前端");
 
+import { isArray } from "@packages/common";
+console.log(isArray([]));
+
 // css
 import "normalize.css";
 import "@/assets/style/index.scss";

@@ -77,10 +77,6 @@
     "vue-eslint-parser": "^9.4.3",
     "vue-tsc": "^2.1.6"
   },
-  "resolutions": {
-    "bin-wrapper": "npm:bin-wrapper-china",
-    "gifsicle": "5.2.0"
-  },
   "browserslist": [
     "> 1%",
     "not ie 11",
@@ -89,12 +85,5 @@
   "engines": {
     "node": ">=18",
     "pnpm": ">=9"
-  },
-  "pnpm": {
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "eslint": "9"
-      }
-    }
   }
 }

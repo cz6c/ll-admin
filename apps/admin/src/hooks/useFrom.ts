@@ -1,5 +1,5 @@
 import type { FormInstance } from "element-plus";
-import { isFunction } from "@/utils/is";
+import { isFunction } from "@packages/common";
 
 export function useFrom(handleSubmit: Function) {
   const submitForm = async (formEl: FormInstance | undefined) => {

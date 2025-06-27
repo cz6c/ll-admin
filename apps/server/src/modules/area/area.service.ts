@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { ResultData } from '@/common/utils/result';
 import { AreaEntity, CityEntity, ProvinceEntity } from './entities/area.entity';
 import { AeraListParamsDto } from './dto/index.dto';
-import { listToTree } from '@/common/utils/tree';
+import { listToTree } from '@packages/common';
 
 @Injectable()
 export class AreaService {

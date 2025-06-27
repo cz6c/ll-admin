@@ -2,7 +2,7 @@
 import { CheckboxValueType } from "element-plus/es/components/checkbox";
 import { TableCol } from "../index.d";
 import { useSortable } from "@/hooks/useSortable";
-import { isNullAndUnDef } from "@/utils/is";
+import { isNullAndUnDef } from "@packages/common";
 import { cloneDeep } from "lodash-es";
 
 defineOptions({

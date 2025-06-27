@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import Fuse from "fuse.js";
-import { isHttp } from "@/utils/is";
+import { isHttp } from "@packages/common";
 import { usePermissionStore } from "@/store/modules/permission";
 
 defineOptions({

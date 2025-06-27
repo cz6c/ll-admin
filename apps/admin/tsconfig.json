@@ -9,13 +9,15 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
+    "strictNullChecks": false, // 忽略 null undefined 警告
     "lib": ["esnext", "dom"],
     "types": ["element-plus/global", "node", "vite-plugin-svg-icons/client", "vite/client"],
     "allowSyntheticDefaultImports": true,
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"],
-      "#/*": ["types/*"]
+      "#/*": ["types/*"],
+      "@packages/*": ["../../packages/*/dist"]
     }
   },
   "include": [

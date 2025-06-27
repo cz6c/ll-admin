@@ -9,7 +9,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditMenuForm from "./components/EditMenuForm.vue";
-import { findPath } from "@/utils/tree";
+import { findPath } from "@packages/common";
 
 defineOptions({
   name: "MenuIndex"

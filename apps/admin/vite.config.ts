@@ -11,7 +11,8 @@ const pathResolve = (dir: string) => {
 
 // https://vitejs.dev/config/
 export default ({ command, mode }: ConfigEnv): UserConfigExport => {
-  const isProduction = command === "build";
+  const isBuild = command === "build";
+  const isProduction = mode === "production";
   const root = process.cwd();
   const env = loadEnv(mode, root);
   const viteEnv = wrapperEnv(env);
@@ -47,14 +48,14 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
       port: viteEnv.VITE_PORT,
       proxy: createProxy(viteEnv.VITE_PROXY)
     },
-    plugins: createVitePlugins(viteEnv, isProduction),
+    plugins: createVitePlugins(viteEnv, isBuild),
     build: {
       minify: "terser",
       terserOptions: {
         compress: {
           //生产环境时移除console
-          drop_console: true,
-          drop_debugger: true
+          drop_console: isProduction,
+          drop_debugger: isProduction
         }
       }
     },

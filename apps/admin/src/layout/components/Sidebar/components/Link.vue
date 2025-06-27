@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { isExternal } from "@/utils/is";
+import { isExternal } from "@packages/common";
 
 const props = defineProps({
   to: {

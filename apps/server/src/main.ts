@@ -11,6 +11,7 @@ import { RedisLockService } from './modules/redis/redis-lock.service';
 import { MqttService } from './plugins/mqtt.service';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { isArray } from '@packages/common';
+import { promises as fs } from 'node:fs';
 console.log(isArray([]));
 
 async function bootstrap() {
@@ -64,6 +65,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerOptions);
   // 生产环境使用 nginx 可以将当前文档地址 屏蔽外部访问
   SwaggerModule.setup(`${prefix}/swagger-ui`, app, document);
+  if (process.env.NODE_ENV === 'development') {
+    fs.writeFile('./swagger.json', JSON.stringify(document));
+  }
 
   // 获取真实 ip
   app.use(requestIpMw({ attributeName: 'ip' }));

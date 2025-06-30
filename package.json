@@ -9,7 +9,7 @@
     "build:common": "pnpm --filter @packages/common build",
     "dev:admin": "pnpm --filter @apps/admin dev",
     "dev:server": "pnpm --filter @apps/server start:dev",
-    "clean": "node ./scripts/clean.mjs",
+    "clean": "node ./scripts/clean.js",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "preinstall": "npx only-allow pnpm",
     "catalog": "pnpx codemod pnpm/catalog"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isFunction } from "@packages/common";
+import { isFunction } from "@llcz/common";
 import { ElButton } from "element-plus";
 
 defineOptions({

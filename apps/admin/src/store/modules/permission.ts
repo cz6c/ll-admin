@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import router, { constantRoutes, Layout, IFrame } from "@/router";
 import { cloneDeep, omit } from "lodash-es";
-import { isArray, isHttp } from "@packages/common";
+import { isArray, isHttp } from "@llcz/common";
 import type { AppRouteRecordRaw } from "#/utils";
 
 // 匹配views里面所有的.vue文件

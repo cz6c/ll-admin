@@ -6,23 +6,18 @@
   "scripts": {
     "prepare": "husky install",
     "cz": "git add . && czg",
-    "build:common": "pnpm --filter @packages/common build",
-    "dev:admin": "pnpm --filter @apps/admin dev",
     "dev:server": "pnpm --filter @apps/server start:dev",
-    "clean": "node ./scripts/clean.js",
+    "dev:admin": "pnpm --filter @apps/admin dev",
+    "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
-    "preinstall": "npx only-allow pnpm",
-    "catalog": "pnpx codemod pnpm/catalog"
-  },
-  "dependencies": {
-    "@packages/common": "workspace:*"
+    "preinstall": "npx only-allow pnpm"
   },
   "devDependencies": {
-    "@commitlint/cli": "catalog:",
-    "@commitlint/config-conventional": "catalog:",
-    "cz-git": "catalog:",
-    "czg": "catalog:",
-    "husky": "catalog:"
+    "@commitlint/cli": "^17.8.1",
+    "@commitlint/config-conventional": "^17.8.1",
+    "cz-git": "^1.8.0",
+    "czg": "^1.8.0",
+    "husky": "^8.0.3"
   },
   "husky": {
     "hooks": {

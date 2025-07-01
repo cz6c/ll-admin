@@ -1,6 +1,6 @@
 import type { VxeGridInstance, VxeGridProps, VxeGridListeners } from "vxe-table";
 import $feedback from "@/utils/feedback";
-import { isFunction } from "@packages/common";
+import { isFunction } from "@llcz/common";
 import { cloneDeep } from "lodash-es";
 
 interface UseTableOpt<T> {

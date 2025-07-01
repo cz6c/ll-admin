@@ -9,7 +9,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditDeptForm from "./components/EditDeptForm.vue";
-import { findPath } from "@packages/common";
+import { findPath } from "@llcz/common";
 
 defineOptions({
   name: "Dept"

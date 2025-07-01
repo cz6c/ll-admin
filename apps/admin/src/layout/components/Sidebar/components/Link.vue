@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { isExternal } from "@packages/common";
+import { isExternal } from "@llcz/common";
 
 const props = defineProps({
   to: {

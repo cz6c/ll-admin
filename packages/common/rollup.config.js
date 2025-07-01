@@ -1,11 +1,10 @@
 import commonjs from "@rollup/plugin-commonjs"; // 支持 CommonJS
 import resolve from "@rollup/plugin-node-resolve"; // 帮助寻找node_modules里的包
 import typescript from "@rollup/plugin-typescript"; // 支持ts
-import dts from "rollup-plugin-dts"; // 生成.d.ts
-import { terser } from "rollup-plugin-terser"; // 代码压缩
+import terser from "@rollup/plugin-terser"; // 代码压缩
 import json from "@rollup/plugin-json";
+import dts from "rollup-plugin-dts"; // 生成.d.ts
 import { readFileSync } from "fs";
-import path from "path";
 
 // 读取 package.json
 const pkg = JSON.parse(readFileSync("./package.json", "utf8"));
@@ -32,13 +31,7 @@ const sharedPlugins = [
 ];
 
 // 生产环境压缩
-const productionPlugins = [
-  terser({
-    format: {
-      comments: false,
-    },
-  }),
-];
+const productionPlugins = [terser()];
 
 // 主配置
 export default (commandLineArgs) => {
@@ -84,15 +77,7 @@ export default (commandLineArgs) => {
         format: "es",
       },
       plugins: [
-        dts({
-          respectExternal: true,
-          compilerOptions: {
-            // 确保声明文件在 dist/types 目录
-            declaration: true,
-            declarationDir: path.resolve("dist/types"),
-            emitDeclarationOnly: true,
-          },
-        }),
+        dts(),
       ],
     },
   ];

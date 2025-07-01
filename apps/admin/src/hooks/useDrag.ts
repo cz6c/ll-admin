@@ -1,4 +1,4 @@
-import { isFunction } from "@packages/common";
+import { isFunction } from "@llcz/common";
 
 export interface Position {
   x: number;

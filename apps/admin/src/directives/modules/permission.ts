@@ -1,6 +1,6 @@
 import type { App } from "vue";
 import { intersection } from "lodash-es";
-import { isArray } from "@packages/common";
+import { isArray } from "@llcz/common";
 import router from "@/router";
 import { productConfig } from "@/config";
 import { useAuthStore } from "@/store/modules/auth";

@@ -1,5 +1,5 @@
 import type { ListParams } from "#/api/index.d";
-import { isFunction } from "@packages/common";
+import { isFunction } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { cloneDeep } from "lodash-es";
 

@@ -8,7 +8,7 @@ import { CreateMenuDto, UpdateMenuDto, ListMenuDto } from './dto/index';
 import { Uniq } from '@/common/utils/index';
 import { UserService } from '../user/user.service';
 import { buildMenus } from './utils';
-import { listToTree } from '@packages/common';
+import { listToTree } from '@llcz/common';
 import { DelFlagEnum, StatusEnum } from '@/common/enum/dict';
 @Injectable()
 export class MenuService {

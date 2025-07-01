@@ -10,7 +10,7 @@ import { mw as requestIpMw } from 'request-ip';
 import { RedisLockService } from './modules/redis/redis-lock.service';
 import { MqttService } from './plugins/mqtt.service';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import { isArray } from '@packages/common';
+import { isArray } from '@llcz/common';
 import { promises as fs } from 'node:fs';
 console.log(isArray([]));
 

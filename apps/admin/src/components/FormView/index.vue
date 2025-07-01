@@ -2,7 +2,7 @@
 import { FormItem } from "./index.d";
 import { BreakPoint } from "@/components/Grid/type";
 import { handleProp } from "@/utils";
-import { isFunction } from "@packages/common";
+import { isFunction } from "@llcz/common";
 import { cloneDeep } from "lodash-es";
 import type { FormInstance, FormRules } from "element-plus";
 const formRef = ref<FormInstance>();

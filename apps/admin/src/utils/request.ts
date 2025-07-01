@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
 import $feedback from "@/utils/feedback";
 import { WebStorage } from "@/utils/storage";
-import { isNullOrDef } from "@packages/common";
+import { isNullOrDef } from "@llcz/common";
 
 export const errorCode = {
   "401": "认证失败，无法访问系统资源",

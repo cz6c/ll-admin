@@ -3,6 +3,8 @@
 /node_modules
 /build
 /src/config/prod.yml
+swagger.json
+ormlogs.log
 
 # Logs
 logs

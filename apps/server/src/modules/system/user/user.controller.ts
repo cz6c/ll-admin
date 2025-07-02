@@ -5,7 +5,7 @@ import { Response } from 'express';
 import { ApiResult, GetRequestUser, RequestUserPayload, RequireRole } from '@/common/decorator';
 import { CreateUserDto, UpdateUserDto, ListUserDto, ChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto, UpdateAvatarDto, UserVo, UserProfileVo, UserInfoVo } from './dto/index';
 
-@ApiTags('用户管理')
+@ApiTags('systemUser')
 @ApiBearerAuth()
 @Controller('system/user')
 export class UserController {

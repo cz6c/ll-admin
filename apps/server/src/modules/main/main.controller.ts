@@ -11,7 +11,7 @@ import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorato
 import { CacheEnum } from '@/common/enum/loca';
 import { UserVo } from '../system/user/dto';
 
-@ApiTags('登录鉴权')
+@ApiTags('auth')
 @Controller('/')
 export class MainController {
   constructor(

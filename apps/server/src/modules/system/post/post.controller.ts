@@ -5,7 +5,7 @@ import { CreatePostDto, UpdatePostDto, ListPostDto, SysPostVo } from './dto/inde
 import { Response } from 'express';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('岗位管理')
+@ApiTags('systemPost')
 @ApiBearerAuth()
 @Controller('system/post')
 export class PostController {

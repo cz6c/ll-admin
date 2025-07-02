@@ -5,7 +5,7 @@ import { ConfigService } from './config.service';
 import { CreateConfigDto, UpdateConfigDto, ListConfigDto, SysConfigVo } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('参数设置')
+@ApiTags('systemConfig')
 @ApiBearerAuth()
 @Controller('system/config')
 export class ConfigController {

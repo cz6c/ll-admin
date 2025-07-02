@@ -1,12 +1,10 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
-import { resolve, join } from "node:path";
-
-const rootDir = process.cwd();
+import { join } from "node:path";
 
 // 项目路径配置
 const PROJECT_PATHS = {
-  admin: resolve(rootDir, "../apps/admin/src"),
+  admin: "./apps/admin/temp_openapi",
   // uniapp: path.resolve(__dirname, "../uniapp/src/service/types"),
   // electron: path.resolve(__dirname, "../electron/src/core/api/types"),
 };

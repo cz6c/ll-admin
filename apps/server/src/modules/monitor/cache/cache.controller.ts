@@ -2,7 +2,7 @@ import { Controller, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CacheService } from './cache.service';
 
-@ApiTags('系统监控')
+@ApiTags('monitor')
 @ApiBearerAuth()
 @Controller('monitor/cache')
 export class CacheController {

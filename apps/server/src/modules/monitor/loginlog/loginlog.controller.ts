@@ -5,7 +5,7 @@ import { LoginlogService } from './loginlog.service';
 import { ListLoginlogDto } from './dto/index';
 import { ApiResult } from '@/common/decorator';
 
-@ApiTags('系统监控')
+@ApiTags('monitor')
 @ApiBearerAuth()
 @Controller('monitor/logininfor')
 export class LoginlogController {

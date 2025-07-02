@@ -4,7 +4,7 @@ import { MenuService } from './menu.service';
 import { CreateMenuDto, UpdateMenuDto, ListMenuDto, SysMenuVo, MenuTreeVo, RoleMenuTreeSelect } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('菜单管理')
+@ApiTags('systemMenu')
 @ApiBearerAuth()
 @Controller('system/menu')
 export class MenuController {

@@ -2,7 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ServerService } from './server.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
-@ApiTags('系统监控')
+@ApiTags('monitor')
 @ApiBearerAuth()
 @Controller('monitor/server')
 export class ServerController {

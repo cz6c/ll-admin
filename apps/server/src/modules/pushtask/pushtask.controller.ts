@@ -4,7 +4,7 @@ import { PushTaskService } from './pushtask.service';
 import { CreatePushTaskDto, ListPushTaskDto, PushTaskVO, ChangeStatusDto } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('邮箱推送任务管理')
+@ApiTags('nodemailer')
 @ApiBearerAuth()
 @Controller('nodemailer')
 export class PushTaskController {

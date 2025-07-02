@@ -4,7 +4,7 @@ import { DeptService } from './dept.service';
 import { CreateDeptDto, UpdateDeptDto, ListDeptDto, SysDeptVo, RoleDeptTreeSelectVo, DeptTreeVo } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('部门管理')
+@ApiTags('systemDept')
 @ApiBearerAuth()
 @Controller('system/dept')
 export class DeptController {

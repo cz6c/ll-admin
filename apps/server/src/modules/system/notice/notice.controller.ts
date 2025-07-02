@@ -4,7 +4,7 @@ import { NoticeService } from './notice.service';
 import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto, SysNoticeVO } from './dto/index';
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
 
-@ApiTags('通知公告')
+@ApiTags('systemNotice')
 @ApiBearerAuth()
 @Controller('system/notice')
 export class NoticeController {

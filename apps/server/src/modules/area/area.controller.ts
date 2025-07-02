@@ -4,7 +4,7 @@ import { AreaService } from './area.service';
 import { AeraListParamsDto, AeraTreeVO, AeraVO } from './dto/index.dto';
 import { ApiResult } from '@/common/decorator';
 
-@ApiTags('通用')
+@ApiTags('common')
 @ApiBearerAuth()
 @Controller('common/area')
 export class AreaController {

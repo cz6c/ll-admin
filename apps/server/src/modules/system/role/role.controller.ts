@@ -5,7 +5,7 @@ import { Response } from 'express';
 import { CreateRoleDto, UpdateRoleDto, ListRoleDto, ChangeStatusDto, SysRoleVo } from './dto/index';
 
 import { ApiResult, GetRequestUser, RequestUserPayload } from '@/common/decorator';
-@ApiTags('角色管理')
+@ApiTags('systemRole')
 @ApiBearerAuth()
 @Controller('system/role')
 export class RoleController {

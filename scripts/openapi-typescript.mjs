@@ -1,20 +1,22 @@
-import { execSync } from 'node:child_process';
-import * as fs from 'node:fs';
-import { resolve, join } from 'node:path';
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import { resolve, join } from "node:path";
+
+const rootDir = process.cwd();
 
 // 项目路径配置
 const PROJECT_PATHS = {
-  admin: resolve(__dirname, '../../admin/src'),
+  admin: resolve(rootDir, "../apps/admin/src"),
   // uniapp: path.resolve(__dirname, "../uniapp/src/service/types"),
   // electron: path.resolve(__dirname, "../electron/src/core/api/types"),
 };
 
 // 1. 转换为 TypeScript 类型
-console.log('📦 转换为 TypeScript 类型...');
-execSync(`npx openapi-typescript ./swagger.json -o ./temp.d.ts`);
+console.log("📦 转换为 TypeScript 类型...");
+execSync(`npx openapi-typescript ./apps/server/swagger.json -o ./temp.d.ts`);
 
 // 2. 读取生成的内容
-const generatedTypes = fs.readFileSync('./temp.d.ts', 'utf-8');
+const generatedTypes = fs.readFileSync("./temp.d.ts", "utf-8");
 
 // 3. 分发到各前端项目
 Object.entries(PROJECT_PATHS).forEach(([name, targetPath]) => {
@@ -29,9 +31,9 @@ Object.entries(PROJECT_PATHS).forEach(([name, targetPath]) => {
   const header = `/**\n * 自动生成类型 - 来自后端 DTO\n * 生成时间: ${new Date().toISOString()}\n */\n\n`;
 
   // 写入文件
-  fs.writeFileSync(join(targetPath, 'api-types.d.ts'), header + generatedTypes);
+  fs.writeFileSync(join(targetPath, "api-types.d.ts"), header + generatedTypes);
 });
 
 // 4. 清理临时文件
-fs.unlinkSync('./temp.d.ts');
-console.log('✅ 类型生成完成！');
+fs.unlinkSync("./temp.d.ts");
+console.log("✅ 类型生成完成！");

@@ -108,6 +108,13 @@ service.interceptors.response.use(
 
 export default service;
 
+export function request<T = unknown>(url: string, options: AxiosRequestConfig = {}) {
+  return service.request<T, T>({
+    url,
+    ...options
+  });
+}
+
 // 封装 get post 方法
 interface Response<T> {
   code: number; // 状态码

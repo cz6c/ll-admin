@@ -1,11 +1,9 @@
-// generate-types.ts
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { resolve, join } from 'node:path';
 
 // 项目路径配置
 const PROJECT_PATHS = {
-  backend: __dirname,
   admin: resolve(__dirname, '../../admin/src'),
   // uniapp: path.resolve(__dirname, "../uniapp/src/service/types"),
   // electron: path.resolve(__dirname, "../electron/src/core/api/types"),
@@ -20,8 +18,6 @@ const generatedTypes = fs.readFileSync('./temp.d.ts', 'utf-8');
 
 // 3. 分发到各前端项目
 Object.entries(PROJECT_PATHS).forEach(([name, targetPath]) => {
-  if (name === 'backend') return;
-
   console.log(`📤 分发到 ${name} 项目...`);
 
   // 确保目标目录存在

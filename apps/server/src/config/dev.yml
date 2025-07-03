@@ -71,6 +71,7 @@ perm:
         { path: '/register', method: 'POST' },
         { path: '/login', method: 'POST' },
         { path: '/common/area/trees', method: 'GET' },
+        { path: '/common/upload', method: 'POST' },
         { path: '/tasks', method: 'POST' },
         { path: '/tasks/delete', method: 'GET' },
       ]

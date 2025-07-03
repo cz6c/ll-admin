@@ -8,6 +8,8 @@
     "cz": "git add . && czg",
     "dev:server": "pnpm --filter @apps/server start:dev",
     "dev:admin": "pnpm --filter @apps/admin dev",
+    "dev:uniapp:h5": "pnpm --filter @apps/uniapp dev",
+    "dev:uniapp:mp": "pnpm --filter @apps/uniapp dev:mp",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "generate:openapi-typescript": "node ./scripts/openapi-typescript.mjs",

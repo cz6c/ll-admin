@@ -246,7 +246,8 @@ export class UploadService {
 
     //文件服务完整路径
     const fileName = path.join(this.config.get('app.file.serveRoot'), relativeFilePath);
-    const url = path.join(this.config.get('app.file.domain'), fileName);
+    // const url = path.join(this.config.get('app.file.domain'), fileName);
+    const url = this.config.get('app.file.domain') + fileName.replaceAll('\\', '/');
     return {
       fileName: fileName,
       newFileName: newFileName,

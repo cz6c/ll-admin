@@ -50,7 +50,6 @@ import { ServerModule } from './modules/monitor/server/server.module';
           type: 'mysql',
           autoLoadEntities: true, // 自动导入实体
           keepConnectionAlive: true,
-          timezone: '+08:00', //服务器上配置的时区
           ...config.get('db.mysql'),
         }) as TypeOrmModuleOptions,
     }),

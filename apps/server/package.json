@@ -17,7 +17,13 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "migration:generate": "cross-env NODE_ENV=development ts-node ./node_modules/typeorm/cli.js migration:generate -d ./src/config/typeorm.config.ts ./src/migrations/migration",
+    "migration:create": "cross-env NODE_ENV=development ts-node ./node_modules/typeorm/cli.js migration:create -d ./src/config/typeorm.config.ts ./src/migrations/migration",
+    "migration:run": "cross-env NODE_ENV=development ts-node ./node_modules/typeorm/cli.js migration:run -d ./src/config/typeorm.config.ts",
+    "migration:run:prod": "cross-env NODE_ENV=production ts-node ./node_modules/typeorm/cli.js migration:run -d ./src/config/typeorm.config.ts",
+    "migration:revert": "cross-env NODE_ENV=development ts-node ./node_modules/typeorm/cli.js migration:revert -d ./src/config/typeorm.config.ts",
+    "migration:revert:prod": "cross-env NODE_ENV=production ts-node ./node_modules/typeorm/cli.js migration:revert -d ./src/config/typeorm.config.ts"
   },
   "dependencies": {
     "@liaoliaots/nestjs-redis": "^9.0.5",

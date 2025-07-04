@@ -3502,7 +3502,7 @@ CREATE TABLE
     `task_status` enum ('1', '2', '3', '4') NOT NULL DEFAULT '1' COMMENT '任务状态',
     `retries` int (11) NOT NULL DEFAULT '0' COMMENT '任务重试计数',
     `max_retries` int (11) NOT NULL DEFAULT '3' COMMENT '任务最大重试次数',
-    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
     PRIMARY KEY (`task_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 7 DEFAULT CHARSET = utf8mb4 COMMENT = '任务队列表';
 
@@ -3583,7 +3583,7 @@ CREATE TABLE
     `config_name` varchar(100) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '参数名称',
     `config_key` varchar(100) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '参数键',
     `config_value` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '参数键值',
-    `config_type` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '1' COMMENT '系统内置',
+    `config_type` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '系统内置',
     `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
     PRIMARY KEY (`config_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 4 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '参数配置表';
@@ -4488,10 +4488,8 @@ CREATE TABLE
     `post_code` varchar(64) COLLATE utf8mb4_general_ci NOT NULL COMMENT '岗位编码',
     `post_name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '岗位名称',
     `post_sort` int NOT NULL DEFAULT '0' COMMENT '显示顺序',
-    `remark` varchar(500) CHARACTER
-    SET
-      utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '备注',
-      PRIMARY KEY (`post_id`)
+    `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
+    PRIMARY KEY (`post_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '岗位信息表';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4765,13 +4763,11 @@ CREATE TABLE
     `phonenumber` varchar(11) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '手机号码',
     `sex` enum ('0', '1', '2') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '2' COMMENT '性别',
     `avatar` varchar(255) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '头像地址',
-    `password` varchar(100) CHARACTER
-    SET
-      utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户登录密码',
-      `login_ip` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '最后登录IP',
-      `login_date` timestamp NOT NULL COMMENT '最后登录时间',
-      `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
-      PRIMARY KEY (`user_id`)
+    `password` varchar(100) COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户登录密码',
+    `login_ip` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '最后登录IP',
+    `login_date` timestamp NOT NULL COMMENT '最后登录时间',
+    `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
+    PRIMARY KEY (`user_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 3 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户信息表';
 
 /*!40101 SET character_set_client = @saved_cs_client */;

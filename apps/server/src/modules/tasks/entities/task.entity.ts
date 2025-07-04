@@ -53,6 +53,6 @@ export class TaskEntity extends BaseEntity {
   @Column({ type: 'int', default: 3, name: 'max_retries', comment: '任务最大重试次数' })
   maxRetries: number;
 
-  @Column({ type: 'varchar', name: 'remark', length: 500, default: null, comment: '备注' })
-  remark?: string;
+  @Column({ type: 'varchar', name: 'remark', length: 500, default: '', comment: '备注' })
+  remark: string;
 }

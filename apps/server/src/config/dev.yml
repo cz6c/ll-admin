@@ -35,6 +35,7 @@ db:
     # database: 'loca_test'
     port: 3306
     charset: 'utf8mb4'
+    timezone: '+08:00'
     # 是否启用日志记录
     logging: true
     # 这个记录器将所有日志写入项目根文件夹中的ormlogs.log
@@ -47,9 +48,6 @@ db:
     synchronize: false
     # 每个查询允许多个 mysql 语句。请注意，它可能会增加 SQL 注入攻击的范围
     multipleStatements: true
-    # 同时启用supportBigNumbers和bigNumberStrings会强制将大数字（BIGINT和DECIMAL列）作为 JavaScript String 对象返回（默认值：false）。启用supportBigNumbers但禁用bigNumberStrings仅当它们无法用 JavaScript Number 对象准确表示时才会返回大数字作为 String 对象（当它们超过[-2^53，+2^53]范围时会发生），否则它们将被返回作为数字对象。如果禁用了supportBigNumbers，则忽略此选项。
-    supportBigNumbers: true
-    bigNumberStrings: true
 
 # redis 配置
 redis:

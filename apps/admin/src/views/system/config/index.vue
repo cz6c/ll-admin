@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listConfig, delConfig } from "@/api/system/config";
 import { ListConfigDto, SysConfigVo } from "#/api/system/config";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -150,7 +150,7 @@ const gridOptions = reactive<VxeGridProps<SysConfigVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

@@ -86,7 +86,7 @@
         :sort-orders="['descending', 'ascending']"
       >
         <template #default="scope">
-          <span>{{ parseTime(scope.row.operTime) }}</span>
+          <span>{{ formatToDatetime(scope.row.operTime) }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -150,7 +150,7 @@
             <el-form-item label="消耗时间：">{{ form.costTime }}毫秒</el-form-item>
           </el-col>
           <el-col :span="10">
-            <el-form-item label="操作时间：">{{ parseTime(form.operTime) }}</el-form-item>
+            <el-form-item label="操作时间：">{{ formatToDatetime(form.operTime) }}</el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item v-if="form.status === 1" label="异常信息：">{{ form.errorMsg }}</el-form-item>
@@ -168,7 +168,8 @@
 
 <script setup lang="ts">
 import { list, delOperlog } from "@/api/monitor/operlog";
-import { parseTime, addDateRange } from "@/utils";
+import { addDateRange } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import { useDict } from "@/hooks/useDict";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";

@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listLogininfor } from "@/api/monitor/logininfor";
 import { LoginlogListParams, MonitorLoginlogVO } from "#/api/monitor/logininfor";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
@@ -120,7 +120,7 @@ const gridOptions = reactive<VxeGridProps<MonitorLoginlogVO>>({
       title: "访问时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.loginTime);
+        return formatToDatetime(row.loginTime);
       }
     }
   ],

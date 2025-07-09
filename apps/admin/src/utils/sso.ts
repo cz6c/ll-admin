@@ -1,5 +1,5 @@
 import { removeToken, setToken } from "./auth";
-import { getQueryParams } from "./index";
+import { queryParse } from "@llcz/common";
 
 /**
  * 简版前端单点登录，根据实际业务自行编写，平台启动后本地可以跳后面这个链接进行测试 http://localhost:8848/index?username=sso&roles=admin&accessToken=eyJhbGciOiJIUzUxMiJ9.admin
@@ -12,7 +12,7 @@ import { getQueryParams } from "./index";
  */
 (function () {
   // 获取 url 中的参数
-  const params = getQueryParams(location.href) as any;
+  const params = queryParse(location.href) as any;
   const must = ["username", "roles", "accessToken"];
   const mustLength = must.length;
   if (Object.keys(params).length !== mustLength) return;

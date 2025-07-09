@@ -5,7 +5,8 @@ import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '@/modules/redis/redis.service';
 import * as bcrypt from 'bcryptjs';
 import { Response } from 'express';
-import { GetNowDate, GenerateUUID, Uniq } from '@/common/utils/index';
+import { Uniq } from '@/common/utils/index';
+import { formatToDatetime, generateUUID } from '@llcz/common';
 import { ExportTable } from '@/common/utils/export';
 
 import { DataScopeEnum, DelFlagEnum, StatusEnum } from '@/common/enum/dict';
@@ -56,11 +57,11 @@ export class UserService {
    * @return
    */
   async create(createUserDto: CreateUserDto, userId: number) {
-    const loginDate = GetNowDate();
+    const loginDate = formatToDatetime();
 
     // 密码加密
     if (createUserDto.password) {
-      createUserDto.password = await bcrypt.hashSync(createUserDto.password, this.salt);
+      createUserDto.password = bcrypt.hashSync(createUserDto.password, this.salt);
     }
 
     const { postIds, roleIds } = createUserDto;
@@ -287,6 +288,8 @@ export class UserService {
       },
     });
 
+    // 验证时，bcryptjs 会从存储的哈希值中提取 salt
+    // 使用相同的 salt 对输入密码进行哈希，然后比较结果
     if (!(data && bcrypt.compareSync(user.password, data.password))) {
       return ResultData.fail(500, `帐号或密码错误`);
     }
@@ -308,7 +311,7 @@ export class UserService {
       },
     );
 
-    const uuid = GenerateUUID();
+    const uuid = generateUUID();
     const token = this.createToken({ uuid: uuid, userId: data.userId });
 
     // 查用户角色 多对多关联
@@ -379,7 +382,7 @@ export class UserService {
    * @return
    */
   async register(user: RegisterDto) {
-    const loginDate = GetNowDate();
+    const loginDate = formatToDatetime();
     const checkUserNameUnique = await this.userRepo.findOne({
       where: {
         userName: user.userName,

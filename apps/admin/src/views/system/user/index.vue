@@ -2,7 +2,7 @@
 import { changeUserStatus, listUser, resetUserPwd, delUser } from "@/api/system/user";
 import { SysUserListParams, UserVo } from "#/api/system/user";
 import { deptTreeSelect } from "@/api/system/dept";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -193,7 +193,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

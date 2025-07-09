@@ -1,7 +1,7 @@
 import service, { errorCode } from "@/utils/request";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
-import dayjs from "dayjs";
+import { dateUtil } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 
 export default {
@@ -97,7 +97,7 @@ export default {
       imgFolder.file(i + suffix, buffer);
     }
     zip.generateAsync({ type: "blob" }).then(blob => {
-      saveAs(blob, `${fileName}${dayjs().format("YYYYMMDDHHmmss")}.zip`);
+      saveAs(blob, `${fileName}${dateUtil().format("YYYYMMDDHHmmss")}.zip`);
     });
   },
   /**

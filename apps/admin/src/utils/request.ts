@@ -1,12 +1,11 @@
 import axios from "axios";
 import type { AxiosRequestConfig } from "axios";
 import { getToken } from "@/utils/auth";
-import { tansParams } from "@/utils";
 import { useAuthStore } from "@/store/modules/auth";
 import router, { RouterEnum } from "@/router";
 import $feedback from "@/utils/feedback";
 import { WebStorage } from "@/utils/storage";
-import { isNullOrDef } from "@llcz/common";
+import { isDef, isNull, queryStringify } from "@llcz/common";
 
 export const errorCode = {
   "401": "认证失败，无法访问系统资源",
@@ -131,7 +130,7 @@ export const createGet = <P extends Record<string, any>, R>(url: string, config:
     // get请求映射params参数
     return service.request({
       method: "get",
-      url: params ? url + "?" + tansParams(params) : url,
+      url: params ? url + "?" + queryStringify(params) : url,
       ...config
     });
   };
@@ -141,7 +140,7 @@ export const createPost = <P extends Record<string, any>, R>(url: string, config
     // post请求参数处理
     if (data) {
       for (const key in data) {
-        if (isNullOrDef(data[key])) {
+        if (isDef(data[key]) || isNull(data[key])) {
           // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete data[key];
         }

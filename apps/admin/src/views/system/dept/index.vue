@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { deptTreeSelect, delDept } from "@/api/system/dept";
 import { DeptTreeVo, ListDeptDto } from "#/api/system/dept";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchProps } from "@/components/SearchForm/type";
@@ -106,7 +106,7 @@ const gridOptions = reactive<VxeGridProps<DeptTreeVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

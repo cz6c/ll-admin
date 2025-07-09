@@ -12,7 +12,6 @@ dist
 dist-ssr
 *.local
 .eslintcache
-pnpm-lock.yaml
 temp_openapi
 
 types/auto-imports.d.ts

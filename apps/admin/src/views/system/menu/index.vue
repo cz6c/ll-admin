@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { delMenu, menuTreeSelect } from "@/api/system/menu";
 import { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchProps } from "@/components/SearchForm/type";
@@ -130,7 +130,7 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

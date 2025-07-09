@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listNotice, delNotice } from "@/api/system/notice";
 import { ListNoticeDto, SysNoticeVo } from "#/api/system/notice";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
@@ -144,7 +144,7 @@ const gridOptions = reactive<VxeGridProps<SysNoticeVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

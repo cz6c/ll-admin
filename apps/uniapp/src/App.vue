@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onHide, onLaunch, onShow } from '@dcloudio/uni-app'
+import { dateUtil, formatToDatetime, formatUtc } from '@llcz/common'
 import { usePageAuth } from '@/hooks/usePageAuth'
 import 'abortcontroller-polyfill/dist/abortcontroller-polyfill-only'
 
@@ -10,6 +11,8 @@ onLaunch(() => {
 })
 onShow(() => {
   console.log('App Show')
+  console.log(formatUtc(dateUtil()))
+  console.log(formatToDatetime())
 })
 onHide(() => {
   console.log('App Hide')

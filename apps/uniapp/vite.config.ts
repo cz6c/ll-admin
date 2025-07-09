@@ -1,6 +1,7 @@
 import path from 'node:path'
 import process from 'node:process'
 import Uni from '@dcloudio/vite-plugin-uni'
+import { formatToDatetime } from '@llcz/common'
 import Components from '@uni-helper/vite-plugin-uni-components'
 // @see https://uni-helper.js.org/vite-plugin-uni-layouts
 import UniLayouts from '@uni-helper/vite-plugin-uni-layouts'
@@ -16,7 +17,6 @@ import UniPlatform from '@uni-helper/vite-plugin-uni-platform'
  * @see https://github.com/uni-ku/bundle-optimizer
  */
 import Optimization from '@uni-ku/bundle-optimizer'
-import dayjs from 'dayjs'
 import { visualizer } from 'rollup-plugin-visualizer'
 import AutoImport from 'unplugin-auto-import/vite'
 import { defineConfig, loadEnv } from 'vite'
@@ -109,7 +109,7 @@ export default async ({ command, mode }) => {
       UNI_PLATFORM === 'h5' && {
         name: 'html-transform',
         transformIndexHtml(html) {
-          return html.replace('%BUILD_TIME%', dayjs().format('YYYY-MM-DD HH:mm:ss'))
+          return html.replace('%BUILD_TIME%', formatToDatetime())
         },
       },
       // 打包分析插件，h5 + 生产环境才弹出

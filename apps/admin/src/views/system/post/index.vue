@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listPost, delPost } from "@/api/system/post";
 import { ListPostDto, SysPostVo } from "#/api/system/post";
-import { parseTime } from "@/utils";
+import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -134,7 +134,7 @@ const gridOptions = reactive<VxeGridProps<SysPostVo>>({
       title: "创建时间",
       width: 150,
       formatter: ({ row }) => {
-        return parseTime(row.createTime);
+        return formatToDatetime(row.createTime);
       }
     },
     {

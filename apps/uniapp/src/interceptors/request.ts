@@ -1,7 +1,7 @@
+import { queryStringify } from '@llcz/common'
 import { useUserStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
 import { platform } from '@/utils/platform'
-import { stringifyQuery } from '@/utils/queryString'
 
 export type CustomRequestOptions = UniApp.RequestOptions & {
   query?: Record<string, any>
@@ -18,7 +18,7 @@ const httpInterceptor = {
   invoke(options: CustomRequestOptions) {
     // 接口请求支持通过 query 参数配置 queryString
     if (options.query) {
-      const queryStr = stringifyQuery(options.query)
+      const queryStr = queryStringify(options.query)
       if (options.url.includes('?')) {
         options.url += `&${queryStr}`
       }

@@ -3,15 +3,15 @@ import pluginVue from "eslint-plugin-vue";
 import * as parserVue from "vue-eslint-parser";
 import configPrettier from "eslint-config-prettier";
 import pluginPrettier from "eslint-plugin-prettier";
-import { defineFlatConfig } from "eslint-define-config";
 import * as parserTypeScript from "@typescript-eslint/parser";
 import pluginTypeScript from "@typescript-eslint/eslint-plugin";
+import { defineConfig, globalIgnores } from "eslint/config";
 
 // https://github.com/pure-admin/vue-pure-admin/blob/main/eslint.config.js
-export default defineFlatConfig([
+export default defineConfig([
+  globalIgnores(["**/.*", "dist/*", "*.d.ts", "public/*", "src/assets/**", "src/**/iconfont/**"]),
   {
     ...js.configs.recommended,
-    ignores: ["**/.*", "dist/*", "*.d.ts", "public/*", "src/assets/**", "src/**/iconfont/**"],
     languageOptions: {
       globals: {
         // index.d.ts

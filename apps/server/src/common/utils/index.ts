@@ -1,26 +1,4 @@
 import * as Lodash from 'lodash';
-import { v4 as uuidv4 } from 'uuid';
-import * as dayjs from 'dayjs';
-import 'dayjs/locale/zh-cn'; // 导入本地化语言
-
-/**
- * 获取当前时间
- * YYYY-MM-DD HH:mm:ss
- * @returns
- */
-export function GetNowDate() {
-  return dayjs().format('YYYY-MM-DD HH:mm:ss');
-}
-
-/**
- * 时间格式化
- * @param date
- * @param format
- * @returns
- */
-export function FormatDate(date: Date, format = 'YYYY-MM-DD HH:mm:ss') {
-  return date && dayjs(date).format(format);
-}
 
 /**
  * 深拷贝
@@ -29,16 +7,6 @@ export function FormatDate(date: Date, format = 'YYYY-MM-DD HH:mm:ss') {
  */
 export function DeepClone(obj: object) {
   return Lodash.cloneDeep(obj);
-}
-
-/**
- * 生成唯一id
- * UUID
- * @returns
- */
-export function GenerateUUID(): string {
-  const uuid = uuidv4();
-  return uuid.replaceAll('-', '');
 }
 
 /**
@@ -84,18 +52,4 @@ export function Paginate(data: { list: Array<any>; pageSize: number; pageNum: nu
   const pageData = arrayData.slice((data.pageNum - 1) * data.pageSize, data.pageNum * data.pageSize);
 
   return pageData;
-}
-
-/**
- * @description: 提取url ?后参数
- * @param {*} url
- */
-export function getParams(url: string) {
-  const regex = /[?&]+([^=&]+)=([^&]*)/gi;
-  const params = {};
-  url.replace(regex, function (_, key, value) {
-    params[key] = decodeURIComponent(value);
-    return params[key];
-  });
-  return params;
 }

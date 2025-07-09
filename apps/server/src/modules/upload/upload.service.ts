@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { ResultData } from '@/common/utils/result';
 import { SysUploadEntity } from './entities/upload.entity';
 import { ChunkFileDto, ChunkMergeFileDto } from './dto/index';
-import { GenerateUUID } from '@/common/utils/index';
+import { generateUUID } from '@llcz/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as iconv from 'iconv-lite';
@@ -55,7 +55,7 @@ export class UploadService {
       const targetDir = this.config.get('cos.location');
       res = await this.saveFileCos(targetDir, file);
     }
-    const uploadId = GenerateUUID();
+    const uploadId = generateUUID();
     await this.sysUploadEntityRep.save({ uploadId, ...res, ext: path.extname(res.newFileName), size: file.size });
     return ResultData.ok(res);
   }
@@ -65,7 +65,7 @@ export class UploadService {
    * @returns
    */
   async getChunkUploadId() {
-    const uploadId = GenerateUUID();
+    const uploadId = generateUUID();
     return ResultData.ok({
       uploadId: uploadId,
     });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateUUID } from "@/utils";
+import { generateUUID } from "@llcz/common";
 import { uploadImg } from "@/api/public";
 import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
 import type { UploadProps, UploadRequestOptions } from "element-plus";

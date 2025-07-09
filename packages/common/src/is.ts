@@ -125,15 +125,6 @@ export function isPromise<T = any>(val: unknown): val is Promise<T> {
 }
 
 /**
- * @description: 是否为 null 或者 undefined
- * @param {unknown} val
- * @return {*}
- */
-export function isNullOrDef(val: unknown): val is null | undefined {
-  return isDef(val) || isNull(val);
-}
-
-/**
  * @description: 验证Window
  * @param {any} val
  * @return {*}

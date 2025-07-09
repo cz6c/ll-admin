@@ -1,6 +1,6 @@
 // 控制token
 import { WebStorage } from "@/utils/storage";
-import { generateUUID } from "@/utils/index";
+import { generateUUID } from "@llcz/common";
 
 const tokenStorage = new WebStorage("sessionStorage");
 

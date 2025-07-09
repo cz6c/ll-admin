@@ -1,46 +1,6 @@
 import { isArray, isNumber } from "@llcz/common";
 
 /**
- * @description 生成唯一 uuid
- * @returns {String}
- */
-export function generateUUID() {
-  let uuid = "";
-  for (let i = 0; i < 32; i++) {
-    const random = (Math.random() * 16) | 0;
-    if (i === 8 || i === 12 || i === 16 || i === 20) uuid += "-";
-    uuid += (i === 12 ? 4 : i === 16 ? (random & 3) | 8 : random).toString(16);
-  }
-  return uuid;
-}
-
-/**
- * @description 生成随机数
- * @param {Number} min 最小值
- * @param {Number} max 最大值
- * @returns {Number}
- */
-export function randomNum(min: number, max: number): number {
-  const num = Math.floor(Math.random() * (min - max) + max);
-  return num;
-}
-
-/**
- * @description 获取当前时间对应的提示语
- * @returns {String}
- */
-export function getTimeState(): string {
-  const timeNow = new Date();
-  const hours = timeNow.getHours();
-  if (hours >= 6 && hours <= 10) return `早上好 ⛅`;
-  if (hours >= 10 && hours <= 14) return `中午好 🌞`;
-  if (hours >= 14 && hours <= 18) return `下午好 🌞`;
-  if (hours >= 18 && hours <= 24) return `晚上好 🌛`;
-  if (hours >= 0 && hours <= 6) return `凌晨好 🌛`;
-  return "";
-}
-
-/**
  * @description 处理值无数据情况
  * @param {*} callValue 需要处理的值
  * @returns {String}
@@ -104,52 +64,6 @@ export function enumToOpts(data: unknown) {
     .map(([label, value]) => ({ value, label }));
 }
 
-// 日期格式化
-export function parseTime(time, pattern = "{y}-{m}-{d} {h}:{i}:{s}") {
-  if (arguments.length === 0 || !time) {
-    return null;
-  }
-  const format = pattern;
-  let date;
-  if (typeof time === "object") {
-    date = time;
-  } else {
-    if (typeof time === "string" && /^[0-9]+$/.test(time)) {
-      time = parseInt(time);
-    } else if (typeof time === "string") {
-      time = time
-        .replace(new RegExp(/-/gm), "/")
-        .replace("T", " ")
-        .replace(new RegExp(/\.[\d]{3}/gm), "");
-    }
-    if (typeof time === "number" && time.toString().length === 10) {
-      time = time * 1000;
-    }
-    date = new Date(time);
-  }
-  const formatObj = {
-    y: date.getFullYear(),
-    m: date.getMonth() + 1,
-    d: date.getDate(),
-    h: date.getHours(),
-    i: date.getMinutes(),
-    s: date.getSeconds(),
-    a: date.getDay()
-  };
-  const time_str = format.replace(/{(y|m|d|h|i|s|a)+}/g, (result, key) => {
-    let value = formatObj[key];
-    // Note: getDay() returns 0 on Sunday
-    if (key === "a") {
-      return ["日", "一", "二", "三", "四", "五", "六"][value];
-    }
-    if (result.length > 0 && value < 10) {
-      value = "0" + value;
-    }
-    return value || 0;
-  });
-  return time_str;
-}
-
 /**
  * @description: 日期范围处理
  */
@@ -199,45 +113,4 @@ export function mergeRecursive(source, target) {
     }
   }
   return source;
-}
-
-/**
- * @description: get请求参数处理
- * @param {Record} params
- * @return {*} string
- */
-export function tansParams(params: Record<string, any>): string {
-  let result = "";
-  for (const propName of Object.keys(params)) {
-    const value = params[propName];
-    var part = encodeURIComponent(propName) + "=";
-    if (value !== null && value !== "" && typeof value !== "undefined") {
-      if (typeof value === "object") {
-        for (const key of Object.keys(value)) {
-          if (value[key] !== null && value[key] !== "" && typeof value[key] !== "undefined") {
-            let params = propName + "[" + key + "]";
-            var subPart = encodeURIComponent(params) + "=";
-            result += subPart + encodeURIComponent(value[key]) + "&";
-          }
-        }
-      } else {
-        result += part + encodeURIComponent(value) + "&";
-      }
-    }
-  }
-  return result.slice(0, -1);
-}
-
-/**
- * @description: 提取url ?后参数
- * @param {*} url
- */
-export function getQueryParams(url: string) {
-  const regex = /[?&]+([^=&]+)=([^&]*)/gi;
-  const params = {};
-  url.replace(regex, function (_, key, value) {
-    params[key] = decodeURIComponent(value);
-    return params[key];
-  });
-  return params;
 }

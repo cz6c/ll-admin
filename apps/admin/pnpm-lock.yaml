@@ -91,7 +91,7 @@ importers:
         version: 4.2.26(vue@3.5.17(typescript@5.8.3))
       vxe-table:
         specifier: ^4.7.94
-        version: 4.14.0(vue@3.5.17(typescript@5.8.3))
+        version: 4.14.1(vue@3.5.17(typescript@5.8.3))
     devDependencies:
       '@eslint/js':
         specifier: ^9.13.0
@@ -5043,8 +5043,8 @@ packages:
   vxe-pc-ui@4.7.1:
     resolution: {integrity: sha512-qoLyuF/fyPlg+/1M5IP9W4t8mXA+EjMAikfXVJb6wa+Km2q8HWLBgoVu4QepO23oiTdLUQnHaE88w6lj0rUOlg==}
 
-  vxe-table@4.14.0:
-    resolution: {integrity: sha512-z4r840rJdrNaWFrGEstO3ZYstFsg3CJmyu/atS8PhnCOpPlp8+FKG/2CiyxoeKY+/jsqeZ1cuLjMArAv0vSqsA==}
+  vxe-table@4.14.1:
+    resolution: {integrity: sha512-F46v4pLMqA83YFkYiZnYc0KMWm6kYtQkoCnvXx7V17K5nLUorO80usc/2In+LHYuC0WDVxwVxxojnd1YWTN6CQ==}
 
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
@@ -10515,7 +10515,7 @@ snapshots:
     transitivePeerDependencies:
       - vue
 
-  vxe-table@4.14.0(vue@3.5.17(typescript@5.8.3)):
+  vxe-table@4.14.1(vue@3.5.17(typescript@5.8.3)):
     dependencies:
       vxe-pc-ui: 4.7.1(vue@3.5.17(typescript@5.8.3))
     transitivePeerDependencies:

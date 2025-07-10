@@ -11,7 +11,8 @@
     "build:dev": "rollup -c",
     "build": "rollup -c --environment production",
     "prepack": "pnpm run build",
-    "publish:prod": "npm publish --access public"
+    "publish:prod": "npm publish --access public",
+    "preinstall": "npx only-allow pnpm"
   },
   "type": "module",
   "main": "./dist/cjs/index.cjs",

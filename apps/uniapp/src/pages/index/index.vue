@@ -5,12 +5,13 @@
   style: {
     // 'custom' 表示开启自定义导航栏，默认 'default'
     navigationStyle: "custom",
-    navigationBarTitleText: "首页",
-  },
+    navigationBarTitleText: "首页"
+  }
 }
 </route>
 
 <script lang="ts" setup>
+import { useMessage, useToast } from 'wot-design-uni'
 import PLATFORM from '@/utils/platform'
 
 defineOptions({
@@ -46,13 +47,46 @@ onLoad(() => {
 })
 
 console.log('index')
+
+const toast = useToast()
+
+function showToast() {
+  toast.show('提示信息')
+}
+
+const message = useMessage()
+
+function confirm() {
+  message
+    .confirm({
+      title: '标题',
+      // msg: '提示文案',
+    })
+    .then(() => {
+      console.log('点击了确定按钮')
+    })
+    .catch(() => {
+      console.log('点击了取消按钮')
+    })
+}
+
+function toWebView(url) {
+  uni.navigateTo({ url: `/pages/webView/webView?linkUrl=${url}` })
+}
 </script>
 
 <template>
-  <view
-    class="bg-white px-4 pt-2"
-    :style="{ marginTop: `${safeAreaInsets?.top}px` }"
-  >
+  <view class="px-4" :style="{ marginTop: `${safeAreaInsets?.top}px` }">
+    <view class="my-8 text-center text-4 font-500">
+      示例
+    </view>
+    <view class="border-rd-4 bg-white p-4">
+      <wd-cell title="请求" is-link to="/pages-sub/demo/request/index" />
+      <wd-cell title="z-paging" is-link to="/pages-sub/demo/z-paging/index" />
+      <wd-cell title="webView" is-link @click="toWebView('https://www.toysbear.com/protocolApp.html')" />
+      <wd-cell title="toast" is-link @click="showToast" />
+      <wd-cell title="confirm" is-link @click="confirm" />
+    </view>
     <view class="mt-8 text-center">
       当前平台是：
       <text class="text-green-500">

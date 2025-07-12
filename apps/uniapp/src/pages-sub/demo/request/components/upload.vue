@@ -1,12 +1,3 @@
-<route lang="json5" type="page">
-{
-  layout: 'default',
-  style: {
-    navigationBarTitleText: '上传-状态一体化',
-  },
-}
-</route>
-
 <script lang="ts" setup>
 const { loading, data, run } = useUpload()
 </script>

@@ -59,7 +59,41 @@
       "style": {
         "navigationBarTitleText": "关于"
       }
+    },
+    {
+      "path": "pages/webView/webView",
+      "type": "page"
     }
   ],
-  "subPackages": []
+  "subPackages": [
+    {
+      "root": "pages-sub",
+      "pages": [
+        {
+          "path": "demo/index",
+          "type": "page",
+          "style": {
+            "navigationStyle": "default",
+            "navigationBarTitleText": "分包页面 标题"
+          }
+        },
+        {
+          "path": "demo/request/index",
+          "type": "page",
+          "layout": "default",
+          "style": {
+            "navigationBarTitleText": "请求示例"
+          }
+        },
+        {
+          "path": "demo/z-paging/index",
+          "type": "page",
+          "layout": "default",
+          "style": {
+            "navigationBarTitleText": "z-paging示例"
+          }
+        }
+      ]
+    }
+  ]
 }

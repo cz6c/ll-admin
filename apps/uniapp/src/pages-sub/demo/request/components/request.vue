@@ -1,12 +1,3 @@
-<route lang="json5">
-{
-  layout: 'demo',
-  style: {
-    navigationBarTitleText: '请求',
-  },
-}
-</route>
-
 <script lang="ts" setup>
 import { getAreaList } from '@/api/login'
 import { getEnvBaseUrl } from '@/utils'
@@ -29,7 +20,9 @@ function reset() {
   <view class="p-6 text-center">
     <!-- #ifdef H5 -->
     <view class="my-2">
-      <a class="my-2" :href="recommendUrl" target="_blank">{{ recommendUrl }}</a>
+      <a class="my-2" :href="recommendUrl" target="_blank">{{
+        recommendUrl
+      }}</a>
     </view>
     <!-- #endif -->
 

@@ -44,6 +44,14 @@ export function http<T>(options: CustomRequestOptions) {
   })
 }
 
+// 适配 openapi2ts
+export function request<T = unknown>(url: string, options: CustomRequestOptions) {
+  return http<T>({
+    url,
+    ...options,
+  })
+}
+
 /**
  * GET 请求
  * @param url 后台地址

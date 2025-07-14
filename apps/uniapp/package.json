@@ -54,7 +54,8 @@
     "build:quickapp-webview-union": "uni build -p quickapp-webview-union",
     "type-check": "vue-tsc --noEmit",
     "lint": "eslint",
-    "lint:fix": "eslint --fix"
+    "lint:fix": "eslint --fix",
+    "openapi2ts": "openapi2ts"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-4060620250520001",
@@ -95,6 +96,7 @@
     "@rollup/rollup-darwin-x64": "^4.28.0",
     "@types/node": "^20.17.9",
     "@types/wechat-miniprogram": "^3.4.8",
+    "@umijs/openapi": "^1.13.15",
     "@uni-helper/eslint-config": "^0.4.0",
     "@uni-helper/uni-types": "1.0.0-alpha.3",
     "@uni-helper/unocss-preset-uni": "^0.2.11",

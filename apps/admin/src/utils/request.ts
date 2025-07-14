@@ -107,8 +107,9 @@ service.interceptors.response.use(
 
 export default service;
 
-export function request<T = unknown>(url: string, options: AxiosRequestConfig = {}) {
-  return service.request<T, T>({
+// 适配 openapi2ts
+export function request<T = unknown>(url: string, options: AxiosRequestConfig) {
+  return service.request<T>({
     url,
     ...options
   });
@@ -125,7 +126,7 @@ export function $http<P extends Record<string, any>, R>(config: AxiosRequestConf
   return service.request(config);
 }
 
-export const createGet = <P extends Record<string, any>, R>(url: string, config: AxiosRequestConfig = {}) => {
+export const createGet = <P extends Record<string, any>, R>(url: string, config?: Partial<AxiosRequestConfig>) => {
   return (params?: P): Promise<Response<R>> => {
     // get请求映射params参数
     return service.request({
@@ -135,7 +136,7 @@ export const createGet = <P extends Record<string, any>, R>(url: string, config:
     });
   };
 };
-export const createPost = <P extends Record<string, any>, R>(url: string, config: AxiosRequestConfig = {}) => {
+export const createPost = <P extends Record<string, any>, R>(url: string, config?: Partial<AxiosRequestConfig>) => {
   return (data?: P): Promise<Response<R>> => {
     // post请求参数处理
     if (data) {

@@ -142,7 +142,6 @@ export const createPost = <P extends Record<string, any>, R>(url: string, config
     if (data) {
       for (const key in data) {
         if (isDef(data[key]) || isNull(data[key])) {
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete data[key];
         }
       }

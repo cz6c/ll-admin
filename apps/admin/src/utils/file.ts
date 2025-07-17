@@ -92,7 +92,7 @@ export default {
     const imgFolder = zip.folder("images");
     for (let i = 0; i < imgList.length; i++) {
       const rowImg = imgList[i];
-      let suffix = rowImg.substring(rowImg.lastIndexOf("."));
+      const suffix = rowImg.substring(rowImg.lastIndexOf("."));
       const buffer = await fetch(rowImg).then(response => response.arrayBuffer());
       imgFolder.file(i + suffix, buffer);
     }
@@ -118,7 +118,7 @@ export default {
       img.onload = function () {
         try {
           //默认按比例压缩
-          let w = img.width > 1440 ? 1440 : img.width,
+          const w = img.width > 1440 ? 1440 : img.width,
             h = img.width > 1440 ? 1440 * (img.height / img.width) : img.height;
           //生成canvas
           const canvas = document.createElement("canvas");
@@ -127,7 +127,7 @@ export default {
           canvas.setAttribute("width", w + "px");
           canvas.setAttribute("height", h + "px");
           ctx.drawImage(img, 0, 0, w, h);
-          let base64 = canvas.toDataURL(type, 0.8);
+          const base64 = canvas.toDataURL(type, 0.8);
           resolve({ base64, fileName });
         } catch (error) {
           console.log("🚀 ~ error:", error);
@@ -149,10 +149,10 @@ export default {
    * @return {*} imgFiles
    */
   async getExcelImgFile(file: File): Promise<{ base64: string; fileName: string }[]> {
-    let imgFiles = []; // 用来存放图片
+    const imgFiles = []; // 用来存放图片
     const zip = new JSZip(); // 创建jszip实例
     try {
-      let zipLoadResult = await zip.loadAsync(file); // 将xlsx文件转zip文件
+      const zipLoadResult = await zip.loadAsync(file); // 将xlsx文件转zip文件
       for (const key in zipLoadResult["files"]) {
         // 遍历结果中的files对象
         if (key.indexOf("media/image") != -1) {

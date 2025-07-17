@@ -68,7 +68,7 @@ export function enumToOpts(data: unknown) {
  * @description: 日期范围处理
  */
 export function addDateRange(params, dateRange) {
-  let search = params;
+  const search = params;
   dateRange = Array.isArray(dateRange) ? dateRange : [];
   search["beginTime"] = dateRange[0];
   search["endTime"] = dateRange[1];
@@ -101,7 +101,7 @@ export function sprintf(str: string): string {
  * @param {*} target
  */
 export function mergeRecursive(source, target) {
-  for (var p in target) {
+  for (const p in target) {
     try {
       if (target[p].constructor == Object) {
         source[p] = mergeRecursive(source[p], target[p]);

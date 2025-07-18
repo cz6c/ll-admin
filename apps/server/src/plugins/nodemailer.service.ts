@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import * as nodemailer from "nodemailer";
 
 export interface SendMailOptionsType {
   to: string | string[];
@@ -21,9 +21,9 @@ export class NodemailerService {
   private mailConfig;
   constructor(
     // 定时任务注册器
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {
-    this.mailConfig = this.configService.get('mail');
+    this.mailConfig = this.configService.get("mail");
     this.transporter = nodemailer.createTransport(this.mailConfig);
   }
 
@@ -36,11 +36,11 @@ export class NodemailerService {
         to,
         subject,
         text,
-        html,
+        html
       };
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      this.logger.error('🚀 sendMail ~ error:', error);
+      this.logger.error("🚀 sendMail ~ error:", error);
     }
   }
 }

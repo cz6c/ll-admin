@@ -1,9 +1,9 @@
-import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, ExtractJwt } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException, Injectable } from '@nestjs/common';
-import { RedisService } from '@/modules/redis/redis.service';
-import { CacheEnum } from '@/common/enum/loca';
+import { PassportStrategy } from "@nestjs/passport";
+import { Strategy, ExtractJwt } from "passport-jwt";
+import { ConfigService } from "@nestjs/config";
+import { UnauthorizedException, Injectable } from "@nestjs/common";
+import { RedisService } from "@/modules/redis/redis.service";
+import { CacheEnum } from "@/common/enum/loca";
 
 @Injectable()
 export class AuthStrategy extends PassportStrategy(Strategy) {
@@ -13,11 +13,11 @@ export class AuthStrategy extends PassportStrategy(Strategy) {
    */
   constructor(
     private readonly config: ConfigService,
-    private readonly redisService: RedisService,
+    private readonly redisService: RedisService
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: config.get('jwt.secretkey'),
+      secretOrKey: config.get("jwt.secretkey")
     });
   }
 
@@ -30,7 +30,7 @@ export class AuthStrategy extends PassportStrategy(Strategy) {
   async validate(payload: { uuid: string; userId: string; iat: Date }) {
     const user = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${payload.uuid}`);
     // 如果用用户信息，代表 token 没有过期，没有则 token 已失效
-    if (!user) throw new UnauthorizedException('登录已过期，请重新登录');
+    if (!user) throw new UnauthorizedException("登录已过期，请重新登录");
     return user;
   }
 }

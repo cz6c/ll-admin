@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { PushTaskEntity } from './entities/pushtask.entity';
-import { CreatePushTaskDto, ListPushTaskDto, ChangeStatusDto } from './dto/index';
-import { DelFlagEnum, PushIntervalEnum, PushModelEnum, StatusEnum, TaskTypeEnum } from '@/common/enum/dict';
-import { TaskService } from '@/modules/tasks/task.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, In } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { PushTaskEntity } from "./entities/pushtask.entity";
+import { CreatePushTaskDto, ListPushTaskDto, PushTaskChangeStatusDto } from "./dto/index";
+import { DelFlagEnum, PushIntervalEnum, PushModelEnum, StatusEnum, TaskTypeEnum } from "@/common/enum/dict";
+import { TaskService } from "@/modules/tasks/task.service";
 
 @Injectable()
 export class PushTaskService {
@@ -13,17 +13,17 @@ export class PushTaskService {
   constructor(
     @InjectRepository(PushTaskEntity)
     private readonly nodemailerPushTaskEntity: Repository<PushTaskEntity>,
-    private readonly tasksService: TaskService,
+    private readonly tasksService: TaskService
   ) {}
 
   // 处理定时任务
-  handleTask(res: PushTaskEntity) {
+  async handleTask(res: PushTaskEntity) {
     // 注册定时任务发送邮件
-    let cronTime = '';
+    let cronTime = "";
     if (res.pushModel === PushModelEnum.REGULAR) {
       // 定时任务 处理Cron表达式 Seconds Minutes Hours DayofMonth Month DayofWeek
-      const [time, num] = res.startDate.split(',');
-      const [h, m] = time.split(':');
+      const [time, num] = res.startDate.split(",");
+      const [h, m] = time.split(":");
       switch (res.pushInterval) {
         case PushIntervalEnum.EVERYDAY:
           cronTime = `0 ${m} ${h} * * ?`;
@@ -37,12 +37,17 @@ export class PushTaskService {
       }
     }
     // 创建定时任务
-    this.tasksService.createTask({
+    await this.tasksService.createTask({
       taskName: `nodemailer_push${res.pushtaskId}`,
-      payload: JSON.stringify({ to: res.acceptEmail, subject: res.pushTitle, text: res.pushContent, pushTask: res }),
+      payload: JSON.stringify({
+        to: res.acceptEmail,
+        subject: res.pushTitle,
+        text: res.pushContent,
+        pushTask: res
+      }),
       taskType: cronTime ? TaskTypeEnum.LOOP : TaskTypeEnum.ONCE,
       executeAt: new Date(res.pushTime),
-      cronExpression: cronTime,
+      cronExpression: cronTime
     });
   }
 
@@ -56,12 +61,15 @@ export class PushTaskService {
     const list = await this.nodemailerPushTaskEntity.find({
       where: {
         pushtaskName: createPushTaskDto.pushtaskName,
-        delFlag: DelFlagEnum.NORMAL,
-      },
+        delFlag: DelFlagEnum.NORMAL
+      }
     });
-    if (list.length > 0) return ResultData.fail(400, '任务名称已存在');
-    const res = await this.nodemailerPushTaskEntity.save({ ...createPushTaskDto, createBy: userId });
-    this.handleTask(res);
+    if (list.length > 0) return ResultData.fail(400, "任务名称已存在");
+    const res = await this.nodemailerPushTaskEntity.save({
+      ...createPushTaskDto,
+      createBy: userId
+    });
+    await this.handleTask(res);
     return ResultData.ok();
   }
 
@@ -71,13 +79,13 @@ export class PushTaskService {
    * @return
    */
   async findAllPushTask(query: ListPushTaskDto) {
-    const entity = this.nodemailerPushTaskEntity.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.nodemailerPushTaskEntity.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.pushtaskName) {
       entity.andWhere(`entity.pushtaskName LIKE "%${query.pushtaskName}%"`);
     }
-    entity.orderBy('entity.postSort', 'ASC');
+    entity.orderBy("entity.postSort", "ASC");
 
     if (query.pageSize && query.pageNum) {
       entity.skip(query.pageSize * (query.pageNum - 1)).take(query.pageSize);
@@ -87,7 +95,7 @@ export class PushTaskService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -100,31 +108,34 @@ export class PushTaskService {
     const res = await this.nodemailerPushTaskEntity.findOne({
       where: {
         pushtaskId: id,
-        delFlag: DelFlagEnum.NORMAL,
-      },
+        delFlag: DelFlagEnum.NORMAL
+      }
     });
     return ResultData.ok(res);
   }
 
   /**
    * @description: 邮箱推送任务-切换状态
-   * @param {ChangeStatusDto} changeStatusDto
+   * @param {PushTaskChangeStatusDto} PushTaskChangeStatusDto
    * @param {number} userId
    * @return
    */
-  async switchStatus(changeStatusDto: ChangeStatusDto, userId: number) {
+  async switchStatus(PushTaskChangeStatusDto: PushTaskChangeStatusDto, userId: number) {
     const item = await this.nodemailerPushTaskEntity.findOne({
       where: {
-        pushtaskId: changeStatusDto.pushtaskId,
-        delFlag: DelFlagEnum.NORMAL,
-      },
+        pushtaskId: PushTaskChangeStatusDto.pushtaskId,
+        delFlag: DelFlagEnum.NORMAL
+      }
     });
-    if (item.status === changeStatusDto.status) return ResultData.ok();
-    await this.nodemailerPushTaskEntity.update({ pushtaskId: changeStatusDto.pushtaskId }, { status: changeStatusDto.status, updateBy: userId });
-    if (changeStatusDto.status === StatusEnum.NORMAL) {
+    if (item.status === PushTaskChangeStatusDto.status) return ResultData.ok();
+    await this.nodemailerPushTaskEntity.update(
+      { pushtaskId: PushTaskChangeStatusDto.pushtaskId },
+      { status: PushTaskChangeStatusDto.status, updateBy: userId }
+    );
+    if (PushTaskChangeStatusDto.status === StatusEnum.NORMAL) {
       this.tasksService.startCronJob(`nodemailer_push${item.pushtaskId}`);
     } else {
-      this.tasksService.stopCronJob(`nodemailer_push${item.pushtaskId}`);
+      await this.tasksService.stopCronJob(`nodemailer_push${item.pushtaskId}`);
     }
     return ResultData.ok();
   }
@@ -140,13 +151,13 @@ export class PushTaskService {
       { pushtaskId: In(ids) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     for (let index = 0; index < ids.length; index++) {
       const id = +ids[index];
       const res = await this.nodemailerPushTaskEntity.findOne({
-        where: { pushtaskId: id },
+        where: { pushtaskId: id }
       });
       this.tasksService.deleteCron(`nodemailer_push${res.pushtaskId}`);
     }

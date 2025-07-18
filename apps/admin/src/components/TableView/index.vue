@@ -63,13 +63,7 @@ defineExpose({
 <template>
   <div class="table-view">
     <!-- 表格头部 -->
-    <TableHeader
-      v-if="showHeader"
-      ref="tableHeaderRef"
-      :title="title"
-      :columns="columns"
-      @update-columns="updateColumn"
-    >
+    <TableHeader v-if="showHeader" ref="tableHeaderRef" :title="title" :columns="columns" @update-columns="updateColumn">
       <template #tools>
         <slot name="header-tools" />
       </template>
@@ -89,18 +83,10 @@ defineExpose({
       @row-click="handleRowClick"
     >
       <!-- selection || index  -->
-      <el-table-column
-        v-if="isSelection"
-        key="selection"
-        align="center"
-        type="selection"
-        width="50"
-        reserve-selection
-        fixed
-      />
+      <el-table-column v-if="isSelection" key="selection" align="center" type="selection" width="50" reserve-selection fixed />
       <el-table-column v-if="isIndexCol" key="index" align="center" type="index" width="55" label="序号" fixed />
       <!-- other -->
-      <template v-for="(item, index) in showHeader ? checkedColumns : columns" :key="index">
+      <template v-for="(item, index) in showHeader ? checkedColumns : columns">
         <template v-if="!showHeader || (showHeader && item.visible)">
           <TableColumn :key="index" :column="item">
             <template v-for="slot in Object.keys($slots)" #[slot]="scope">

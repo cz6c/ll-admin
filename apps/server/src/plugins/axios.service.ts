@@ -1,13 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import iconv from 'iconv-lite';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from "@nestjs/common";
+import { HttpService } from "@nestjs/axios";
+import iconv from "iconv-lite";
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class AxiosService {
   constructor(
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService
   ) {}
   /**
    * 获取ip地址信息
@@ -16,19 +16,19 @@ export class AxiosService {
    */
   async getIpAddress(ip: string) {
     try {
-      const IP_URL = 'https://whois.pconline.com.cn/ipJson.jsp';
+      const IP_URL = "https://whois.pconline.com.cn/ipJson.jsp";
       const response = await this.httpService.axiosRef(`${IP_URL}?ip=${ip}&json=true`, {
-        responseType: 'arraybuffer',
+        responseType: "arraybuffer",
         transformResponse: [
           function (data) {
-            const str = iconv.decode(data, 'gbk');
+            const str = iconv.decode(data, "gbk");
             return JSON.parse(str);
-          },
-        ],
+          }
+        ]
       });
       return response.data.addr;
     } catch (error) {
-      return '未知';
+      return "未知";
     }
   }
 
@@ -38,9 +38,11 @@ export class AxiosService {
    */
   async getGoldInfo() {
     try {
-      const nowapiConfig = this.configService.get('nowapi');
-      const response = await this.httpService.axiosRef.get(`${nowapiConfig.host}?app=finance.gold_price&goldid=1053&appkey=${nowapiConfig.appkey}&sign=${nowapiConfig.sign}&format=json`);
-      return response.data.result.dtList['1053'];
+      const nowapiConfig = this.configService.get("nowapi");
+      const response = await this.httpService.axiosRef.get(
+        `${nowapiConfig.host}?app=finance.gold_price&goldid=1053&appkey=${nowapiConfig.appkey}&sign=${nowapiConfig.sign}&format=json`
+      );
+      return response.data.result.dtList["1053"];
     } catch (error) {
       return {};
     }

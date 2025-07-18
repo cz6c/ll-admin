@@ -28,12 +28,15 @@
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="tree" /><span>所属部门：</span></div>
                 <div v-if="state.dept" class="value">
-                  {{ state.dept.deptName }} / {{ state.posts?.map(c => c.postName).join(",") }}
+                  {{ state.dept.deptName }} /
+                  {{ state.posts?.map(c => c.postName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="peoples" /><span>所属角色：</span></div>
-                <div class="value">{{ state.roles?.map(c => c.roleName).join(",") }}</div>
+                <div class="value">
+                  {{ state.roles?.map(c => c.roleName).join(",") }}
+                </div>
               </div>
               <div class="list-group-item">
                 <div class="label"><SvgIcon name="date" /><span>创建日期：</span></div>

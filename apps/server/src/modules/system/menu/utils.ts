@@ -1,24 +1,24 @@
-import { YesNoEnum } from '@/common/enum/dict';
-import { isURL } from 'class-validator';
+import { YesNoEnum } from "@/common/enum/dict";
+import { isURL } from "class-validator";
 
 /**
  * 菜单列表转树形结构
  * @param arr
  */
-export const buildMenus = (arr) => {
+export const buildMenus = arr => {
   arr.sort((a, b) => a.parentId - b.parentId);
   const kData = {}; // 以id做key的对象 暂时储存数据
   const lData = []; // 最终的数据 arr
-  arr.forEach((m) => {
+  arr.forEach(m => {
     m = {
       ...m,
       id: m.menuId,
-      parentId: m.parentId,
+      parentId: m.parentId
     };
     kData[m.id] = {
       ...m,
       id: m.id,
-      parentId: m.parentId,
+      parentId: m.parentId
     };
     if (m.parentId === 0) {
       lData.push(kData[m.id]);
@@ -38,23 +38,23 @@ export const buildMenus = (arr) => {
  * @returns
  */
 const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
-  return menus.map((menu) => {
+  return menus.map(menu => {
     const formattedNode: any = {};
     formattedNode.name = menu.name;
     formattedNode.path = getRouterPath(menu);
-    formattedNode.hidden = menu.visible === '1';
+    formattedNode.hidden = menu.visible === "1";
     formattedNode.component = getComponent(menu);
     formattedNode.meta = {
       title: menu.menuName,
       icon: menu.icon,
       noCache: menu.isCache === YesNoEnum.NO,
       link: menu.isFrame === YesNoEnum.YES ? menu.path : null,
-      activeMenu: menu.activeMenu,
+      activeMenu: menu.activeMenu
     };
     if (menu.children) {
-      formattedNode.redirect = 'noRedirect';
-      formattedNode.children = menu.children.filter((child) => child.menuType === 'M');
-      formattedNode.meta.perms = menu.children.filter((child) => child.menuType === 'F').map((child) => child.perm);
+      formattedNode.redirect = "noRedirect";
+      formattedNode.children = menu.children.filter(child => child.menuType === "M");
+      formattedNode.meta.perms = menu.children.filter(child => child.menuType === "F").map(child => child.perm);
     }
     // 如果节点有子节点，递归处理它们
     if (formattedNode.children) {
@@ -92,11 +92,11 @@ const isInnerLink = (menu): boolean => {
  * @return 组件信息
  */
 const getComponent = (menu): string => {
-  let component = 'Layout';
+  let component = "Layout";
   if (menu.component && !isMenuFrame(menu)) {
     component = menu.component;
   } else if (!menu.component && menu.parentId !== 0 && isInnerLink(menu)) {
-    component = 'InnerLink';
+    component = "InnerLink";
   }
   return component;
 };

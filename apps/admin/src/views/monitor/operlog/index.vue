@@ -2,22 +2,10 @@
   <div class="app-page">
     <el-form v-show="showSearch" ref="queryRef" :model="queryParams" :inline="true" label-width="68px">
       <el-form-item label="系统模块" prop="title">
-        <el-input
-          v-model="queryParams.title"
-          placeholder="请输入系统模块"
-          clearable
-          style="width: 240px"
-          @keyup.enter="handleQuery"
-        />
+        <el-input v-model="queryParams.title" placeholder="请输入系统模块" clearable style="width: 240px" @keyup.enter="handleQuery" />
       </el-form-item>
       <el-form-item label="操作人员" prop="operName">
-        <el-input
-          v-model="queryParams.operName"
-          placeholder="请输入操作人员"
-          clearable
-          style="width: 240px"
-          @keyup.enter="handleQuery"
-        />
+        <el-input v-model="queryParams.operName" placeholder="请输入操作人员" clearable style="width: 240px" @keyup.enter="handleQuery" />
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="操作状态" clearable style="width: 240px">
@@ -43,22 +31,14 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col :span="1.5">
-        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
-          >删除</el-button
-        >
+        <el-button v-auth="'remove'" type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">删除</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button v-auth="'export'" type="warning" plain icon="Download" @click="handleExport">导出</el-button>
       </el-col>
     </el-row>
 
-    <el-table
-      ref="operlogRef"
-      v-loading="loading"
-      :data="operlogList"
-      @selection-change="handleSelectionChange"
-      @sort-change="handleSortChange"
-    >
+    <el-table ref="operlogRef" v-loading="loading" :data="operlogList" @selection-change="handleSelectionChange" @sort-change="handleSortChange">
       <el-table-column type="selection" width="50" align="center" />
       <el-table-column label="日志编号" align="center" prop="operId" />
       <el-table-column label="系统模块" align="center" prop="title" :show-overflow-tooltip="true" />
@@ -77,14 +57,7 @@
           <dict-tag :options="SuccessErrorEnum" :value="scope.row.status" />
         </template>
       </el-table-column>
-      <el-table-column
-        label="操作日期"
-        align="center"
-        prop="operTime"
-        width="180"
-        sortable="custom"
-        :sort-orders="['descending', 'ascending']"
-      >
+      <el-table-column label="操作日期" align="center" prop="operTime" width="180" sortable="custom" :sort-orders="['descending', 'ascending']">
         <template #default="scope">
           <span>{{ formatToDatetime(scope.row.operTime) }}</span>
         </template>
@@ -109,13 +82,7 @@
       </el-table-column>
     </el-table>
 
-    <pagination
-      v-show="total > 0"
-      v-model:page="queryParams.pageNum"
-      v-model:limit="queryParams.pageSize"
-      :total="total"
-      @pagination="getList"
-    />
+    <pagination v-show="total > 0" v-model:page="queryParams.pageNum" v-model:limit="queryParams.pageSize" :total="total" @pagination="getList" />
 
     <!-- 操作日志详细 -->
     <el-dialog v-model="open" title="操作日志详细" width="700px" append-to-body>
@@ -123,9 +90,7 @@
         <el-row>
           <el-col :span="12">
             <el-form-item label="操作模块：">{{ form.title }}</el-form-item>
-            <el-form-item label="登录信息："
-              >{{ form.operName }} / {{ form.operIp }} / {{ form.operLocation }}</el-form-item
-            >
+            <el-form-item label="登录信息：">{{ form.operName }} / {{ form.operIp }} / {{ form.operLocation }}</el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="请求地址：">{{ form.operUrl }}</el-form-item>

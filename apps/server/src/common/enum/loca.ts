@@ -6,17 +6,17 @@ export enum CacheEnum {
   /**
    * 登录用户 redis key
    */
-  LOGIN_TOKEN_KEY = 'login_tokens:',
+  LOGIN_TOKEN_KEY = "login_tokens:",
 
   /**
    * 验证码 redis key
    */
-  CAPTCHA_CODE_KEY = 'captcha_codes:',
+  CAPTCHA_CODE_KEY = "captcha_codes:",
 
   /**
    * 分布式锁 redis key
    */
-  DISTRIBUTED_LOCK_KEY = 'distributed_locks:',
+  DISTRIBUTED_LOCK_KEY = "distributed_locks:"
 
   // /**
   //  * 登录账户密码错误次数 redis key

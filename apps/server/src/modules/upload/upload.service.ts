@@ -1,17 +1,17 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
-import { ResultData } from '@/common/utils/result';
-import { SysUploadEntity } from './entities/upload.entity';
-import { ChunkFileDto, ChunkMergeFileDto } from './dto/index';
-import { generateUUID } from '@llcz/common';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as iconv from 'iconv-lite';
-import * as COS from 'cos-nodejs-sdk-v5';
-import * as crypto from 'crypto';
-import { SuccessErrorEnum } from '@/common/enum/dict';
+import { Injectable, Inject } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { ConfigService } from "@nestjs/config";
+import { ResultData } from "@/common/utils/result";
+import { SysUploadEntity } from "./entities/upload.entity";
+import { ChunkFileDto, ChunkMergeFileDto } from "./dto/index";
+import { generateUUID } from "@llcz/common";
+import * as fs from "fs";
+import * as path from "path";
+import * as iconv from "iconv-lite";
+import * as COS from "cos-nodejs-sdk-v5";
+import * as cryptojs from "crypto";
+import { SuccessErrorEnum } from "@/common/enum/dict";
 
 @Injectable()
 export class UploadService {
@@ -22,19 +22,19 @@ export class UploadService {
     @InjectRepository(SysUploadEntity)
     private readonly sysUploadEntityRep: Repository<SysUploadEntity>,
     @Inject(ConfigService)
-    private config: ConfigService,
+    private config: ConfigService
   ) {
     this.cos = new COS({
       // 必选参数
-      SecretId: this.config.get('cos.secretId'),
-      SecretKey: this.config.get('cos.secretKey'),
+      SecretId: this.config.get("cos.secretId"),
+      SecretKey: this.config.get("cos.secretKey"),
       //可选参数
       FileParallelLimit: 3, // 控制文件上传并发数
       ChunkParallelLimit: 8, // 控制单个文件下分片上传并发数，在同园区上传可以设置较大的并发数
-      ChunkSize: 1024 * 1024 * 8, // 控制分片大小，单位 B，在同园区上传可以设置较大的分片大小
+      ChunkSize: 1024 * 1024 * 8 // 控制分片大小，单位 B，在同园区上传可以设置较大的分片大小
     });
-    this.thunkDir = 'thunk';
-    this.isLocal = this.config.get('app.file.isLocal');
+    this.thunkDir = "thunk";
+    this.isLocal = this.config.get("app.file.isLocal");
   }
 
   /**
@@ -45,18 +45,23 @@ export class UploadService {
    */
   async singleFileUpload(file: Express.Multer.File, fileType: string) {
     const fileSize = (file.size / 1024 / 1024).toFixed(2);
-    if (fileSize > this.config.get('app.file.maxSize')) {
-      return ResultData.fail(500, `文件大小不能超过${this.config.get('app.file.maxSize')}MB`);
+    if (fileSize > this.config.get("app.file.maxSize")) {
+      return ResultData.fail(500, `文件大小不能超过${this.config.get("app.file.maxSize")}MB`);
     }
     let res;
     if (this.isLocal) {
-      res = await this.saveFileLocal(file, fileType);
+      res = this.saveFileLocal(file, fileType);
     } else {
-      const targetDir = this.config.get('cos.location');
+      const targetDir = this.config.get("cos.location");
       res = await this.saveFileCos(targetDir, file);
     }
     const uploadId = generateUUID();
-    await this.sysUploadEntityRep.save({ uploadId, ...res, ext: path.extname(res.newFileName), size: file.size });
+    await this.sysUploadEntityRep.save({
+      uploadId,
+      ...res,
+      ext: path.extname(res.newFileName),
+      size: file.size
+    });
     return ResultData.ok(res);
   }
 
@@ -64,19 +69,19 @@ export class UploadService {
    * 获取上传任务Id
    * @returns
    */
-  async getChunkUploadId() {
+  getChunkUploadId() {
     const uploadId = generateUUID();
     return ResultData.ok({
-      uploadId: uploadId,
+      uploadId: uploadId
     });
   }
 
   /**
    * 文件切片上传
    */
-  async chunkFileUpload(file: Express.Multer.File, body: ChunkFileDto) {
+  chunkFileUpload(file: Express.Multer.File, body: ChunkFileDto) {
     const rootPath = process.cwd();
-    const baseDirPath = path.join(rootPath, this.config.get('app.file.location'));
+    const baseDirPath = path.join(rootPath, this.config.get("app.file.location"));
     const chunckDirPath = path.join(baseDirPath, this.thunkDir, body.uploadId);
     if (!fs.existsSync(chunckDirPath)) {
       this.mkdirsSync(chunckDirPath);
@@ -95,13 +100,13 @@ export class UploadService {
    * @param uploadId
    * @param index
    */
-  async checkChunkFile(body) {
+  checkChunkFile(body) {
     const rootPath = process.cwd();
-    const baseDirPath = path.join(rootPath, this.config.get('app.file.location'));
+    const baseDirPath = path.join(rootPath, this.config.get("app.file.location"));
     const chunckDirPath = path.join(baseDirPath, this.thunkDir, body.uploadId);
     const chunckFilePath = path.join(chunckDirPath, `${body.uploadId}${body.fileName}@${body.index}`);
     if (!fs.existsSync(chunckFilePath)) {
-      return ResultData.fail(500, '文件不存在');
+      return ResultData.fail(500, "文件不存在");
     } else {
       return ResultData.ok();
     }
@@ -129,11 +134,11 @@ export class UploadService {
   async chunkMergeFile(body: ChunkMergeFileDto) {
     const { uploadId, fileName } = body;
     const rootPath = process.cwd();
-    const baseDirPath = path.join(rootPath, this.config.get('app.file.location'));
+    const baseDirPath = path.join(rootPath, this.config.get("app.file.location"));
     const sourceFilesDir = path.join(baseDirPath, this.thunkDir, uploadId);
 
     if (!fs.existsSync(sourceFilesDir)) {
-      return ResultData.fail(500, '文件不存在');
+      return ResultData.fail(500, "文件不存在");
     }
 
     //对文件重命名
@@ -141,24 +146,34 @@ export class UploadService {
     const targetFile = path.join(baseDirPath, newFileName);
     await this.thunkStreamMerge(sourceFilesDir, targetFile);
     //文件相对地址
-    const relativeFilePath = targetFile.replace(baseDirPath, '');
-    const url = path.join(this.config.get('app.file.domain'), fileName);
-    const key = path.join('test', relativeFilePath);
+    const relativeFilePath = targetFile.replace(baseDirPath, "");
+    const url = path.join(this.config.get("app.file.domain"), fileName);
+    const key = path.join("test", relativeFilePath);
     const data = {
       fileName: key,
       newFileName: newFileName,
-      url: url,
+      url: url
     };
     const stats = fs.statSync(targetFile);
 
     if (!this.isLocal) {
-      this.uploadLargeFileCos(targetFile, key);
-      data.url = path.join(this.config.get('cos.domain'), key);
+      await this.uploadLargeFileCos(targetFile, key);
+      data.url = path.join(this.config.get("cos.domain"), key);
       // 写入上传记录
-      await this.sysUploadEntityRep.save({ uploadId, ...data, ext: path.extname(data.newFileName), size: stats.size });
+      await this.sysUploadEntityRep.save({
+        uploadId,
+        ...data,
+        ext: path.extname(data.newFileName),
+        size: stats.size
+      });
       return ResultData.ok(data);
     }
-    await this.sysUploadEntityRep.save({ uploadId, ...data, ext: path.extname(data.newFileName), size: stats.size });
+    await this.sysUploadEntityRep.save({
+      uploadId,
+      ...data,
+      ext: path.extname(data.newFileName),
+      size: stats.size
+    });
     return ResultData.ok(data);
   }
 
@@ -170,16 +185,16 @@ export class UploadService {
   async thunkStreamMerge(sourceFilesDir, targetFile) {
     const fileList = fs
       .readdirSync(sourceFilesDir)
-      .filter((file) => fs.lstatSync(path.join(sourceFilesDir, file)).isFile())
-      .sort((a, b) => parseInt(a.split('@')[1]) - parseInt(b.split('@')[1]))
-      .map((name) => ({
+      .filter(file => fs.lstatSync(path.join(sourceFilesDir, file)).isFile())
+      .sort((a, b) => parseInt(a.split("@")[1]) - parseInt(b.split("@")[1]))
+      .map(name => ({
         name,
-        filePath: path.join(sourceFilesDir, name),
+        filePath: path.join(sourceFilesDir, name)
       }));
 
     const fileWriteStream = fs.createWriteStream(targetFile);
     let onResolve: (value) => void;
-    const callbackPromise = new Promise((resolve) => {
+    const callbackPromise = new Promise(resolve => {
       onResolve = resolve;
     });
     this.thunkStreamMergeProgress(fileList, fileWriteStream, sourceFilesDir, onResolve);
@@ -206,7 +221,7 @@ export class UploadService {
     // 把结果往最终的生成文件上进行拼接
     currentReadStream.pipe(fileWriteStream, { end: false });
 
-    currentReadStream.on('end', () => {
+    currentReadStream.on("end", () => {
       // 拼接完之后进入下一次循环
       this.thunkStreamMergeProgress(fileList, fileWriteStream, sourceFilesDir, onResolve);
     });
@@ -217,27 +232,27 @@ export class UploadService {
    * @param file
    * @param fileType
    */
-  async saveFileLocal(file: Express.Multer.File, fileType: string) {
-    let fileDir = process.env.NODE_ENV === 'production' ? '/prod' : '/test';
+  saveFileLocal(file: Express.Multer.File, fileType: string) {
+    let fileDir = process.env.NODE_ENV === "production" ? "/prod" : "/test";
     // 根据接口参数决定存储目录  append额外的参数必须在append文件之前，不然读不到
     switch (fileType) {
-      case 'avatar':
-        fileDir += '/avatar';
+      case "avatar":
+        fileDir += "/avatar";
         break;
     }
     //文件根目录
-    const baseDirPath = path.join(process.cwd(), this.config.get('app.file.location'));
+    const baseDirPath = path.join(process.cwd(), this.config.get("app.file.location"));
     //对文件名转码
-    const originalname = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf8');
+    const originalname = iconv.decode(Buffer.from(file.originalname, "binary"), "utf8");
     // 计算文件内容的哈希值 重新生成文件名
-    const hash = crypto.createHash('md5').update(file.buffer).digest('hex');
+    const hash = cryptojs.createHash("md5").update(file.buffer).digest("hex");
     const newFileName = `${hash}${path.extname(originalname)}`;
     //文件路径
     const targetFile = path.join(baseDirPath, fileDir, newFileName);
     //文件目录
     const sourceFilesDir = path.dirname(targetFile);
     //文件相对地址
-    const relativeFilePath = targetFile.replace(baseDirPath, '');
+    const relativeFilePath = targetFile.replace(baseDirPath, "");
 
     if (!fs.existsSync(sourceFilesDir)) {
       this.mkdirsSync(sourceFilesDir);
@@ -245,13 +260,13 @@ export class UploadService {
     fs.writeFileSync(targetFile, file.buffer);
 
     //文件服务完整路径
-    const fileName = path.join(this.config.get('app.file.serveRoot'), relativeFilePath);
+    const fileName = path.join(this.config.get("app.file.serveRoot"), relativeFilePath);
     // const url = path.join(this.config.get('app.file.domain'), fileName);
-    const url = this.config.get('app.file.domain') + fileName.replaceAll('\\', '/');
+    const url = this.config.get("app.file.domain") + fileName.replaceAll("\\", "/");
     return {
       fileName: fileName,
       newFileName: newFileName,
-      url: url,
+      url: url
     };
   }
   /**
@@ -263,9 +278,9 @@ export class UploadService {
     if (!originalname) {
       return originalname;
     }
-    const newFileNameArr = originalname.split('.');
+    const newFileNameArr = originalname.split(".");
     newFileNameArr[newFileNameArr.length - 2] = `${newFileNameArr[newFileNameArr.length - 2]}_${new Date().getTime()}`;
-    return newFileNameArr.join('.');
+    return newFileNameArr.join(".");
   }
 
   /**
@@ -276,16 +291,16 @@ export class UploadService {
    */
   async saveFileCos(targetDir: string, file: Express.Multer.File) {
     //对文件名转码
-    const originalname = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf8');
+    const originalname = iconv.decode(Buffer.from(file.originalname, "binary"), "utf8");
     //重新生成文件名加上时间戳
     const newFileName = this.getNewFileName(originalname);
     const targetFile = path.join(targetDir, newFileName);
     await this.uploadCos(targetFile, file.buffer);
-    const url = path.join(this.config.get('cos.domain'), targetFile);
+    const url = path.join(this.config.get("cos.domain"), targetFile);
     return {
       fileName: targetFile,
       newFileName: newFileName,
-      url: url,
+      url: url
     };
   }
 
@@ -300,10 +315,10 @@ export class UploadService {
     if (statusCode !== 200) {
       //不存在
       const data = await this.cos.putObject({
-        Bucket: this.config.get('cos.bucket'),
-        Region: this.config.get('cos.region'),
+        Bucket: this.config.get("cos.bucket"),
+        Region: this.config.get("cos.region"),
         Key: targetFile,
-        Body: buffer,
+        Body: buffer
       });
       return path.dirname(data.Location);
     }
@@ -318,16 +333,16 @@ export class UploadService {
   async getChunkUploadResult(uploadId: string) {
     const data = await this.sysUploadEntityRep.findOne({
       where: { uploadId },
-      select: ['status', 'fileName', 'newFileName', 'url'],
+      select: ["status", "fileName", "newFileName", "url"]
     });
 
     if (data) {
       return ResultData.ok({
         data: data,
-        msg: data.status === SuccessErrorEnum.SUCCESS ? '上传成功' : '上传中',
+        msg: data.status === SuccessErrorEnum.SUCCESS ? "上传成功" : "上传中"
       });
     } else {
-      return ResultData.fail(500, '文件不存在');
+      return ResultData.fail(500, "文件不存在");
     }
   }
 
@@ -342,8 +357,8 @@ export class UploadService {
     if (statusCode !== 200) {
       //不存在
       await this.cos.uploadFile({
-        Bucket: this.config.get('cos.bucket'),
-        Region: this.config.get('cos.region'),
+        Bucket: this.config.get("cos.bucket"),
+        Region: this.config.get("cos.region"),
         Key: targetFile,
         FilePath: sourceFile,
         SliceSize: 1024 * 1024 * 5 /* 触发分块上传的阈值，超过5MB使用分块上传，非必须 */,
@@ -352,7 +367,7 @@ export class UploadService {
           if (progressData.percent === 1) {
             this.sysUploadEntityRep.update({ filName: targetFile }, { status: SuccessErrorEnum.SUCCESS });
           }
-        },
+        }
       });
     }
     //删除本地文件
@@ -369,9 +384,9 @@ export class UploadService {
   async cosHeadObject(targetFile: string) {
     try {
       return await this.cos.headObject({
-        Bucket: this.config.get('cos.bucket'),
-        Region: this.config.get('cos.region'),
-        Key: targetFile,
+        Bucket: this.config.get("cos.bucket"),
+        Region: this.config.get("cos.region"),
+        Key: targetFile
       });
     } catch (error) {
       return error;
@@ -382,16 +397,16 @@ export class UploadService {
    * 获取cos授权
    * @returns
    */
-  async getAuthorization(Key: string) {
+  getAuthorization(Key: string) {
     const authorization = COS.getAuthorization({
-      SecretId: this.config.get('cos.secretId'),
-      SecretKey: this.config.get('cos.secretKey'),
-      Method: 'post',
+      SecretId: this.config.get("cos.secretId"),
+      SecretKey: this.config.get("cos.secretKey"),
+      Method: "post",
       Key: Key,
-      Expires: 60,
+      Expires: 60
     });
     return ResultData.ok({
-      sign: authorization,
+      sign: authorization
     });
   }
 }

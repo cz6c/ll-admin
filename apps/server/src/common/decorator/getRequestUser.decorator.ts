@@ -1,6 +1,6 @@
-import { SysRoleVo } from '@/modules/system/role/dto';
-import { UserVo } from '@/modules/system/user/dto';
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import type { SysRoleVo } from "@/modules/system/role/dto";
+import type { UserVo } from "@/modules/system/user/dto";
+import { createParamDecorator, type ExecutionContext } from "@nestjs/common";
 
 export interface RequestUserPayload {
   browser: string;

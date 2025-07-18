@@ -7,14 +7,7 @@ import pluginPrettier from "eslint-plugin-prettier";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores([
-    "**/.*",
-    "dist/*",
-    "*.d.ts",
-    "public/*",
-    "src/assets/**",
-    "src/**/iconfont/**"
-  ]),
+  globalIgnores(["**/.*", "dist/*", "*.d.ts", "public/*", "src/assets/**", "src/**/iconfont/**"]),
   {
     ...js.configs.recommended,
     languageOptions: {
@@ -67,7 +60,12 @@ export default defineConfig([
       "prettier/prettier": [
         "error",
         {
-          endOfLine: "auto"
+          printWidth: 160,
+          endOfLine: "auto",
+          // 对象数组末尾不需要逗号
+          trailingComma: "none",
+          // 箭头函数的参数在需要时才加括号
+          arrowParens: "avoid"
         }
       ]
     }
@@ -86,21 +84,9 @@ export default defineConfig([
       "@typescript-eslint/no-unsafe-function-type": "off",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/explicit-module-boundary-types": "off",
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
-        { disallowTypeAnnotations: false, fixStyle: "inline-type-imports" }
-      ],
-      "@typescript-eslint/prefer-literal-enum-member": [
-        "error",
-        { allowBitwiseExpressions: true }
-      ],
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_"
-        }
-      ]
+      "@typescript-eslint/consistent-type-imports": ["error", { disallowTypeAnnotations: false, fixStyle: "inline-type-imports" }],
+      "@typescript-eslint/prefer-literal-enum-member": ["error", { allowBitwiseExpressions: true }],
+      "@typescript-eslint/no-unused-vars": "warn"
     }
   }),
   {
@@ -167,7 +153,9 @@ export default defineConfig([
           svg: "always",
           math: "always"
         }
-      ]
+      ],
+      "vue/no-v-model-argument": "off",
+      "vue/no-multiple-template-root": "off"
     }
   }
 ]);

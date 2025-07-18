@@ -5,20 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  watch,
-  useSlots,
-  computed,
-  provide,
-  onBeforeMount,
-  onMounted,
-  onUnmounted,
-  onDeactivated,
-  onActivated,
-  VNodeArrayChildren,
-  VNode
-} from "vue";
+import { ref, watch, useSlots, computed, provide, onBeforeMount, onMounted, onUnmounted, onDeactivated, onActivated, VNodeArrayChildren, VNode } from "vue";
 import type { BreakPoint } from "./type";
 
 defineOptions({
@@ -103,8 +90,7 @@ const findIndex = () => {
   let suffix: VNode | null = null;
   slots.forEach((slot: any) => {
     // suffix
-    if (typeof slot.type === "object" && slot.type.name === "GridItem" && slot.props?.suffix !== undefined)
-      suffix = slot;
+    if (typeof slot.type === "object" && slot.type.name === "GridItem" && slot.props?.suffix !== undefined) suffix = slot;
     // slot children
     if (typeof slot.type === "symbol" && Array.isArray(slot.children)) fields.push(...slot.children);
   });

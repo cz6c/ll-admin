@@ -6,6 +6,10 @@ import VueCropper from "vue-cropper";
 import "vue-cropper/dist/index.css";
 // VxeTable
 import { lazyVxeTable } from "./vxeTable";
+import "vxe-table/styles/cssvar.scss";
+import "vxe-table/lib/style.css";
+import "vxe-pc-ui/styles/cssvar.scss";
+import "vxe-pc-ui/lib/style.css";
 
 /**
  * @description: 公共业务组件

@@ -159,7 +159,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
       title: "性别",
       slots: {
         default({ row }) {
-          return <dict-tag options={UserSexEnum.value} value={row.userType} />;
+          return <dict-tag options={UserSexEnum.value} value={row.sex} />;
         }
       }
     },
@@ -177,14 +177,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
       title: "状态",
       slots: {
         default({ row }) {
-          return (
-            <el-switch
-              v-model={row.status}
-              active-value="0"
-              inactive-value="1"
-              onChange={() => handleStatusChange(row)}
-            />
-          );
+          return <el-switch v-model={row.status} active-value="0" inactive-value="1" onChange={() => handleStatusChange(row)} />;
         }
       }
     },
@@ -412,13 +405,7 @@ getDeptTree();
       <template #left>
         <!--部门数据-->
         <div class="mr-8">
-          <el-input
-            v-model="deptName"
-            placeholder="请输入部门名称"
-            clearable
-            prefix-icon="Search"
-            style="margin-bottom: 20px"
-          />
+          <el-input v-model="deptName" placeholder="请输入部门名称" clearable prefix-icon="Search" style="margin-bottom: 20px" />
           <el-tree
             ref="deptTreeRef"
             :data="deptOptions"
@@ -439,13 +426,7 @@ getDeptTree();
 
     <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
-      <EditUserForm
-        v-if="editDialog.open"
-        :deptOptions="deptOptions"
-        :userId="editDialog.userId"
-        @success="initListSearch"
-        @cancel="editDialog.open = false"
-      />
+      <EditUserForm v-if="editDialog.open" :deptOptions="deptOptions" :userId="editDialog.userId" @success="initListSearch" @cancel="editDialog.open = false" />
     </el-dialog>
     <!-- 导入对话框 -->
     <el-dialog v-model="uploadDialog.open" :title="uploadDialog.title" width="400px" append-to-body>

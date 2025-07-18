@@ -4,10 +4,7 @@
     <el-row ref="printRef" :gutter="10">
       <el-col :span="12">
         <el-card>
-          <template #header
-            ><Cpu style="width: 1em; height: 1em; vertical-align: middle" />
-            <span style="vertical-align: middle">CPU</span></template
-          >
+          <template #header><Cpu style="width: 1em; height: 1em; vertical-align: middle" /> <span style="vertical-align: middle">CPU</span></template>
           <div class="el-table el-table--enable-row-hover el-table--medium">
             <table cellspacing="0" style="width: 100%">
               <thead>
@@ -63,10 +60,7 @@
 
       <el-col :span="12">
         <el-card>
-          <template #header
-            ><Tickets style="width: 1em; height: 1em; vertical-align: middle" />
-            <span style="vertical-align: middle">内存</span></template
-          >
+          <template #header><Tickets style="width: 1em; height: 1em; vertical-align: middle" /> <span style="vertical-align: middle">内存</span></template>
           <div class="el-table el-table--enable-row-hover el-table--medium">
             <table cellspacing="0" style="width: 100%">
               <thead>
@@ -121,14 +115,10 @@
                     <div class="cell">使用率</div>
                   </td>
                   <td class="el-table__cell is-leaf">
-                    <div v-if="server.mem" class="cell" :class="{ 'text-danger': server.mem.usage > 80 }">
-                      {{ server.mem.usage }}%
-                    </div>
+                    <div v-if="server.mem" class="cell" :class="{ 'text-danger': server.mem.usage > 80 }">{{ server.mem.usage }}%</div>
                   </td>
                   <td class="el-table__cell is-leaf">
-                    <div v-if="server.jvm" class="cell" :class="{ 'text-danger': server.jvm.usage > 80 }">
-                      {{ server.jvm.usage }}%
-                    </div>
+                    <div v-if="server.jvm" class="cell" :class="{ 'text-danger': server.jvm.usage > 80 }">{{ server.jvm.usage }}%</div>
                   </td>
                 </tr>
               </tbody>
@@ -140,8 +130,7 @@
       <el-col :span="24" class="mt-10">
         <el-card>
           <template #header
-            ><Monitor style="width: 1em; height: 1em; vertical-align: middle" />
-            <span style="vertical-align: middle">服务器信息</span></template
+            ><Monitor style="width: 1em; height: 1em; vertical-align: middle" /> <span style="vertical-align: middle">服务器信息</span></template
           >
           <div class="el-table el-table--enable-row-hover el-table--medium">
             <table cellspacing="0" style="width: 100%">
@@ -191,8 +180,7 @@
       <el-col :span="24" class="mt-10">
         <el-card>
           <template #header
-            ><MessageBox style="width: 1em; height: 1em; vertical-align: middle" />
-            <span style="vertical-align: middle">磁盘状态</span></template
+            ><MessageBox style="width: 1em; height: 1em; vertical-align: middle" /> <span style="vertical-align: middle">磁盘状态</span></template
           >
           <div class="el-table el-table--enable-row-hover el-table--medium">
             <table cellspacing="0" style="width: 100%">

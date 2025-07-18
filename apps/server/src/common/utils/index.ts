@@ -1,4 +1,4 @@
-import * as Lodash from 'lodash';
+import * as Lodash from "lodash";
 
 /**
  * 深拷贝
@@ -35,7 +35,7 @@ export function Paginate(data: { list: Array<any>; pageSize: number; pageNum: nu
   let arrayData = Lodash.toArray(data.list);
 
   if (Object.keys(filterParam).length > 0) {
-    arrayData = Lodash.filter(arrayData, (item) => {
+    arrayData = Lodash.filter(arrayData, item => {
       const arr = [];
       if (filterParam.ipaddr) {
         arr.push(Boolean(item.ipaddr.includes(filterParam.ipaddr)));
@@ -44,7 +44,7 @@ export function Paginate(data: { list: Array<any>; pageSize: number; pageNum: nu
       if (filterParam.userName && item.userName) {
         arr.push(Boolean(item.userName.includes(filterParam.userName)));
       }
-      return !Boolean(arr.includes(false));
+      return !arr.includes(false);
     });
   }
 

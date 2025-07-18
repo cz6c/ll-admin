@@ -162,13 +162,15 @@ export default async ({ command, mode }) => {
             [VITE_APP_PROXY_PREFIX]: {
               target: VITE_SERVER_BASEURL,
               changeOrigin: true,
-              rewrite: path => path.replace(new RegExp(`^${VITE_APP_PROXY_PREFIX}`), ''),
+              rewrite: path =>
+                path.replace(new RegExp(`^${VITE_APP_PROXY_PREFIX}`), ''),
             },
           }
         : undefined,
     },
     esbuild: {
-      drop: VITE_DELETE_CONSOLE === 'true' ? ['console', 'debugger'] : ['debugger'],
+      drop:
+        VITE_DELETE_CONSOLE === 'true' ? ['console', 'debugger'] : ['debugger'],
     },
     build: {
       sourcemap: false,
@@ -177,7 +179,6 @@ export default async ({ command, mode }) => {
       target: 'es6',
       // 开发环境不用压缩
       minify: mode === 'development' ? false : 'esbuild',
-
     },
   })
 }

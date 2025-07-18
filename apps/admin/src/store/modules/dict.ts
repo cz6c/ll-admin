@@ -14,7 +14,7 @@ export const useDictStore = defineStore("dict", {
             return this.dict[i].value;
           }
         }
-      } catch (e) {
+      } catch (error) {
         return null;
       }
     },

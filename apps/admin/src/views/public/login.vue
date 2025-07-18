@@ -1,7 +1,7 @@
 <template>
   <div class="login">
     <div class="login-fl">
-      <!-- <SvgIcon name="login" size="368" /> -->
+      <SvgIcon name="login" size="368" />
     </div>
     <div class="login-fr">
       <div class="login-conten">
@@ -16,28 +16,16 @@
             </el-input>
           </el-form-item>
           <el-form-item prop="password">
-            <el-input
-              v-model="loginForm.password"
-              type="password"
-              show-password
-              auto-complete="off"
-              placeholder="请输入密码"
-              @keyup.enter="handleLogin"
-            >
+            <el-input v-model="loginForm.password" type="password" show-password auto-complete="off" placeholder="请输入密码" @keyup.enter="handleLogin">
               <template #prefix><SvgIcon name="password" size="20" /></template>
             </el-input>
           </el-form-item>
           <el-form-item v-if="captchaEnabled" prop="code">
             <div class="login-code">
-              <el-input
-                v-model="loginForm.code"
-                size="large"
-                auto-complete="off"
-                placeholder="验证码"
-                style="width: 60%"
-                @keyup.enter="handleLogin()"
-              >
-                <template #prefix><SvgIcon name="validCode" size="20" /></template>
+              <el-input v-model="loginForm.code" size="large" auto-complete="off" placeholder="验证码" style="width: 60%" @keyup.enter="handleLogin()">
+                <template #prefix>
+                  <SvgIcon name="validCode" size="20" />
+                </template>
               </el-input>
               <div class="code" @click="getCode" v-html="codeUrl" />
             </div>
@@ -46,9 +34,9 @@
             <el-checkbox v-model="loginForm.rememberMe">记住密码</el-checkbox>
           </el-form-item>
         </el-form>
-        <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin()">{{
-          !loading ? "登 录" : "登 录 中..."
-        }}</el-button>
+        <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin()">
+          {{ !loading ? "登 录" : "登 录 中..." }}
+        </el-button>
       </div>
       <div class="version-tips">版权信息 | cz6</div>
     </div>

@@ -1,20 +1,20 @@
-import { ConfigService } from '@nestjs/config';
-import { AuthGuard } from '@nestjs/passport';
-import { pathToRegexp } from 'path-to-regexp';
-import { ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { UserService } from '@/modules/system/user/user.service';
-import * as url from 'url';
+import { ConfigService } from "@nestjs/config";
+import { AuthGuard } from "@nestjs/passport";
+import { pathToRegexp } from "path-to-regexp";
+import { ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { UserService } from "@/modules/system/user/user.service";
+import * as url from "url";
 
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {
+export class JwtAuthGuard extends AuthGuard("jwt") {
   private globalWhiteList = [];
   constructor(
     @Inject(UserService)
     private readonly userService: UserService,
-    private readonly config: ConfigService,
+    private readonly config: ConfigService
   ) {
     super();
-    this.globalWhiteList = [].concat(this.config.get('perm.router.whitelist') || []);
+    this.globalWhiteList = [].concat(this.config.get("perm.router.whitelist") || []);
   }
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -24,10 +24,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     const req = ctx.switchToHttp().getRequest();
-    const accessToken = req.get('Authorization');
-    if (!accessToken) throw new ForbiddenException('请重新登录');
+    const accessToken = req.get("Authorization");
+    if (!accessToken) throw new ForbiddenException("请重新登录");
     const atUserId = await this.userService.parseToken(accessToken);
-    if (!atUserId) throw new UnauthorizedException('当前登录已过期，请重新登录');
+    if (!atUserId) throw new UnauthorizedException("当前登录已过期，请重新登录");
     return await this.activate(ctx);
   }
 
@@ -43,12 +43,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   checkWhiteList(ctx: ExecutionContext): boolean {
     const req = ctx.switchToHttp().getRequest();
     const pathname = url.parse(req.url).pathname;
-    const i = this.globalWhiteList.findIndex((route) => {
+    const i = this.globalWhiteList.findIndex(route => {
       // 请求方法类型相同
       if (req.method.toUpperCase() === route.method.toUpperCase()) {
         if (route.path === pathname) return true;
         // 处理url带params参数 :userId
-        const match = pathToRegexp(route.path).exec(pathname);
+        const match = pathToRegexp(route.path).regexp.exec(pathname);
         return match && !isNaN(Number(match[1]));
       }
       return false;

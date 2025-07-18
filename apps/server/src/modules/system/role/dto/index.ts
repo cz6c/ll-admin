@@ -1,7 +1,7 @@
-import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty, PickType } from '@nestjs/swagger';
-import { BaseVO, PagingDto } from '@/common/dto/index';
-import { DataScopeEnum, StatusEnum } from '@/common/enum/dict';
+import { IsString, IsEnum, IsArray, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty, PickType } from "@nestjs/swagger";
+import { BaseVO, PagingDto } from "@/common/dto/index";
+import { DataScopeEnum, StatusEnum } from "@/common/enum/dict";
 
 export class CreateRoleDto {
   @ApiProperty({ required: true })
@@ -42,12 +42,12 @@ export class CreateRoleDto {
 }
 
 export class UpdateRoleDto extends CreateRoleDto {
-  @ApiProperty({ type: Number, description: '角色ID' })
+  @ApiProperty({ type: Number, description: "角色ID" })
   @IsNumber()
   roleId: number;
 }
 
-export class ChangeStatusDto extends PickType(UpdateRoleDto, ['roleId', 'status'] as const) {}
+export class RoleChangeStatusDto extends PickType(UpdateRoleDto, ["roleId", "status"] as const) {}
 
 export class ListRoleDto extends PagingDto {
   @ApiProperty({ required: false })
@@ -69,25 +69,25 @@ export class ListRoleDto extends PagingDto {
 }
 
 export class SysRoleVo extends BaseVO {
-  @ApiProperty({ description: '角色ID', example: 1 })
+  @ApiProperty({ description: "角色ID", example: 1 })
   public roleId: number;
 
-  @ApiProperty({ description: '角色名称', example: 'Administrator' })
+  @ApiProperty({ description: "角色名称", example: "Administrator" })
   public roleName: string;
 
-  @ApiProperty({ description: '显示顺序', example: 0 })
+  @ApiProperty({ description: "显示顺序", example: 0 })
   public roleSort: number;
 
-  @ApiProperty({ description: '角色权限字符串', example: 'ROLE_ADMIN' })
+  @ApiProperty({ description: "角色权限字符串", example: "ROLE_ADMIN" })
   public roleKey: string;
 
   @ApiProperty({
-    description: '数据范围 (1: 全部数据权限, 2: 自定数据权限, 3: 本部门数据权限, 4: 本部门及以下数据权限, 5: 仅本人数据权限)',
+    description: "数据范围 (1: 全部数据权限, 2: 自定数据权限, 3: 本部门数据权限, 4: 本部门及以下数据权限, 5: 仅本人数据权限)",
     enum: DataScopeEnum,
-    example: DataScopeEnum.DATA_SCOPE_ALL,
+    example: DataScopeEnum.DATA_SCOPE_ALL
   })
   public dataScope: DataScopeEnum;
 
-  @ApiProperty({ description: '备注', example: '这是管理员角色的备注' })
+  @ApiProperty({ description: "备注", example: "这是管理员角色的备注" })
   public remark: string;
 }

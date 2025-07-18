@@ -95,29 +95,11 @@ defineExpose({
 </script>
 
 <template>
-  <el-form
-    ref="formRef"
-    class="form-view"
-    :model="modelValue"
-    :rules="rules"
-    status-icon
-    label-suffix="："
-    v-bind="$attrs"
-  >
+  <el-form ref="formRef" class="form-view" :model="modelValue" :rules="rules" status-icon label-suffix="：" v-bind="$attrs">
     <el-row>
-      <el-col
-        v-for="item in props.columns"
-        :key="item.prop"
-        v-bind="item.span ? { span: item.span } : formItemCol"
-        :style="item.itemStyle"
-      >
+      <el-col v-for="item in props.columns" :key="item.prop" v-bind="item.span ? { span: item.span } : formItemCol" :style="item.itemStyle">
         <template v-if="!item.hidden">
-          <el-form-item
-            :prop="item.prop"
-            :label="item.label"
-            :labelWidth="item.itemLabelWidth || props.labelWidth"
-            :required="item.required"
-          >
+          <el-form-item :prop="item.prop" :label="item.label" :labelWidth="item.itemLabelWidth || props.labelWidth" :required="item.required">
             <!-- 颜色选择器 -->
             <template v-if="item.type === 'color-picker'">
               <el-color-picker
@@ -223,50 +205,26 @@ defineExpose({
             </template>
             <!-- 开关切换 -->
             <template v-else-if="item.type === 'switch'">
-              <el-switch
-                v-model="modelValue[handleProp(item.prop)]"
-                v-bind="item?.props || {}"
-                :disabled="item.disabled"
-              />
+              <el-switch v-model="modelValue[handleProp(item.prop)]" v-bind="item?.props || {}" :disabled="item.disabled" />
             </template>
             <!-- 多选 -->
             <template v-else-if="item.type === 'checkbox'">
-              <el-checkbox-group
-                v-model="modelValue[handleProp(item.prop)]"
-                v-bind="item?.props || {}"
-                :disabled="item.disabled"
-              >
-                <el-checkbox v-for="{ label, value } in item.props.options" :key="value" :label="value">{{
-                  label
-                }}</el-checkbox>
+              <el-checkbox-group v-model="modelValue[handleProp(item.prop)]" v-bind="item?.props || {}" :disabled="item.disabled">
+                <el-checkbox v-for="{ label, value } in item.props.options" :key="value" :label="value">{{ label }}</el-checkbox>
               </el-checkbox-group>
             </template>
             <!-- 单选 -->
             <template v-else-if="item.type === 'radio'">
-              <el-radio-group
-                v-model="modelValue[handleProp(item.prop)]"
-                v-bind="item?.props || {}"
-                :disabled="item.disabled"
-              >
-                <el-radio v-for="{ label, value } in item.props.options" :key="value" :label="value">{{
-                  label
-                }}</el-radio>
+              <el-radio-group v-model="modelValue[handleProp(item.prop)]" v-bind="item?.props || {}" :disabled="item.disabled">
+                <el-radio v-for="{ label, value } in item.props.options" :key="value" :label="value">{{ label }}</el-radio>
               </el-radio-group>
             </template>
             <!-- 图片上传 -->
             <template v-else-if="item.type === 'upload'">
-              <UploadImg
-                v-model="modelValue[handleProp(item.prop)]"
-                v-bind="item?.props || {}"
-                :disabled="item.disabled"
-              />
+              <UploadImg v-model="modelValue[handleProp(item.prop)]" v-bind="item?.props || {}" :disabled="item.disabled" />
             </template>
             <template v-else-if="item.type === 'uploads'">
-              <UploadImgs
-                v-model="modelValue[handleProp(item.prop)]"
-                v-bind="item?.props || {}"
-                :disabled="item.disabled"
-              />
+              <UploadImgs v-model="modelValue[handleProp(item.prop)]" v-bind="item?.props || {}" :disabled="item.disabled" />
             </template>
             <!-- 数字输入框 -->
             <template v-else-if="item.type === 'input-number'">

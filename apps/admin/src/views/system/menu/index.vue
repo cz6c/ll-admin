@@ -96,11 +96,7 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
       title: "菜单类型",
       slots: {
         default({ row }) {
-          return (
-            <el-tag type={row.menuType === "M" ? "primary" : "warning"}>
-              {row.menuType === "M" ? "菜单" : "功能"}
-            </el-tag>
-          );
+          return <el-tag type={row.menuType === "M" ? "primary" : "warning"}>{row.menuType === "M" ? "菜单" : "功能"}</el-tag>;
         }
       }
     },

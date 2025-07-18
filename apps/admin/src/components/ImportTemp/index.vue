@@ -15,9 +15,7 @@ const props = defineProps({
 
 const $emit = defineEmits(["success", "cancel"]);
 
-const urlCom = computed(
-  () => import.meta.env.VITE_BASE_URL + props.importUrl + "?updateSupport=" + upload.updateSupport
-);
+const urlCom = computed(() => import.meta.env.VITE_BASE_URL + props.importUrl + "?updateSupport=" + upload.updateSupport);
 
 const upload = reactive({
   // 是否禁用上传
@@ -70,14 +68,7 @@ function submitFileForm() {
         <div class="el-upload__tip text-center">
           <div class="el-upload__tip"><el-checkbox v-model="upload.updateSupport" />是否更新已经存在的用户数据</div>
           <span>仅允许导入xls、xlsx格式文件。</span>
-          <el-link
-            type="primary"
-            :underline="false"
-            style="font-size: 12px; vertical-align: baseline"
-            @click="importTemplate"
-          >
-            下载模板
-          </el-link>
+          <el-link type="primary" :underline="false" style="font-size: 12px; vertical-align: baseline" @click="importTemplate"> 下载模板 </el-link>
         </div>
       </template>
     </el-upload>

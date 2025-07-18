@@ -82,6 +82,7 @@ export function addDateRange(params, dateRange) {
  * @return {*} str
  */
 export function sprintf(str: string): string {
+  // eslint-disable-next-line prefer-rest-params
   const args = [...arguments];
 
   if (args.length < (str.match(/%s/g) || []).length) {
@@ -108,7 +109,7 @@ export function mergeRecursive(source, target) {
       } else {
         source[p] = target[p];
       }
-    } catch (e) {
+    } catch (error) {
       source[p] = target[p];
     }
   }

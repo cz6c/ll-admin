@@ -1,6 +1,6 @@
-import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { DelFlagEnum, StatusEnum } from '../enum/dict';
+import { IsDateString, IsNumber, IsOptional, IsString } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { DelFlagEnum, StatusEnum } from "../enum/dict";
 
 /**
  * 分页DTO
@@ -43,33 +43,41 @@ export class PagingDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  order?: 'ascending' | 'descending';
+  order?: "ascending" | "descending";
 }
 
 export class BaseVO {
   @ApiProperty({
-    description: '状态',
+    description: "状态",
     enum: StatusEnum,
-    example: StatusEnum.NORMAL,
+    example: StatusEnum.NORMAL
   })
   public status: StatusEnum;
 
   @ApiProperty({
-    description: '删除标志',
+    description: "删除标志",
     enum: DelFlagEnum,
-    example: DelFlagEnum.NORMAL,
+    example: DelFlagEnum.NORMAL
   })
   public delFlag: DelFlagEnum;
 
-  @ApiProperty({ type: Number, description: '创建者', example: 1 })
+  @ApiProperty({ type: Number, description: "创建者", example: 1 })
   public createBy: number;
 
-  @ApiProperty({ type: Date, description: '创建时间', example: '2021-01-01T13:14:00.000Z' })
+  @ApiProperty({
+    type: Date,
+    description: "创建时间",
+    example: "2021-01-01T13:14:00.000Z"
+  })
   public createTime: Date;
 
-  @ApiProperty({ type: Number, description: '更新者', example: 1 })
+  @ApiProperty({ type: Number, description: "更新者", example: 1 })
   public updateBy: number;
 
-  @ApiProperty({ type: Date, description: '更新时间', example: '2021-01-01T13:14:00.000Z' })
+  @ApiProperty({
+    type: Date,
+    description: "更新时间",
+    example: "2021-01-01T13:14:00.000Z"
+  })
   public updateTime: Date;
 }

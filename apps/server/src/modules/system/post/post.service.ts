@@ -1,18 +1,18 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { ExportTable } from '@/common/utils/export';
-import { SysPostEntity } from './entities/post.entity';
-import { Response } from 'express';
-import { CreatePostDto, UpdatePostDto, ListPostDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum/dict';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, In } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { ExportTable } from "@/common/utils/export";
+import { SysPostEntity } from "./entities/post.entity";
+import type { Response as ExpressResponse } from "express";
+import { CreatePostDto, UpdatePostDto, ListPostDto } from "./dto/index";
+import { DelFlagEnum } from "@/common/enum/dict";
 
 @Injectable()
 export class PostService {
   constructor(
     @InjectRepository(SysPostEntity)
-    private readonly sysPostEntityRep: Repository<SysPostEntity>,
+    private readonly sysPostEntityRep: Repository<SysPostEntity>
   ) {}
 
   /**
@@ -32,8 +32,8 @@ export class PostService {
    * @return
    */
   async findAll(query: ListPostDto) {
-    const entity = this.sysPostEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.sysPostEntityRep.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.postName) {
       entity.andWhere(`entity.postName LIKE "%${query.postName}%"`);
@@ -44,9 +44,9 @@ export class PostService {
     }
 
     if (query.status) {
-      entity.andWhere('entity.status = :status', { status: query.status });
+      entity.andWhere("entity.status = :status", { status: query.status });
     }
-    entity.orderBy('entity.postSort', 'ASC');
+    entity.orderBy("entity.postSort", "ASC");
 
     if (query.pageSize && query.pageNum) {
       entity.skip(query.pageSize * (query.pageNum - 1)).take(query.pageSize);
@@ -56,7 +56,7 @@ export class PostService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -69,8 +69,8 @@ export class PostService {
     const res = await this.sysPostEntityRep.findOne({
       where: {
         postId: postId,
-        delFlag: DelFlagEnum.NORMAL,
-      },
+        delFlag: DelFlagEnum.NORMAL
+      }
     });
     return ResultData.ok(res);
   }
@@ -97,8 +97,8 @@ export class PostService {
       { postId: In(postIds) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }
@@ -107,21 +107,21 @@ export class PostService {
    * 导出岗位管理数据为xlsx文件
    * @param res
    */
-  async export(res: Response, body: ListPostDto) {
+  async export(res: ExpressResponse, body: ListPostDto) {
     delete body.pageNum;
     delete body.pageSize;
     const list = await this.findAll(body);
     const options = {
-      sheetName: '岗位数据',
+      sheetName: "岗位数据",
       data: list.data.list,
       header: [
-        { title: '岗位序号', dataIndex: 'postId' },
-        { title: '岗位编码', dataIndex: 'postCode' },
-        { title: '岗位名称', dataIndex: 'postName' },
-        { title: '岗位排序', dataIndex: 'postSort' },
-        { title: '状态', dataIndex: 'status' },
-      ],
+        { title: "岗位序号", dataIndex: "postId" },
+        { title: "岗位编码", dataIndex: "postCode" },
+        { title: "岗位名称", dataIndex: "postName" },
+        { title: "岗位排序", dataIndex: "postSort" },
+        { title: "状态", dataIndex: "status" }
+      ]
     };
-    ExportTable(options, res);
+    await ExportTable(options, res);
   }
 }

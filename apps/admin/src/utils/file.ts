@@ -161,7 +161,10 @@ export default {
             .file(fileName)
             .async("base64")
             .then(res => {
-              imgFiles.push({ base64: "data:image/png;base64," + res, fileName });
+              imgFiles.push({
+                base64: "data:image/png;base64," + res,
+                fileName
+              });
             });
         }
       }

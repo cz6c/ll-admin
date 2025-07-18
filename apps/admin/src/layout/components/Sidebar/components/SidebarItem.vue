@@ -16,7 +16,12 @@ const { item, isNest = false } = defineProps({
   }
 });
 
-const onlyOneChild = ref({} as AppRouteRecordRaw & { hasOneShowingChild: boolean; query: Record<string, any> });
+const onlyOneChild = ref(
+  {} as AppRouteRecordRaw & {
+    hasOneShowingChild: boolean;
+    query: Record<string, any>;
+  }
+);
 
 function hasOneShowingChild(children, parent) {
   // 当没有子路由器时，显示父路由
@@ -26,7 +31,10 @@ function hasOneShowingChild(children, parent) {
   const showingChildren = children.filter(item => !item.hidden);
   if (showingChildren.length === 1) {
     // 当一个子路由器时，显示子路由器
-    return (onlyOneChild.value = { ...showingChildren[0], hasOneShowingChild: true });
+    return (onlyOneChild.value = {
+      ...showingChildren[0],
+      hasOneShowingChild: true
+    });
   } else {
     // 当多个子路由器时，显示el-sub-menu
     return (onlyOneChild.value = { ...parent, hasOneShowingChild: false });

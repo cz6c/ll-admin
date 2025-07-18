@@ -274,12 +274,7 @@ function handleUpdate(row) {
 
     <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
-      <EditConfigForm
-        v-if="editDialog.open"
-        :configId="editDialog.configId"
-        @success="initListSearch"
-        @cancel="editDialog.open = false"
-      />
+      <EditConfigForm v-if="editDialog.open" :configId="editDialog.configId" @success="initListSearch" @cancel="editDialog.open = false" />
     </el-dialog>
   </div>
 </template>

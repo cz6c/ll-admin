@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Min, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { StatusEnum } from '@/common/enum/dict';
-import { BaseVO } from '@/common/dto';
+import { IsString, IsEnum, Min, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { StatusEnum } from "@/common/enum/dict";
+import { BaseVO } from "@/common/dto";
 
 export class CreateDeptDto {
   @ApiProperty({ required: true })
@@ -58,40 +58,40 @@ export class ListDeptDto {
 }
 
 export class SysDeptVo extends BaseVO {
-  @ApiProperty({ description: '部门ID', example: 1 })
+  @ApiProperty({ description: "部门ID", example: 1 })
   public deptId?: number;
 
-  @ApiProperty({ description: '父部门ID', example: 0 })
+  @ApiProperty({ description: "父部门ID", example: 0 })
   public parentId: number;
 
-  @ApiProperty({ description: '祖级列表（表示层级关系）', example: '0,1,2' })
+  @ApiProperty({ description: "祖级列表（表示层级关系）", example: "0,1,2" })
   public ancestors: string;
 
-  @ApiProperty({ description: '部门名称', example: '人力资源部' })
+  @ApiProperty({ description: "部门名称", example: "人力资源部" })
   public deptName: string;
 
-  @ApiProperty({ description: '显示顺序', example: 1 })
+  @ApiProperty({ description: "显示顺序", example: 1 })
   public orderNum: number;
 
-  @ApiProperty({ description: '负责人', example: '张三' })
+  @ApiProperty({ description: "负责人", example: "张三" })
   public leader: string;
 
-  @ApiProperty({ description: '联系电话', example: '13800138000' })
+  @ApiProperty({ description: "联系电话", example: "13800138000" })
   public phone: string;
 
-  @ApiProperty({ description: '邮箱', example: 'zhangsan@example.com' })
+  @ApiProperty({ description: "邮箱", example: "zhangsan@example.com" })
   public email: string;
 }
 
 export class DeptTreeVo extends SysDeptVo {
-  @ApiProperty({ description: '子级列表', example: [] })
+  @ApiProperty({ description: "子级列表", example: [] })
   children: DeptTreeVo[];
 }
 
 export class RoleDeptTreeSelectVo {
-  @ApiProperty({ description: '部门树', example: [] })
+  @ApiProperty({ description: "部门树", example: [] })
   depts: DeptTreeVo[];
 
-  @ApiProperty({ description: '角色已绑定部门ids', example: [] })
+  @ApiProperty({ description: "角色已绑定部门ids", example: [] })
   checkedIds: number[];
 }

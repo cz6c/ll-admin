@@ -1,5 +1,5 @@
-import { Logger } from '@nestjs/common';
-import mqtt, { type MqttClient, type IClientOptions, type IClientPublishOptions } from 'mqtt';
+import { Logger } from "@nestjs/common";
+import mqtt, { type MqttClient, type IClientOptions, type IClientPublishOptions } from "mqtt";
 
 type ConnectOptions = {
   protocol: string;
@@ -17,8 +17,8 @@ class MQTTClientSingleton {
   private client: MqttClient | null = null;
   private connectUrl: string;
   private options: IClientOptions;
-  private topic: string = '/js/mqtt';
-  private qos: IClientPublishOptions['qos'] = 0;
+  private topic: string = "/js/mqtt";
+  private qos: IClientPublishOptions["qos"] = 0;
   private messageQueue: QueueItem[] = [];
   private maxReconnectAttempts = 6; // 最大重连数
   private currentReconnectAttempts = 0; // 重连次数
@@ -27,8 +27,8 @@ class MQTTClientSingleton {
 
   private constructor(connectOptions: ConnectOptions, clientOptions?: IClientOptions) {
     this.connectUrl = `${connectOptions.protocol}://${connectOptions.host}:${connectOptions.port}`;
-    if (['ws', 'wss'].includes(connectOptions.protocol)) {
-      this.connectUrl += '/mqtt';
+    if (["ws", "wss"].includes(connectOptions.protocol)) {
+      this.connectUrl += "/mqtt";
     }
 
     // 合并安全配置
@@ -36,10 +36,10 @@ class MQTTClientSingleton {
       clientId: `emqx_nodejs_${Math.random().toString(16).substring(2, 8)}`,
       clean: true,
       connectTimeout: 4000,
-      username: 'admin',
-      password: '123456',
+      username: "admin",
+      password: "123456",
       reconnectPeriod: 1000,
-      ...clientOptions,
+      ...clientOptions
     };
   }
 
@@ -47,7 +47,7 @@ class MQTTClientSingleton {
   public static getInstance(connectOptions?: ConnectOptions, clientOptions?: IClientOptions): MQTTClientSingleton {
     if (!MQTTClientSingleton.instance) {
       if (!connectOptions) {
-        throw new Error('首次初始化必须提供连接配置和客户端选项');
+        throw new Error("首次初始化必须提供连接配置和客户端选项");
       }
       MQTTClientSingleton.instance = new MQTTClientSingleton(connectOptions, clientOptions);
     }
@@ -64,29 +64,29 @@ class MQTTClientSingleton {
     if (!this.client) return;
 
     this.client
-      .on('connect', () => {
-        this.logger.log('连接成功');
+      .on("connect", async () => {
+        this.logger.log("连接成功");
         this.currentReconnectAttempts = 0;
-        this.processMessageQueue();
-        this.client.subscribe(this.topic, { qos: this.qos }, (error) => {
+        await this.processMessageQueue();
+        this.client.subscribe(this.topic, { qos: this.qos }, error => {
           if (error) {
-            this.logger.log('subscribe error:', error);
+            this.logger.log("subscribe error:", error);
             return;
           }
           this.logger.log(`Subscribe to topic '${this.topic}'`);
         });
       })
-      .on('message', (topic, payload) => {
+      .on("message", (topic, payload) => {
         this.handleMessage(topic, payload);
       })
-      .on('error', (error) => {
-        this.logger.error('连接error', error);
+      .on("error", error => {
+        this.logger.error("连接error", error);
       })
-      .on('reconnect', () => {
+      .on("reconnect", () => {
         this.handleReconnect();
       })
-      .on('close', () => {
-        if (!this.isManualDisconnect && this.currentReconnectAttempts < this.maxReconnectAttempts!) {
+      .on("close", () => {
+        if (!this.isManualDisconnect && this.currentReconnectAttempts < this.maxReconnectAttempts) {
           this.handleReconnect();
         }
       });
@@ -106,11 +106,11 @@ class MQTTClientSingleton {
       reconnectInitialDelay = 2000;
     const delay = Math.min(
       reconnectInitialDelay * Math.pow(reconnectExponentialFactor, this.currentReconnectAttempts),
-      12000, // 最大延迟 12 秒
+      12000 // 最大延迟 12 秒
     );
 
-    if (this.currentReconnectAttempts >= this.maxReconnectAttempts!) {
-      this.logger.error('达到最大重连次数，停止尝试');
+    if (this.currentReconnectAttempts >= this.maxReconnectAttempts) {
+      this.logger.error("达到最大重连次数，停止尝试");
       return;
     }
 
@@ -122,21 +122,21 @@ class MQTTClientSingleton {
   // 处理消息队列
   private async processMessageQueue(): Promise<void> {
     while (this.messageQueue.length > 0) {
-      const { payload } = this.messageQueue.shift()!;
+      const { payload } = this.messageQueue.shift();
       await this.safePublish(payload);
     }
   }
 
   // 消息发送
   public async safePublish(payload: string): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       if (!this.client) {
         this.messageQueue.push({ payload });
-        this.logger.error('消息已加入队列等待发送');
+        this.logger.error("消息已加入队列等待发送");
         return resolve();
       }
 
-      this.client.publish(this.topic, payload, { qos: this.qos }, (error) => {
+      this.client.publish(this.topic, payload, { qos: this.qos }, error => {
         if (error) {
           this.messageQueue.push({ payload });
           this.logger.error(`发布失败: ${error.message}`);
@@ -157,7 +157,7 @@ class MQTTClientSingleton {
         return;
       }
 
-      this.client.end(force, (error) => {
+      this.client.end(force, error => {
         if (error) {
           reject(error);
         } else {
@@ -170,9 +170,9 @@ class MQTTClientSingleton {
 }
 
 export default MQTTClientSingleton.getInstance({
-  protocol: 'mqtts',
-  host: 'f6467964.ala.cn-hangzhou.emqxsl.cn',
-  port: 8883,
+  protocol: "mqtts",
+  host: "f6467964.ala.cn-hangzhou.emqxsl.cn",
+  port: 8883
 });
 
 // 发布

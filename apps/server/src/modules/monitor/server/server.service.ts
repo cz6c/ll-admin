@@ -1,42 +1,42 @@
-import { Injectable } from '@nestjs/common';
-import { ResultData } from '@/common/utils/result';
-import * as os from 'os';
-import * as path from 'path';
-import * as nodeDiskInfo from 'node-disk-info';
+import { Injectable } from "@nestjs/common";
+import { ResultData } from "@/common/utils/result";
+import * as os from "os";
+import * as path from "path";
+import * as nodeDiskInfo from "node-disk-info";
 
 @Injectable()
 export class ServerService {
-  async getInfo() {
+  getInfo() {
     // 获取CPU信息
     const cpu = this.getCpuInfo();
     const mem = this.getMemInfo();
     const sys = {
       computerName: os.hostname(),
       computerIp: this.getServerIP(),
-      userDir: path.resolve(__dirname, '..', '..', '..', '..'),
+      userDir: path.resolve(__dirname, "..", "..", "..", ".."),
       osName: os.platform(),
-      osArch: os.arch(),
+      osArch: os.arch()
     };
-    const sysFiles = await this.getDiskStatus();
+    const sysFiles = this.getDiskStatus();
     const data = {
       cpu,
       mem,
       sys,
-      sysFiles,
+      sysFiles
     };
     return ResultData.ok(data);
   }
 
-  async getDiskStatus() {
-    const disks = await nodeDiskInfo.getDiskInfoSync();
+  getDiskStatus() {
+    const disks = nodeDiskInfo.getDiskInfoSync();
     const sysFiles = disks.map((disk: any) => {
       return {
         dirName: disk._mounted,
         typeName: disk._filesystem,
-        total: this.bytesToGB(disk._blocks) + 'GB',
-        used: this.bytesToGB(disk._used) + 'GB',
-        free: this.bytesToGB(disk._available) + 'GB',
-        usage: ((disk._used / disk._blocks || 0) * 100).toFixed(2),
+        total: this.bytesToGB(disk._blocks) + "GB",
+        used: this.bytesToGB(disk._used) + "GB",
+        free: this.bytesToGB(disk._available) + "GB",
+        usage: ((disk._used / disk._blocks || 0) * 100).toFixed(2)
       };
     });
     return sysFiles;
@@ -48,7 +48,7 @@ export class ServerService {
     for (const name of Object.keys(nets)) {
       for (const net of nets[name]) {
         // 选择外部可访问的IPv4地址
-        if (net.family === 'IPv4' && !net.internal) {
+        if (net.family === "IPv4" && !net.internal) {
           return net.address;
         }
       }
@@ -66,7 +66,7 @@ export class ServerService {
         info.total += cpu.times.user + cpu.times.sys + cpu.times.idle;
         return info;
       },
-      { user: 0, sys: 0, idle: 0, total: 0, cpuNum: 0 },
+      { user: 0, sys: 0, idle: 0, total: 0, cpuNum: 0 }
     );
     const cpu = {
       cpuNum: cpuInfo.cpuNum,
@@ -74,7 +74,7 @@ export class ServerService {
       sys: ((cpuInfo.sys / cpuInfo.total) * 100).toFixed(2),
       used: ((cpuInfo.user / cpuInfo.total) * 100).toFixed(2),
       wait: 0.0,
-      free: ((cpuInfo.idle / cpuInfo.total) * 100).toFixed(2),
+      free: ((cpuInfo.idle / cpuInfo.total) * 100).toFixed(2)
     };
     return cpu;
   }
@@ -92,7 +92,7 @@ export class ServerService {
       total: this.bytesToGB(totalMemory),
       used: this.bytesToGB(usedMemory),
       free: this.bytesToGB(freeMemory),
-      usage: memoryUsagePercentage,
+      usage: memoryUsagePercentage
     };
     return mem;
   }

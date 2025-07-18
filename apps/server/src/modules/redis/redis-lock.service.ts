@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from './redis.service';
-import { Redis } from 'ioredis';
-import { CacheEnum } from '@/common/enum/loca';
+import { Injectable, Logger } from "@nestjs/common";
+import { RedisService } from "./redis.service";
+import { Redis } from "ioredis";
+import { CacheEnum } from "@/common/enum/loca";
 
 @Injectable()
 export class RedisLockService {
@@ -26,9 +26,9 @@ export class RedisLockService {
   async acquireLock(key: string, ttl: number, renewal = false): Promise<boolean> {
     const k = this.composeKey(key);
     const instanceId = `instance_${process.pid || 0}`; // 当前实例的唯一标识
-    const result = await this.client.set(k, JSON.stringify({ instanceId, ttl, renewal }), 'PX', ttl, 'NX');
+    const result = await this.client.set(k, JSON.stringify({ instanceId, ttl, renewal }), "PX", ttl, "NX");
 
-    if (result === 'OK') {
+    if (result === "OK") {
       this.activeLocks.add(k);
       if (renewal) this.startRenewal(k, ttl);
       this.logger.log(`[${k}], [${instanceId}] 获得执行权`);
@@ -67,13 +67,13 @@ export class RedisLockService {
 
   async getLockKeys() {
     const keys = await this.client.keys(`${CacheEnum.DISTRIBUTED_LOCK_KEY}*`);
-    this.logger.log(`🚀 ~ RedisLockService ~ getLockKeys ~ keys: ${keys}`);
+    this.logger.log(`🚀 ~ RedisLockService ~ getLockKeys ~ keys: ${keys.join(",")}`);
   }
 
   /**
    * 应用关闭时执行
    */
   async onApplicationShutdown() {
-    await Promise.all(Array.from(this.activeLocks).map((key) => this.releaseLock(key)));
+    await Promise.all(Array.from(this.activeLocks).map(key => this.releaseLock(key)));
   }
 }

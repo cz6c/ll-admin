@@ -177,28 +177,11 @@ getInfo();
         <template v-else>
           <el-col :span="24">
             <el-form-item label="菜单图标" prop="icon">
-              <el-popover
-                v-model:visible="showChooseIcon"
-                placement="bottom-start"
-                :width="540"
-                trigger="click"
-                @show="showSelectIcon"
-              >
+              <el-popover v-model:visible="showChooseIcon" placement="bottom-start" :width="540" trigger="click" @show="showSelectIcon">
                 <template #reference>
-                  <el-input
-                    v-model="form.icon"
-                    v-click-outside="hideSelectIcon"
-                    placeholder="点击选择图标"
-                    readonly
-                    @blur="showSelectIcon"
-                  >
+                  <el-input v-model="form.icon" v-click-outside="hideSelectIcon" placeholder="点击选择图标" readonly @blur="showSelectIcon">
                     <template #prefix>
-                      <svg-icon
-                        v-if="form.icon"
-                        :name="form.icon"
-                        class="el-input__icon"
-                        style="height: 32px; width: 16px"
-                      />
+                      <svg-icon v-if="form.icon" :name="form.icon" class="el-input__icon" style="height: 32px; width: 16px" />
                       <el-icon v-else style="height: 32px; width: 16px"><search /></el-icon>
                     </template>
                   </el-input>

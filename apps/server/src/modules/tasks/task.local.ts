@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { AxiosService } from '../../plugins/axios.service';
-import { RedisLockService } from '@/modules/redis/redis-lock.service';
-import { TaskService } from '@/modules/tasks/task.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { Cron, CronExpression } from "@nestjs/schedule";
+import { AxiosService } from "../../plugins/axios.service";
+import { RedisLockService } from "@/modules/redis/redis-lock.service";
+import { TaskService } from "@/modules/tasks/task.service";
 // import { TaskTypeEnum } from '@/common/enum/dict';
-import { NodemailerService } from '@/plugins/nodemailer.service';
+import { NodemailerService } from "@/plugins/nodemailer.service";
 
 @Injectable()
 export class LocalTask {
@@ -13,12 +13,12 @@ export class LocalTask {
     private readonly tasksService: TaskService,
     private readonly axiosService: AxiosService,
     private readonly lockService: RedisLockService,
-    private readonly nodemailerService: NodemailerService,
+    private readonly nodemailerService: NodemailerService
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async test() {
-    const key = 'task:test',
+    const key = "task:test",
       ttl = 5000;
     let acquired = false;
 
@@ -27,9 +27,9 @@ export class LocalTask {
       acquired = await this.lockService.acquireLock(key, ttl);
       if (!acquired) return;
 
-      this.lockService.getLockKeys();
+      await this.lockService.getLockKeys();
     } catch (error) {
-      this.logger.error('任务执行失败:', error);
+      this.logger.error("任务执行失败:", error);
     } finally {
       if (acquired) await this.lockService.releaseLock(key); // 执行后释放锁
     }
@@ -51,7 +51,7 @@ export class LocalTask {
    */
   @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
   async getGoldInfo() {
-    const key = 'task:gold_price',
+    const key = "task:gold_price",
       ttl = 5 * 60 * 1000;
     let acquired = false;
 
@@ -64,16 +64,16 @@ export class LocalTask {
 
       const html = this.buildEmailHtml(res);
       const options = {
-        to: ['1272654068@qq.com', '769763659@qq.com'],
-        subject: '最新金价',
-        text: 'pushContent',
+        to: ["1272654068@qq.com", "769763659@qq.com"],
+        subject: "最新金价",
+        text: "pushContent",
         html,
-        pushTask: { remark: '工作日18点 推送最新金价' },
+        pushTask: { remark: "工作日18点 推送最新金价" }
       };
 
       await this.nodemailerService.sendMail(options);
     } catch (error) {
-      this.logger.error('任务执行失败:', error);
+      this.logger.error("任务执行失败:", error);
     } finally {
       if (acquired) await this.lockService.releaseLock(key);
     }
@@ -106,9 +106,9 @@ export class LocalTask {
    */
   private getPriceColor(current: number, previous: number): string {
     return current > previous
-      ? '#c0392b' // 上涨红色
+      ? "#c0392b" // 上涨红色
       : current < previous
-        ? '#27ae60' // 下跌绿色
-        : '#7f8c8d'; // 平盘灰色
+        ? "#27ae60" // 下跌绿色
+        : "#7f8c8d"; // 平盘灰色
   }
 }

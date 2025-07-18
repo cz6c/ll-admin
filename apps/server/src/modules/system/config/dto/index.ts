@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { BaseVO, PagingDto } from '@/common/dto/index';
-import { YesNoEnum } from '@/common/enum/dict';
+import { IsString, IsEnum, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { BaseVO, PagingDto } from "@/common/dto/index";
+import { YesNoEnum } from "@/common/enum/dict";
 
 export class CreateConfigDto {
   @ApiProperty({ required: true })
@@ -56,24 +56,24 @@ export class ListConfigDto extends PagingDto {
 }
 
 export class SysConfigVo extends BaseVO {
-  @ApiProperty({ description: '参数主键' })
+  @ApiProperty({ description: "参数主键" })
   public configId: number;
 
-  @ApiProperty({ description: '参数名称' })
+  @ApiProperty({ description: "参数名称" })
   public configName: string;
 
-  @ApiProperty({ description: '参数键' })
+  @ApiProperty({ description: "参数键" })
   public configKey: string;
 
-  @ApiProperty({ description: '参数键值' })
+  @ApiProperty({ description: "参数键值" })
   public configValue: string;
 
   @ApiProperty({
-    description: '系统内置',
-    enum: YesNoEnum,
+    description: "系统内置",
+    enum: YesNoEnum
   })
   public configType: YesNoEnum;
 
-  @ApiProperty({ description: '备注' })
+  @ApiProperty({ description: "备注" })
   public remark: string;
 }

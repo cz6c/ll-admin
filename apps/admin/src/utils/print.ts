@@ -133,9 +133,7 @@ export default class Print {
   }
 
   private isDOM(obj: any): boolean {
-    return typeof HTMLElement === "object"
-      ? obj instanceof HTMLElement
-      : obj?.nodeType === 1 && typeof obj.nodeName === "string";
+    return typeof HTMLElement === "object" ? obj instanceof HTMLElement : obj?.nodeType === 1 && typeof obj.nodeName === "string";
   }
 
   private setDomHeight(selectors: string[]): void {

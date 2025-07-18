@@ -10,13 +10,7 @@
     </div>
     <div class="side-menu">
       <el-scrollbar wrap-class="scrollbar-wrapper">
-        <el-menu
-          mode="vertical"
-          :default-active="getActiveRoutePath"
-          :collapse-transition="false"
-          :unique-opened="true"
-          :collapse="!sidebar.opened"
-        >
+        <el-menu mode="vertical" :default-active="getActiveRoutePath" :collapse-transition="false" :unique-opened="true" :collapse="!sidebar.opened">
           <SidebarItem v-for="(route, index) in routes" :key="route.path + index" :item="route" />
         </el-menu>
       </el-scrollbar>

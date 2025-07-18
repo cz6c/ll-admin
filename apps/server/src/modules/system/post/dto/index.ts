@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { BaseVO, PagingDto } from '@/common/dto/index';
-import { StatusEnum } from '@/common/enum/dict';
+import { IsString, IsEnum, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { BaseVO, PagingDto } from "@/common/dto/index";
+import { StatusEnum } from "@/common/enum/dict";
 
 export class CreatePostDto {
   @ApiProperty({ required: true })
@@ -56,18 +56,18 @@ export class ListPostDto extends PagingDto {
 }
 
 export class SysPostVo extends BaseVO {
-  @ApiProperty({ description: '岗位ID', example: 1 })
+  @ApiProperty({ description: "岗位ID", example: 1 })
   public postId: number;
 
-  @ApiProperty({ description: '岗位编码', example: 'PC001' })
+  @ApiProperty({ description: "岗位编码", example: "PC001" })
   public postCode: string;
 
-  @ApiProperty({ description: '岗位名称', example: '项目经理' })
+  @ApiProperty({ description: "岗位名称", example: "项目经理" })
   public postName: string;
 
-  @ApiProperty({ description: '显示顺序', example: 1 })
+  @ApiProperty({ description: "显示顺序", example: 1 })
   public postSort: number;
 
-  @ApiProperty({ description: '备注', example: 'll-admin项目经理' })
+  @ApiProperty({ description: "备注", example: "ll-admin项目经理" })
   public remark: string;
 }

@@ -1,15 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindManyOptions, EntityManager } from 'typeorm';
-import { Response } from 'express';
-import { ResultData } from '@/common/utils/result';
-import { ExportTable } from '@/common/utils/export';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, In, FindManyOptions, EntityManager } from "typeorm";
+import type { Response as ExpressResponse } from "express";
+import { ResultData } from "@/common/utils/result";
+import { ExportTable } from "@/common/utils/export";
 
-import { SysRoleEntity } from './entities/role.entity';
-import { SysRoleWithMenuEntity } from './entities/role-menu.entity';
-import { SysRoleWithDeptEntity } from './entities/role-dept.entity';
-import { CreateRoleDto, UpdateRoleDto, ListRoleDto, ChangeStatusDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum/dict';
+import { SysRoleEntity } from "./entities/role.entity";
+import { SysRoleWithMenuEntity } from "./entities/role-menu.entity";
+import { SysRoleWithDeptEntity } from "./entities/role-dept.entity";
+import { CreateRoleDto, UpdateRoleDto, ListRoleDto, RoleChangeStatusDto } from "./dto/index";
+import { DelFlagEnum } from "@/common/enum/dict";
 
 @Injectable()
 export class RoleService {
@@ -20,7 +20,7 @@ export class RoleService {
     private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>,
     @InjectRepository(SysRoleWithDeptEntity)
     private readonly sysRoleWithDeptEntityRep: Repository<SysRoleWithDeptEntity>,
-    private entityManager: EntityManager,
+    private entityManager: EntityManager
   ) {}
 
   /**
@@ -35,27 +35,30 @@ export class RoleService {
     delete createRoleDto.deptIds;
 
     return this.entityManager
-      .transaction(async (manager) => {
-        const role = await manager.save(SysRoleEntity, { ...createRoleDto, createBy: userId });
+      .transaction(async manager => {
+        const role = await manager.save(SysRoleEntity, {
+          ...createRoleDto,
+          createBy: userId
+        });
 
         if (menuIds?.length > 0) {
           await manager.insert(
             SysRoleWithMenuEntity,
-            menuIds.map((menuId) => ({ roleId: role.roleId, menuId })),
+            menuIds.map(menuId => ({ roleId: role.roleId, menuId }))
           );
         }
 
         if (deptIds?.length > 0) {
           await manager.insert(
             SysRoleWithDeptEntity,
-            deptIds.map((deptId) => ({ roleId: role.roleId, deptId })),
+            deptIds.map(deptId => ({ roleId: role.roleId, deptId }))
           );
         }
 
         return ResultData.ok();
       })
-      .catch((err) => {
-        return ResultData.fail(400, '角色创建失败', err);
+      .catch(err => {
+        return ResultData.fail(400, "角色创建失败", err);
       });
   }
 
@@ -65,8 +68,8 @@ export class RoleService {
    * @return
    */
   async findAll(query: ListRoleDto) {
-    const entity = this.sysRoleEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.sysRoleEntityRep.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.roleName) {
       entity.andWhere(`entity.roleName LIKE "%${query.roleName}%"`);
@@ -77,11 +80,14 @@ export class RoleService {
     }
 
     if (query.status) {
-      entity.andWhere('entity.status = :status', { status: query.status });
+      entity.andWhere("entity.status = :status", { status: query.status });
     }
 
     if (query?.beginTime && query?.endTime) {
-      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
+      entity.andWhere("entity.createTime BETWEEN :start AND :end", {
+        start: query.beginTime,
+        end: query.endTime
+      });
     }
 
     if (query.pageSize && query.pageNum) {
@@ -91,7 +97,7 @@ export class RoleService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -104,8 +110,8 @@ export class RoleService {
     const res = await this.sysRoleEntityRep.findOne({
       where: {
         roleId: roleId,
-        delFlag: DelFlagEnum.NORMAL,
-      },
+        delFlag: DelFlagEnum.NORMAL
+      }
     });
     return ResultData.ok(res);
   }
@@ -122,48 +128,52 @@ export class RoleService {
     delete updateRoleDto.deptIds;
 
     return this.entityManager
-      .transaction(async (manager) => {
+      .transaction(async manager => {
         // 1. 更新角色基本信息
         await manager.update(SysRoleEntity, { roleId: updateRoleDto.roleId }, { ...updateRoleDto, updateBy: userId });
 
         // 2. 处理菜单关联
-        await manager.delete(SysRoleWithMenuEntity, { roleId: updateRoleDto.roleId });
+        await manager.delete(SysRoleWithMenuEntity, {
+          roleId: updateRoleDto.roleId
+        });
         if (menuIds?.length > 0) {
           await manager.insert(
             SysRoleWithMenuEntity,
-            menuIds.map((menuId) => ({ roleId: updateRoleDto.roleId, menuId })),
+            menuIds.map(menuId => ({ roleId: updateRoleDto.roleId, menuId }))
           );
         }
 
         // 3. 处理部门关联
-        await manager.delete(SysRoleWithDeptEntity, { roleId: updateRoleDto.roleId });
+        await manager.delete(SysRoleWithDeptEntity, {
+          roleId: updateRoleDto.roleId
+        });
         if (deptIds?.length > 0) {
           await manager.insert(
             SysRoleWithDeptEntity,
-            deptIds.map((deptId) => ({ roleId: updateRoleDto.roleId, deptId })),
+            deptIds.map(deptId => ({ roleId: updateRoleDto.roleId, deptId }))
           );
         }
 
         return ResultData.ok();
       })
-      .catch((err) => {
-        return ResultData.fail(400, '角色更新失败', err);
+      .catch(err => {
+        return ResultData.fail(400, "角色更新失败", err);
       });
   }
 
   /**
    * @description: 更新角色状态
-   * @param {ChangeStatusDto} changeStatusDto
+   * @param {RoleChangeStatusDto} RoleChangeStatusDto
    * @param {number} userId
    * @return
    */
-  async changeStatus(changeStatusDto: ChangeStatusDto, userId: number) {
+  async changeStatus(RoleChangeStatusDto: RoleChangeStatusDto, userId: number) {
     await this.sysRoleEntityRep.update(
-      { roleId: changeStatusDto.roleId },
+      { roleId: RoleChangeStatusDto.roleId },
       {
-        status: changeStatusDto.status,
-        updateBy: userId,
-      },
+        status: RoleChangeStatusDto.status,
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }
@@ -177,11 +187,11 @@ export class RoleService {
   async remove(roleIds: number[], userId: number) {
     // 忽略系统角色的删除
     await this.sysRoleEntityRep.update(
-      { roleId: In(roleIds.filter((id) => id !== 1)) },
+      { roleId: In(roleIds.filter(id => id !== 1)) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }
@@ -203,35 +213,35 @@ export class RoleService {
   async findRoleWithDeptIds(roleId: number) {
     // 使用TypeORM的实体仓库查询方法，异步查找与指定角色ID相关联的部门ID。
     const res = await this.sysRoleWithDeptEntityRep.find({
-      select: ['deptId'],
+      select: ["deptId"],
       where: {
-        roleId: roleId,
-      },
+        roleId: roleId
+      }
     });
     // 将查询结果映射为仅包含部门ID的数组并返回。
-    return res.map((item) => item.deptId);
+    return res.map(item => item.deptId);
   }
 
   /**
    * 导出角色管理数据为xlsx
    * @param res
    */
-  async export(res: Response, body: ListRoleDto) {
+  async export(res: ExpressResponse, body: ListRoleDto) {
     delete body.pageNum;
     delete body.pageSize;
     const list = await this.findAll(body);
     const options = {
-      sheetName: '角色数据',
+      sheetName: "角色数据",
       data: list.data.list,
       header: [
-        { title: '角色编号', dataIndex: 'roleId' },
-        { title: '角色名称', dataIndex: 'roleName', width: 15 },
-        { title: '权限字符', dataIndex: 'roleKey' },
-        { title: '显示顺序', dataIndex: 'roleSort' },
-        { title: '状态', dataIndex: 'status' },
-        { title: '创建时间', dataIndex: 'createTime', width: 15 },
-      ],
+        { title: "角色编号", dataIndex: "roleId" },
+        { title: "角色名称", dataIndex: "roleName", width: 15 },
+        { title: "权限字符", dataIndex: "roleKey" },
+        { title: "显示顺序", dataIndex: "roleSort" },
+        { title: "状态", dataIndex: "status" },
+        { title: "创建时间", dataIndex: "createTime", width: 15 }
+      ]
     };
-    ExportTable(options, res);
+    await ExportTable(options, res);
   }
 }

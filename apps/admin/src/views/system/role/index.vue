@@ -140,14 +140,7 @@ const gridOptions = reactive<VxeGridProps<SysRoleVo>>({
       title: "状态",
       slots: {
         default({ row }) {
-          return (
-            <el-switch
-              v-model={row.status}
-              active-value="0"
-              inactive-value="1"
-              onChange={() => handleStatusChange(row)}
-            />
-          );
+          return <el-switch v-model={row.status} active-value="0" inactive-value="1" onChange={() => handleStatusChange(row)} />;
         }
       }
     },
@@ -302,12 +295,7 @@ function handleUpdate(row) {
 
     <!-- 添加或修改对话框 -->
     <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
-      <EditRoleForm
-        v-if="editDialog.open"
-        :roleId="editDialog.roleId"
-        @success="initListSearch"
-        @cancel="editDialog.open = false"
-      />
+      <EditRoleForm v-if="editDialog.open" :roleId="editDialog.roleId" @success="initListSearch" @cancel="editDialog.open = false" />
     </el-dialog>
   </div>
 </template>

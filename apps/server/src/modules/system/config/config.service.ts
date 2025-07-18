@@ -1,18 +1,18 @@
-import { Injectable } from '@nestjs/common';
-import { Response } from 'express';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { ExportTable } from '@/common/utils/export';
-import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from './dto/index';
-import { SysConfigEntity } from './entities/config.entity';
-import { DelFlagEnum, YesNoEnum } from '@/common/enum/dict';
+import { Injectable } from "@nestjs/common";
+import type { Response as ExpressResponse } from "express";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, In } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { ExportTable } from "@/common/utils/export";
+import { CreateConfigDto, UpdateConfigDto, ListConfigDto } from "./dto/index";
+import { SysConfigEntity } from "./entities/config.entity";
+import { DelFlagEnum, YesNoEnum } from "@/common/enum/dict";
 
 @Injectable()
 export class ConfigService {
   constructor(
     @InjectRepository(SysConfigEntity)
-    private readonly sysConfigEntityRep: Repository<SysConfigEntity>,
+    private readonly sysConfigEntityRep: Repository<SysConfigEntity>
   ) {}
 
   /**
@@ -22,7 +22,10 @@ export class ConfigService {
    * @return
    */
   async create(createConfigDto: CreateConfigDto, userId: number) {
-    await this.sysConfigEntityRep.save({ ...createConfigDto, createBy: userId });
+    await this.sysConfigEntityRep.save({
+      ...createConfigDto,
+      createBy: userId
+    });
     return ResultData.ok();
   }
 
@@ -32,8 +35,8 @@ export class ConfigService {
    * @return
    */
   async findAll(query: ListConfigDto) {
-    const entity = this.sysConfigEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.sysConfigEntityRep.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.configName) {
       entity.andWhere(`entity.configName LIKE "%${query.configName}%"`);
@@ -44,11 +47,16 @@ export class ConfigService {
     }
 
     if (query.configType) {
-      entity.andWhere('entity.configType = :configType', { configType: query.configType });
+      entity.andWhere("entity.configType = :configType", {
+        configType: query.configType
+      });
     }
 
     if (query?.beginTime && query?.endTime) {
-      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
+      entity.andWhere("entity.createTime BETWEEN :start AND :end", {
+        start: query.beginTime,
+        end: query.endTime
+      });
     }
 
     if (query.pageSize && query.pageNum) {
@@ -59,7 +67,7 @@ export class ConfigService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -71,8 +79,8 @@ export class ConfigService {
   async findOne(configId: number) {
     const data = await this.sysConfigEntityRep.findOne({
       where: {
-        configId: configId,
-      },
+        configId: configId
+      }
     });
     return ResultData.ok(data);
   }
@@ -86,9 +94,9 @@ export class ConfigService {
   async update(updateConfigDto: UpdateConfigDto, userId: number) {
     await this.sysConfigEntityRep.update(
       {
-        configId: updateConfigDto.configId,
+        configId: updateConfigDto.configId
       },
-      { ...updateConfigDto, updateBy: userId },
+      { ...updateConfigDto, updateBy: userId }
     );
     return ResultData.ok();
   }
@@ -103,11 +111,11 @@ export class ConfigService {
     const list = await this.sysConfigEntityRep.find({
       where: {
         configId: In(configIds),
-        delFlag: DelFlagEnum.NORMAL,
+        delFlag: DelFlagEnum.NORMAL
       },
-      select: ['configType', 'configKey'],
+      select: ["configType", "configKey"]
     });
-    const item = list.find((item) => item.configType === YesNoEnum.YES);
+    const item = list.find(item => item.configType === YesNoEnum.YES);
     if (item) {
       return ResultData.fail(500, `内置参数【${item.configKey}】不能删除`);
     }
@@ -115,8 +123,8 @@ export class ConfigService {
       { configId: In(configIds) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }
@@ -125,28 +133,28 @@ export class ConfigService {
    * 导出参数管理数据为xlsx
    * @param res
    */
-  async export(res: Response, body: ListConfigDto) {
+  async export(res: ExpressResponse, body: ListConfigDto) {
     delete body.pageNum;
     delete body.pageSize;
     const list = await this.findAll(body);
     const options = {
-      sheetName: '参数管理',
+      sheetName: "参数管理",
       data: list.data.list,
       header: [
-        { title: '参数主键', dataIndex: 'configId' },
-        { title: '参数名称', dataIndex: 'configName' },
-        { title: '参数键名', dataIndex: 'configKey' },
-        { title: '参数键值', dataIndex: 'configValue' },
-        { title: '系统内置', dataIndex: 'configType' },
+        { title: "参数主键", dataIndex: "configId" },
+        { title: "参数名称", dataIndex: "configName" },
+        { title: "参数键名", dataIndex: "configKey" },
+        { title: "参数键值", dataIndex: "configValue" },
+        { title: "系统内置", dataIndex: "configType" }
       ],
       dictMap: {
         configType: {
-          Y: '是',
-          N: '否',
-        },
-      },
+          Y: "是",
+          N: "否"
+        }
+      }
     };
-    ExportTable(options, res);
+    await ExportTable(options, res);
   }
 
   /**
@@ -157,9 +165,9 @@ export class ConfigService {
   async getConfigValue(configKey: string) {
     const data = await this.sysConfigEntityRep.findOne({
       where: {
-        configKey: configKey,
+        configKey: configKey
       },
-      select: ['configValue', 'configKey'],
+      select: ["configValue", "configKey"]
     });
     return data?.configValue;
   }

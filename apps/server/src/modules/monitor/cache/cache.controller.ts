@@ -1,46 +1,46 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { CacheService } from './cache.service';
+import { Controller, Get, Param } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
+import { CacheService } from "./cache.service";
 
-@ApiTags('monitor')
+@ApiTags("monitor")
 @ApiBearerAuth()
-@Controller('monitor/cache')
+@Controller("monitor/cache")
 export class CacheController {
   constructor(private readonly cacheService: CacheService) {}
 
-  @ApiOperation({ summary: '缓存监控信息' })
+  @ApiOperation({ summary: "缓存监控信息" })
   @Get()
   getInfo() {
     return this.cacheService.getInfo();
   }
 
-  @ApiOperation({ summary: '缓存列表' })
-  @Get('/getNames')
+  @ApiOperation({ summary: "缓存列表" })
+  @Get("/getNames")
   getNames() {
     return this.cacheService.getNames();
   }
 
-  @ApiOperation({ summary: '键名列表' })
-  @Get('/getKeys/:id')
-  getKeys(@Param('id') id: string) {
+  @ApiOperation({ summary: "键名列表" })
+  @Get("/getKeys/:id")
+  getKeys(@Param("id") id: string) {
     return this.cacheService.getKeys(id);
   }
 
-  @ApiOperation({ summary: '缓存内容' })
-  @Get('/getValue/:cacheName/:cacheKey')
+  @ApiOperation({ summary: "缓存内容" })
+  @Get("/getValue/:cacheName/:cacheKey")
   getValue(@Param() params: string[]) {
     return this.cacheService.getValue(params);
   }
 
-  @ApiOperation({ summary: '清理缓存名称' })
-  @Get('/clearCacheName/:cacheName')
-  clearCacheName(@Param('cacheName') cacheName: string) {
+  @ApiOperation({ summary: "清理缓存名称" })
+  @Get("/clearCacheName/:cacheName")
+  clearCacheName(@Param("cacheName") cacheName: string) {
     return this.cacheService.clearCacheName(cacheName);
   }
 
-  @ApiOperation({ summary: '清理缓存键名' })
-  @Get('/clearCacheKey/:cacheKey')
-  clearCacheKey(@Param('cacheKey') cacheKey: string) {
+  @ApiOperation({ summary: "清理缓存键名" })
+  @Get("/clearCacheKey/:cacheKey")
+  clearCacheKey(@Param("cacheKey") cacheKey: string) {
     return this.cacheService.clearCacheKey(cacheKey);
   }
 }

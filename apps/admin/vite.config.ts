@@ -36,8 +36,7 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: '@use "@/assets/style/theme.scss" as *;', // 引入配置项目主题色文件
-          api: "modern-compiler" // 去除sass警告
+          additionalData: '@use "@/assets/style/theme.scss" as *;' // 引入配置项目主题色文件
         }
       }
     },

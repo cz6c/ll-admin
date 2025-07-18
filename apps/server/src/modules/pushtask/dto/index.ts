@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber, IsDate } from 'class-validator';
-import { ApiProperty, PickType } from '@nestjs/swagger';
-import { BaseVO, PagingDto } from '@/common/dto/index';
-import { PushIntervalEnum, PushModelEnum, StatusEnum } from '@/common/enum/dict';
+import { IsString, IsEnum, Length, IsOptional, IsNumber, IsDate } from "class-validator";
+import { ApiProperty, PickType } from "@nestjs/swagger";
+import { BaseVO, PagingDto } from "@/common/dto/index";
+import { PushIntervalEnum, PushModelEnum, StatusEnum } from "@/common/enum/dict";
 
 export class CreatePushTaskDto {
   @ApiProperty({ required: true })
@@ -59,7 +59,7 @@ export class UpdatePushTaskDto extends CreatePushTaskDto {
   pushtaskId: number;
 }
 
-export class ChangeStatusDto extends PickType(UpdatePushTaskDto, ['pushtaskId', 'status'] as const) {}
+export class PushTaskChangeStatusDto extends PickType(UpdatePushTaskDto, ["pushtaskId", "status"] as const) {}
 
 export class ListPushTaskDto extends PagingDto {
   @ApiProperty({ required: false })
@@ -70,41 +70,45 @@ export class ListPushTaskDto extends PagingDto {
 }
 
 export class PushTaskVO extends BaseVO {
-  @ApiProperty({ description: '任务ID', example: 1 })
+  @ApiProperty({ description: "任务ID", example: 1 })
   public pushtaskId: number;
 
-  @ApiProperty({ description: '任务名称', example: '每日新闻推送' })
+  @ApiProperty({ description: "任务名称", example: "每日新闻推送" })
   public pushtaskName: string;
 
-  @ApiProperty({ description: '接受邮箱', example: 'example@example.com' })
+  @ApiProperty({ description: "接受邮箱", example: "example@example.com" })
   public acceptEmail: string;
 
-  @ApiProperty({ description: '推送标题', example: '今日新闻' })
+  @ApiProperty({ description: "推送标题", example: "今日新闻" })
   public pushTitle: string;
 
-  @ApiProperty({ description: '推送内容', example: '这是今天的新闻内容...' })
+  @ApiProperty({ description: "推送内容", example: "这是今天的新闻内容..." })
   public pushContent: string;
 
   @ApiProperty({
-    description: '推送类型',
+    description: "推送类型",
     enum: PushModelEnum,
-    example: PushModelEnum.REGULAR,
+    example: PushModelEnum.REGULAR
   })
   public pushModel: PushModelEnum;
 
   @ApiProperty({
-    description: '定期推送间隔',
+    description: "定期推送间隔",
     enum: PushIntervalEnum,
-    example: PushIntervalEnum.EVERYDAY,
+    example: PushIntervalEnum.EVERYDAY
   })
   public pushInterval: PushIntervalEnum;
 
-  @ApiProperty({ description: '定期推送时间', example: '09:00' })
+  @ApiProperty({ description: "定期推送时间", example: "09:00" })
   public startDate: string;
 
-  @ApiProperty({ description: '按时推送时间', format: 'date-time', example: '2023-04-01T09:00:00Z' })
+  @ApiProperty({
+    description: "按时推送时间",
+    format: "date-time",
+    example: "2023-04-01T09:00:00Z"
+  })
   public pushTime: Date;
 
-  @ApiProperty({ description: '备注', example: '这是关于新闻推送的备注信息' })
+  @ApiProperty({ description: "备注", example: "这是关于新闻推送的备注信息" })
   public remark: string;
 }

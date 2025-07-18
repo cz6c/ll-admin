@@ -1,8 +1,8 @@
-import { Type, applyDecorators } from '@nestjs/common';
-import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
-import { ResultData } from '../utils/result';
+import { type Type, applyDecorators } from "@nestjs/common";
+import { ApiExtraModels, ApiOkResponse, getSchemaPath } from "@nestjs/swagger";
+import { ResultData } from "../utils/result";
 
-const baseTypeNames = ['String', 'Number', 'Boolean'];
+const baseTypeNames = ["String", "Number", "Boolean"];
 /**
  * 封装 swagger 返回统一结构
  * 支持复杂类型 {  code, msg, data }
@@ -21,27 +21,27 @@ export const ApiResult = <TModel extends Type<any>>(model?: TModel, isArray?: bo
   let prop = null;
   if (isArray && isPager) {
     prop = {
-      type: 'object',
+      type: "object",
       properties: {
         list: {
-          type: 'array',
-          items,
+          type: "array",
+          items
         },
         total: {
-          type: 'number',
-          default: 0,
-        },
-      },
+          type: "number",
+          default: 0
+        }
+      }
     };
   } else if (isArray) {
     prop = {
-      type: 'array',
-      items,
+      type: "array",
+      items
     };
   } else if (model) {
     prop = items;
   } else {
-    prop = { type: 'null', default: null };
+    prop = { type: "null", default: null };
   }
   return applyDecorators(
     ApiExtraModels(...(model && !modelIsBaseType ? [ResultData, model] : [ResultData])),
@@ -51,11 +51,11 @@ export const ApiResult = <TModel extends Type<any>>(model?: TModel, isArray?: bo
           { $ref: getSchemaPath(ResultData) },
           {
             properties: {
-              data: prop,
-            },
-          },
-        ],
-      },
-    }),
+              data: prop
+            }
+          }
+        ]
+      }
+    })
   );
 };

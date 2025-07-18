@@ -10,6 +10,4 @@ export type ImageMimeType =
   | "image/webp"
   | "image/x-icon";
 
-export type ExcelMimeType =
-  | "application/vnd.ms-excel"
-  | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export type ExcelMimeType = "application/vnd.ms-excel" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

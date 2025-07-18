@@ -8,9 +8,7 @@
     <div class="bullshit">
       <div class="bullshit__oops">Sorry!</div>
       <div class="bullshit__headline">Page not found or not authorized to access...</div>
-      <div class="bullshit__info">
-        Please check that the URL you entered is correct, or click the button below to return to the homepage.
-      </div>
+      <div class="bullshit__info">Please check that the URL you entered is correct, or click the button below to return to the homepage.</div>
       <a href="/" class="bullshit__return-home" style="margin-top: 20px">back home</a>
     </div>
   </div>

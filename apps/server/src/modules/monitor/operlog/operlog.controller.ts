@@ -1,7 +1,7 @@
-import { Controller } from '@nestjs/common';
-import { OperlogService } from './operlog.service';
+import { Controller } from "@nestjs/common";
+import { OperlogService } from "./operlog.service";
 
-@Controller('monitor/operlog')
+@Controller("monitor/operlog")
 export class OperlogController {
   constructor(private readonly operlogService: OperlogService) {}
 }

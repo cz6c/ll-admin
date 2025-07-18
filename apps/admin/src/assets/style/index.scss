@@ -1,8 +1,7 @@
-@import "./mixin.scss";
-@import "./transition.scss";
-@import "./element-plus.scss";
-@import "./vxeTable.scss";
-@import "./layout.scss";
+@use "./transition.scss";
+@use "./element-plus.scss";
+@use "./vxeTable.scss";
+@use "./layout.scss";
 
 /* 灰色模式 */
 .html-grey {
@@ -11,8 +10,9 @@
 
 html {
   font-size: 4px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans",
-    "Noto Sans CJK SC", "Microsoft YaHei", "微软雅黑", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans", "Noto Sans CJK SC", "Microsoft YaHei", "微软雅黑",
+    sans-serif;
   font-weight: 400;
   color: #333;
   line-height: 1.36;

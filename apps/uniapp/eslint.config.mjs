@@ -17,6 +17,7 @@ export default uniHelper({
     // 忽略自动生成文件
     'src/api/app/**',
   ],
+  lessOpinionated: true,
   rules: {
     'no-console': 'off',
     'no-unused-vars': 'off',
@@ -27,6 +28,8 @@ export default uniHelper({
     'jsdoc/require-returns-description': 'off',
     'ts/no-empty-object-type': 'off',
     'no-extend-native': 'off',
+    'style/brace-style': 'off',
+    'style/comma-dangle': 'off',
   },
   formatters: {
     /**

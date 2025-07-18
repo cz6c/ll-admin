@@ -5,15 +5,15 @@ export enum DelFlagEnum {
   /**
    * 存在
    */
-  NORMAL = '0',
+  NORMAL = "0",
   /**
    * 删除
    */
-  DELETE = '1',
+  DELETE = "1"
 }
 export const DelFlag = {
-  [DelFlagEnum.NORMAL]: '存在',
-  [DelFlagEnum.DELETE]: '删除',
+  [DelFlagEnum.NORMAL]: "存在",
+  [DelFlagEnum.DELETE]: "删除"
 };
 
 /**
@@ -23,15 +23,15 @@ export enum StatusEnum {
   /**
    * 正常
    */
-  NORMAL = '0',
+  NORMAL = "0",
   /**
    * 停用
    */
-  STOP = '1',
+  STOP = "1"
 }
 export const Status = {
-  [StatusEnum.NORMAL]: '正常',
-  [StatusEnum.STOP]: '停用',
+  [StatusEnum.NORMAL]: "正常",
+  [StatusEnum.STOP]: "停用"
 };
 
 /**
@@ -41,15 +41,15 @@ export enum SuccessErrorEnum {
   /**
    * 成功
    */
-  SUCCESS = '0',
+  SUCCESS = "0",
   /**
    * 失败
    */
-  FAIL = '1',
+  FAIL = "1"
 }
 export const SuccessError = {
-  [SuccessErrorEnum.SUCCESS]: '成功',
-  [SuccessErrorEnum.FAIL]: '失败',
+  [SuccessErrorEnum.SUCCESS]: "成功",
+  [SuccessErrorEnum.FAIL]: "失败"
 };
 
 /**
@@ -59,15 +59,15 @@ export enum YesNoEnum {
   /**
    *  是
    */
-  YES = '0',
+  YES = "0",
   /**
    *  否
    */
-  NO = '1',
+  NO = "1"
 }
 export const YesNo = {
-  [YesNoEnum.YES]: '是',
-  [YesNoEnum.NO]: '否',
+  [YesNoEnum.YES]: "是",
+  [YesNoEnum.NO]: "否"
 };
 
 /**
@@ -77,15 +77,15 @@ export enum UserTypeEnum {
   /**
    * 系统用户
    */
-  SYS = '00',
+  SYS = "00",
   /**
    * 自定义用户
    */
-  CUSTOM = '10',
+  CUSTOM = "10"
 }
 export const UserType = {
-  [UserTypeEnum.SYS]: '系统用户',
-  [UserTypeEnum.CUSTOM]: '自定义用户',
+  [UserTypeEnum.SYS]: "系统用户",
+  [UserTypeEnum.CUSTOM]: "自定义用户"
 };
 
 /**
@@ -95,34 +95,34 @@ export enum DataScopeEnum {
   /**
    * 全部数据权限
    */
-  DATA_SCOPE_ALL = '1',
+  DATA_SCOPE_ALL = "1",
 
   /**
    * 自定数据权限
    */
-  DATA_SCOPE_CUSTOM = '2',
+  DATA_SCOPE_CUSTOM = "2",
 
   /**
    * 部门数据权限
    */
-  DATA_SCOPE_DEPT = '3',
+  DATA_SCOPE_DEPT = "3",
 
   /**
    * 部门及以下数据权限
    */
-  DATA_SCOPE_DEPT_AND_CHILD = '4',
+  DATA_SCOPE_DEPT_AND_CHILD = "4",
 
   /**
    * 仅本人数据权限
    */
-  DATA_SCOPE_SELF = '5',
+  DATA_SCOPE_SELF = "5"
 }
 export const DataScope = {
-  [DataScopeEnum.DATA_SCOPE_ALL]: '全部数据权限',
-  [DataScopeEnum.DATA_SCOPE_CUSTOM]: '自定数据权限',
-  [DataScopeEnum.DATA_SCOPE_DEPT]: '部门数据权限',
-  [DataScopeEnum.DATA_SCOPE_DEPT_AND_CHILD]: '部门及以下数据权限',
-  [DataScopeEnum.DATA_SCOPE_SELF]: '仅本人数据权限',
+  [DataScopeEnum.DATA_SCOPE_ALL]: "全部数据权限",
+  [DataScopeEnum.DATA_SCOPE_CUSTOM]: "自定数据权限",
+  [DataScopeEnum.DATA_SCOPE_DEPT]: "部门数据权限",
+  [DataScopeEnum.DATA_SCOPE_DEPT_AND_CHILD]: "部门及以下数据权限",
+  [DataScopeEnum.DATA_SCOPE_SELF]: "仅本人数据权限"
 };
 
 /**
@@ -132,20 +132,20 @@ export enum UserSexEnum {
   /**
    * 男
    */
-  MAN = '0',
+  MAN = "0",
   /**
    * 女
    */
-  WOMAN = '1',
+  WOMAN = "1",
   /**
    * 未知
    */
-  UNKNOWN = '2',
+  UNKNOWN = "2"
 }
 export const UserSex = {
-  [UserSexEnum.MAN]: '男',
-  [UserSexEnum.WOMAN]: '女',
-  [UserSexEnum.UNKNOWN]: '未知',
+  [UserSexEnum.MAN]: "男",
+  [UserSexEnum.WOMAN]: "女",
+  [UserSexEnum.UNKNOWN]: "未知"
 };
 
 /**
@@ -155,15 +155,15 @@ export enum MenuTypeEnum {
   /**
    * 菜单
    */
-  M = 'M',
+  M = "M",
   /**
    * 按钮
    */
-  F = 'F',
+  F = "F"
 }
 export const MenuType = {
-  [MenuTypeEnum.M]: '菜单',
-  [MenuTypeEnum.F]: '按钮',
+  [MenuTypeEnum.M]: "菜单",
+  [MenuTypeEnum.F]: "按钮"
 };
 
 /**
@@ -173,15 +173,15 @@ export enum NoticeTypeEnum {
   /**
    *  通知
    */
-  Instruct = '1',
+  Instruct = "1",
   /**
    *  公告
    */
-  Notice = '2',
+  Notice = "2"
 }
 export const NoticeType = {
-  [NoticeTypeEnum.Instruct]: '通知',
-  [NoticeTypeEnum.Notice]: '公告',
+  [NoticeTypeEnum.Instruct]: "通知",
+  [NoticeTypeEnum.Notice]: "公告"
 };
 
 /**
@@ -191,15 +191,15 @@ export enum PushModelEnum {
   /**
    * 定期推送
    */
-  REGULAR = '1',
+  REGULAR = "1",
   /**
    * 按时推送
    */
-  PUNCTUAL = '2',
+  PUNCTUAL = "2"
 }
 export const PushModel = {
-  [PushModelEnum.REGULAR]: '定期推送',
-  [PushModelEnum.PUNCTUAL]: '按时推送',
+  [PushModelEnum.REGULAR]: "定期推送",
+  [PushModelEnum.PUNCTUAL]: "按时推送"
 };
 
 /**
@@ -209,20 +209,20 @@ export enum PushIntervalEnum {
   /**
    * 每日
    */
-  EVERYDAY = '1',
+  EVERYDAY = "1",
   /**
    * 每周
    */
-  WEEKLY = '2',
+  WEEKLY = "2",
   /**
    * 每月
    */
-  MONTHLY = '3',
+  MONTHLY = "3"
 }
 export const PushInterval = {
-  [PushIntervalEnum.EVERYDAY]: '每日',
-  [PushIntervalEnum.WEEKLY]: '每周',
-  [PushIntervalEnum.MONTHLY]: '每月',
+  [PushIntervalEnum.EVERYDAY]: "每日",
+  [PushIntervalEnum.WEEKLY]: "每周",
+  [PushIntervalEnum.MONTHLY]: "每月"
 };
 
 /**
@@ -232,15 +232,15 @@ export enum TaskTypeEnum {
   /**
    * 一次
    */
-  ONCE = '1',
+  ONCE = "1",
   /**
    * 循环
    */
-  LOOP = '2',
+  LOOP = "2"
 }
 export const TaskType = {
-  [TaskTypeEnum.ONCE]: '一次',
-  [TaskTypeEnum.LOOP]: '循环',
+  [TaskTypeEnum.ONCE]: "一次",
+  [TaskTypeEnum.LOOP]: "循环"
 };
 
 /**
@@ -250,23 +250,23 @@ export enum TaskStatusEnum {
   /**
    * 挂起
    */
-  PENDING = '1',
+  PENDING = "1",
   /**
    * 执行
    */
-  EXECUTING = '2',
+  EXECUTING = "2",
   /**
    * 完成
    */
-  COMPLET = '3',
+  COMPLET = "3",
   /**
    * 失败
    */
-  FAIL = '4',
+  FAIL = "4"
 }
 export const TaskStatus = {
-  [TaskStatusEnum.PENDING]: '挂起',
-  [TaskStatusEnum.EXECUTING]: '执行',
-  [TaskStatusEnum.COMPLET]: '完成',
-  [TaskStatusEnum.FAIL]: '失败',
+  [TaskStatusEnum.PENDING]: "挂起",
+  [TaskStatusEnum.EXECUTING]: "执行",
+  [TaskStatusEnum.COMPLET]: "完成",
+  [TaskStatusEnum.FAIL]: "失败"
 };

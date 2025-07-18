@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { MenuTypeEnum, StatusEnum, YesNoEnum } from '@/common/enum/dict';
-import { BaseVO } from '@/common/dto';
+import { IsString, IsEnum, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { MenuTypeEnum, StatusEnum, YesNoEnum } from "@/common/enum/dict";
+import { BaseVO } from "@/common/dto";
 
 export class CreateMenuDto {
   @ApiProperty({ required: true })
@@ -87,73 +87,73 @@ export class ListMenuDto {
 }
 
 export class SysMenuVo extends BaseVO {
-  @ApiProperty({ description: '菜单ID' })
+  @ApiProperty({ description: "菜单ID" })
   public menuId: number;
 
-  @ApiProperty({ description: '菜单名称' })
+  @ApiProperty({ description: "菜单名称" })
   public menuName: string;
 
-  @ApiProperty({ description: '父菜单ID' })
+  @ApiProperty({ description: "父菜单ID" })
   public parentId: number;
 
-  @ApiProperty({ description: '祖级列表（表示层级关系）', example: '0,1,2' })
+  @ApiProperty({ description: "祖级列表（表示层级关系）", example: "0,1,2" })
   public ancestors: string;
 
-  @ApiProperty({ description: '显示顺序' })
+  @ApiProperty({ description: "显示顺序" })
   public orderNum: number;
 
-  @ApiProperty({ description: '路由地址' })
+  @ApiProperty({ description: "路由地址" })
   public path: string;
 
-  @ApiProperty({ description: '组件路径' })
+  @ApiProperty({ description: "组件路径" })
   public component: string;
 
-  @ApiProperty({ description: '组件name' })
+  @ApiProperty({ description: "组件name" })
   public name: string;
 
-  @ApiProperty({ description: '高亮菜单' })
+  @ApiProperty({ description: "高亮菜单" })
   public activeMenu: string;
 
   @ApiProperty({
-    description: '是否为外链',
-    enum: YesNoEnum,
+    description: "是否为外链",
+    enum: YesNoEnum
   })
   public isFrame: YesNoEnum.NO;
 
   @ApiProperty({
-    description: '是否缓存',
-    enum: YesNoEnum,
+    description: "是否缓存",
+    enum: YesNoEnum
   })
   public isCache: YesNoEnum.YES;
 
   @ApiProperty({
-    description: '是否显示',
-    enum: YesNoEnum,
+    description: "是否显示",
+    enum: YesNoEnum
   })
   public visible: YesNoEnum.YES;
 
-  @ApiProperty({ description: '菜单图标' })
+  @ApiProperty({ description: "菜单图标" })
   public icon: string;
 
-  @ApiProperty({ description: '功能权限标识' })
+  @ApiProperty({ description: "功能权限标识" })
   public perm: string;
 
   @ApiProperty({
-    description: '菜单类型（M菜单 F按钮）',
-    enum: MenuTypeEnum,
+    description: "菜单类型（M菜单 F按钮）",
+    enum: MenuTypeEnum
   })
   public menuType: MenuTypeEnum.M;
 }
 
 export class MenuTreeVo extends SysMenuVo {
-  @ApiProperty({ description: '子级列表', example: [] })
+  @ApiProperty({ description: "子级列表", example: [] })
   children: MenuTreeVo[];
 }
 
 export class RoleMenuTreeSelect {
-  @ApiProperty({ description: '菜单树', example: [] })
+  @ApiProperty({ description: "菜单树", example: [] })
   menus: MenuTreeVo[];
 
-  @ApiProperty({ description: '角色已绑定菜单ids', example: [] })
+  @ApiProperty({ description: "角色已绑定菜单ids", example: [] })
   checkedIds: number[];
 }

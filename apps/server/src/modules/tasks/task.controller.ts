@@ -1,15 +1,15 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { TaskService } from './task.service';
-import { CreateTaskDto } from './dto';
-import { ResultData } from '@/common/utils/result';
-import { ApiBody, ApiOperation } from '@nestjs/swagger';
-import { ApiResult } from '@/common/decorator';
+import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { TaskService } from "./task.service";
+import { CreateTaskDto } from "./dto";
+import { ResultData } from "@/common/utils/result";
+import { ApiBody, ApiOperation } from "@nestjs/swagger";
+import { ApiResult } from "@/common/decorator";
 
-@Controller('tasks')
+@Controller("tasks")
 export class TaskController {
   constructor(private readonly tasksService: TaskService) {}
 
-  @ApiOperation({ summary: '任务-创建' })
+  @ApiOperation({ summary: "任务-创建" })
   @ApiBody({ type: CreateTaskDto })
   @ApiResult()
   @Post()
@@ -18,10 +18,10 @@ export class TaskController {
     return ResultData.ok();
   }
 
-  @ApiOperation({ summary: '任务-取消' })
+  @ApiOperation({ summary: "任务-取消" })
   @ApiResult()
-  @Get('/delete:id')
-  async cancelTask(@Param('id') id: string) {
+  @Get("/delete:id")
+  async cancelTask(@Param("id") id: string) {
     await this.tasksService.cancelTask(+id);
     return ResultData.ok();
   }

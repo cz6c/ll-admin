@@ -1,15 +1,15 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindManyOptions, In } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { SysMenuEntity } from './entities/menu.entity';
-import { SysRoleWithMenuEntity } from '../role/entities/role-menu.entity';
-import { CreateMenuDto, UpdateMenuDto, ListMenuDto } from './dto/index';
-import { Uniq } from '@/common/utils/index';
-import { UserService } from '../user/user.service';
-import { buildMenus } from './utils';
-import { listToTree } from '@llcz/common';
-import { DelFlagEnum, StatusEnum } from '@/common/enum/dict';
+import { Injectable, Inject, forwardRef } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, FindManyOptions, In } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { SysMenuEntity } from "./entities/menu.entity";
+import { SysRoleWithMenuEntity } from "../role/entities/role-menu.entity";
+import { CreateMenuDto, UpdateMenuDto, ListMenuDto } from "./dto/index";
+import { Uniq } from "@/common/utils/index";
+import { UserService } from "../user/user.service";
+import { buildMenus } from "./utils";
+import { listToTree } from "@llcz/common";
+import { DelFlagEnum, StatusEnum } from "@/common/enum/dict";
 @Injectable()
 export class MenuService {
   constructor(
@@ -18,7 +18,7 @@ export class MenuService {
     @InjectRepository(SysMenuEntity)
     private readonly sysMenuEntityRep: Repository<SysMenuEntity>,
     @InjectRepository(SysRoleWithMenuEntity)
-    private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>,
+    private readonly sysRoleWithMenuEntityRep: Repository<SysRoleWithMenuEntity>
   ) {}
 
   /**
@@ -32,12 +32,12 @@ export class MenuService {
       const parent = await this.sysMenuEntityRep.findOne({
         where: {
           menuId: createMenuDto.parentId,
-          delFlag: DelFlagEnum.NORMAL,
+          delFlag: DelFlagEnum.NORMAL
         },
-        select: ['ancestors'],
+        select: ["ancestors"]
       });
       if (!parent) {
-        return ResultData.fail(500, '父级不存在');
+        return ResultData.fail(500, "父级不存在");
       }
       const ancestors = parent.ancestors ? `${parent.ancestors},${createMenuDto.parentId}` : `${createMenuDto.parentId}`;
       Object.assign(createMenuDto, { ancestors: ancestors });
@@ -52,36 +52,36 @@ export class MenuService {
    * @return
    */
   async treeSelect(query: ListMenuDto) {
-    const entity = this.sysMenuEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.sysMenuEntityRep.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.menuName) {
       entity.andWhere(`entity.menuName LIKE "%${query.menuName}%"`);
     }
     if (query.status) {
-      entity.andWhere('entity.status = :status', { status: query.status });
+      entity.andWhere("entity.status = :status", { status: query.status });
     }
-    entity.orderBy('entity.orderNum', 'ASC');
+    entity.orderBy("entity.orderNum", "ASC");
     const res = await entity.getMany();
     // 获取查询结果的所有祖级节点
     let ancestors = [];
     if (query.menuName || query.status) {
       let ids = [];
       // 合并祖级ids 去重
-      ids = Uniq(res.reduce((pre, cur) => pre.concat(cur.ancestors.split(',').map((c) => +c)), []));
+      ids = Uniq(res.reduce((pre, cur) => pre.concat(cur.ancestors.split(",").map(c => +c)), []));
       // 过滤掉查询结果
-      ids = ids.filter((c) => !res.some((z) => z.menuId === c));
+      ids = ids.filter(c => !res.some(z => z.menuId === c));
       if (ids.length > 0) {
         ancestors = await this.sysMenuEntityRep.find({
           where: {
             menuId: In(ids),
-            delFlag: DelFlagEnum.NORMAL,
-          },
+            delFlag: DelFlagEnum.NORMAL
+          }
         });
       }
     }
     const tree = listToTree(res.concat(ancestors), {
-      id: 'menuId',
+      id: "menuId"
     });
     return ResultData.ok(tree);
   }
@@ -94,25 +94,25 @@ export class MenuService {
   async roleMenuTreeSelect(roleId: number) {
     const res = await this.sysMenuEntityRep.find({
       where: {
-        delFlag: DelFlagEnum.NORMAL,
+        delFlag: DelFlagEnum.NORMAL
       },
       order: {
-        orderNum: 'ASC',
-      },
+        orderNum: "ASC"
+      }
     });
     const tree = listToTree(res, {
-      id: 'menuId',
+      id: "menuId"
     });
     const menuIds = await this.sysRoleWithMenuEntityRep.find({
       where: { roleId: roleId },
-      select: ['menuId'],
+      select: ["menuId"]
     });
-    const checkedKeys = menuIds.map((item) => {
+    const checkedKeys = menuIds.map(item => {
       return item.menuId;
     });
     return ResultData.ok({
       menus: tree,
-      checkedIds: checkedKeys,
+      checkedIds: checkedKeys
     });
   }
 
@@ -125,19 +125,19 @@ export class MenuService {
     const res = await this.sysMenuEntityRep.findOne({
       where: {
         delFlag: DelFlagEnum.NORMAL,
-        menuId: menuId,
-      },
+        menuId: menuId
+      }
     });
-    let parentName = '';
+    let parentName = "";
     if (res.ancestors) {
       const parents = await this.sysMenuEntityRep.find({
         where: {
-          menuId: In(res.ancestors.split(',').map((c) => +c)),
-          delFlag: DelFlagEnum.NORMAL,
+          menuId: In(res.ancestors.split(",").map(c => +c)),
+          delFlag: DelFlagEnum.NORMAL
         },
-        select: ['menuName'],
+        select: ["menuName"]
       });
-      parentName = parents.map((c) => c.menuName).join('>');
+      parentName = parents.map(c => c.menuName).join(">");
     }
     return ResultData.ok({ ...res, parentName });
   }
@@ -153,12 +153,12 @@ export class MenuService {
       const parent = await this.sysMenuEntityRep.findOne({
         where: {
           menuId: updateMenuDto.parentId,
-          delFlag: DelFlagEnum.NORMAL,
+          delFlag: DelFlagEnum.NORMAL
         },
-        select: ['ancestors'],
+        select: ["ancestors"]
       });
       if (!parent) {
-        return ResultData.fail(500, '父级不存在');
+        return ResultData.fail(500, "父级不存在");
       }
       const ancestors = parent.ancestors ? `${parent.ancestors},${updateMenuDto.parentId}` : `${updateMenuDto.parentId}`;
       Object.assign(updateMenuDto, { ancestors: ancestors });
@@ -178,28 +178,28 @@ export class MenuService {
       { menuId: menuId },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     // 同步删除子集
     const all = await this.sysMenuEntityRep.find({
       where: {
-        delFlag: DelFlagEnum.NORMAL,
+        delFlag: DelFlagEnum.NORMAL
       },
-      select: ['menuId', 'ancestors'],
+      select: ["menuId", "ancestors"]
     });
-    const ids = all.filter((c) =>
+    const ids = all.filter(c =>
       c.ancestors
-        .split(',')
-        .map((c) => +c)
-        .includes(menuId),
+        .split(",")
+        .map(c => +c)
+        .includes(menuId)
     );
     await this.sysMenuEntityRep.update(
-      { menuId: In(ids.map((c) => c.menuId)) },
+      { menuId: In(ids.map(c => c.menuId)) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }
@@ -225,30 +225,30 @@ export class MenuService {
       menuWidthRoleList = await this.sysMenuEntityRep.find({
         where: {
           delFlag: DelFlagEnum.NORMAL,
-          status: StatusEnum.NORMAL,
+          status: StatusEnum.NORMAL
         },
-        select: ['menuId'],
+        select: ["menuId"]
       });
     } else {
       const roleIds = await this.userService.getRoleIds([userId]);
       // 查询角色绑定的菜单
       menuWidthRoleList = await this.sysRoleWithMenuEntityRep.find({
         where: { roleId: In(roleIds) },
-        select: ['menuId'],
+        select: ["menuId"]
       });
     }
     // 菜单Id去重
-    const menuIds = Uniq(menuWidthRoleList.map((item) => item.menuId));
+    const menuIds = Uniq(menuWidthRoleList.map(item => item.menuId));
     // 菜单列表
     const menuList = await this.sysMenuEntityRep.find({
       where: {
         delFlag: DelFlagEnum.NORMAL,
         status: StatusEnum.NORMAL,
-        menuId: In(menuIds),
+        menuId: In(menuIds)
       },
       order: {
-        orderNum: 'ASC',
-      },
+        orderNum: "ASC"
+      }
     });
     // 构建前端需要的菜单树
     const menuTree = buildMenus(menuList);

@@ -33,14 +33,7 @@ function handleClick() {
 </script>
 <template>
   <div>
-    <el-tooltip
-      v-if="options.disabledTooltip"
-      effect="light"
-      trigger="hover"
-      placement="top"
-      :enterable="false"
-      :disabled="!disabledCom"
-    >
+    <el-tooltip v-if="options.disabledTooltip" effect="light" trigger="hover" placement="top" :enterable="false" :disabled="!disabledCom">
       <template v-slot:content>
         <p style="color: #f56c6c" v-html="options.disabledTooltip" />
       </template>

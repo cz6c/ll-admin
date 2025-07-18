@@ -1,16 +1,16 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { SysNoticeEntity } from './entities/notice.entity';
-import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from './dto/index';
-import { DelFlagEnum } from '@/common/enum/dict';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, In } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { SysNoticeEntity } from "./entities/notice.entity";
+import { CreateNoticeDto, UpdateNoticeDto, ListNoticeDto } from "./dto/index";
+import { DelFlagEnum } from "@/common/enum/dict";
 
 @Injectable()
 export class NoticeService {
   constructor(
     @InjectRepository(SysNoticeEntity)
-    private readonly sysNoticeEntityRep: Repository<SysNoticeEntity>,
+    private readonly sysNoticeEntityRep: Repository<SysNoticeEntity>
   ) {}
 
   /**
@@ -20,7 +20,10 @@ export class NoticeService {
    * @return
    */
   async create(createNoticeDto: CreateNoticeDto, userId: number) {
-    await this.sysNoticeEntityRep.save({ ...createNoticeDto, createBy: userId });
+    await this.sysNoticeEntityRep.save({
+      ...createNoticeDto,
+      createBy: userId
+    });
     return ResultData.ok();
   }
 
@@ -30,8 +33,8 @@ export class NoticeService {
    * @return
    */
   async findAll(query: ListNoticeDto) {
-    const entity = this.sysNoticeEntityRep.createQueryBuilder('entity');
-    entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
+    const entity = this.sysNoticeEntityRep.createQueryBuilder("entity");
+    entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.noticeTitle) {
       entity.andWhere(`entity.noticeTitle LIKE "%${query.noticeTitle}%"`);
@@ -42,11 +45,16 @@ export class NoticeService {
     }
 
     if (query.noticeType) {
-      entity.andWhere('entity.noticeType = :noticeType', { noticeType: query.noticeType });
+      entity.andWhere("entity.noticeType = :noticeType", {
+        noticeType: query.noticeType
+      });
     }
 
     if (query?.beginTime && query?.endTime) {
-      entity.andWhere('entity.createTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
+      entity.andWhere("entity.createTime BETWEEN :start AND :end", {
+        start: query.beginTime,
+        end: query.endTime
+      });
     }
 
     entity.skip(query.pageSize * (query.pageNum - 1)).take(query.pageSize);
@@ -54,7 +62,7 @@ export class NoticeService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -66,8 +74,8 @@ export class NoticeService {
   async findOne(noticeId: number) {
     const data = await this.sysNoticeEntityRep.findOne({
       where: {
-        noticeId: noticeId,
-      },
+        noticeId: noticeId
+      }
     });
     return ResultData.ok(data);
   }
@@ -81,9 +89,9 @@ export class NoticeService {
   async update(updateNoticeDto: UpdateNoticeDto, userId: number) {
     await this.sysNoticeEntityRep.update(
       {
-        noticeId: updateNoticeDto.noticeId,
+        noticeId: updateNoticeDto.noticeId
       },
-      { ...updateNoticeDto, updateBy: userId },
+      { ...updateNoticeDto, updateBy: userId }
     );
     return ResultData.ok();
   }
@@ -99,8 +107,8 @@ export class NoticeService {
       { noticeId: In(noticeIds) },
       {
         delFlag: DelFlagEnum.DELETE,
-        updateBy: userId,
-      },
+        updateBy: userId
+      }
     );
     return ResultData.ok();
   }

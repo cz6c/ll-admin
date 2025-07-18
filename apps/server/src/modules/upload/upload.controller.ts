@@ -1,12 +1,12 @@
-import { Controller, Get, Post, Body, Query, UploadedFile, UseInterceptors, HttpCode } from '@nestjs/common';
-import { UploadService } from './upload.service';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
-import { ChunkFileDto, ChunkMergeFileDto, FileUploadDto, uploadIdDto } from './dto/index';
+import { Controller, Get, Post, Body, Query, UploadedFile, UseInterceptors, HttpCode } from "@nestjs/common";
+import { UploadService } from "./upload.service";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiTags, ApiOperation, ApiBody, ApiQuery, ApiConsumes, ApiBearerAuth } from "@nestjs/swagger";
+import { ChunkFileDto, ChunkMergeFileDto, FileUploadDto, uploadIdDto } from "./dto/index";
 
-@ApiTags('common')
+@ApiTags("common")
 @ApiBearerAuth()
-@Controller('common/upload')
+@Controller("common/upload")
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
@@ -15,11 +15,11 @@ export class UploadController {
    * @param file
    * @returns
    */
-  @ApiOperation({ summary: '文件上传' })
+  @ApiOperation({ summary: "文件上传" })
   @ApiBody({ type: FileUploadDto })
   @Post()
-  @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes("multipart/form-data")
+  @UseInterceptors(FileInterceptor("file"))
   singleFileUpload(@UploadedFile() file: Express.Multer.File, @Body() body: { fileType: string }) {
     return this.uploadService.singleFileUpload(file, body.fileType);
   }
@@ -30,13 +30,13 @@ export class UploadController {
    * @returns
    */
   @ApiOperation({
-    summary: '获取切片上传任务Id',
+    summary: "获取切片上传任务Id"
   })
   @ApiBody({
-    required: true,
+    required: true
   })
   @HttpCode(200)
-  @Get('/chunk/uploadId')
+  @Get("/chunk/uploadId")
   getChunkUploadId() {
     return this.uploadService.getChunkUploadId();
   }
@@ -47,14 +47,14 @@ export class UploadController {
    * @returns
    */
   @ApiOperation({
-    summary: '文件切片上传',
+    summary: "文件切片上传"
   })
   @ApiBody({
-    required: true,
+    required: true
   })
   @HttpCode(200)
-  @Post('/chunk')
-  @UseInterceptors(FileInterceptor('file'))
+  @Post("/chunk")
+  @UseInterceptors(FileInterceptor("file"))
   chunkFileUpload(@UploadedFile() file: Express.Multer.File, @Body() body: ChunkFileDto) {
     return this.uploadService.chunkFileUpload(file, body);
   }
@@ -64,14 +64,14 @@ export class UploadController {
    * @returns
    */
   @ApiOperation({
-    summary: '合并切片',
+    summary: "合并切片"
   })
   @ApiBody({
     type: ChunkMergeFileDto,
-    required: true,
+    required: true
   })
   @HttpCode(200)
-  @Post('/chunk/merge')
+  @Post("/chunk/merge")
   chunkMergeFile(@Body() body: ChunkMergeFileDto) {
     return this.uploadService.chunkMergeFile(body);
   }
@@ -83,14 +83,14 @@ export class UploadController {
    *
    */
   @ApiOperation({
-    summary: '获取切片上传结果',
+    summary: "获取切片上传结果"
   })
   @ApiQuery({
     type: uploadIdDto,
-    required: true,
+    required: true
   })
   @HttpCode(200)
-  @Get('/chunk/result')
+  @Get("/chunk/result")
   getChunkUploadResult(@Query() query: { uploadId: string }) {
     return this.uploadService.getChunkUploadResult(query.uploadId);
   }
@@ -100,12 +100,12 @@ export class UploadController {
    * @param query
    */
   @ApiOperation({
-    summary: '获取cos上传密钥',
+    summary: "获取cos上传密钥"
   })
   @ApiBody({
-    required: true,
+    required: true
   })
-  @Get('/cos/authorization')
+  @Get("/cos/authorization")
   getAuthorization(@Query() query: { key: string }) {
     return this.uploadService.getAuthorization(query.key);
   }

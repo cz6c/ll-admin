@@ -1,17 +1,17 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Response } from 'express';
-import { Repository } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { ExportTable } from '@/common/utils/export';
-import { MonitorLoginlogEntity } from './entities/loginlog.entity';
-import { CreateLoginlogDto, ListLoginlogDto } from './dto/index';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import type { Response as ExpressResponse } from "express";
+import { Repository } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { ExportTable } from "@/common/utils/export";
+import { MonitorLoginlogEntity } from "./entities/loginlog.entity";
+import { CreateLoginlogDto, ListLoginlogDto } from "./dto/index";
 
 @Injectable()
 export class LoginlogService {
   constructor(
     @InjectRepository(MonitorLoginlogEntity)
-    private readonly monitorLoginlogEntityRep: Repository<MonitorLoginlogEntity>,
+    private readonly monitorLoginlogEntityRep: Repository<MonitorLoginlogEntity>
   ) {}
 
   /**
@@ -29,7 +29,7 @@ export class LoginlogService {
    * @returns
    */
   async findAll(query: ListLoginlogDto) {
-    const entity = this.monitorLoginlogEntityRep.createQueryBuilder('entity');
+    const entity = this.monitorLoginlogEntityRep.createQueryBuilder("entity");
     // entity.where('entity.delFlag = :delFlag', { delFlag: DelFlagEnum.NORMAL });
 
     if (query.ipaddr) {
@@ -41,16 +41,19 @@ export class LoginlogService {
     }
 
     if (query.status) {
-      entity.andWhere('entity.status = :status', { status: query.status });
+      entity.andWhere("entity.status = :status", { status: query.status });
     }
 
     if (query?.beginTime && query?.endTime) {
-      entity.andWhere('entity.loginTime BETWEEN :start AND :end', { start: query.beginTime, end: query.endTime });
+      entity.andWhere("entity.loginTime BETWEEN :start AND :end", {
+        start: query.beginTime,
+        end: query.endTime
+      });
     }
 
     // 列表排序
     if (query.orderByColumn && query.order) {
-      const key = query.order === 'ascending' ? 'ASC' : 'DESC';
+      const key = query.order === "ascending" ? "ASC" : "DESC";
       entity.orderBy(`entity.${query.orderByColumn}`, key);
     }
 
@@ -62,7 +65,7 @@ export class LoginlogService {
 
     return ResultData.ok({
       list,
-      total,
+      total
     });
   }
 
@@ -70,25 +73,25 @@ export class LoginlogService {
    * 导出登录日志数据为xlsx
    * @param res
    */
-  async export(res: Response, body: ListLoginlogDto) {
+  async export(res: ExpressResponse, body: ListLoginlogDto) {
     delete body.pageNum;
     delete body.pageSize;
     const list = await this.findAll(body);
     const options = {
-      sheetName: '登录日志',
+      sheetName: "登录日志",
       data: list.data.list,
       header: [
-        { title: '序号', dataIndex: 'infoId' },
-        { title: '用户账号', dataIndex: 'userName' },
-        { title: '登录状态', dataIndex: 'status' },
-        { title: '登录地址', dataIndex: 'ipaddr' },
-        { title: '登录地点', dataIndex: 'loginLocation' },
-        { title: '浏览器', dataIndex: 'browser' },
-        { title: '操作系统', dataIndex: 'os' },
-        { title: '提示消息', dataIndex: 'msg' },
-        { title: '访问时间', dataIndex: 'loginTime' },
-      ],
+        { title: "序号", dataIndex: "infoId" },
+        { title: "用户账号", dataIndex: "userName" },
+        { title: "登录状态", dataIndex: "status" },
+        { title: "登录地址", dataIndex: "ipaddr" },
+        { title: "登录地点", dataIndex: "loginLocation" },
+        { title: "浏览器", dataIndex: "browser" },
+        { title: "操作系统", dataIndex: "os" },
+        { title: "提示消息", dataIndex: "msg" },
+        { title: "访问时间", dataIndex: "loginTime" }
+      ]
     };
-    ExportTable(options, res);
+    await ExportTable(options, res);
   }
 }

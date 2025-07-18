@@ -1,36 +1,36 @@
-import { Module, Global } from '@nestjs/common';
-import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
-import { ConfigService, ConfigModule } from '@nestjs/config';
-import configuration from './config/index';
-import { RedisClientOptions } from '@liaoliaots/nestjs-redis';
-import { RedisModule } from './modules/redis/redis.module';
-import { APP_GUARD } from '@nestjs/core';
-import { JwtAuthGuard } from 'src/common/guards/auth.guard';
-import { RolesGuard } from './common/guards/roles.guard';
-import { BullModule } from '@nestjs/bull';
-import { ScheduleModule } from '@nestjs/schedule';
-import { WinstonModule } from 'nest-winston';
-import { winstonConfig } from './config/winston.config';
-import { PluginsModule } from './plugins/plugins.module';
-import { TaskModule } from './modules/tasks/task.module';
+import { Module, Global } from "@nestjs/common";
+import { TypeOrmModule, TypeOrmModuleOptions } from "@nestjs/typeorm";
+import { ConfigService, ConfigModule } from "@nestjs/config";
+import configuration from "./config/index";
+import { RedisClientOptions } from "@liaoliaots/nestjs-redis";
+import { RedisModule } from "./modules/redis/redis.module";
+import { APP_GUARD } from "@nestjs/core";
+import { JwtAuthGuard } from "src/common/guards/auth.guard";
+import { RolesGuard } from "./common/guards/roles.guard";
+import { BullModule } from "@nestjs/bull";
+import { ScheduleModule } from "@nestjs/schedule";
+import { WinstonModule } from "nest-winston";
+import { winstonConfig } from "./config/winston.config";
+import { PluginsModule } from "./plugins/plugins.module";
+import { TaskModule } from "./modules/tasks/task.module";
 
-import { PushTaskModule } from './modules/pushtask/pushtask.module';
-import { AreaModule } from './modules/area/area.module';
-import { UploadModule } from './modules/upload/upload.module';
+import { PushTaskModule } from "./modules/pushtask/pushtask.module";
+import { AreaModule } from "./modules/area/area.module";
+import { UploadModule } from "./modules/upload/upload.module";
 
-import { AuthModule } from './modules/system/auth/auth.module';
-import { UserModule } from './modules/system/user/user.module';
-import { DeptModule } from './modules/system/dept/dept.module';
-import { MenuModule } from './modules/system/menu/menu.module';
-import { RoleModule } from './modules/system/role/role.module';
-import { PostModule } from './modules/system/post/post.module';
-import { SysConfigModule } from './modules/system/config/config.module';
-import { NoticeModule } from './modules/system/notice/notice.module';
-import { MainModule } from './modules/main/main.module';
-import { CacheModule } from './modules/monitor/cache/cache.module';
-import { LoginlogModule } from './modules/monitor/loginlog/loginlog.module';
-import { OperlogModule } from './modules/monitor/operlog/operlog.module';
-import { ServerModule } from './modules/monitor/server/server.module';
+import { AuthModule } from "./modules/system/auth/auth.module";
+import { UserModule } from "./modules/system/user/user.module";
+import { DeptModule } from "./modules/system/dept/dept.module";
+import { MenuModule } from "./modules/system/menu/menu.module";
+import { RoleModule } from "./modules/system/role/role.module";
+import { PostModule } from "./modules/system/post/post.module";
+import { SysConfigModule } from "./modules/system/config/config.module";
+import { NoticeModule } from "./modules/system/notice/notice.module";
+import { MainModule } from "./modules/main/main.module";
+import { CacheModule } from "./modules/monitor/cache/cache.module";
+import { LoginlogModule } from "./modules/monitor/loginlog/loginlog.module";
+import { OperlogModule } from "./modules/monitor/operlog/operlog.module";
+import { ServerModule } from "./modules/monitor/server/server.module";
 
 @Global()
 @Module({
@@ -39,19 +39,19 @@ import { ServerModule } from './modules/monitor/server/server.module';
     ConfigModule.forRoot({
       cache: true,
       load: [configuration],
-      isGlobal: true, // 设置为全局
+      isGlobal: true // 设置为全局
     }),
     // 数据库
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (config: ConfigService) =>
+      useFactory: (config: ConfigService) =>
         ({
-          type: 'mysql',
+          type: "mysql",
           autoLoadEntities: true, // 自动导入实体
-          keepConnectionAlive: true,
-          ...config.get('db.mysql'),
-        }) as TypeOrmModuleOptions,
+          // keepConnectionAlive: true,
+          ...config.get("db.mysql")
+        }) as TypeOrmModuleOptions
     }),
     // redis
     RedisModule.forRootAsync(
@@ -63,19 +63,19 @@ import { ServerModule } from './modules/monitor/server/server.module';
             closeClient: true,
             readyLog: true,
             errorLog: true,
-            config: config.get<RedisClientOptions>('redis'),
+            config: config.get<RedisClientOptions>("redis")
           };
-        },
+        }
       },
-      true,
+      true
     ),
     // 任务队列
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (config: ConfigService) => ({
-        redis: config.get('redis'),
-      }),
+      useFactory: (config: ConfigService) => ({
+        redis: config.get("redis")
+      })
     }),
     // 任务调度
     ScheduleModule.forRoot(),
@@ -100,17 +100,17 @@ import { ServerModule } from './modules/monitor/server/server.module';
     CacheModule,
     LoginlogModule,
     OperlogModule,
-    ServerModule,
+    ServerModule
   ],
   providers: [
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: JwtAuthGuard
     },
     {
       provide: APP_GUARD,
-      useClass: RolesGuard,
-    },
-  ],
+      useClass: RolesGuard
+    }
+  ]
 })
 export class AppModule {}

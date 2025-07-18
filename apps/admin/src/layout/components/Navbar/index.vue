@@ -1,12 +1,7 @@
 <template>
   <div class="navbar">
     <div class="navbar-left">
-      <div
-        class="collapse"
-        :class="{ active: !sidebar.opened }"
-        :title="!sidebar.opened ? '点击展开' : '点击折叠'"
-        @click="emits('toggleClick')"
-      >
+      <div class="collapse" :class="{ active: !sidebar.opened }" :title="!sidebar.opened ? '点击展开' : '点击折叠'" @click="emits('toggleClick')">
         <SvgIcon name="collapse" />
       </div>
       <Breadcrumb class="breadcrumb-container" />

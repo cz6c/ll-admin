@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ResultData } from '@/common/utils/result';
-import { AreaEntity, CityEntity, ProvinceEntity } from './entities/area.entity';
-import { AeraListParamsDto } from './dto/index.dto';
-import { listToTree } from '@llcz/common';
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { ResultData } from "@/common/utils/result";
+import { AreaEntity, CityEntity, ProvinceEntity } from "./entities/area.entity";
+import { AeraListParamsDto } from "./dto/index.dto";
+import { listToTree } from "@llcz/common";
 
 @Injectable()
 export class AreaService {
@@ -14,31 +14,31 @@ export class AreaService {
     @InjectRepository(CityEntity)
     private readonly cityRepository: Repository<CityEntity>,
     @InjectRepository(ProvinceEntity)
-    private readonly provinceRepository: Repository<ProvinceEntity>,
+    private readonly provinceRepository: Repository<ProvinceEntity>
   ) {}
 
   // trees列表
   async findTrees() {
-    const provinceList = (await this.provinceRepository.find()).map((c) => ({
+    const provinceList = (await this.provinceRepository.find()).map(c => ({
       name: c.name,
       code: c.code,
-      parentCode: null,
+      parentCode: null
     }));
-    const cityList = (await this.cityRepository.find()).map((c) => ({
+    const cityList = (await this.cityRepository.find()).map(c => ({
       name: c.name,
       code: c.code,
-      parentCode: c.provinceCode,
+      parentCode: c.provinceCode
     }));
-    const areaList = (await this.areaRepository.find()).map((c) => ({
+    const areaList = (await this.areaRepository.find()).map(c => ({
       name: c.name,
       code: c.code,
-      parentCode: c.cityCode,
+      parentCode: c.cityCode
     }));
     return ResultData.ok(
       listToTree([...provinceList, ...cityList, ...areaList], {
-        pid: 'parentCode',
-        id: 'code',
-      }),
+        pid: "parentCode",
+        id: "code"
+      })
     );
   }
 
@@ -50,13 +50,13 @@ export class AreaService {
     }
     if (params.level === 2) {
       const list = await this.cityRepository.find({
-        where: { provinceCode: params.code },
+        where: { provinceCode: params.code }
       });
       return ResultData.ok(list);
     }
     if (params.level === 3) {
       const list = await this.areaRepository.find({
-        where: { cityCode: params.code },
+        where: { cityCode: params.code }
       });
       return ResultData.ok(list);
     }

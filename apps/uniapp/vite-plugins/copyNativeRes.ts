@@ -9,7 +9,7 @@ export function copyNativeRes() {
     '../dist',
     process.env.NODE_ENV === 'production' ? 'build' : 'dev',
     process.env.UNI_PLATFORM!,
-    'nativeResources',
+    'nativeResources'
   )
 
   return {
@@ -19,7 +19,9 @@ export function copyNativeRes() {
         // 检查源目录是否存在
         const sourceExists = await fs.pathExists(waitPath)
         if (!sourceExists) {
-          console.warn(`[copyNativeRes] 警告：源目录 "${waitPath}" 不存在，跳过复制操作。`)
+          console.warn(
+            `[copyNativeRes] 警告：源目录 "${waitPath}" 不存在，跳过复制操作。`
+          )
           return
         }
 
@@ -30,11 +32,10 @@ export function copyNativeRes() {
         // 执行文件夹复制
         await fs.copy(waitPath, buildPath)
         console.log(
-          `[copyNativeRes] 成功将 nativeResources 目录中的资源移动到构建目录：${buildPath}`,
+          `[copyNativeRes] 成功将 nativeResources 目录中的资源移动到构建目录：${buildPath}`
         )
-      }
-      catch (error) {
-        console.error(`[copyNativeRes] 复制资源失败：`, error)
+      } catch (error) {
+        console.error('[copyNativeRes] 复制资源失败：', error)
       }
     },
   }

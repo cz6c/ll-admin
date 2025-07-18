@@ -178,13 +178,7 @@ getInfo();
         <el-col :span="12">
           <el-form-item label="岗位">
             <el-select v-model="form.postIds" multiple placeholder="请选择">
-              <el-option
-                v-for="item in postOptions"
-                :key="item.postId"
-                :label="item.postName"
-                :value="item.postId"
-                :disabled="item.status == 1"
-              />
+              <el-option v-for="item in postOptions" :key="item.postId" :label="item.postName" :value="item.postId" :disabled="item.status == 1" />
             </el-select>
           </el-form-item>
         </el-col>
@@ -193,13 +187,7 @@ getInfo();
         <el-col :span="24">
           <el-form-item label="角色">
             <el-select v-model="form.roleIds" multiple placeholder="请选择">
-              <el-option
-                v-for="item in roleOptions"
-                :key="item.roleId"
-                :label="item.roleName"
-                :value="item.roleId"
-                :disabled="item.status == 1"
-              />
+              <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId" :disabled="item.status == 1" />
             </el-select>
           </el-form-item>
         </el-col>

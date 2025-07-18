@@ -1,10 +1,21 @@
-import { InjectRedis } from '@liaoliaots/nestjs-redis';
-import { Injectable } from '@nestjs/common';
-import Redis from 'ioredis';
+import { RedisService as RedisServiceAPP } from "@liaoliaots/nestjs-redis";
+import { Injectable } from "@nestjs/common";
+import Redis from "ioredis";
 
 @Injectable()
 export class RedisService {
-  constructor(@InjectRedis() private readonly client: Redis) {}
+  private readonly client: Redis | null;
+
+  constructor(private readonly redisService: RedisServiceAPP) {
+    this.client = this.redisService.getOrThrow();
+    // same as
+    // this.redis = this.redisService.getOrThrow(DEFAULT_REDIS);
+
+    // or
+    // this.redis = this.redisService.getOrNil();
+    // same as
+    // this.redis = this.redisService.getOrNil(DEFAULT_REDIS);
+  }
 
   getClient(): Redis {
     return this.client;
@@ -18,11 +29,11 @@ export class RedisService {
     // 连接到 Redis 服务器
     const rawInfo = await this.client.info();
     // 按行分割字符串
-    const lines = rawInfo.split('\r\n');
+    const lines = rawInfo.split("\r\n");
     const parsedInfo = {};
     // 遍历每一行并分割键值对
-    lines.forEach((line) => {
-      const [key, value] = line.split(':');
+    lines.forEach(line => {
+      const [key, value] = line.split(":");
       parsedInfo[key?.trim()] = value?.trim();
     });
     return parsedInfo;
@@ -50,17 +61,17 @@ export class RedisService {
    * @returns
    */
   async commandStats() {
-    const rawInfo = await this.client.info('commandstats');
+    const rawInfo = await this.client.info("commandstats");
     // 按行分割字符串
-    const lines = rawInfo.split('\r\n');
+    const lines = rawInfo.split("\r\n");
     const commandStats = [];
     // 遍历每一行并分割键值对
-    lines.forEach((line) => {
-      const [key, value] = line.split(':');
+    lines.forEach(line => {
+      const [key, value] = line.split(":");
       if (key && value) {
         commandStats.push({
-          name: key?.trim()?.replaceAll('cmdstat_', ''),
-          value: +value?.trim()?.split(',')[0]?.split('=')[1],
+          name: key?.trim()?.replaceAll("cmdstat_", ""),
+          value: +value?.trim()?.split(",")[0]?.split("=")[1]
         });
       }
     });
@@ -75,16 +86,16 @@ export class RedisService {
    * @param val key 对应的 val
    * @param ttl 可选，过期时间，单位 毫秒
    */
-  async set(key: string, val: any, ttl?: number): Promise<'OK' | null> {
+  async set(key: string, val: any, ttl?: number): Promise<"OK" | null> {
     const data = JSON.stringify(val);
     if (!ttl) return await this.client.set(key, data);
-    return await this.client.set(key, data, 'PX', ttl);
+    return await this.client.set(key, data, "PX", ttl);
   }
 
   async mget(keys: string[]): Promise<any[]> {
     if (!keys) return null;
     const list = await this.client.mget(keys);
-    return list.map((item) => JSON.parse(item));
+    return list.map(item => JSON.parse(item));
   }
 
   /**
@@ -92,14 +103,14 @@ export class RedisService {
    * @param key
    */
   async get(key: string): Promise<any> {
-    if (!key || key === '*') return null;
+    if (!key || key === "*") return null;
     const res = await this.client.get(key);
     return JSON.parse(res);
   }
 
   async del(keys: string | string[]): Promise<number> {
-    if (!keys || keys === '*') return 0;
-    if (typeof keys === 'string') keys = [keys];
+    if (!keys || keys === "*") return 0;
+    if (typeof keys === "string") keys = [keys];
     return await this.client.del(...keys);
   }
 
@@ -135,7 +146,7 @@ export class RedisService {
    * @param data
    * @params expire 单位 秒
    */
-  async hmset(key: string, data: Record<string, string | number | boolean>, expire?: number): Promise<number | any> {
+  async hmset(key: string, data: Record<string, string | number | boolean>, expire?: number): Promise<number | string> {
     if (!key || !data) return 0;
     const result = await this.client.hmset(key, data);
     if (expire) {
@@ -204,7 +215,7 @@ export class RedisService {
    * @param index
    * @param val
    */
-  async lSet(key: string, index: number, val: string): Promise<'OK' | null> {
+  async lSet(key: string, index: number, val: string): Promise<"OK" | null> {
     if (!key || index < 0) return null;
     return await this.client.lset(key, index, val);
   }
@@ -258,7 +269,7 @@ export class RedisService {
    */
   async lLeftInsert(key: string, pivot: string, val: string): Promise<number> {
     if (!key || !pivot) return 0;
-    return await this.client.linsert(key, 'BEFORE', pivot, val);
+    return await this.client.linsert(key, "BEFORE", pivot, val);
   }
 
   /**
@@ -269,7 +280,7 @@ export class RedisService {
    */
   async lRightInsert(key: string, pivot: string, val: string): Promise<number> {
     if (!key || !pivot) return 0;
-    return await this.client.linsert(key, 'AFTER', pivot, val);
+    return await this.client.linsert(key, "AFTER", pivot, val);
   }
 
   /**
@@ -318,7 +329,7 @@ export class RedisService {
    * @param start
    * @param stop
    */
-  async lTrim(key: string, start: number, stop: number): Promise<'OK' | null> {
+  async lTrim(key: string, start: number, stop: number): Promise<"OK" | null> {
     if (!key) return null;
     return await this.client.ltrim(key, start, stop);
   }

@@ -98,9 +98,7 @@ function handleItemfixed(key: string, type: string) {
  */
 function setColumns(columns: TableCol[] | string[]) {
   const data: TableCol[] = unref(plainSortOptions).map(col => {
-    const visible =
-      columns.findIndex((c: TableCol | string) => c === col.prop || (typeof c !== "string" && c.prop === col.prop)) !==
-      -1;
+    const visible = columns.findIndex((c: TableCol | string) => c === col.prop || (typeof c !== "string" && c.prop === col.prop)) !== -1;
     return { ...col, visible };
   });
   emits("update-columns", data);
@@ -124,9 +122,7 @@ function setColumns(columns: TableCol[] | string[]) {
           </template>
           <template #default>
             <div class="flex-y-center justify-between">
-              <el-checkbox v-model="checkAll" :indeterminate="isIndeterminate" @change="handleCheckAllChange"
-                >数据列
-              </el-checkbox>
+              <el-checkbox v-model="checkAll" :indeterminate="isIndeterminate" @change="handleCheckAllChange">数据列 </el-checkbox>
               <el-button type="primary" link @click="init">重置</el-button>
             </div>
             <el-divider />
@@ -135,18 +131,8 @@ function setColumns(columns: TableCol[] | string[]) {
                 <el-icon size="16" class="cursor-move mr-8"><Rank /></el-icon>
                 <el-checkbox :label="item.prop">{{ item.label }}</el-checkbox>
                 <div class="flex-y-center">
-                  <SvgIcon
-                    name="fixed-l"
-                    size="18"
-                    :class="{ on: item.fixed === 'left' }"
-                    @click="handleItemfixed(item.prop!, 'left')"
-                  />
-                  <SvgIcon
-                    name="fixed-r"
-                    size="18"
-                    :class="{ on: item.fixed === 'right' }"
-                    @click="handleItemfixed(item.prop!, 'right')"
-                  />
+                  <SvgIcon name="fixed-l" size="18" :class="{ on: item.fixed === 'left' }" @click="handleItemfixed(item.prop!, 'left')" />
+                  <SvgIcon name="fixed-r" size="18" :class="{ on: item.fixed === 'right' }" @click="handleItemfixed(item.prop!, 'right')" />
                 </div>
               </div>
             </el-checkbox-group>

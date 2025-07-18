@@ -1,7 +1,7 @@
-import { IsString, IsEnum, Length, IsOptional, IsNumber } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { BaseVO, PagingDto } from '@/common/dto/index';
-import { NoticeTypeEnum, StatusEnum } from '@/common/enum/dict';
+import { IsString, IsEnum, Length, IsOptional, IsNumber } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
+import { BaseVO, PagingDto } from "@/common/dto/index";
+import { NoticeTypeEnum, StatusEnum } from "@/common/enum/dict";
 
 export class CreateNoticeDto {
   @ApiProperty({ required: true })
@@ -48,19 +48,22 @@ export class ListNoticeDto extends PagingDto {
 }
 
 export class SysNoticeVO extends BaseVO {
-  @ApiProperty({ description: '公告ID', example: 1 })
+  @ApiProperty({ description: "公告ID", example: 1 })
   public noticeId: number;
 
-  @ApiProperty({ description: '公告标题', example: '系统维护通知' })
+  @ApiProperty({ description: "公告标题", example: "系统维护通知" })
   public noticeTitle: string;
 
   @ApiProperty({
-    description: '公告类型（1为通知，2为公告）',
+    description: "公告类型（1为通知，2为公告）",
     enum: NoticeTypeEnum,
-    example: NoticeTypeEnum.Instruct,
+    example: NoticeTypeEnum.Instruct
   })
   public noticeType: NoticeTypeEnum;
 
-  @ApiProperty({ description: '公告内容', example: '系统将于今晚进行维护，请提前保存工作。' })
+  @ApiProperty({
+    description: "公告内容",
+    example: "系统将于今晚进行维护，请提前保存工作。"
+  })
   public noticeContent: string;
 }

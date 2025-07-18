@@ -9,6 +9,7 @@ const props = defineProps({
     default: ""
   },
   fit: {
+    type: String,
     default: "contain"
   },
   lazy: {
@@ -71,10 +72,5 @@ const handlePictureCardPreview = () => {
       <img :style="style" :loading="props.lazy ? 'lazy' : 'eager'" src="@/assets/images/imgError.png" />
     </template>
   </el-image>
-  <el-image-viewer
-    v-if="imgViewVisible"
-    :url-list="previewSrcList"
-    :initial-index="index"
-    @close="imgViewVisible = false"
-  />
+  <el-image-viewer v-if="imgViewVisible" :url-list="previewSrcList" :initial-index="index" @close="imgViewVisible = false" />
 </template>

@@ -7,13 +7,11 @@ import type { PluginOption } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import vueDevTools from "vite-plugin-vue-devtools";
-import progress from "vite-plugin-progress";
 import { ConfigSvgIconsPlugin } from "./plugins/svgIcons";
 import { AutoRegistryComponents } from "./plugins/component";
 import { AutoImportDeps } from "./plugins/autoImport";
 import { ConfigCompressPlugin } from "./plugins/compress";
 import { ConfigRestartPlugin } from "./plugins/restart";
-import { ConfigImageminPlugin } from "./plugins/imagemin";
 import { UnoCSSPlugin } from "./plugins/unocss";
 
 export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
@@ -26,8 +24,6 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     vueJsx(),
     // 调试工具
     vueDevTools(),
-    // 构建显示进度条
-    progress(),
     // 监听配置文件改动重启
     ConfigRestartPlugin(),
     // 自动按需注册组件
@@ -41,9 +37,6 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
   ];
 
   if (isBuild) {
-    // 图片压缩 vite-plugin-imagemin
-    vitePlugins.push(ConfigImageminPlugin());
-
     // 开启.gz压缩  rollup-plugin-gzip
     VITE_USE_COMPRESS && vitePlugins.push(ConfigCompressPlugin());
   }

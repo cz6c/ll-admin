@@ -8,46 +8,10 @@
   filter: grayscale(100%);
 }
 
-html {
-  font-size: 4px;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans", "Noto Sans CJK SC", "Microsoft YaHei", "微软雅黑",
-    sans-serif;
-  font-weight: 400;
-  color: #333;
-  line-height: 1.36;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  font-size: 14px;
-}
-
-html,
-body,
-#app,
-.app-wrapper {
-  min-width: 1024px;
-  height: 100%;
-}
-
-h1,
-h2,
-h3,
-h4,
-p {
-  margin: 0;
-}
-
-a {
-  text-decoration: none;
-}
-
-.cz-card {
+.cz-card{
   border-radius: 8px;
   background-color: #fff;
-  padding: 0 16px;
+  padding: 16px;
 }
 
 .main-container {

@@ -155,7 +155,7 @@ function handleExport() {
 </script>
 
 <template>
-  <div class="app-page cz-card pt-16">
+  <div class="app-page cz-card">
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>

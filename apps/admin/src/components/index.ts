@@ -16,8 +16,9 @@ import "vxe-pc-ui/lib/style.css";
  */
 // 图片
 import BaseImage from "@/components/BaseImage/index.vue";
+import IconifyIcon from "@/components/IconifyIcon/index.vue";
 
-const components = [BaseImage];
+const components = [BaseImage, IconifyIcon];
 
 function install(app: App<Element>) {
   for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

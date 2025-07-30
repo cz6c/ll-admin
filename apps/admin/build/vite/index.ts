@@ -7,12 +7,13 @@ import type { PluginOption } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import vueDevTools from "vite-plugin-vue-devtools";
-import { ConfigSvgIconsPlugin } from "./plugins/svgIcons";
 import { AutoRegistryComponents } from "./plugins/component";
 import { AutoImportDeps } from "./plugins/autoImport";
 import { ConfigCompressPlugin } from "./plugins/compress";
 import { ConfigRestartPlugin } from "./plugins/restart";
 import { UnoCSSPlugin } from "./plugins/unocss";
+import svgLoader from "vite-svg-loader";
+import Icons from "unplugin-icons/vite";
 
 export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
   const { VITE_USE_COMPRESS } = env;
@@ -32,8 +33,13 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     AutoImportDeps(),
     // unocss
     UnoCSSPlugin(),
-    // vite-plugin-svg-icons
-    ConfigSvgIconsPlugin(isBuild)
+    // svg组件化支持
+    svgLoader(),
+    // 自动按需加载图标
+    Icons({
+      compiler: "vue3",
+      scale: 1
+    })
   ];
 
   if (isBuild) {

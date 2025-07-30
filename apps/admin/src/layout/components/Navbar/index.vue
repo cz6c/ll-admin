@@ -2,7 +2,7 @@
   <div class="navbar">
     <div class="navbar-left">
       <div class="collapse" :class="{ active: !sidebar.opened }" :title="!sidebar.opened ? '点击展开' : '点击折叠'" @click="emits('toggleClick')">
-        <SvgIcon name="collapse" />
+        <IconifyIcon icon="ri:menu-fold-3-line" width="18px" height="18px" />
       </div>
       <Breadcrumb class="breadcrumb-container" />
     </div>
@@ -105,6 +105,8 @@ function handleCommand(command: string) {
 
   &-left {
     .collapse {
+      display: flex;
+      align-items: center;
       margin-right: 20px;
       cursor: pointer;
       transition: 0.3s all;
@@ -128,9 +130,6 @@ function handleCommand(command: string) {
       &.icon {
         &:hover {
           background-color: #f6f6f6;
-          :deep(.svg-icon) {
-            animation: logoAnimation 0.2s ease-in-out;
-          }
         }
       }
       .img-wrap {

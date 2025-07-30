@@ -16,10 +16,9 @@ console.log(isArray([]));
 
 // css
 import "normalize.css";
+// 引入重置样式
+import "@/assets/style/reset.scss";
 import "@/assets/style/index.scss";
-
-// 注册svg
-import "virtual:svg-icons-register";
 
 // unocss
 import "virtual:uno.css";

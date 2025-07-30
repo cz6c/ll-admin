@@ -90,7 +90,22 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
     }
   },
   columns: [
-    { field: "menuName", title: "菜单名称", treeNode: true, fixed: "left" },
+    {
+      field: "menuName",
+      title: "菜单名称",
+      slots: {
+        default({ row }) {
+          return (
+            <div class="flex-center">
+              <iconify-icon icon={row.icon} width="14px" height="14px" />
+              <span class="ml-1">{row.menuName}</span>
+            </div>
+          );
+        }
+      },
+      treeNode: true,
+      fixed: "left"
+    },
     {
       field: "icon",
       title: "菜单类型",
@@ -100,18 +115,9 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
         }
       }
     },
-    {
-      field: "icon",
-      title: "图标",
-      slots: {
-        default({ row }) {
-          return <svg-icon name={row.icon} />;
-        }
-      }
-    },
-    { field: "orderNum", title: "排序" },
     { field: "component", title: "组件路径" },
     { field: "perm", title: "功能权限标识" },
+    { field: "orderNum", title: "排序" },
     {
       field: "status",
       title: "状态",
@@ -272,7 +278,7 @@ function handleUpdate(row, isPerm = false) {
 </script>
 
 <template>
-  <div class="app-page cz-card pt-16">
+  <div class="app-page cz-card">
     <!-- 表格数据 -->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>

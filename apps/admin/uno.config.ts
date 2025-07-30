@@ -1,5 +1,5 @@
 // uno.config.ts
-import { defineConfig, presetAttributify, presetUno } from "unocss";
+import { defineConfig, presetWind3, presetAttributify, presetIcons } from "unocss";
 
 export default defineConfig({
   content: {
@@ -7,7 +7,19 @@ export default defineConfig({
       exclude: ["node_modules", "dist", ".git", ".husky", ".vscode", "public", "build"]
     }
   },
-  presets: [presetUno(), presetAttributify()],
+  presets: [
+    presetWind3(),
+    // 支持css class属性化
+    presetAttributify(),
+    presetIcons({
+      scale: 1.2,
+      warn: true,
+      extraProperties: {
+        display: "inline-block",
+        "vertical-align": "middle"
+      }
+    })
+  ],
   rules: [
     [/^bc-(.+)$/, ([, color]) => ({ "border-color": `#${color}` })],
     ["card-shadow", { "box-shadow": "0 1px 2px -2px #00000029, 0 3px 6px #0000001f, 0 5px 12px 4px #00000017" }],

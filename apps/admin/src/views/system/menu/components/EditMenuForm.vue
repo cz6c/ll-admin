@@ -20,14 +20,13 @@ const $emit = defineEmits(["success", "cancel"]);
 const { StatusEnum, YesNoEnum } = toRefs(useDict("StatusEnum", "YesNoEnum"));
 
 const showChooseIcon = ref(false);
-const iconSelectRef = ref(null);
 const menuRef = ref<FormInstance>(null);
 const data = reactive({
   form: {
     menuId: undefined,
     parentId: 0,
     menuName: "",
-    icon: undefined,
+    icon: "",
     orderNum: 0,
     isFrame: "1",
     isCache: "0",
@@ -71,25 +70,6 @@ async function getInfo() {
     form.value.parentId = props.parentId;
     form.value.parentName = props.parentName;
     form.value.menuType = props.isPerm ? "F" : "M";
-  }
-}
-
-/** 展示下拉图标 */
-function showSelectIcon() {
-  iconSelectRef.value.reset();
-  showChooseIcon.value = true;
-}
-/** 选择图标 */
-function selected(name) {
-  form.value.icon = name;
-  showChooseIcon.value = false;
-}
-/** 图标外层点击隐藏下拉列表 */
-function hideSelectIcon(event) {
-  var elem = event.relatedTarget || event.srcElement || event.target || event.currentTarget;
-  var className = elem.className;
-  if (className !== "el-input__inner") {
-    showChooseIcon.value = false;
   }
 }
 
@@ -177,17 +157,7 @@ getInfo();
         <template v-else>
           <el-col :span="24">
             <el-form-item label="菜单图标" prop="icon">
-              <el-popover v-model:visible="showChooseIcon" placement="bottom-start" :width="540" trigger="click" @show="showSelectIcon">
-                <template #reference>
-                  <el-input v-model="form.icon" v-click-outside="hideSelectIcon" placeholder="点击选择图标" readonly @blur="showSelectIcon">
-                    <template #prefix>
-                      <svg-icon v-if="form.icon" :name="form.icon" class="el-input__icon" style="height: 32px; width: 16px" />
-                      <el-icon v-else style="height: 32px; width: 16px"><search /></el-icon>
-                    </template>
-                  </el-input>
-                </template>
-                <icon-select ref="iconSelectRef" :active-icon="form.icon" @selected="selected" />
-              </el-popover>
+              <IconSelect v-model="form.icon" />
             </el-form-item>
           </el-col>
           <el-col :span="24">

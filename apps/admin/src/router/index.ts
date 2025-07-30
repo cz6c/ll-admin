@@ -31,7 +31,7 @@ const routesList: AppRouteRecordRaw[] = [
         path: "/index",
         component: () => import("@/views/dashboard/index.vue"),
         name: RouterEnum.BASE_HOME_NAME,
-        meta: { title: "首页", icon: "menu-iframe", affix: true }
+        meta: { title: "首页", icon: "ep:home-filled", affix: true }
       }
     ]
   },
@@ -72,7 +72,13 @@ export const constantRoutes = [...routesList] as RouteRecordRaw[];
 // app router
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior: () => ({ left: 0, right: 0 }),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
+    } else {
+      return to.hash ? { behavior: "smooth", el: to.hash } : { top: 0, left: 0 };
+    }
+  },
   routes: constantRoutes
 });
 

@@ -67,7 +67,7 @@ function hasTitle(title) {
     <template v-if="hasOneShowingChild(item.children, item) && onlyOneChild.hasOneShowingChild">
       <app-link v-if="onlyOneChild.meta" :to="resolvePath(onlyOneChild.path, onlyOneChild.query)">
         <el-menu-item :index="onlyOneChild.path" :class="{ 'sub-menu-title-noDropdown': !isNest }">
-          <SvgIcon :name="onlyOneChild.meta.icon" size="18" />
+          <IconifyIcon v-if="onlyOneChild.meta.icon" :icon="onlyOneChild.meta.icon" width="18px" height="18px" class="svg-icon" />
           <template #title>
             <span class="menu-title" :title="hasTitle(onlyOneChild.meta.title)">{{ onlyOneChild.meta.title }}</span>
           </template>
@@ -77,7 +77,7 @@ function hasTitle(title) {
 
     <el-sub-menu v-else :index="item.path" popper-append-to-body>
       <template v-if="item.meta" #title>
-        <SvgIcon :name="item.meta.icon" size="18" />
+        <IconifyIcon v-if="item.meta.icon" :icon="item.meta.icon" width="18px" height="18px" class="svg-icon" />
         <span class="menu-title" :title="hasTitle(item.meta.title)">{{ item.meta.title }}</span>
       </template>
       <sidebar-item v-for="child in item.children" :key="child.path" :is-nest="true" :item="child" class="nest-menu" />

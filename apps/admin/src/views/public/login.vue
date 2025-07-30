@@ -1,7 +1,7 @@
 <template>
   <div class="login">
     <div class="login-fl">
-      <SvgIcon name="login" size="368" />
+      <LoginSvgCom style="transform: scale(0.8)" />
     </div>
     <div class="login-fr">
       <div class="login-conten">
@@ -11,22 +11,30 @@
         </div>
         <el-form ref="formRef" :rules="rules" :model="loginForm">
           <el-form-item prop="userName">
-            <el-input v-model="loginForm.userName" auto-complete="off" placeholder="请输入账号">
-              <template #prefix><SvgIcon name="user" size="20" /></template>
-            </el-input>
+            <el-input v-model="loginForm.userName" auto-complete="off" placeholder="请输入账号" :prefix-icon="useRenderIcon('ep:user')" />
           </el-form-item>
           <el-form-item prop="password">
-            <el-input v-model="loginForm.password" type="password" show-password auto-complete="off" placeholder="请输入密码" @keyup.enter="handleLogin">
-              <template #prefix><SvgIcon name="password" size="20" /></template>
-            </el-input>
+            <el-input
+              v-model="loginForm.password"
+              type="password"
+              show-password
+              auto-complete="off"
+              placeholder="请输入密码"
+              :prefix-icon="useRenderIcon('ep:lock')"
+              @keyup.enter="handleLogin"
+            />
           </el-form-item>
           <el-form-item v-if="captchaEnabled" prop="code">
             <div class="login-code">
-              <el-input v-model="loginForm.code" size="large" auto-complete="off" placeholder="验证码" style="width: 60%" @keyup.enter="handleLogin()">
-                <template #prefix>
-                  <SvgIcon name="validCode" size="20" />
-                </template>
-              </el-input>
+              <el-input
+                v-model="loginForm.code"
+                size="large"
+                auto-complete="off"
+                placeholder="验证码"
+                style="width: 60%"
+                :prefix-icon="useRenderIcon('ri:shield-check-line')"
+                @keyup.enter="handleLogin()"
+              />
               <div class="code" @click="getCode" v-html="codeUrl" />
             </div>
           </el-form-item>
@@ -52,6 +60,8 @@ import Cookies from "js-cookie";
 import { productConfig } from "@/config";
 import $feedback from "@/utils/feedback";
 import { getPlatFormUUID } from "@/utils/auth";
+import LoginSvgCom from "@/assets/svg/login.svg?component";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "Login"

@@ -1,6 +1,6 @@
 <template>
   <div v-click-outside="() => (show = false)" :class="{ show: show }" class="header-search">
-    <SvgIcon :size="18" name="search" @click.stop="click" />
+    <IconifyIcon icon="ri:search-line" width="18px" height="18px" @click.stop="click" />
     <el-select
       ref="headerSearchSelectRef"
       v-model="search"
@@ -165,9 +165,6 @@ watch(searchPool, list => {
   }
 
   &.show {
-    :deep(.svg-icon) {
-      animation: none !important;
-    }
     .header-search-select {
       width: 210px;
       margin-left: 10px;

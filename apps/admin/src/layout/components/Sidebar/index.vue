@@ -2,9 +2,9 @@
   <div class="side-bar">
     <div class="logo-container">
       <div class="logo-link">
-        <Transition name="fade" mode="out-in">
-          <SvgIcon v-if="sidebar.opened" name="logo" size="26" />
-          <SvgIcon v-else name="logo" size="26" />
+        <Transition name="el-zoom-in-center" mode="out-in">
+          <LogoSvgCom v-if="sidebar.opened" width="26px" height="26px" />
+          <LogoSvgCom v-else width="26px" height="26px" />
         </Transition>
       </div>
     </div>
@@ -24,6 +24,7 @@
 import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
+import LogoSvgCom from "@/assets/svg/logo.svg?component";
 
 defineOptions({
   name: "Sidebar"
@@ -55,10 +56,6 @@ const getActiveRoutePath = computed((): string => {
       width: 100%;
       height: 100%;
       color: #000;
-
-      :deep(.svg-icon) {
-        margin: 0 14px;
-      }
     }
   }
 

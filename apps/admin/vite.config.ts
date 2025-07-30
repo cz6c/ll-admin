@@ -60,7 +60,8 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     },
     // 预构建配置
     optimizeDeps: {
-      include: optimizeDepsElementPlusIncludes
+      include: optimizeDepsElementPlusIncludes,
+      exclude: ["@iconify/json"]
     }
   };
 };

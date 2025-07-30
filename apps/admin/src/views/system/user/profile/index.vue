@@ -14,32 +14,37 @@
             </div>
             <div class="list-group">
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="user" /><span>用户名称：</span></div>
+                <div class="label"><IconifyIcon icon="ep:user" /><span>用户名称：</span></div>
                 <div class="value">{{ state.userName }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="phone" /><span>手机号码：</span></div>
+                <div class="label"><IconifyIcon icon="ep:iphone" /><span>手机号码：</span></div>
                 <div class="value">{{ state.phonenumber }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="email" /><span>用户邮箱：</span></div>
+                <div class="label"><IconifyIcon icon="ep:message" /><span>用户邮箱：</span></div>
                 <div class="value">{{ state.email }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="tree" /><span>所属部门：</span></div>
+                <div class="label"><IconifyIcon icon="ri:git-branch-line" /><span>所属部门：</span></div>
                 <div v-if="state.dept" class="value">
-                  {{ state.dept.deptName }} /
+                  {{ state.dept.deptName }}
+                </div>
+              </div>
+              <div class="list-group-item">
+                <div class="label"><IconifyIcon icon="ep:suitcase" /><span>所属岗位：</span></div>
+                <div v-if="state.posts" class="value">
                   {{ state.posts?.map(c => c.postName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="peoples" /><span>所属角色：</span></div>
+                <div class="label"><IconifyIcon icon="ri:user-settings-line" /><span>所属角色：</span></div>
                 <div class="value">
                   {{ state.roles?.map(c => c.roleName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
-                <div class="label"><SvgIcon name="date" /><span>创建日期：</span></div>
+                <div class="label"><IconifyIcon icon="ep:calendar" /><span>创建日期：</span></div>
                 <div class="value">{{ state.createTime }}</div>
               </div>
             </div>

@@ -87,7 +87,7 @@ pnpm run build:test
 │  │  ├─images            #  图片资源
 │  │  └─svg               #  svg资源
 │  ├─components         #  公共组件
-│  │  ├─SvgIcon           #  svg组件
+│  │  ├─IconifyIcon           #  图标组件
 │  │  │  └─index.vue
 │  │  └─index.ts          #  组件统一注册
 │  ├─directives         #  公共指令

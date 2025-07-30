@@ -1,22 +1,33 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "useDefineForClassFields": true,
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": false,
     "jsx": "preserve",
     "sourceMap": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "strictNullChecks": false, // 忽略 null undefined 警告
-    "lib": ["esnext", "dom"],
-    "types": ["element-plus/global", "node", "vite-plugin-svg-icons/client", "vite/client"],
     "allowSyntheticDefaultImports": true,
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+    "types": [
+      "element-plus/global",
+      "node",
+      "vite/client",
+      "unplugin-icons/types/vue"
+    ],
     "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"],
-      "#/*": ["types/*"]
+      "@/*": [
+        "src/*"
+      ],
+      "#/*": [
+        "types/*"
+      ]
     }
   },
   "include": [
@@ -28,5 +39,9 @@
     "types/**/*.ts",
     "vite.config.ts"
   ],
-  "exclude": ["node_modules", "dist", "**/*.js"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.js"
+  ]
 }

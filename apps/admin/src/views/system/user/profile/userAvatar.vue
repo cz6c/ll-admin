@@ -29,21 +29,21 @@
           <el-upload action="#" :http-request="requestUpload" :show-file-list="false" :before-upload="beforeUpload">
             <el-button>
               选择
-              <el-icon class="el-icon--right"><Upload /></el-icon>
+              <IconifyIcon class="el-icon--right" icon="ep:upload" />
             </el-button>
           </el-upload>
         </el-col>
         <el-col :lg="{ span: 1, offset: 2 }" :md="2">
-          <el-button icon="Plus" @click="changeScale(1)" />
+          <el-button :icon="useRenderIcon('ep:plus')" @click="changeScale(1)" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="Minus" @click="changeScale(-1)" />
+          <el-button :icon="useRenderIcon('ep:minus')" @click="changeScale(-1)" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshLeft" @click="rotateLeft()" />
+          <el-button :icon="useRenderIcon('ep:refresh-left')" @click="rotateLeft()" />
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshRight" @click="rotateRight()" />
+          <el-button :icon="useRenderIcon('ep:refresh-right')" @click="rotateRight()" />
         </el-col>
         <el-col :lg="{ span: 2, offset: 6 }" :md="2">
           <el-button type="primary" @click="sumbit()">提 交</el-button>
@@ -58,6 +58,7 @@ import { uploadAvatar } from "@/api/system/user";
 import { uploadImg } from "@/api/public";
 import { useAuthStore } from "@/store/modules/auth";
 import $feedback from "@/utils/feedback";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "UserAvatar"
@@ -177,7 +178,7 @@ function closeDialog() {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   cursor: pointer;
-  line-height: 110px;
+  line-height: 120px;
   border-radius: 50%;
 }
 </style>

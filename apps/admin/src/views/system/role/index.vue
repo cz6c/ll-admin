@@ -63,9 +63,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "新增",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Plus"
+      plain: true
     },
+    icon: "ep:plus",
     authCode: "add",
     handleClick: () => {
       handleAdd();
@@ -75,9 +75,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     handleClick: () => {
       handleDelete();
@@ -91,9 +91,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "导出",
     props: {
       type: "warning",
-      plain: true,
-      icon: "Download"
+      plain: true
     },
+    icon: "ep:download",
     authCode: "export",
     handleClick: () => {
       handleExport();
@@ -176,9 +176,9 @@ const rowButtons: BtnOptionsProps<SysRoleVo>[] = [
     btnText: "修改",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Edit"
+      plain: true
     },
+    icon: "ep:edit",
     authCode: "edit",
     disabled: ({ row }) => {
       return row.roleId === 1;
@@ -192,9 +192,9 @@ const rowButtons: BtnOptionsProps<SysRoleVo>[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     disabled: ({ row }) => {
       return row.roleId === 1;

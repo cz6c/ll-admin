@@ -145,20 +145,20 @@ const uploadError = () => {
         <img :src="modelValue" class="upload-image" />
         <div class="upload-handle" @click.stop>
           <div v-if="!self_disabled" class="handle-icon" @click="editImg">
-            <el-icon><Edit /></el-icon>
+            <IconifyIcon icon="ep:edit" class="el-icon" />
           </div>
           <div class="handle-icon" @click="imgViewVisible = true">
-            <el-icon><ZoomIn /></el-icon>
+            <IconifyIcon icon="ep:zoom-in" class="el-icon" />
           </div>
           <div v-if="!self_disabled" class="handle-icon" @click="deleteImg">
-            <el-icon><Delete /></el-icon>
+            <IconifyIcon icon="ep:delete" class="el-icon" />
           </div>
         </div>
       </template>
       <template v-else>
         <div class="upload-empty">
           <slot name="empty">
-            <el-icon><Plus /></el-icon>
+            <IconifyIcon icon="ep:plus" class="el-icon--upload" />
           </slot>
         </div>
       </template>
@@ -286,11 +286,6 @@ const uploadError = () => {
         display: flex;
         justify-content: center;
         align-items: center;
-
-        .el-icon {
-          font-size: 28px;
-          color: var(--el-text-color-secondary);
-        }
       }
     }
   }

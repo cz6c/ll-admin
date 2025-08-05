@@ -62,9 +62,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "新增",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Plus"
+      plain: true
     },
+    icon: "ep:plus",
     authCode: "add",
     handleClick: () => {
       handleAdd();
@@ -74,9 +74,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     handleClick: () => {
       handleDelete();
@@ -171,9 +171,9 @@ const rowButtons: BtnOptionsProps<SysNoticeVo>[] = [
     btnText: "修改",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Edit"
+      plain: true
     },
+    icon: "ep:edit",
     authCode: "edit",
     handleClick: ({ row }) => {
       handleUpdate(row);
@@ -183,9 +183,9 @@ const rowButtons: BtnOptionsProps<SysNoticeVo>[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     handleClick: ({ row }) => {
       handleDelete(row);

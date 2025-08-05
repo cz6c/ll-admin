@@ -13,6 +13,7 @@ import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditUserForm from "./components/EditUserForm.vue";
 import { SearchProps } from "@/components/SearchForm/type";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "User"
@@ -69,9 +70,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "新增",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Plus"
+      plain: true
     },
+    icon: "ep:plus",
     authCode: "add",
     handleClick: () => {
       handleAdd();
@@ -81,9 +82,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     handleClick: () => {
       handleDelete();
@@ -97,9 +98,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "导入",
     props: {
       type: "info",
-      plain: true,
-      icon: "Upload"
+      plain: true
     },
+    icon: "ep:upload",
     authCode: "import",
     handleClick: () => {
       handleImport();
@@ -109,9 +110,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "导出",
     props: {
       type: "warning",
-      plain: true,
-      icon: "Download"
+      plain: true
     },
+    icon: "ep:download",
     authCode: "export",
     handleClick: () => {
       handleExport();
@@ -213,9 +214,9 @@ const rowButtons: BtnOptionsProps<UserVo>[] = [
     btnText: "修改",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Edit"
+      plain: true
     },
+    icon: "ep:edit",
     authCode: "edit",
     disabled: ({ row }) => {
       return row.userId === 1;
@@ -229,9 +230,9 @@ const rowButtons: BtnOptionsProps<UserVo>[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     disabled: ({ row }) => {
       return row.userType === "00";
@@ -245,9 +246,9 @@ const rowButtons: BtnOptionsProps<UserVo>[] = [
     btnText: "重置密码",
     props: {
       type: "warning",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "resetPwd",
     disabled: ({ row }) => {
       return row.userId === 1;
@@ -405,7 +406,7 @@ getDeptTree();
       <template #left>
         <!--部门数据-->
         <div class="mr-8">
-          <el-input v-model="deptName" placeholder="请输入部门名称" clearable prefix-icon="Search" style="margin-bottom: 20px" />
+          <el-input v-model="deptName" placeholder="请输入部门名称" clearable :prefix-icon="useRenderIcon('ep:search')" style="margin-bottom: 20px" />
           <el-tree
             ref="deptTreeRef"
             :data="deptOptions"

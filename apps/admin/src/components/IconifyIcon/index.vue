@@ -15,7 +15,7 @@ const props = defineProps<IconProps>();
   <Icon
     v-bind="{
       'aria-hidden': false,
-      style: props?.style ? Object.assign(props.style, { outline: 'none' }) : { outline: 'none' },
+      style: props?.style ? Object.assign(props.style, { outline: 'none', 'vertical-align': 'middle' }) : { outline: 'none', 'vertical-align': 'middle' },
       ...props
     }"
   />

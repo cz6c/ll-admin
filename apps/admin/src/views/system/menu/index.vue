@@ -42,9 +42,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "新增",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Plus"
+      plain: true
     },
+    icon: "ep:plus",
     authCode: "add",
     handleClick: () => {
       handleAdd(null);
@@ -54,9 +54,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "展开/折叠",
     props: {
       type: "info",
-      plain: true,
-      icon: "Sort"
+      plain: true
     },
+    icon: "ep:sort",
     handleClick: () => {
       expandAllChange();
     }
@@ -159,9 +159,9 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
     btnText: "修改",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Edit"
+      plain: true
     },
+    icon: "ep:edit",
     authCode: "edit",
     handleClick: ({ row }) => {
       handleUpdate(row, row.menuType === "F");
@@ -171,9 +171,9 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
     btnText: "功能",
     props: {
       type: "warning",
-      plain: true,
-      icon: "Pointer"
+      plain: true
     },
+    icon: "ep:pointer",
     authCode: "add",
     visible: ({ row }) => {
       return row.menuType === "M" && row.parentId !== 0;
@@ -186,9 +186,9 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
     btnText: "子级",
     props: {
       type: "primary",
-      plain: true,
-      icon: "Plus"
+      plain: true
     },
+    icon: "ep:plus",
     authCode: "add",
     visible: ({ row }) => {
       return row.menuType === "M" && row.parentId === 0;
@@ -201,9 +201,9 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
     btnText: "删除",
     props: {
       type: "danger",
-      plain: true,
-      icon: "Delete"
+      plain: true
     },
+    icon: "ep:delete",
     authCode: "remove",
     handleClick: ({ row }) => {
       handleDelete(row);

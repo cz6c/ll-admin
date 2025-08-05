@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { SearchProps } from "./type";
 import { BreakPoint } from "@/components/Grid/type";
-import { Delete, Search, ArrowDown, ArrowUp } from "@element-plus/icons-vue";
 import SearchFormItem from "./components/SearchFormItem.vue";
 import Grid from "@/components/Grid/index.vue";
 import GridItem from "@/components/Grid/components/GridItem.vue";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "SearchForm"
@@ -57,13 +57,11 @@ const showCollapse = computed(() => {
       </GridItem>
       <GridItem suffix>
         <div class="operation">
-          <el-button type="primary" :icon="Search" @click="$emit('search')">搜索</el-button>
-          <el-button :icon="Delete" @click="$emit('reset')">重置</el-button>
+          <el-button type="primary" :icon="useRenderIcon('ep:search')" @click="$emit('search')">搜索</el-button>
+          <el-button :icon="useRenderIcon('ep:refresh')" @click="$emit('reset')">重置</el-button>
           <el-button v-if="showCollapse" type="primary" link class="search-isOpen" @click="collapsed = !collapsed">
             {{ collapsed ? "展开" : "合并" }}
-            <el-icon class="el-icon--right">
-              <component :is="collapsed ? ArrowDown : ArrowUp" />
-            </el-icon>
+            <IconifyIcon class="el-icon--right" :icon="collapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
           </el-button>
         </div>
       </GridItem>

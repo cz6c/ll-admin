@@ -12,18 +12,16 @@
         @contextmenu.prevent="openMenu(tag, $event)"
       >
         {{ tag.title }}
-        <span v-if="!isAffix(tag)" @click.prevent.stop="closeSelectedTag(tag)">
-          <close class="el-icon-close" style="width: 1em; height: 1em; vertical-align: middle" />
-        </span>
+        <IconifyIcon v-if="!isAffix(tag)" icon="ep:close" @click.prevent.stop="closeSelectedTag(tag)" />
       </router-link>
     </scroll-pane>
     <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
-      <li @click="refreshSelectedTag(selectedTag)"><refresh-right style="width: 1em; height: 1em" /> 刷新页面</li>
-      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><close style="width: 1em; height: 1em" /> 关闭当前</li>
-      <li @click="closeOthersTags"><circle-close style="width: 1em; height: 1em" /> 关闭其他</li>
-      <li v-if="!isFirstView()" @click="closeLeftTags"><back style="width: 1em; height: 1em" /> 关闭左侧</li>
-      <li v-if="!isLastView()" @click="closeRightTags"><right style="width: 1em; height: 1em" /> 关闭右侧</li>
-      <li @click="closeAllTags(selectedTag)"><circle-close style="width: 1em; height: 1em" /> 全部关闭</li>
+      <li @click="refreshSelectedTag(selectedTag)"><IconifyIcon icon="ep:refresh-right" /> 刷新页面</li>
+      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ep:close" /> 关闭当前</li>
+      <li @click="closeOthersTags"><IconifyIcon icon="ep:circle-close" /> 关闭其他</li>
+      <li v-if="!isFirstView()" @click="closeLeftTags"><IconifyIcon icon="ep:back" /> 关闭左侧</li>
+      <li v-if="!isLastView()" @click="closeRightTags"><IconifyIcon icon="ep:right" /> 关闭右侧</li>
+      <li @click="closeAllTags(selectedTag)"><IconifyIcon icon="ep:circle-close" /> 全部关闭</li>
     </ul>
   </div>
 </template>
@@ -283,19 +281,6 @@ function handleScroll() {
       &:hover {
         background: #eee;
       }
-    }
-  }
-}
-</style>
-
-<style lang="scss">
-//reset element css of el-icon-close
-.tags-view-wrapper {
-  .tags-view-item {
-    .el-icon-close {
-      width: 16px;
-      height: 16px;
-      vertical-align: -2px !important;
     }
   }
 }

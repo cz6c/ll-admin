@@ -146,7 +146,7 @@ getInfo();
             <template #label>
               <span>
                 <el-tooltip content="页面功能权限标识，如`add,edit`" placement="top">
-                  <el-icon><question-filled /></el-icon>
+                  <IconifyIcon icon="ep:question-filled" />
                 </el-tooltip>
                 功能标识
               </span>
@@ -170,7 +170,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="组件路径，如：`system/user/index`，默认在`views`目录下" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   组件路径
                 </span>
@@ -183,7 +183,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="访问的路由地址，如：`user`，如外链需以`http(s)://`开头" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   路由地址
                 </span>
@@ -196,7 +196,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   是否外链
                 </span>
@@ -211,7 +211,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="组件name，需与页面组件name一致，使用大驼峰命名，如：`User`" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   组件名称
                 </span>
@@ -224,7 +224,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="选择缓存则会被`keep-alive`缓存，需匹配组件名称使用" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   是否缓存
                 </span>
@@ -240,7 +240,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="选择隐藏路由时，可配置高亮菜单，如：`/system/user`" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   高亮菜单
                 </span>
@@ -252,7 +252,7 @@ getInfo();
               <template #label>
                 <span>
                   <el-tooltip content="选择隐藏则路由将不会出现在侧边栏，但仍然可以访问" placement="top">
-                    <el-icon><question-filled /></el-icon>
+                    <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   显示状态
                 </span>

@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
-    "@element-plus/icons-vue": "^2.3.1",
     "@llcz/common": "^1.0.4",
     "@vueuse/core": "^13.5.0",
     "@wangeditor/editor": "^5.1.23",

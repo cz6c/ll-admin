@@ -8,6 +8,7 @@ import { VueUseComponentsResolver, ElementPlusResolver } from "unplugin-vue-comp
 
 export const AutoRegistryComponents = () => {
   return Components({
+    dirs: ["src/components"],
     extensions: ["vue", "md"],
     deep: true,
     dts: "types/components.d.ts",

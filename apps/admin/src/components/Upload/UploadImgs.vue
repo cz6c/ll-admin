@@ -159,17 +159,17 @@ const handlePictureCardPreview: UploadProps["onPreview"] = file => {
     >
       <div class="upload-empty">
         <slot name="empty">
-          <el-icon><Plus /></el-icon>
+          <IconifyIcon icon="ep:plus" class="el-icon--upload" />
         </slot>
       </div>
       <template #file="{ file }">
         <img :src="file.url" class="upload-image" />
         <div class="upload-handle" @click.stop>
           <div class="handle-icon" @click="handlePictureCardPreview(file)">
-            <el-icon><ZoomIn /></el-icon>
+            <IconifyIcon icon="ep:zoom-in" class="el-icon" />
           </div>
           <div v-if="!self_disabled" class="handle-icon" @click="handleRemove(file)">
-            <el-icon><Delete /></el-icon>
+            <IconifyIcon icon="ep:delete" class="el-icon" />
           </div>
         </div>
       </template>
@@ -292,11 +292,6 @@ const handlePictureCardPreview: UploadProps["onPreview"] = file => {
       display: flex;
       justify-content: center;
       align-items: center;
-
-      .el-icon {
-        font-size: 28px;
-        color: var(--el-text-color-secondary);
-      }
     }
   }
 

@@ -62,7 +62,7 @@ function submitFileForm() {
       :auto-upload="false"
       drag
     >
-      <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+      <IconifyIcon class="el-icon--upload" icon="ep:upload-filled" />
       <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
       <template #tip>
         <div class="el-upload__tip text-center">

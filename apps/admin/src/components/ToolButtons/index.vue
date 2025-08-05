@@ -5,6 +5,7 @@ defineOptions({
 import { hasPermission } from "@/directives/modules/permission";
 import { BtnOptionsProps } from "./ToolButton.vue";
 import { isFunction } from "@llcz/common";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 const {
   buttons,
@@ -36,7 +37,7 @@ const getBtnVisible = (btn: BtnOptionsProps) => {
     <el-popover v-if="moreBtnsCom.length > 0" effect="light" trigger="hover" placement="left-start">
       <ToolButton v-for="(btn, index) in moreBtnsCom" :key="index" :options="{ ...btn, props: { ...btn.props, size, text: true } }" :data="data" />
       <template v-slot:reference>
-        <el-button icon="Operation" :size="size" />
+        <el-button :icon="useRenderIcon('ep:operation')" :size="size" />
       </template>
     </el-popover>
   </div>

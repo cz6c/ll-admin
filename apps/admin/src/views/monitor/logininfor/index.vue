@@ -63,9 +63,9 @@ const toolbarButtons: BtnOptionsProps[] = [
     btnText: "导出",
     props: {
       type: "warning",
-      plain: true,
-      icon: "Download"
+      plain: true
     },
+    icon: "ep:download",
     authCode: "export",
     handleClick: () => {
       handleExport();

@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { isFunction } from "@llcz/common";
 import { ElButton } from "element-plus";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "ToolButton"
 });
 
-type ElButtonProps = Parameters<(typeof ElButton)["setup"]>[0];
+type ElButtonProps = Omit<Parameters<(typeof ElButton)["setup"]>[0], "icon">;
 export type BtnOptionsProps<T = any> = {
   btnText: string;
+  icon: string;
   props: Partial<ElButtonProps>;
   authCode?: string;
   visible?: (data: { row: T }) => boolean;
@@ -38,12 +40,12 @@ function handleClick() {
         <p style="color: #f56c6c" v-html="options.disabledTooltip" />
       </template>
       <div>
-        <el-button v-bind="options.props" :disabled="disabledCom" @click.stop="handleClick">
+        <el-button v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
           {{ options.btnText }}
         </el-button>
       </div>
     </el-tooltip>
-    <el-button v-else v-bind="options.props" :disabled="disabledCom" @click.stop="handleClick">
+    <el-button v-else v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
       {{ options.btnText }}
     </el-button>
   </div>

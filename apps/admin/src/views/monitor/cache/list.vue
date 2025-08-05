@@ -6,7 +6,7 @@
           <template #header>
             <Collection style="width: 1em; height: 1em; vertical-align: middle" />
             <span style="vertical-align: middle">缓存列表</span>
-            <el-button style="float: right; padding: 3px 0" link type="primary" icon="Refresh" @click="refreshCacheNames()" />
+            <el-button style="float: right; padding: 3px 0" link type="primary" :icon="useRenderIcon('ep:refresh')" @click="refreshCacheNames()" />
           </template>
           <el-table v-loading="loading" :data="cacheNames" :height="tableHeight" highlight-current-row style="width: 100%" @row-click="getCacheKeys">
             <el-table-column label="序号" width="60" type="index" />
@@ -16,7 +16,7 @@
             <el-table-column label="备注" align="center" prop="remark" :show-overflow-tooltip="true" />
             <el-table-column label="操作" width="60" align="center" class-name="small-padding fixed-width">
               <template #default="scope">
-                <el-button link type="primary" icon="Delete" @click="handleClearCacheName(scope.row)" />
+                <el-button link type="primary" :icon="useRenderIcon('ep:delete')" @click="handleClearCacheName(scope.row)" />
               </template>
             </el-table-column>
           </el-table>
@@ -28,14 +28,14 @@
           <template #header>
             <Key style="width: 1em; height: 1em; vertical-align: middle" />
             <span style="vertical-align: middle">键名列表</span>
-            <el-button style="float: right; padding: 3px 0" link type="primary" icon="Refresh" @click="refreshCacheKeys()" />
+            <el-button style="float: right; padding: 3px 0" link type="primary" :icon="useRenderIcon('ep:refresh')" @click="refreshCacheKeys()" />
           </template>
           <el-table v-loading="subLoading" :data="cacheKeys" :height="tableHeight" highlight-current-row style="width: 100%" @row-click="handleCacheValue">
             <el-table-column label="序号" width="60" type="index" />
             <el-table-column label="缓存键名" align="center" :show-overflow-tooltip="true" :formatter="keyFormatter" />
             <el-table-column label="操作" width="60" align="center" class-name="small-padding fixed-width">
               <template #default="scope">
-                <el-button link type="primary" icon="Delete" @click="handleClearCacheKey(scope.row)" />
+                <el-button link type="primary" :icon="useRenderIcon('ep:delete')" @click="handleClearCacheKey(scope.row)" />
               </template>
             </el-table-column>
           </el-table>
@@ -76,6 +76,7 @@
 <script setup lang="ts">
 import { CacheData } from "#/api/monitor/cache";
 import { listCacheName, listCacheKey, getCacheValue, clearCacheName, clearCacheKey } from "@/api/monitor/cache";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
 import $feedback from "@/utils/feedback";
 
 defineOptions({

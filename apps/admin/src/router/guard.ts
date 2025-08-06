@@ -39,12 +39,9 @@ function setupPermissionGuard(router: Router) {
             console.log("缓存动态路由");
             data = permissionStore.addRoutes;
           } else {
-            data = constRoutes;
-            if (productConfig.isDynamicAddedRoute) {
-              // 向后端请求路由数据
-              const res = await getRouters();
-              data = res.data;
-            }
+            // 向后端请求路由数据
+            const res = await getRouters();
+            data = res.data.concat(constRoutes);
           }
           permissionStore.generateRoutes(data);
           delete to.name; // 删除name, 防止生成路由后重定向到404页面

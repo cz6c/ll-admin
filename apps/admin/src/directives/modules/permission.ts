@@ -2,7 +2,6 @@ import type { App } from "vue";
 import { intersection } from "lodash-es";
 import { isArray } from "@llcz/common";
 import router from "@/router";
-import { productConfig } from "@/config";
 import { useAuthStore } from "@/store/modules/auth";
 
 /**
@@ -10,7 +9,6 @@ import { useAuthStore } from "@/store/modules/auth";
  * @param {string} value
  */
 export function hasPermission(value: string | string[]): boolean {
-  if (!productConfig.isDynamicAddedRoute) return true; // 未开启动态路由不处理
   if (value === "default") return true; // 默认code不处理
   const userStore = useAuthStore();
   if (userStore.userId === 1) return true; // 超级管理员不处理

@@ -12,7 +12,7 @@
         @contextmenu.prevent="openMenu(tag, $event)"
       >
         {{ tag.title }}
-        <IconifyIcon v-if="!isAffix(tag)" icon="ep:close" @click.prevent.stop="closeSelectedTag(tag)" />
+        <IconifyIcon v-if="!isAffix(tag)" icon="ep:close" class="ml-1" @click.prevent.stop="closeSelectedTag(tag)" />
       </router-link>
     </scroll-pane>
     <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
@@ -226,7 +226,8 @@ function handleScroll() {
   box-sizing: border-box;
   .tags-view-wrapper {
     .tags-view-item {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       position: relative;
       cursor: pointer;
       height: 26px;

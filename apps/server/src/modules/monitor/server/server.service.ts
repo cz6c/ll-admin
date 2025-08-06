@@ -29,17 +29,19 @@ export class ServerService {
 
   getDiskStatus() {
     const disks = nodeDiskInfo.getDiskInfoSync();
-    const sysFiles = disks.map((disk: any) => {
-      return {
-        dirName: disk._mounted,
-        typeName: disk._filesystem,
-        total: this.bytesToGB(disk._blocks) + "GB",
-        used: this.bytesToGB(disk._used) + "GB",
-        free: this.bytesToGB(disk._available) + "GB",
-        usage: ((disk._used / disk._blocks || 0) * 100).toFixed(2)
-      };
-    });
-    return sysFiles;
+    const sysFileInfo = disks.reduce(
+      (info: any, disk) => {
+        info.total += disk.blocks;
+        info.used += disk.used;
+        return info;
+      },
+      { total: 0, used: 0 }
+    );
+    return {
+      total: this.bytesToGB(sysFileInfo.total),
+      used: this.bytesToGB(sysFileInfo.used),
+      usage: ((sysFileInfo.used / sysFileInfo.total) * 100).toFixed(2)
+    };
   }
 
   // 获取服务器IP地址
@@ -60,21 +62,15 @@ export class ServerService {
     const cpuInfo = cpus.reduce(
       (info: any, cpu) => {
         info.cpuNum += 1;
-        info.user += cpu.times.user;
-        info.sys += cpu.times.sys;
         info.idle += cpu.times.idle;
-        info.total += cpu.times.user + cpu.times.sys + cpu.times.idle;
+        info.total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
         return info;
       },
-      { user: 0, sys: 0, idle: 0, total: 0, cpuNum: 0 }
+      { idle: 0, total: 0, cpuNum: 0 }
     );
     const cpu = {
       cpuNum: cpuInfo.cpuNum,
-      total: cpuInfo.total,
-      sys: ((cpuInfo.sys / cpuInfo.total) * 100).toFixed(2),
-      used: ((cpuInfo.user / cpuInfo.total) * 100).toFixed(2),
-      wait: 0.0,
-      free: ((cpuInfo.idle / cpuInfo.total) * 100).toFixed(2)
+      usage: ((1 - cpuInfo.idle / cpuInfo.total) * 100).toFixed(2)
     };
     return cpu;
   }
@@ -86,13 +82,10 @@ export class ServerService {
     const freeMemory = os.freemem();
     // 已用内存 = 总内存 - 空闲内存
     const usedMemory = totalMemory - freeMemory;
-    // 使用率 = 1 - 空闲内存 / 总内存
-    const memoryUsagePercentage = (((totalMemory - freeMemory) / totalMemory) * 100).toFixed(2);
     const mem = {
       total: this.bytesToGB(totalMemory),
       used: this.bytesToGB(usedMemory),
-      free: this.bytesToGB(freeMemory),
-      usage: memoryUsagePercentage
+      usage: ((usedMemory / totalMemory) * 100).toFixed(2)
     };
     return mem;
   }

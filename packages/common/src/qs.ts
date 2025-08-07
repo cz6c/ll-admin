@@ -33,8 +33,8 @@ export function queryStringify(obj: Record<string, any>): string {
       // 处理数组类型
       if (Array.isArray(value)) {
         return value
-          .filter((v) => !isDef(v) && !isNull(v))
-          .map((item) => `${encodedKey}=${encodeURIComponent(item)}`)
+          .filter(v => !isDef(v) && !isNull(v))
+          .map(item => `${encodedKey}=${encodeURIComponent(item)}`)
           .join("&");
       }
 
@@ -42,10 +42,7 @@ export function queryStringify(obj: Record<string, any>): string {
       if (isObject(value)) {
         return Object.entries(value)
           .filter(([_, v]) => !isDef(v) && !isNull(v))
-          .map(
-            ([k, v]) =>
-              `encodedKey[${encodeURIComponent(k)}]=${encodeURIComponent(v)}`
-          )
+          .map(([k, v]) => `encodedKey[${encodeURIComponent(k)}]=${encodeURIComponent(v)}`)
           .join("&");
       }
 

@@ -1,7 +1,5 @@
-const toString = Object.prototype.toString;
-
 export function is(val: unknown, type: string) {
-  return toString.call(val) === `[object ${type}]`;
+  return Object.prototype.toString.call(val) === `[object ${type}]`;
 }
 
 /**
@@ -143,16 +141,6 @@ export function isElement(val: unknown): val is Element {
 }
 
 /**
- * @description: 验证链接 https://www  http://www
- * @param {string} url
- * @return {*}
- */
-export function isUrl(url: string): boolean {
-  const reg = /^http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
-  return reg.test(url);
-}
-
-/**
  * @description: 验证链接 https://  http://
  * @param {string} url
  * @return {*}
@@ -178,6 +166,6 @@ export function isExternal(path: string): boolean {
  */
 export function isEmail(email: string): boolean {
   const reg =
-    /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
   return reg.test(email);
 }

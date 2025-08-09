@@ -75,7 +75,7 @@ const gridOptions = reactive<VxeGridProps<DeptTreeVo>>({
     // parentField: "parentId"
   },
   toolbarConfig: {
-    refresh: {
+    refreshOptions: {
       queryMethod: () => {
         return initListSearch();
       }

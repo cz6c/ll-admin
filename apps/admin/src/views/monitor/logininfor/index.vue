@@ -87,7 +87,7 @@ const gridOptions = reactive<VxeGridProps<MonitorLoginlogVO>>({
     pageSize: 10
   },
   toolbarConfig: {
-    refresh: {
+    refreshOptions: {
       queryMethod: () => {
         return initListSearch();
       }

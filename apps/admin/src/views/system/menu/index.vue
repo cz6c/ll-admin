@@ -75,7 +75,7 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
     // parentField: "parentId"
   },
   toolbarConfig: {
-    refresh: {
+    refreshOptions: {
       queryMethod: () => {
         return initListSearch();
       }

@@ -34,6 +34,7 @@ VxeUI.setConfig({
   },
   grid: {
     toolbarConfig: {
+      refresh: true,
       zoom: true,
       custom: true
     },

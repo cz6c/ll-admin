@@ -61,7 +61,7 @@ const apiQuery = reactive<SysUserListParams>({
   endTime: null,
   orderByColumn: null,
   order: null,
-  userName: "undefined",
+  userName: undefined,
   phonenumber: undefined,
   status: undefined,
   deptId: undefined
@@ -134,7 +134,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
     pageSize: 10
   },
   toolbarConfig: {
-    refresh: {
+    refreshOptions: {
       queryMethod: () => {
         return initListSearch();
       }

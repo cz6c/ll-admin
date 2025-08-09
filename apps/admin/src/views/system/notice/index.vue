@@ -102,7 +102,7 @@ const gridOptions = reactive<VxeGridProps<SysNoticeVo>>({
     pageSize: 10
   },
   toolbarConfig: {
-    refresh: {
+    refreshOptions: {
       queryMethod: () => {
         return initListSearch();
       }

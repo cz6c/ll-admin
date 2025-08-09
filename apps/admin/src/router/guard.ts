@@ -6,8 +6,6 @@ import type { Router } from "vue-router";
 import nProgress from "nprogress";
 import { ElMessage, ElNotification } from "element-plus";
 import { productConfig } from "@/config";
-import constRoutes from "@/router/local";
-import { getRouters } from "@/api/public";
 
 /**
  * @description:  创建项目前置权限
@@ -26,34 +24,21 @@ function setupPermissionGuard(router: Router) {
     // 验证token
     if (token) {
       if (to.name === RouterEnum.BASE_LOGIN_NAME) {
-        return next({ path: (to.query?.redirect as string) || "/" });
+        return next({ path: to.query?.redirect ? decodeURIComponent(to.query.redirect as string) : "/" });
       }
       // 验证用户权限
       if (!authStore.userId) {
         try {
-          console.log("刷新页面");
           await authStore.getLoginUserInfo();
-          let data = [];
-          // 是否已经生成过动态路由
-          if (permissionStore.addRoutes.length > 0) {
-            console.log("缓存动态路由");
-            data = permissionStore.addRoutes;
-          } else {
-            // 向后端请求路由数据
-            const res = await getRouters();
-            data = res.data.concat(constRoutes);
-          }
-          permissionStore.generateRoutes(data);
-          delete to.name; // 删除name, 防止生成路由后重定向到404页面
-          next({ ...to, replace: true });
+          permissionStore.initRouter().then(router => {
+            console.log("🚀 ~ setupPermissionGuard ~ router:", router, to.name, to.fullPath);
+            // 确保动态路由完全加入路由列表并且不影响静态路由（注意：动态路由刷新时router.beforeEach可能会触发两次，第一次触发动态路由还未完全添加，第二次动态路由才完全添加到路由列表，如果需要在router.beforeEach做一些判断可以在to.name存在的条件下去判断，这样就只会触发一次）
+            if (to.name === RouterEnum.BASE_NOT_FOUND_NAME) router.push(to.fullPath);
+          });
+          next();
         } catch (error) {
           // 登录过期或登录无效，前端登出
           useAuthStore().webLogout();
-          next({
-            name: RouterEnum.BASE_LOGIN_NAME,
-            query: { redirect: to.fullPath },
-            replace: true
-          });
         }
       } else {
         next();
@@ -64,11 +49,6 @@ function setupPermissionGuard(router: Router) {
       } else {
         // 无权限，前端登出
         useAuthStore().webLogout();
-        next({
-          name: RouterEnum.BASE_LOGIN_NAME,
-          query: { redirect: to.fullPath },
-          replace: true
-        });
       }
     }
   });

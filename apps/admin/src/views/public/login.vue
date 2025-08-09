@@ -62,9 +62,10 @@ import $feedback from "@/utils/feedback";
 import { getPlatFormUUID } from "@/utils/auth";
 import LoginSvgCom from "@/assets/svg/login.svg?component";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
+import { RouterEnum } from "@/router";
 
 defineOptions({
-  name: "Login"
+  name: RouterEnum.BASE_LOGIN_NAME
 });
 
 const BASE_TITLE = computed(() => {
@@ -77,7 +78,6 @@ const router = useRouter();
 const loading = ref(false);
 const captchaEnabled = ref(false);
 const codeUrl = ref("");
-let redirect = ref("");
 const loginForm = reactive({
   password: "123456",
   userName: "admin",
@@ -90,17 +90,6 @@ const rules: FormRules = {
   userName: [{ required: true, message: "请输入账号", trigger: "blur" }],
   code: [{ required: true, trigger: "change", message: "请输入验证码" }]
 };
-
-watch(
-  () => route,
-  newValue => {
-    const query = newValue.query;
-    if (query.redirect) {
-      redirect.value = String(query.redirect);
-    }
-  },
-  { immediate: true }
-);
 
 /**
  * @description: 登录
@@ -124,7 +113,7 @@ function handleLogin() {
         }
         await useAuthStore().login(loginForm);
         router.push({
-          path: redirect.value || "/"
+          path: route.query?.redirect ? decodeURIComponent(route.query.redirect as string) : "/"
         });
         loading.value = false;
       } catch (error: any) {

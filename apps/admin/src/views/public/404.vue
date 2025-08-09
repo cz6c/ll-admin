@@ -15,8 +15,10 @@
 </template>
 
 <script setup lang="ts">
+import { RouterEnum } from "@/router";
+
 defineOptions({
-  name: "PAGE_NOT_FOUND_NAME"
+  name: RouterEnum.BASE_NOT_FOUND_NAME
 });
 </script>
 

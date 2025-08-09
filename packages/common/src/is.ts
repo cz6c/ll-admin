@@ -93,7 +93,7 @@ export function isObject(val: any): val is Record<any, any> {
 }
 
 /**
- * @description: 验证空
+ * @description: 验证数组、对象、map、set是否为空
  * @param {T} val
  * @return {*}
  */

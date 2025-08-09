@@ -3,6 +3,8 @@ import router, { constantRoutes, Layout, IFrame } from "@/router";
 import { cloneDeep, omit } from "lodash-es";
 import { isArray, isHttp } from "@llcz/common";
 import type { AppRouteRecordRaw } from "#/utils";
+import { getRouters } from "@/api/public";
+import constRoutes from "@/router/local";
 
 // 匹配views里面所有的.vue文件
 const modules = import.meta.glob("./../../views/**/*.vue");
@@ -18,12 +20,27 @@ export const usePermissionStore = defineStore("permission", {
     addRoutes: []
   }),
   actions: {
-    generateRoutes(data) {
+    async initRouter() {
+      let data = [];
+      // 是否已经生成过动态路由
+      if (this.addRoutes.length > 0) {
+        data = this.addRoutes;
+      } else {
+        // 向后端请求路由数据
+        const res = await getRouters();
+        data = res.data.concat(constRoutes);
+      }
+      this.generateRoutes(data);
+      return router;
+    },
+    generateRoutes(data: AppRouteRecordRaw[]) {
       this.addRoutes = data;
       const sdata = JSON.parse(JSON.stringify(data));
       const asyncRoutes = menuToRoute(sdata);
+      const routes = router.options.routes[0].children;
       asyncRoutes.forEach(route => {
-        if (!isHttp(route.path)) {
+        if (!isHttp(route.path) && routes.findIndex(r => r.path === route.path) === -1) {
+          routes.push(route);
           router.addRoute(route); // 动态添加可访问路由表
         }
       });

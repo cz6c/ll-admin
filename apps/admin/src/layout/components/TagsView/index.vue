@@ -43,7 +43,7 @@ const { proxy } = getCurrentInstance();
 const route = useRoute();
 const router = useRouter();
 
-const visitedViews = computed(() => useTagsViewStore().visitedViews.filter(item => item.name !== RouterEnum.BASE_REDIRECT_NAME));
+const visitedViews = computed(() => useTagsViewStore().visitedViews);
 const routes = computed(() => usePermissionStore().routes);
 
 watch(route, () => {
@@ -115,7 +115,7 @@ function initTags() {
 }
 function addTags() {
   const { name } = route;
-  if (name) {
+  if (name && name !== RouterEnum.BASE_REDIRECT_NAME) {
     useTagsViewStore().addView(route);
     if (route.meta.link) {
       useTagsViewStore().addIframeView(route);

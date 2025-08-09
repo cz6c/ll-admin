@@ -11,7 +11,9 @@ export enum RouterEnum {
   // basic home name
   BASE_HOME_NAME = "Index",
   // redirect name
-  BASE_REDIRECT_NAME = "Redirect"
+  BASE_REDIRECT_NAME = "Redirect",
+  // 404
+  BASE_NOT_FOUND_NAME = "NOT_FOUND"
 }
 
 // 公共菜单
@@ -61,7 +63,7 @@ const routesList: AppRouteRecordRaw[] = [
   },
   {
     path: "/:pathMatch(.*)*",
-    name: "PAGE_NOT_FOUND_NAME",
+    name: RouterEnum.BASE_NOT_FOUND_NAME,
     component: () => import("@/views/public/404.vue"),
     hidden: true
   }

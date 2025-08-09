@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { RouterEnum } from "@/router";
+
 defineOptions({
-  name: "Redirect"
+  name: RouterEnum.BASE_REDIRECT_NAME
 });
 
 const route = useRoute();

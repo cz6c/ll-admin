@@ -5,6 +5,7 @@ import type { LoginParams } from "#/api";
 import type { UserVo } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
 import { useTagsViewStore } from "@/store/modules/tagsView";
+import router, { RouterEnum } from "@/router";
 
 interface authStoreState {
   userInfo: UserVo;
@@ -62,6 +63,13 @@ export const useAuthStore = defineStore("auth", {
       setTimeout(() => {
         usePermissionStore().$reset();
         useTagsViewStore().$reset();
+        router.replace({
+          name: RouterEnum.BASE_LOGIN_NAME,
+          replace: true,
+          query: {
+            redirect: encodeURIComponent(router.currentRoute.value.fullPath)
+          }
+        });
       }, 500);
     }
   }

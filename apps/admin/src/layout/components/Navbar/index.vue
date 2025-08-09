@@ -42,7 +42,6 @@ import Breadcrumb from "./components/BreadCrumb.vue";
 import FoldButton from "./components/FoldButton.vue";
 import HeaderSearch from "@/components/HeaderSearch/index.vue";
 import { useAuthStore } from "@/store/modules/auth";
-import { RouterEnum } from "@/router";
 import { useLayoutStore } from "@/store/modules/layout";
 
 defineOptions({
@@ -52,7 +51,6 @@ defineOptions({
 const userStore = useAuthStore();
 const layoutStore = useLayoutStore();
 const sidebar = computed(() => layoutStore.sidebar);
-const router = useRouter();
 const emits = defineEmits(["setLayout", "toggleClick"]);
 /**
  * @description: 登出
@@ -65,13 +63,6 @@ async function logout() {
   })
     .then(() => {
       userStore.webLogout();
-      router.replace({
-        name: RouterEnum.BASE_LOGIN_NAME,
-        replace: true,
-        query: {
-          redirect: `${router.currentRoute.value.fullPath}`
-        }
-      });
     })
     .catch(() => {});
 }

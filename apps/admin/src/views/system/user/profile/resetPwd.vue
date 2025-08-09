@@ -21,13 +21,13 @@ import { updateUserPwd } from "@/api/system/user";
 import { useAuthStore } from "@/store/modules/auth";
 import { FormInstance, FormRules } from "element-plus";
 import $feedback from "@/utils/feedback";
+import { useTagsViewStore } from "@/store/modules/tagsView";
 
 defineOptions({
   name: "ResetPwd"
 });
 
 const userStore = useAuthStore();
-const { proxy } = getCurrentInstance();
 const pwdRef = ref<FormInstance>(null);
 
 const user = reactive({
@@ -68,6 +68,6 @@ function submit() {
 }
 /** 关闭按钮 */
 function close() {
-  proxy.$tab.closePage(undefined);
+  useTagsViewStore().closePage(undefined);
 }
 </script>

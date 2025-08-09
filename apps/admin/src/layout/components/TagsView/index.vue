@@ -8,7 +8,6 @@
         :class="isActive(tag) ? 'active' : ''"
         :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
         class="tags-view-item"
-        @click.middle="!isAffix(tag) ? closeSelectedTag(tag) : ''"
         @contextmenu.prevent="openMenu(tag, $event)"
       >
         {{ tag.title }}
@@ -16,12 +15,12 @@
       </router-link>
     </scroll-pane>
     <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
-      <li @click="refreshSelectedTag(selectedTag)"><IconifyIcon icon="ep:refresh-right" /> 刷新页面</li>
-      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ep:close" /> 关闭当前</li>
+      <li @click="refreshSelectedTag()"><IconifyIcon icon="ep:refresh-right" /> 刷新页面</li>
+      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ep:close" /> 关闭</li>
       <li @click="closeOthersTags"><IconifyIcon icon="ep:circle-close" /> 关闭其他</li>
       <li v-if="!isFirstView()" @click="closeLeftTags"><IconifyIcon icon="ep:back" /> 关闭左侧</li>
       <li v-if="!isLastView()" @click="closeRightTags"><IconifyIcon icon="ep:right" /> 关闭右侧</li>
-      <li @click="closeAllTags(selectedTag)"><IconifyIcon icon="ep:circle-close" /> 全部关闭</li>
+      <li @click="closeAllTags()"><IconifyIcon icon="ep:circle-close" /> 全部关闭</li>
     </ul>
   </div>
 </template>
@@ -136,46 +135,56 @@ function moveToCurrentTag() {
     }
   });
 }
-function refreshSelectedTag(view) {
-  proxy.$tab.refreshPage(view);
+function refreshSelectedTag() {
+  useTagsViewStore().refreshPage(selectedTag.value);
   if (route.meta.link) {
     useTagsViewStore().delIframeView(route);
   }
 }
 function closeSelectedTag(view) {
-  proxy.$tab.closePage(view).then(({ visitedViews }) => {
-    if (isActive(view)) {
-      toLastView(visitedViews, view);
-    }
-  });
+  useTagsViewStore()
+    .closePage(view)
+    .then(({ visitedViews }) => {
+      if (isActive(view)) {
+        toLastView(visitedViews, view);
+      }
+    });
 }
 function closeRightTags() {
-  proxy.$tab.closeRightPage(selectedTag.value).then(visitedViews => {
-    if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
-      toLastView(visitedViews);
-    }
-  });
+  useTagsViewStore()
+    .delRightViews(selectedTag.value)
+    .then(visitedViews => {
+      if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
+        toLastView(visitedViews);
+      }
+    });
 }
 function closeLeftTags() {
-  proxy.$tab.closeLeftPage(selectedTag.value).then(visitedViews => {
-    if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
-      toLastView(visitedViews);
-    }
-  });
+  useTagsViewStore()
+    .delLeftViews(selectedTag.value)
+    .then(visitedViews => {
+      if (!visitedViews.find(i => i.fullPath === route.fullPath)) {
+        toLastView(visitedViews);
+      }
+    });
 }
 function closeOthersTags() {
   router.push(selectedTag.value).catch(() => {});
-  proxy.$tab.closeOtherPage(selectedTag.value).then(() => {
-    moveToCurrentTag();
-  });
+  useTagsViewStore()
+    .delOthersViews(selectedTag.value)
+    .then(() => {
+      moveToCurrentTag();
+    });
 }
-function closeAllTags(view) {
-  proxy.$tab.closeAllPage().then(({ visitedViews }) => {
-    if (affixTags.value.some(tag => tag.path === route.path)) {
-      return;
-    }
-    toLastView(visitedViews, view);
-  });
+function closeAllTags() {
+  useTagsViewStore()
+    .delAllViews()
+    .then(({ visitedViews }) => {
+      if (affixTags.value.some(tag => tag.path === route.path)) {
+        return;
+      }
+      toLastView(visitedViews, selectedTag.value);
+    });
 }
 function toLastView(visitedViews, view) {
   const latestView = visitedViews.slice(-1)[0];

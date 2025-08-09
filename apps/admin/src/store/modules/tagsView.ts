@@ -1,3 +1,5 @@
+import router from "@/router";
+
 export const useTagsViewStore = defineStore("tags-view", {
   state: () => ({
     visitedViews: [], // 已浏览页签
@@ -128,7 +130,7 @@ export const useTagsViewStore = defineStore("tags-view", {
         }
       }
     },
-    delRightTags(view) {
+    delRightViews(view) {
       return new Promise(resolve => {
         const index = this.visitedViews.findIndex(v => v.path === view.path);
         if (index === -1) {
@@ -151,7 +153,7 @@ export const useTagsViewStore = defineStore("tags-view", {
         resolve([...this.visitedViews]);
       });
     },
-    delLeftTags(view) {
+    delLeftViews(view) {
       return new Promise(resolve => {
         const index = this.visitedViews.findIndex(v => v.path === view.path);
         if (index === -1) {
@@ -173,6 +175,39 @@ export const useTagsViewStore = defineStore("tags-view", {
         });
         resolve([...this.visitedViews]);
       });
+    },
+    // 刷新当前tab页签
+    refreshPage(view) {
+      const { path, query, matched } = router.currentRoute.value;
+      if (view === undefined) {
+        matched.forEach(m => {
+          if (m.components && m.components.default && m.components.default.name) {
+            if (!["Layout"].includes(m.components.default.name)) {
+              view = { name: m.components.default.name, path: path, query: query };
+            }
+          }
+        });
+      }
+      return this.delCachedView(view).then(() => {
+        const { path, query } = view;
+        router.replace({
+          path: "/redirect" + path,
+          query: query
+        });
+      });
+    },
+    // 关闭指定tab页签
+    closePage(view) {
+      if (view === undefined) {
+        return this.delView(router.currentRoute.value).then(({ visitedViews }) => {
+          const latestView = visitedViews.slice(-1)[0];
+          if (latestView) {
+            return router.push(latestView.fullPath);
+          }
+          return router.push("/");
+        });
+      }
+      return this.delView(view);
     }
   },
   persist: {

@@ -25,6 +25,7 @@ import { useDict } from "@/hooks/useDict";
 import { useAuthStore } from "@/store/modules/auth";
 import { FormInstance, FormRules } from "element-plus";
 import $feedback from "@/utils/feedback";
+import { useTagsViewStore } from "@/store/modules/tagsView";
 
 defineOptions({
   name: "UserInfo"
@@ -34,7 +35,6 @@ const { UserSexEnum } = toRefs(useDict("UserSexEnum"));
 const user = defineModel<UpdateProfileDto>("user");
 
 const authStore = useAuthStore();
-const { proxy } = getCurrentInstance();
 const userRef = ref<FormInstance>(null);
 
 const rules = ref<FormRules>({
@@ -62,6 +62,6 @@ function submit() {
 }
 /** 关闭按钮 */
 function close() {
-  proxy.$tab.closePage(undefined);
+  useTagsViewStore().closePage(undefined);
 }
 </script>

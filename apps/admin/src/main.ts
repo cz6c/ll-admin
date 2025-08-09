@@ -5,7 +5,6 @@ import router, { setupRouter } from "@/router";
 import { setupRouterGuard } from "@/router/guard";
 import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
-import { installPlugins } from "@/plugins";
 import "@/utils/sso";
 import MQTTClientSingleton from "@/utils/mqtt";
 // 带重试机制的发布
@@ -26,9 +25,6 @@ const isProd = process.env.NODE_ENV === "production";
 isProd && addPreventDefault();
 
 const app = createApp(App);
-
-// 全局方法挂载
-installPlugins(app);
 
 // 配置store
 setupStore(app);

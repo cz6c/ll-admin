@@ -1,37 +1,16 @@
-import { isArray, isNumber } from "@llcz/common";
+import { isNumber } from "@llcz/common";
 
 /**
- * @description 处理值无数据情况
- * @param {*} callValue 需要处理的值
- * @returns {String}
- * */
-export function formatValue(callValue: any): string {
-  // 如果当前值为数组，使用 / 拼接（根据需求自定义）
-  if (isArray(callValue)) return callValue.length ? callValue.join(" / ") : "--";
-  return callValue ?? "--";
-}
-
-/**
- * @description 处理 prop 为多级嵌套的情况，返回的数据 (列如: prop: user.name)
- * @param {Object} row 当前行数据
- * @param {String} prop 当前 prop
- * @returns {*}
- * */
-export function handleRowAccordingToProp(row: { [key: string]: any }, prop: string): any {
-  if (!prop.includes(".")) return row[prop] ?? "--";
-  prop.split(".").forEach(item => (row = row[item] ?? "--"));
-  return row;
-}
-
-/**
- * @description 处理 prop，当 prop 为多级嵌套时 ==> 返回最后一级 prop
- * @param {String} prop 当前 prop
- * @returns {String}
- * */
-export function handleProp(prop: string): string {
-  const propArr = prop.split(".");
-  if (propArr.length == 1) return prop;
-  return propArr[propArr.length - 1];
+ * @description: 根据对象的引用获取值
+ * @param {any} target
+ * @param {string} refer
+ * @return {*}
+ */
+export function getValueByReference(target: any, refer: string | string[]): any {
+  const refers: string[] = typeof refer === "string" ? (refer as string).split(".") : (refer as string[]);
+  return refers.reduce((obj, key) => {
+    return obj && obj[key];
+  }, target);
 }
 
 /**

@@ -9,7 +9,7 @@
     "build": "vite build --mode development",
     "build:prod": "vite build --mode production",
     "preview": "vite preview",
-    "lint:eslint": "eslint --cache --max-warnings 0  \"{src,build}/**/*.{vue,ts,tsx,js,jsx}\" --fix",
+    "lint:eslint": "eslint --max-warnings 0  \"{src,build}/**/*.{vue,ts,tsx,js,jsx}\" --fix",
     "lint:prettier": "prettier --write  \"{src,build}/**/*.{vue,ts,tsx,js,jsx,json,tsx,css,less,scss,vue,html,md}\"",
     "svgo": "svgo -f ./src/assets/svg -o ./src/assets/svg",
     "openapi2ts": "openapi2ts"
@@ -22,7 +22,7 @@
     "@wangeditor/editor-for-vue": "^5.1.12",
     "axios": "^1.10.0",
     "echarts": "^5.6.0",
-    "element-plus": "^2.10.4",
+    "element-plus": "^2.10.6",
     "file-saver": "^2.0.5",
     "fuse.js": "^7.1.0",
     "js-cookie": "^3.0.5",

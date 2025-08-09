@@ -4,7 +4,7 @@ import { useDictStore } from "@/store/modules/dict";
 interface DictData {
   label: string;
   value: string;
-  elTagType: string;
+  // elTagType: string;
 }
 
 export interface DictDataMap {

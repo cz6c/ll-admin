@@ -8,7 +8,7 @@ import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditPostForm from "./components/EditNoticeForm.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 
 defineOptions({
   name: "Notice"
@@ -18,25 +18,27 @@ const route = useRoute();
 
 const { StatusEnum, NoticeTypeEnum } = toRefs(useDict("StatusEnum", "NoticeTypeEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "noticeTitle",
     label: "公告标题"
   },
   {
-    el: "input",
+    type: "input",
     prop: "createBy",
     label: "操作人员"
   },
   {
-    el: "select",
+    type: "select",
     prop: "noticeType",
     label: "公告类型",
-    options: NoticeTypeEnum
+    props: {
+      options: NoticeTypeEnum.value
+    }
   },
   {
-    el: "date-picker",
+    type: "date-picker",
     prop: "dateRange",
     label: "创建时间",
     props: {
@@ -243,7 +245,7 @@ function handleUpdate(row) {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

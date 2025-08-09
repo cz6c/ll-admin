@@ -9,7 +9,7 @@ import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditPostForm from "./components/EditPostForm.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 
 defineOptions({
   name: "Post"
@@ -19,22 +19,24 @@ const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "postCode",
     label: "岗位编码"
   },
   {
-    el: "input",
+    type: "input",
     prop: "postName",
     label: "岗位名称"
   },
   {
-    el: "select",
+    type: "select",
     prop: "status",
     label: "状态",
-    options: StatusEnum
+    props: {
+      options: StatusEnum.value
+    }
   }
 ]);
 const apiQuery = reactive<ListPostDto>({
@@ -246,7 +248,7 @@ function handleUpdate(row) {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

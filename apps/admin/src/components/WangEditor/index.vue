@@ -14,7 +14,6 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, computed, inject, shallowRef, onBeforeUnmount } from "vue";
 import { IToolbarConfig, IEditorConfig, IDomEditor } from "@wangeditor/editor";
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import "@wangeditor/editor/dist/css/style.css";

@@ -12,7 +12,7 @@ import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditUserForm from "./components/EditUserForm.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
@@ -23,25 +23,27 @@ const route = useRoute();
 
 const { UserSexEnum, StatusEnum, UserTypeEnum } = toRefs(useDict("UserSexEnum", "StatusEnum", "UserTypeEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "userName",
     label: "用户账号"
   },
   {
-    el: "input",
+    type: "input",
     prop: "phonenumber",
     label: "手机号码"
   },
   {
-    el: "select",
+    type: "select",
     prop: "status",
     label: "用户状态",
-    options: StatusEnum
+    props: {
+      options: StatusEnum.value
+    }
   },
   {
-    el: "date-picker",
+    type: "date-picker",
     prop: "dateRange",
     label: "注册时间",
     props: {
@@ -59,7 +61,7 @@ const apiQuery = reactive<SysUserListParams>({
   endTime: null,
   orderByColumn: null,
   order: null,
-  userName: undefined,
+  userName: "undefined",
   phonenumber: undefined,
   status: undefined,
   deptId: undefined
@@ -398,7 +400,7 @@ getDeptTree();
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

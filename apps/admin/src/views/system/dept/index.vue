@@ -4,7 +4,7 @@ import { DeptTreeVo, ListDeptDto } from "#/api/system/dept";
 import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
@@ -19,17 +19,19 @@ const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "deptName",
     label: "部门名称"
   },
   {
-    el: "select",
+    type: "select",
     prop: "status",
     label: "部门状态",
-    options: StatusEnum
+    props: {
+      options: StatusEnum.value
+    }
   }
 ]);
 const apiQuery = reactive<ListDeptDto>({
@@ -234,7 +236,7 @@ function handleUpdate(row) {
     <!-- 表格数据 -->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

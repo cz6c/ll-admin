@@ -6,7 +6,7 @@ import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import EditRoleForm from "./components/EditRoleForm.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
@@ -19,25 +19,27 @@ const route = useRoute();
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "roleName",
     label: "角色名称"
   },
   {
-    el: "input",
+    type: "input",
     prop: "roleKey",
     label: "权限字符"
   },
   {
-    el: "select",
+    type: "select",
     prop: "status",
     label: "角色状态",
-    options: StatusEnum
+    props: {
+      options: StatusEnum.value
+    }
   },
   {
-    el: "date-picker",
+    type: "date-picker",
     prop: "dateRange",
     label: "创建时间",
     props: {
@@ -283,7 +285,7 @@ function handleUpdate(row) {
     <!-- 表格数据 -->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

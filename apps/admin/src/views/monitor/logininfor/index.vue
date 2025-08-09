@@ -7,7 +7,7 @@ import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 
 defineOptions({
   name: "Logininfor"
@@ -17,25 +17,27 @@ const route = useRoute();
 
 const { SuccessErrorEnum } = toRefs(useDict("SuccessErrorEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "ipaddr",
     label: "登录地址"
   },
   {
-    el: "input",
+    type: "input",
     prop: "userName",
     label: "用户名称"
   },
   {
-    el: "select",
+    type: "select",
     prop: "status",
     label: "登录状态",
-    options: SuccessErrorEnum
+    props: {
+      options: SuccessErrorEnum.value
+    }
   },
   {
-    el: "date-picker",
+    type: "date-picker",
     prop: "dateRange",
     label: "登录时间",
     props: {
@@ -159,7 +161,7 @@ function handleExport() {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

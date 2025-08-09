@@ -9,7 +9,7 @@ import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditConfigForm from "./components/EditConfigForm.vue";
-import { SearchProps } from "@/components/SearchForm/type";
+import { SearchFormItem } from "@/components/FormView/type";
 
 defineOptions({
   name: "Config"
@@ -19,25 +19,27 @@ const route = useRoute();
 
 const { YesNoEnum } = toRefs(useDict("YesNoEnum"));
 
-const searchList = reactive<SearchProps[]>([
+const searchList = reactive<SearchFormItem[]>([
   {
-    el: "input",
+    type: "input",
     prop: "configName",
     label: "参数名称"
   },
   {
-    el: "input",
+    type: "input",
     prop: "configKey",
     label: "参数键名"
   },
   {
-    el: "select",
+    type: "select",
     prop: "configType",
     label: "系统内置",
-    options: YesNoEnum
+    props: {
+      options: YesNoEnum.value
+    }
   },
   {
-    el: "date-picker",
+    type: "date-picker",
     prop: "dateRange",
     label: "创建时间",
     props: {
@@ -262,7 +264,7 @@ function handleUpdate(row) {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm :columns="searchList" :search-param="apiQuery" @search="initListSearch" @reset="handleReset" />
+        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
         <ToolButtons :buttons="toolbarButtons" size="default" />

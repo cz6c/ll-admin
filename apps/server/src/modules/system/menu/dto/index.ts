@@ -32,7 +32,7 @@ export class CreateMenuDto {
   @Length(0, 50)
   name: string;
 
-  @ApiProperty({ required: true })
+  @ApiProperty({ required: false })
   @IsString()
   @Length(0, 200)
   activeMenu: string;

@@ -33,7 +33,7 @@ const routesList: AppRouteRecordRaw[] = [
         path: "/index",
         component: () => import("@/views/dashboard/index.vue"),
         name: RouterEnum.BASE_HOME_NAME,
-        meta: { title: "首页", icon: "ep:home-filled", affix: true }
+        meta: { title: "首页", icon: "ep:home-filled", affix: true, noCache: true }
       }
     ]
   },

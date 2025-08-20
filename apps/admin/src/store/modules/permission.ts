@@ -36,12 +36,12 @@ export const usePermissionStore = defineStore("permission", {
     generateRoutes(data: AppRouteRecordRaw[]) {
       this.addRoutes = data;
       const sdata = JSON.parse(JSON.stringify(data));
-      const asyncRoutes = menuToRoute(sdata);
-      const routes = router.options.routes[0].children;
-      asyncRoutes.forEach(route => {
+      const asyncRoutes = [];
+      const routes = router.options.routes;
+      menuToRoute(sdata).forEach(route => {
         if (!isHttp(route.path) && routes.findIndex(r => r.path === route.path) === -1) {
-          routes.push(route);
           router.addRoute(route); // 动态添加可访问路由表
+          asyncRoutes.push(route);
         }
       });
       this.routes = constantRoutes.concat(asyncRoutes);
@@ -63,7 +63,7 @@ function filterAsyncRouter(asyncRouterMap) {
     if (route.component) {
       if (route.component === "Layout") {
         route.component = Layout;
-      } else if (route.component === "InnerLink") {
+      } else if (route.component === "IFrame") {
         route.component = IFrame;
       } else {
         route.component = loadView(route.component);

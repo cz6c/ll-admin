@@ -19,7 +19,6 @@ const $emit = defineEmits(["success", "cancel"]);
 
 const { StatusEnum, YesNoEnum } = toRefs(useDict("StatusEnum", "YesNoEnum"));
 
-const showChooseIcon = ref(false);
 const menuRef = ref<FormInstance>(null);
 const data = reactive({
   form: {
@@ -55,8 +54,7 @@ const { form, rules } = toRefs(data);
 watch(
   () => unref(form).isFrame,
   val => {
-    unref(rules).name[0].required = val !== "0";
-    unref(rules).component[0].required = val !== "0";
+    form.value.component = val === "0" ? "IFrame" : form.value.component;
   }
 );
 
@@ -71,6 +69,7 @@ async function getInfo() {
     form.value.parentName = props.parentName;
     form.value.menuType = props.isPerm ? "F" : "M";
   }
+  form.value.component = form.value.parentId === 0 ? "Layout" : form.value.component;
 }
 
 /** 提交按钮 */
@@ -169,20 +168,20 @@ getInfo();
             <el-form-item prop="component">
               <template #label>
                 <span>
-                  <el-tooltip content="组件路径，如：`system/user/index`，默认在`views`目录下" placement="top">
+                  <el-tooltip content="如：`system/user/index`，默认在`views`目录下" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   组件路径
                 </span>
               </template>
-              <el-input v-model="form.component" placeholder="请输入组件路径" />
+              <el-input v-model="form.component" placeholder="请输入组件路径" :disabled="form.parentId === 0 || form.isFrame === '0'" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item prop="path">
               <template #label>
                 <span>
-                  <el-tooltip content="访问的路由地址，如：`user`，如外链需以`http(s)://`开头" placement="top">
+                  <el-tooltip content="如：`/system/user`，如外链必须以`http(s)://`开头" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   路由地址
@@ -195,13 +194,13 @@ getInfo();
             <el-form-item prop="isFrame">
               <template #label>
                 <span>
-                  <el-tooltip content="选择是外链则路由地址需要以`http(s)://`开头" placement="top">
+                  <el-tooltip content="选择外链，组件路径为IFrame，路由地址必须以`http(s)://`开头" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   是否外链
                 </span>
               </template>
-              <el-radio-group v-model="form.isFrame">
+              <el-radio-group v-model="form.isFrame" :disabled="form.parentId === 0">
                 <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
               </el-radio-group>
             </el-form-item>
@@ -210,7 +209,7 @@ getInfo();
             <el-form-item prop="name">
               <template #label>
                 <span>
-                  <el-tooltip content="组件name，需与页面组件name一致，使用大驼峰命名，如：`User`" placement="top">
+                  <el-tooltip content="如：`User`，需与页面组件name一致，使用大驼峰命名" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   组件名称
@@ -223,7 +222,7 @@ getInfo();
             <el-form-item prop="isCache">
               <template #label>
                 <span>
-                  <el-tooltip content="选择缓存则会被`keep-alive`缓存，需匹配组件名称使用" placement="top">
+                  <el-tooltip content="选择缓存，则会被`keep-alive`缓存，需匹配组件名称使用" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   是否缓存
@@ -239,7 +238,7 @@ getInfo();
               <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
               <template #label>
                 <span>
-                  <el-tooltip content="选择隐藏路由时，可配置高亮菜单，如：`/system/user`" placement="top">
+                  <el-tooltip content="选择隐藏时，可配置高亮菜单，如：`/system/user`" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   高亮菜单
@@ -251,7 +250,7 @@ getInfo();
             <el-form-item prop="visible">
               <template #label>
                 <span>
-                  <el-tooltip content="选择隐藏则路由将不会出现在侧边栏，但仍然可以访问" placement="top">
+                  <el-tooltip content="选择隐藏则菜单将不会出现在侧边栏，但仍然可以访问" placement="top">
                     <IconifyIcon icon="ep:question-filled" />
                   </el-tooltip>
                   显示状态

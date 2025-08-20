@@ -56,8 +56,10 @@ watch(visible, value => {
     document.body.removeEventListener("click", closeMenu);
   }
 });
-onMounted(() => {
+watch(routes, () => {
   initTags();
+});
+onMounted(() => {
   addTags();
 });
 
@@ -116,9 +118,6 @@ function addTags() {
   const { name } = route;
   if (name && name !== RouterEnum.BASE_REDIRECT_NAME) {
     useTagsViewStore().addView(route);
-    if (route.meta.link) {
-      useTagsViewStore().addIframeView(route);
-    }
   }
   return false;
 }
@@ -137,9 +136,6 @@ function moveToCurrentTag() {
 }
 function refreshSelectedTag() {
   useTagsViewStore().refreshPage(selectedTag.value);
-  if (route.meta.link) {
-    useTagsViewStore().delIframeView(route);
-  }
 }
 function closeSelectedTag(view) {
   useTagsViewStore()

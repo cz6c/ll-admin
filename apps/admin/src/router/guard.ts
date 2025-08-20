@@ -31,7 +31,6 @@ function setupPermissionGuard(router: Router) {
         try {
           await authStore.getLoginUserInfo();
           permissionStore.initRouter().then(router => {
-            console.log("🚀 ~ setupPermissionGuard ~ router:", router, to.name, to.fullPath);
             // 确保动态路由完全加入路由列表并且不影响静态路由（注意：动态路由刷新时router.beforeEach可能会触发两次，第一次触发动态路由还未完全添加，第二次动态路由才完全添加到路由列表，如果需要在router.beforeEach做一些判断可以在to.name存在的条件下去判断，这样就只会触发一次）
             if (to.name === RouterEnum.BASE_NOT_FOUND_NAME) router.push(to.fullPath);
           });

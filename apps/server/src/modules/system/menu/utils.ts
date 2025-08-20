@@ -1,5 +1,5 @@
 import { YesNoEnum } from "@/common/enum/dict";
-import { isURL } from "class-validator";
+import { isHttp } from "@llcz/common";
 
 /**
  * 菜单列表转树形结构
@@ -43,7 +43,7 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
     formattedNode.name = menu.name;
     formattedNode.path = getRouterPath(menu);
     formattedNode.hidden = menu.visible === "1";
-    formattedNode.component = getComponent(menu);
+    formattedNode.component = menu.component;
     formattedNode.meta = {
       title: menu.menuName,
       icon: menu.icon,
@@ -63,42 +63,6 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
 
     return formattedNode;
   });
-};
-
-/**
- * 是否为菜单内部跳转
- *
- * @param menu 菜单信息
- * @return 结果
- */
-const isMenuFrame = (menu): boolean => {
-  return menu.parentId === 0 && menu.isFrame === YesNoEnum.NO;
-};
-
-/**
- * 是否为内链组件
- *
- * @param menu 菜单信息
- * @return 结果
- */
-const isInnerLink = (menu): boolean => {
-  return menu.isFrame === YesNoEnum.YES && isURL(menu.path);
-};
-
-/**
- * 获取组件信息
- *
- * @param menu 菜单信息
- * @return 组件信息
- */
-const getComponent = (menu): string => {
-  let component = "Layout";
-  if (menu.component && !isMenuFrame(menu)) {
-    component = menu.component;
-  } else if (!menu.component && menu.parentId !== 0 && isInnerLink(menu)) {
-    component = "InnerLink";
-  }
-  return component;
 };
 
 /**
@@ -122,13 +86,9 @@ const innerLinkReplaceEach = (path: string): string => {
  */
 const getRouterPath = (menu): string => {
   let routerPath = menu.path;
-  // 内链打开外网方式
-  if (menu.parentId !== 0 && isInnerLink(menu)) {
-    routerPath = innerLinkReplaceEach(routerPath);
-  }
-  // 非外链并且是一级目录（类型为菜单）
-  else if (isMenuFrame(menu)) {
-    routerPath = `/${menu.path}`;
+  // 内链打开外网地址时 处理路由地址
+  if (menu.isFrame === YesNoEnum.YES && isHttp(routerPath)) {
+    routerPath = `/${innerLinkReplaceEach(routerPath)}`;
   }
   return routerPath;
 };

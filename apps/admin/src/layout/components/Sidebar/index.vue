@@ -1,6 +1,6 @@
 <template>
   <div class="side-bar">
-    <div class="logo-container">
+    <div v-if="sidebarLogo" class="logo-container">
       <div class="logo-link">
         <Transition name="el-zoom-in-center" mode="out-in">
           <LogoSvgCom v-if="sidebar.opened" width="26px" height="26px" />
@@ -24,6 +24,7 @@
 import SidebarItem from "./components/SidebarItem.vue";
 import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
+import { useSettingsStore } from "@/store/modules/settings";
 import LogoSvgCom from "@/assets/svg/logo.svg?component";
 
 defineOptions({
@@ -32,6 +33,7 @@ defineOptions({
 
 const routes = computed(() => usePermissionStore().routes);
 const sidebar = computed(() => useLayoutStore().sidebar);
+const sidebarLogo = computed(() => useSettingsStore().sidebarLogo);
 
 const router = useRouter();
 const getActiveRoutePath = computed((): string => {
@@ -43,10 +45,11 @@ const getActiveRoutePath = computed((): string => {
 <style lang="scss" scoped>
 .side-bar {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 
   .logo-container {
     position: relative;
-    overflow: hidden;
     height: 50px;
 
     .logo-link {
@@ -60,7 +63,8 @@ const getActiveRoutePath = computed((): string => {
   }
 
   .side-menu {
-    height: calc(100% - 94px);
+    flex: 1;
+    overflow: hidden;
   }
 
   .code-info {

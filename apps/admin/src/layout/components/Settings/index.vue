@@ -1,27 +1,39 @@
 <template>
   <el-drawer v-model="showSettings" :withHeader="false" direction="rtl" size="300px">
+    <h3 class="drawer-title">系统配置</h3>
+    <el-divider />
     <div class="drawer-item">
-      <span>主题颜色</span>
+      <span>主题色</span>
       <span class="comp-style">
         <el-color-picker v-model="theme" :predefine="predefineColors" @change="themeChange" />
       </span>
     </div>
 
-    <el-divider />
-
-    <h3 class="drawer-title">系统布局配置</h3>
-
     <div class="drawer-item">
-      <span>开启 Tags-Views</span>
+      <span>灰色模式</span>
       <span class="comp-style">
-        <el-switch v-model="tagsView" class="drawer-switch" />
+        <el-switch v-model="greyVal" inline-prompt active-text="开" inactive-text="关" />
       </span>
     </div>
 
     <div class="drawer-item">
-      <span>显示 Logo</span>
+      <span>色弱模式</span>
       <span class="comp-style">
-        <el-switch v-model="sidebarLogo" class="drawer-switch" />
+        <el-switch v-model="weakVal" inline-prompt active-text="开" inactive-text="关" />
+      </span>
+    </div>
+
+    <div class="drawer-item">
+      <span>标签页</span>
+      <span class="comp-style">
+        <el-switch v-model="tagsView" inline-prompt active-text="开" inactive-text="关" />
+      </span>
+    </div>
+
+    <div class="drawer-item">
+      <span>Logo</span>
+      <span class="comp-style">
+        <el-switch v-model="sidebarLogo" inline-prompt active-text="开" inactive-text="关" />
       </span>
     </div>
 
@@ -44,14 +56,24 @@ const theme = ref(settingsStore.theme);
 const storeSettings = computed(() => settingsStore);
 const predefineColors = ref(["#409EFF", "#ff4500", "#ff8c00", "#ffd700", "#90ee90", "#00ced1", "#1e90ff", "#c71585"]);
 
-/** 是否需要tagview */
+const greyVal = computed({
+  get: () => storeSettings.value.greyVal,
+  set: val => {
+    settingsStore.changeSetting({ key: "greyVal", value: val });
+  }
+});
+const weakVal = computed({
+  get: () => storeSettings.value.weakVal,
+  set: val => {
+    settingsStore.changeSetting({ key: "weakVal", value: val });
+  }
+});
 const tagsView = computed({
   get: () => storeSettings.value.tagsView,
   set: val => {
     settingsStore.changeSetting({ key: "tagsView", value: val });
   }
 });
-/**是否需要侧边栏的logo */
 const sidebarLogo = computed({
   get: () => storeSettings.value.sidebarLogo,
   set: val => {
@@ -66,9 +88,11 @@ function themeChange(val) {
 function saveSetting() {
   $feedback.loading("正在保存到本地，请稍候...");
   let layoutSetting = {
+    theme: storeSettings.value.theme,
+    greyVal: storeSettings.value.greyVal,
+    weakVal: storeSettings.value.weakVal,
     tagsView: storeSettings.value.tagsView,
-    sidebarLogo: storeSettings.value.sidebarLogo,
-    theme: storeSettings.value.theme
+    sidebarLogo: storeSettings.value.sidebarLogo
   };
   new WebStorage("localStorage").setItem("layout-setting", layoutSetting);
   setTimeout($feedback.closeLoading(), 1000);

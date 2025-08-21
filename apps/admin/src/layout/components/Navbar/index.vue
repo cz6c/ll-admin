@@ -15,7 +15,7 @@
         <FoldButton />
       </div>
       <!-- 退出登录 -->
-      <el-dropdown trigger="click" @command="handleCommand">
+      <el-dropdown trigger="click">
         <div class="tool">
           <div class="img-wrap">
             <BaseImage :src="userStore.avatar" fit="cover" border-radius="50%" />
@@ -26,13 +26,13 @@
             <el-dropdown-item>个人中心</el-dropdown-item>
           </router-link>
           <el-dropdown-menu class="logout">
-            <el-dropdown-item command="setLayout">
-              <span>布局设置</span>
-            </el-dropdown-item>
-            <el-dropdown-item divided command="logout"> 退出系统 </el-dropdown-item>
+            <el-dropdown-item divided @click="logout"> 退出系统 </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      <div class="tool icon" @click="emits('setLayout')">
+        <IconifyIcon icon="ep:setting" width="18px" height="18px" />
+      </div>
     </div>
   </div>
 </template>
@@ -65,19 +65,6 @@ async function logout() {
       userStore.webLogout();
     })
     .catch(() => {});
-}
-
-function handleCommand(command: string) {
-  switch (command) {
-    case "setLayout":
-      emits("setLayout");
-      break;
-    case "logout":
-      logout();
-      break;
-    default:
-      break;
-  }
 }
 </script>
 

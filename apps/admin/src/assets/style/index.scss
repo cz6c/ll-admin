@@ -8,6 +8,11 @@
   filter: grayscale(100%);
 }
 
+/* 色弱模式 */
+.html-weakness {
+  filter: invert(80%);
+}
+
 .cz-card{
   border-radius: 8px;
   background-color: #fff;

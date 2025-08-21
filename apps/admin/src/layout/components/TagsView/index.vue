@@ -45,10 +45,14 @@ const router = useRouter();
 const visitedViews = computed(() => useTagsViewStore().visitedViews);
 const routes = computed(() => usePermissionStore().routes);
 
-watch(route, () => {
-  addTags();
-  moveToCurrentTag();
-});
+watch(
+  route,
+  () => {
+    addTags();
+    moveToCurrentTag();
+  },
+  { immediate: true }
+);
 watch(visible, value => {
   if (value) {
     document.body.addEventListener("click", closeMenu);
@@ -58,9 +62,6 @@ watch(visible, value => {
 });
 watch(routes, () => {
   initTags();
-});
-onMounted(() => {
-  addTags();
 });
 
 function isActive(r) {

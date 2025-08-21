@@ -1,3 +1,11 @@
+// 设置class
+export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement) {
+  const targetEl = target || document.body;
+  let { className } = targetEl;
+  className = className.replace(clsName, "").trim();
+  targetEl.className = flag ? `${className} ${clsName}` : className;
+}
+
 // 处理主题样式
 export function handleThemeStyle(theme) {
   document.documentElement.style.setProperty("--el-color-primary", theme);

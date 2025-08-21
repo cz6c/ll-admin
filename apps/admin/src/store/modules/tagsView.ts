@@ -2,8 +2,8 @@ import router from "@/router";
 
 export const useTagsViewStore = defineStore("tags-view", {
   state: () => ({
-    visitedViews: [], // 已浏览页签
-    cachedViews: [] // 已缓存页签
+    visitedViews: [], // 已浏览页签route
+    cachedViews: [] // 已缓存页签names
   }),
   actions: {
     addView(view) {

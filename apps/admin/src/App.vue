@@ -12,5 +12,3 @@ defineOptions({
   name: "App"
 });
 </script>
-
-<style></style>

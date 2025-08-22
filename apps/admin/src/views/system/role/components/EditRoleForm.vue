@@ -153,12 +153,7 @@ getInfo();
       </el-form-item>
       <el-form-item prop="roleKey">
         <template #label>
-          <span>
-            <el-tooltip content="控制器中定义的权限字符，如：admin对应服务端@RequireRole('admin')" placement="top">
-              <IconifyIcon icon="ep:question-filled" />
-            </el-tooltip>
-            权限字符
-          </span>
+          <span v-tippy="{ content: `控制器中定义的权限字符，如：admin对应服务端@RequireRole('admin')` }"> 权限字符 </span>
         </template>
         <el-input v-model="form.roleKey" placeholder="请输入权限字符" />
       </el-form-item>

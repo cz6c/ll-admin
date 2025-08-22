@@ -13,7 +13,7 @@ import { productConfig } from "@/config";
  */
 function setupPermissionGuard(router: Router) {
   // 不需要token的白名单
-  const whitePathList: string[] = ["/login"];
+  const whitePathList: string[] = ["/login", "/test"];
 
   router.beforeEach(async (to, from, next) => {
     console.log(to, from);

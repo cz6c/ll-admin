@@ -140,7 +140,7 @@ function getCookie() {
   const password = Cookies.get("password");
   const rememberMe = Cookies.get("rememberMe");
   loginForm.userName = userName === undefined ? loginForm.userName : userName;
-  loginForm.password = password === undefined ? loginForm.password : decrypt(password);
+  loginForm.password = password === undefined ? loginForm.password : (decrypt(password) as string);
   loginForm.rememberMe = rememberMe === undefined ? false : Boolean(rememberMe);
 }
 

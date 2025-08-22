@@ -143,10 +143,8 @@ getInfo();
         <el-col v-if="form.menuType === 'F'" :span="24">
           <el-form-item prop="perm">
             <template #label>
-              <span>
-                <el-tooltip content="页面功能权限标识，如`add,edit`" placement="top">
-                  <IconifyIcon icon="ep:question-filled" />
-                </el-tooltip>
+              <span v-tippy="{ content: '页面功能权限标识，如`add,edit`' }">
+                <IconifyIcon icon="ep:question-filled" />
                 功能标识
               </span>
             </template>
@@ -167,12 +165,7 @@ getInfo();
           <el-col :span="24">
             <el-form-item prop="component">
               <template #label>
-                <span>
-                  <el-tooltip content="如：`system/user/index`，默认在`views`目录下" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  组件路径
-                </span>
+                <span v-tippy="{ content: '如：`system/user/index`，默认在`views`目录下' }"> 组件路径 </span>
               </template>
               <el-input v-model="form.component" placeholder="请输入组件路径" :disabled="form.parentId === 0 || form.isFrame === '0'" />
             </el-form-item>
@@ -180,12 +173,7 @@ getInfo();
           <el-col :span="12">
             <el-form-item prop="path">
               <template #label>
-                <span>
-                  <el-tooltip content="如：`/system/user`，如外链必须以`http(s)://`开头" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  路由地址
-                </span>
+                <span v-tippy="{ content: '如：`/system/user`，如外链必须以`http(s)://`开头' }"> 路由地址 </span>
               </template>
               <el-input v-model="form.path" placeholder="请输入路由地址" />
             </el-form-item>
@@ -193,12 +181,7 @@ getInfo();
           <el-col :span="12">
             <el-form-item prop="isFrame">
               <template #label>
-                <span>
-                  <el-tooltip content="选择外链，组件路径为IFrame，路由地址必须以`http(s)://`开头" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  是否外链
-                </span>
+                <span v-tippy="{ content: '选择外链，组件路径为IFrame，路由地址必须以`http(s)://`开头' }"> 是否外链 </span>
               </template>
               <el-radio-group v-model="form.isFrame" :disabled="form.parentId === 0">
                 <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
@@ -208,12 +191,7 @@ getInfo();
           <el-col :span="12">
             <el-form-item prop="name">
               <template #label>
-                <span>
-                  <el-tooltip content="如：`User`，需与页面组件name一致，使用大驼峰命名" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  组件名称
-                </span>
+                <span v-tippy="{ content: '如：`User`，需与页面组件name一致，使用大驼峰命名' }"> 组件名称 </span>
               </template>
               <el-input v-model="form.name" placeholder="请输入组件名称" />
             </el-form-item>
@@ -221,12 +199,7 @@ getInfo();
           <el-col :span="12">
             <el-form-item prop="isCache">
               <template #label>
-                <span>
-                  <el-tooltip content="选择缓存，则会被`keep-alive`缓存，需匹配组件名称使用" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  是否缓存
-                </span>
+                <span v-tippy="{ content: '选择缓存，则会被`keep-alive`缓存，需匹配组件名称使用' }"> 是否缓存 </span>
               </template>
               <el-radio-group v-model="form.isCache">
                 <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
@@ -237,24 +210,14 @@ getInfo();
             <el-form-item prop="activeMenu">
               <el-input v-model="form.activeMenu" placeholder="请输入高亮菜单" maxlength="255" />
               <template #label>
-                <span>
-                  <el-tooltip content="选择隐藏时，可配置高亮菜单，如：`/system/user`" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  高亮菜单
-                </span>
+                <span v-tippy="{ content: '选择隐藏时，可配置高亮菜单，如：`/system/user`' }"> 高亮菜单 </span>
               </template>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item prop="visible">
               <template #label>
-                <span>
-                  <el-tooltip content="选择隐藏则菜单将不会出现在侧边栏，但仍然可以访问" placement="top">
-                    <IconifyIcon icon="ep:question-filled" />
-                  </el-tooltip>
-                  显示状态
-                </span>
+                <span v-tippy="{ content: '选择隐藏则菜单将不会出现在侧边栏，但仍然可以访问' }"> 显示状态 </span>
               </template>
               <el-radio-group v-model="form.visible">
                 <el-radio v-for="dict in YesNoEnum" :key="dict.value" :label="dict.label" :value="dict.value" />

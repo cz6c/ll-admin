@@ -34,18 +34,14 @@ function handleClick() {
 }
 </script>
 <template>
-  <div>
-    <el-tooltip v-if="options.disabledTooltip" effect="light" trigger="hover" placement="top" :enterable="false" :disabled="!disabledCom">
-      <template v-slot:content>
-        <p style="color: #f56c6c" v-html="options.disabledTooltip" />
-      </template>
-      <div>
-        <el-button v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
-          {{ options.btnText }}
-        </el-button>
-      </div>
-    </el-tooltip>
-    <el-button v-else v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
+  <div
+    v-tippy="{
+      content: !disabledCom ? '' : `<p style='color: #f56c6c' >${options.disabledTooltip}</p>`,
+      allowHTML: true,
+      theme: 'light'
+    }"
+  >
+    <el-button v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
       {{ options.btnText }}
     </el-button>
   </div>

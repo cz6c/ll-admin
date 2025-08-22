@@ -11,9 +11,9 @@
     "build:dev": "rollup -c",
     "build": "rollup -c --environment production",
     "prepack": "pnpm run build",
+    "pack": "npm publish --access public",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint \"src/**/*.ts\" --fix",
-    "publish:prod": "npm publish --access public",
     "preinstall": "npx only-allow pnpm"
   },
   "type": "module",

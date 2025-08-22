@@ -48,6 +48,15 @@ const routesList: AppRouteRecordRaw[] = [
     }
   },
   {
+    path: "/test",
+    name: "Test",
+    component: () => import("@/views/public/test.vue"),
+    hidden: true,
+    meta: {
+      title: "test"
+    }
+  },
+  {
     path: "/redirect",
     name: "RouterEnum.BASE_REDIRECT_NAME",
     component: Layout,

@@ -1,0 +1,127 @@
+.segmented {
+  --control-padding-horizontal: 12px;
+  --control-padding-horizontal-sm: 8px;
+  --segmented-track-padding: 2px;
+  --segmented-line-width: 1px;
+
+  --segmented-border-radius-small: 4px;
+  --segmented-border-radius-base: 6px;
+  --segmented-border-radius-large: 8px;
+
+  box-sizing: border-box;
+  display: inline-block;
+  padding: var(--segmented-track-padding);
+  font-size: var(--el-font-size-base);
+  color: rgba(0, 0, 0, 0.65);
+  background-color: rgb(0 0 0 / 4%);
+  border-radius: var(--segmented-border-radius-base);
+}
+
+.segmented-block {
+  display: flex;
+}
+
+.segmented-block .segmented-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.segmented-block .segmented-item > .segmented-item-label > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* small */
+.segmented.segmented--small {
+  border-radius: var(--segmented-border-radius-small);
+}
+.segmented.segmented--small .segmented-item {
+  border-radius: var(--el-border-radius-small);
+}
+.segmented.segmented--small .segmented-item > div {
+  min-height: calc(var(--el-component-size-small) - var(--segmented-track-padding) * 2);
+  line-height: calc(var(--el-component-size-small) - var(--segmented-track-padding) * 2);
+  padding: 0 calc(var(--control-padding-horizontal-sm) - var(--segmented-line-width));
+}
+
+/* large */
+.segmented.segmented--large {
+  border-radius: var(--segmented-border-radius-large);
+}
+.segmented.segmented--large .segmented-item {
+  border-radius: calc(var(--el-border-radius-base) + var(--el-border-radius-small));
+}
+.segmented.segmented--large .segmented-item > div {
+  min-height: calc(var(--el-component-size-large) - var(--segmented-track-padding) * 2);
+  line-height: calc(var(--el-component-size-large) - var(--segmented-track-padding) * 2);
+  padding: 0 calc(var(--control-padding-horizontal) - var(--segmented-line-width));
+  font-size: var(--el-font-size-medium);
+}
+
+/* default */
+.segmented-item {
+  position: relative;
+  text-align: center;
+  cursor: pointer;
+  border-radius: var(--el-border-radius-base);
+  transition: all 0.1s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+.segmented .segmented-item > div {
+  min-height: calc(var(--el-component-size) - var(--segmented-track-padding) * 2);
+  line-height: calc(var(--el-component-size) - var(--segmented-track-padding) * 2);
+  padding: 0 calc(var(--control-padding-horizontal) - var(--segmented-line-width));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.segmented-group {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-items: flex-start;
+  width: 100%;
+}
+
+.segmented-item > input {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented-item-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.segmented-item--selected {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: none;
+  width: 0;
+  height: 100%;
+  padding: 4px 0;
+  background-color: #fff;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 8px -2px rgb(0 0 0 / 5%),
+    0 1px 4px -1px rgb(0 0 0 / 7%),
+    0 0 1px rgb(0 0 0 / 7%);
+  transition:
+    transform 0.5s cubic-bezier(0.645, 0.045, 0.355, 1),
+    width 0.5s cubic-bezier(0.645, 0.045, 0.355, 1);
+  will-change: transform, width;
+}
+
+.segmented-item--disabled {
+  color: rgba(0, 0, 0, 0.25);
+  cursor: not-allowed;
+}

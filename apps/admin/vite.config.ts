@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { createVitePlugins } from "./build/vite";
 import { wrapperEnv } from "./build/utils";
 import { createProxy } from "./build/vite/proxy";
-import { optimizeDepsElementPlusIncludes } from "./build/vite/optimize";
+import { optimizeDepsInclude } from "./build/vite/optimize";
 
 const pathResolve = (dir: string) => {
   return resolve(process.cwd(), ".", dir);
@@ -60,7 +60,7 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     },
     // 预构建配置
     optimizeDeps: {
-      include: optimizeDepsElementPlusIncludes,
+      include: optimizeDepsInclude,
       exclude: ["@iconify/json"]
     }
   };

@@ -4,15 +4,29 @@
   "version": "0.0.1",
   "license": "MIT",
   "type": "module",
+  "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --mode development",
-    "build:prod": "vite build --mode production",
+    "bs:dev": "vite",
+    "bs:build": "rimraf dist &&  vite build --mode production",
+    "cs:build": "rimraf dist && rimraf release && vite build --mode production && pnpm icon && electron-builder",
+    "cs:staging": "rimraf dist && rimraf release && vite build --mode staging && pnpm icon && electron-builder",
+    "icon": "esno build/icon.ts --input=public/icon.png --output=dist",
     "preview": "vite preview",
     "lint:eslint": "eslint --max-warnings 0  \"{src,build}/**/*.{vue,ts,tsx,js,jsx}\" --fix",
     "lint:prettier": "prettier --write  \"{src,build}/**/*.{vue,ts,tsx,js,jsx,json,tsx,css,less,scss,vue,html,md}\"",
     "svgo": "svgo -f ./src/assets/svg -o ./src/assets/svg",
     "openapi2ts": "openapi2ts"
+  },
+  "description": "ll-admin",
+  "author": {
+    "name": "cz6code",
+    "email": "chenzb961@163.com",
+    "url": "https://github.com/cz6c"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cz6c/ll-admin.git"
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
@@ -48,6 +62,7 @@
     "@eslint/js": "^9.31.0",
     "@iconify/json": "^2.2.362",
     "@iconify/vue": "^5.0.0",
+    "@types/args": "^5.0.3",
     "@types/file-saver": "^2.0.7",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^24.0.14",
@@ -56,11 +71,18 @@
     "@umijs/openapi": "^1.13.15",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vitejs/plugin-vue-jsx": "^5.0.1",
+    "args": "^5.0.3",
+    "electron": "^37.2.6",
+    "electron-builder": "25.1.8",
     "eslint": "^9.31.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.1",
     "eslint-plugin-vue": "^10.3.0",
+    "esno": "^4.8.0",
+    "icon-gen": "^5.0.0",
+    "jimp": "^1.6.0",
     "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
     "sass": "1.89.2",
     "terser": "^5.43.1",
     "typescript": "^5.8.3",
@@ -71,9 +93,10 @@
     "unplugin-vue-components": "^28.8.0",
     "vite": "^7.0.5",
     "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
     "vite-plugin-lazy-import": "^1.0.7",
     "vite-plugin-restart": "^1.0.0",
-    "vite-plugin-vue-devtools": "^7.7.7",
     "vite-svg-loader": "^5.1.0",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.0.2"
@@ -86,5 +109,10 @@
   "engines": {
     "node": ">=18",
     "pnpm": ">=9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   }
 }

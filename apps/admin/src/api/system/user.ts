@@ -1,4 +1,4 @@
-import { $http } from "@/utils/request";
+import $http from "@/utils/request";
 import type {
   UpdateUserDto,
   SysUserListParams,
@@ -13,7 +13,7 @@ import type {
 
 // 查询用户列表
 export function listUser(params: SysUserListParams) {
-  return $http<never, SysUserListResponse>({
+  return $http.request<never, SysUserListResponse>({
     url: `/system/user/list`,
     method: "get",
     params
@@ -22,7 +22,7 @@ export function listUser(params: SysUserListParams) {
 
 // 查询用户详细
 export function getUser(userId: number) {
-  return $http<never, UserInfoVo>({
+  return $http.request<never, UserInfoVo>({
     url: `/system/user/${userId}`,
     method: "get"
   });
@@ -30,7 +30,7 @@ export function getUser(userId: number) {
 
 // 新增用户
 export function addUser(data: UpdateUserDto) {
-  return $http<UpdateUserDto, never>({
+  return $http.request<UpdateUserDto, never>({
     url: `/system/user`,
     method: "post",
     data
@@ -39,7 +39,7 @@ export function addUser(data: UpdateUserDto) {
 
 // 修改用户
 export function updateUser(data: UpdateUserDto) {
-  return $http<UpdateUserDto, never>({
+  return $http.request<UpdateUserDto, never>({
     url: `/system/user/update`,
     method: "post",
     data
@@ -48,7 +48,7 @@ export function updateUser(data: UpdateUserDto) {
 
 // 删除用户
 export function delUser(userIds: string) {
-  return $http({
+  return $http.request({
     url: `/system/user/delete/${userIds}`,
     method: "get"
   });
@@ -56,7 +56,7 @@ export function delUser(userIds: string) {
 
 // 用户密码重置
 export function resetUserPwd(data: ResetPwdDto) {
-  return $http<ResetPwdDto, never>({
+  return $http.request<ResetPwdDto, never>({
     url: `/system/user/resetPwd`,
     method: "post",
     data
@@ -65,7 +65,7 @@ export function resetUserPwd(data: ResetPwdDto) {
 
 // 用户状态修改
 export function changeUserStatus(data: ChangeStatusDto) {
-  return $http<ChangeStatusDto, never>({
+  return $http.request<ChangeStatusDto, never>({
     url: `/system/user/changeStatus`,
     method: "post",
     data
@@ -74,7 +74,7 @@ export function changeUserStatus(data: ChangeStatusDto) {
 
 // 查询用户个人信息
 export function getUserProfile() {
-  return $http<never, UserProfileVo>({
+  return $http.request<never, UserProfileVo>({
     url: `/system/user/profile`,
     method: "get"
   });
@@ -82,7 +82,7 @@ export function getUserProfile() {
 
 // 修改用户个人信息
 export function updateUserProfile(data: UpdateProfileDto) {
-  return $http<UpdateProfileDto, never>({
+  return $http.request<UpdateProfileDto, never>({
     url: `/system/user/profile`,
     method: "post",
     data
@@ -91,7 +91,7 @@ export function updateUserProfile(data: UpdateProfileDto) {
 
 // 用户密码重置
 export function updateUserPwd(data: UpdatePwdDto) {
-  return $http<UpdatePwdDto, never>({
+  return $http.request<UpdatePwdDto, never>({
     url: "/system/user/profile/updatePwd",
     method: "post",
     data
@@ -100,7 +100,7 @@ export function updateUserPwd(data: UpdatePwdDto) {
 
 // 用户头像上传
 export function uploadAvatar(data: { avatar: string }) {
-  return $http<{ avatar: string }, never>({
+  return $http.request<{ avatar: string }, never>({
     url: "/system/user/profile/avatar",
     method: "post",
     data

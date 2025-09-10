@@ -2,23 +2,14 @@ import { Controller, Get, Post, Body, Request, Param, Query } from "@nestjs/comm
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from "@nestjs/swagger";
 import * as Useragent from "useragent";
 import { MainService } from "./main.service";
-import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo } from "./dto/index";
-import { createMath } from "@/common/utils/captcha";
-import { ResultData } from "@/common/utils/result";
-import { RedisService } from "@/modules/redis/redis.service";
-import { ConfigService } from "@/modules/system/config/config.service";
+import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo, RefreshTokenDto } from "./dto/index";
 import { ApiResult, GetRequestUser, RequestUserPayload } from "@/common/decorator";
-import { CacheEnum } from "@/common/enum/loca";
 import { UserVo } from "../system/user/dto";
 
 @ApiTags("auth")
 @Controller("/")
 export class MainController {
-  constructor(
-    private readonly mainService: MainService,
-    private readonly redisService: RedisService,
-    private readonly configService: ConfigService
-  ) {}
+  constructor(private readonly mainService: MainService) {}
 
   @ApiOperation({ summary: "用户登陆" })
   @ApiBody({ type: LoginDto })
@@ -36,6 +27,22 @@ export class MainController {
     return this.mainService.login(user, clientInfo);
   }
 
+  @ApiOperation({ summary: "刷新token" })
+  @ApiBody({ type: RefreshTokenDto })
+  @ApiResult(TokenVo)
+  @Post("/refreshToken")
+  refreshToken(@Body() data: RefreshTokenDto, @Request() req) {
+    const agent = Useragent.parse(req.headers["user-agent"]);
+    const os = agent.os.toJSON().family;
+    const browser = agent.toAgent();
+    const clientInfo = {
+      ipaddr: req.ip,
+      browser: browser,
+      os: os
+    };
+    return this.mainService.refreshToken(data.refreshToken, clientInfo);
+  }
+
   @ApiOperation({ summary: "用户注册" })
   @ApiBody({ type: RegisterDto })
   @ApiResult()
@@ -47,25 +54,8 @@ export class MainController {
   @ApiOperation({ summary: "获取验证图片" })
   @ApiResult(CaptchaImageVo)
   @Get("/captchaImage")
-  async captchaImage(@Query("uuid") uuid: string) {
-    //是否开启验证码
-    const enable = await this.configService.getConfigValue("sys.account.captchaEnabled");
-    const captchaEnabled: boolean = enable.toLowerCase() === "true";
-    const data = {
-      captchaEnabled,
-      img: "",
-      uuid
-    };
-    try {
-      if (captchaEnabled && data.uuid) {
-        const captchaInfo = createMath();
-        data.img = captchaInfo.data;
-        await this.redisService.set(CacheEnum.CAPTCHA_CODE_KEY + data.uuid, captchaInfo.text.toLowerCase(), 1000 * 60 * 5);
-      }
-      return ResultData.ok(data, "操作成功");
-    } catch (error) {
-      return ResultData.fail(500, "生成验证码错误，请重试");
-    }
+  captchaImage(@Query("uuid") uuid: string) {
+    return this.mainService.captchaImage(uuid);
   }
 
   @ApiBearerAuth()

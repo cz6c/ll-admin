@@ -1,11 +1,12 @@
 import { defineStore } from "pinia";
 import { setToken, removeToken } from "@/utils/auth";
-import { login, getLoginUserInfo } from "@/api/public";
+import { login, getLoginUserInfo, refreshToken } from "@/api/public";
 import type { LoginParams } from "#/api";
 import type { UserVo } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 import router, { RouterEnum } from "@/router";
+import $feedback from "@/utils/feedback";
 
 interface authStoreState {
   userInfo: UserVo;
@@ -28,7 +29,7 @@ export const useAuthStore = defineStore("auth", {
      * @param {LoginParams} loginParams
      * @return {*}
      */
-    async login(loginParams: LoginParams): Promise<string | unknown> {
+    async login(loginParams: LoginParams): Promise<{ token: string }> {
       try {
         const { data } = await login(loginParams);
         setToken(data.token);
@@ -71,6 +72,24 @@ export const useAuthStore = defineStore("auth", {
           }
         });
       }, 500);
+    },
+
+    /** 刷新`token` */
+    async handRefreshToken(data): Promise<{ token: string }> {
+      return new Promise((resolve, reject) => {
+        refreshToken(data)
+          .then(data => {
+            setToken(data.data.token);
+            resolve(data.data);
+          })
+          .catch(error => {
+            console.log("🚀 ~ handRefreshToken ~ error:", error);
+            // 登录过期或权限变更处理
+            $feedback.message.error("登录失效");
+            this.webLogout();
+            reject(error);
+          });
+      });
     }
   }
 });

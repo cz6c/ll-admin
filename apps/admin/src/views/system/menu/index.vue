@@ -295,7 +295,7 @@ function handleUpdate(row, isPerm = false) {
     </vxe-grid>
 
     <!-- 添加或修改对话框 -->
-    <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
+    <el-dialog v-model="editDialog.open" :title="editDialog.title" :width="editDialog.isPerm ? '600px' : '800px'" append-to-body>
       <EditMenuForm
         v-if="editDialog.open"
         :menuId="editDialog.menuId"

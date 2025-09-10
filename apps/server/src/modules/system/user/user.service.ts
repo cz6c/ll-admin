@@ -313,6 +313,21 @@ export class UserService {
       return ResultData.fail(500, `您已被停用，如需正常使用请联系管理员`);
     }
 
+    const token = await this.afterLogin(data, clientInfo);
+    return ResultData.ok(
+      {
+        token
+      },
+      "登录成功"
+    );
+  }
+
+  /**
+   * @description: 生成用户token
+   * @param {UserEntity} data
+   * @param {ClientInfoDto} clientInfo
+   */
+  async afterLogin(data: UserEntity, clientInfo: ClientInfoDto) {
     const loginDate = new Date();
     await this.userRepo.update(
       {
@@ -342,17 +357,12 @@ export class UserService {
       ipaddr: clientInfo.ipaddr,
       loginTime: loginDate,
       os: clientInfo.os,
-      token: uuid,
+      uuid,
       user: data,
       roles
     };
-    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`, tokenData, LOGIN_TOKEN_EXPIRESIN);
-    return ResultData.ok(
-      {
-        token
-      },
-      "登录成功"
-    );
+    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.uuid}`, tokenData, LOGIN_TOKEN_EXPIRESIN);
+    return token;
   }
 
   /**
@@ -428,7 +438,7 @@ export class UserService {
    * @param token 令牌
    * @return 数据声明
    */
-  parseToken(token: string) {
+  parseToken(token: string): { uuid: string; userId: number } | null {
     try {
       if (!token) return null;
       const payload = this.jwtService.verify(token.replace("Bearer ", ""));
@@ -436,6 +446,34 @@ export class UserService {
     } catch (error) {
       return null;
     }
+  }
+
+  /**
+   * @description: 刷新token
+   * @param {string} refreshToken
+   * @param {ClientInfoDto} clientInfo
+   */
+  async refreshToken(refreshToken: string, clientInfo: ClientInfoDto) {
+    const payload = this.parseToken(refreshToken);
+    console.log("🚀 ~ UserService ~ refreshToken ~ user:", payload);
+    const data = await this.userRepo.findOne({
+      where: {
+        userId: payload.userId
+      }
+    });
+    if (data.delFlag === DelFlagEnum.DELETE) {
+      return ResultData.fail(500, `您已被禁用，如需正常使用请联系管理员`);
+    }
+    if (data.status === StatusEnum.STOP) {
+      return ResultData.fail(500, `您已被停用，如需正常使用请联系管理员`);
+    }
+    const _token = await this.afterLogin(data, clientInfo);
+    return ResultData.ok(
+      {
+        token: _token
+      },
+      "刷新成功"
+    );
   }
 
   /**
@@ -557,11 +595,11 @@ export class UserService {
    */
   async updateProfile(tokenData: RequestUserPayload, updateProfileDto: UpdateProfileDto) {
     await this.userRepo.update({ userId: tokenData.user.userId }, { ...updateProfileDto, updateBy: tokenData.user.userId });
-    const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
+    const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.uuid}`);
     userData.user.nickName = updateProfileDto.nickName;
     userData.user.email = updateProfileDto.email;
     userData.user.sex = updateProfileDto.sex;
-    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`, userData);
+    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.uuid}`, userData);
     return ResultData.ok();
   }
 
@@ -573,9 +611,9 @@ export class UserService {
    */
   async updateAvatar(tokenData: RequestUserPayload, avatar: string) {
     await this.userRepo.update({ userId: tokenData.user.userId }, { avatar: avatar, updateBy: tokenData.user.userId });
-    const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`);
+    const userData = await this.redisService.get(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.uuid}`);
     userData.user.avatar = avatar;
-    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.token}`, userData);
+    await this.redisService.set(`${CacheEnum.LOGIN_TOKEN_KEY}${tokenData.uuid}`, userData);
     return ResultData.ok();
   }
 

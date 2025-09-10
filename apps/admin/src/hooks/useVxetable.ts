@@ -1,5 +1,4 @@
 import type { VxeGridInstance, VxeGridProps, VxeGridListeners } from "vxe-table";
-import $feedback from "@/utils/feedback";
 import { isFunction } from "@llcz/common";
 import { cloneDeep } from "lodash-es";
 
@@ -57,9 +56,8 @@ export function useTable<T>({ gridOptions, getListApi, apiQuery, beforFn, afterF
       gridOptions.data = list;
       console.log("🚀 ~ getTableData ~ gridOptions.data:", gridOptions.data);
       if (isPager) gridOptions.pagerConfig.total = data.total;
-    } catch (error: any) {
+    } catch (error) {
       console.log(error);
-      $feedback.message.warning(error.message);
     } finally {
       gridOptions.loading = false;
     }

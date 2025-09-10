@@ -23,7 +23,7 @@ const upload = reactive({
   // 是否更新已经存在的用户数据
   updateSupport: 0,
   // 设置上传的请求头部
-  headers: { Authorization: "Bearer " + getToken() }
+  headers: { Authorization: "Bearer " + getToken()?.token }
 });
 const uploadRef = ref(null);
 

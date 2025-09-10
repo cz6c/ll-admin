@@ -1,8 +1,8 @@
-import { $http } from "@/utils/request";
+import $http from "@/utils/request";
 
 // 获取服务信息
 export function getServer() {
-  return $http({
+  return $http.request({
     url: "/monitor/server",
     method: "get"
   });

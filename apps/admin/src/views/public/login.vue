@@ -1,3 +1,103 @@
+<script setup lang="ts">
+import { useAuthStore } from "@/store/modules/auth";
+import type { FormInstance, FormRules } from "element-plus";
+import { getCodeImg } from "@/api/public";
+import { encrypt, decrypt } from "@/utils/jsencrypt";
+import Cookies from "js-cookie";
+import { productConfig } from "@/config";
+import $feedback from "@/utils/feedback";
+import { getPlatFormUUID } from "@/utils/auth";
+import LoginSvgCom from "@/assets/svg/login.svg?component";
+import { useRenderIcon } from "@/hooks/useRenderIcon";
+import { RouterEnum } from "@/router";
+import { usePermissionStore } from "@/store/modules/permission";
+
+defineOptions({
+  name: RouterEnum.BASE_LOGIN_NAME
+});
+
+const BASE_TITLE = computed(() => {
+  return productConfig.title;
+});
+
+const formRef = ref<FormInstance>();
+const route = useRoute();
+const loading = ref(false);
+const captchaEnabled = ref(false);
+const codeUrl = ref("");
+const loginForm = reactive({
+  password: "123456",
+  userName: "admin",
+  rememberMe: false,
+  code: "",
+  uuid: getPlatFormUUID()
+});
+const rules: FormRules = {
+  password: [{ required: true, message: "请输入密码", trigger: "blur" }],
+  userName: [{ required: true, message: "请输入账号", trigger: "blur" }],
+  code: [{ required: true, trigger: "change", message: "请输入验证码" }]
+};
+
+/**
+ * @description: 登录
+ */
+function handleLogin() {
+  if (!unref(formRef)) return;
+  unref(formRef).validate(async valid => {
+    if (valid) {
+      try {
+        loading.value = true;
+        // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
+        if (loginForm.rememberMe) {
+          Cookies.set("userName", loginForm.userName, { expires: 30 });
+          Cookies.set("password", encrypt(loginForm.password), { expires: 30 });
+          Cookies.set("rememberMe", loginForm.rememberMe, { expires: 30 });
+        } else {
+          // 否则移除
+          Cookies.remove("userName");
+          Cookies.remove("password");
+          Cookies.remove("rememberMe");
+        }
+        await useAuthStore().login(loginForm);
+        usePermissionStore()
+          .initRouter()
+          .then(router => {
+            router.push({
+              path: route.query?.redirect ? decodeURIComponent(route.query.redirect as string) : "/"
+            });
+          });
+        loading.value = false;
+      } catch (error: any) {
+        $feedback.message.warning(error.message);
+        loading.value = false;
+        // 重新获取验证码
+        if (captchaEnabled.value) getCode();
+      }
+    }
+  });
+}
+
+async function getCode() {
+  const { data } = await getCodeImg({ uuid: loginForm.uuid });
+  captchaEnabled.value = data.captchaEnabled === undefined ? true : data.captchaEnabled;
+  if (captchaEnabled.value) {
+    codeUrl.value = data.img;
+    loginForm.uuid = data.uuid;
+  }
+}
+
+function getCookie() {
+  const userName = Cookies.get("userName");
+  const password = Cookies.get("password");
+  const rememberMe = Cookies.get("rememberMe");
+  loginForm.userName = userName === undefined ? loginForm.userName : userName;
+  loginForm.password = password === undefined ? loginForm.password : (decrypt(password) as string);
+  loginForm.rememberMe = rememberMe === undefined ? false : Boolean(rememberMe);
+}
+
+getCode();
+getCookie();
+</script>
 <template>
   <div class="login">
     <div class="login-fl">
@@ -50,104 +150,6 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { useAuthStore } from "@/store/modules/auth";
-import type { FormInstance, FormRules } from "element-plus";
-import { getCodeImg } from "@/api/public";
-import { encrypt, decrypt } from "@/utils/jsencrypt";
-import Cookies from "js-cookie";
-import { productConfig } from "@/config";
-import $feedback from "@/utils/feedback";
-import { getPlatFormUUID } from "@/utils/auth";
-import LoginSvgCom from "@/assets/svg/login.svg?component";
-import { useRenderIcon } from "@/hooks/useRenderIcon";
-import { RouterEnum } from "@/router";
-
-defineOptions({
-  name: RouterEnum.BASE_LOGIN_NAME
-});
-
-const BASE_TITLE = computed(() => {
-  return productConfig.title;
-});
-
-const formRef = ref<FormInstance>();
-const route = useRoute();
-const router = useRouter();
-const loading = ref(false);
-const captchaEnabled = ref(false);
-const codeUrl = ref("");
-const loginForm = reactive({
-  password: "123456",
-  userName: "admin",
-  rememberMe: false,
-  code: "",
-  uuid: getPlatFormUUID()
-});
-const rules: FormRules = {
-  password: [{ required: true, message: "请输入密码", trigger: "blur" }],
-  userName: [{ required: true, message: "请输入账号", trigger: "blur" }],
-  code: [{ required: true, trigger: "change", message: "请输入验证码" }]
-};
-
-/**
- * @description: 登录
- */
-function handleLogin() {
-  if (!unref(formRef)) return;
-  unref(formRef).validate(async valid => {
-    if (valid) {
-      try {
-        loading.value = true;
-        // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
-        if (loginForm.rememberMe) {
-          Cookies.set("userName", loginForm.userName, { expires: 30 });
-          Cookies.set("password", encrypt(loginForm.password), { expires: 30 });
-          Cookies.set("rememberMe", loginForm.rememberMe, { expires: 30 });
-        } else {
-          // 否则移除
-          Cookies.remove("userName");
-          Cookies.remove("password");
-          Cookies.remove("rememberMe");
-        }
-        await useAuthStore().login(loginForm);
-        router.push({
-          path: route.query?.redirect ? decodeURIComponent(route.query.redirect as string) : "/"
-        });
-        loading.value = false;
-      } catch (error: any) {
-        $feedback.message.warning(error.message);
-        loading.value = false;
-        // 重新获取验证码
-        if (captchaEnabled.value) getCode();
-      }
-    }
-  });
-}
-
-async function getCode() {
-  const { data } = await getCodeImg({ uuid: loginForm.uuid });
-  captchaEnabled.value = data.captchaEnabled === undefined ? true : data.captchaEnabled;
-  if (captchaEnabled.value) {
-    codeUrl.value = data.img;
-    loginForm.uuid = data.uuid;
-  }
-}
-
-function getCookie() {
-  const userName = Cookies.get("userName");
-  const password = Cookies.get("password");
-  const rememberMe = Cookies.get("rememberMe");
-  loginForm.userName = userName === undefined ? loginForm.userName : userName;
-  loginForm.password = password === undefined ? loginForm.password : (decrypt(password) as string);
-  loginForm.rememberMe = rememberMe === undefined ? false : Boolean(rememberMe);
-}
-
-getCode();
-getCookie();
-</script>
-
 <style scoped lang="scss">
 .login {
   display: flex;

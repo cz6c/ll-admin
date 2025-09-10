@@ -68,6 +68,7 @@ perm:
         { path: '/captchaImage', method: 'GET' },
         { path: '/register', method: 'POST' },
         { path: '/login', method: 'POST' },
+        { path: '/refreshToken', method: 'POST' },
         { path: '/common/area/trees', method: 'GET' },
         { path: '/common/upload', method: 'POST' },
         { path: '/tasks', method: 'POST' },

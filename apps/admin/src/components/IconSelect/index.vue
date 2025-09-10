@@ -109,7 +109,6 @@ watch(
         <el-popover
           :width="372"
           trigger="click"
-          popper-class="pure-popper"
           :popper-options="{
             placement: 'auto'
           }"

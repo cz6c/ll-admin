@@ -1,9 +1,9 @@
-import { $http } from "@/utils/request";
+import $http from "@/utils/request";
 import type { SysMenuListParams, UpdateMenuDto, SysMenuVo, MenuTreeVo, RoleMenuTreeSelect } from "#/api/system/menu";
 
 // 查询菜单详细
 export function getMenuDetail(menuId: number) {
-  return $http<never, SysMenuVo>({
+  return $http.request<never, SysMenuVo>({
     url: `/system/menu/${menuId}`,
     method: "get"
   });
@@ -11,7 +11,7 @@ export function getMenuDetail(menuId: number) {
 
 // 查询菜单下拉树结构
 export function menuTreeSelect(params?: SysMenuListParams) {
-  return $http<never, MenuTreeVo[]>({
+  return $http.request<never, MenuTreeVo[]>({
     url: `/system/menu/treeSelect`,
     method: "get",
     params
@@ -20,7 +20,7 @@ export function menuTreeSelect(params?: SysMenuListParams) {
 
 // 根据角色ID查询菜单下拉树结构
 export function roleMenuTreeSelect(roleId: number) {
-  return $http<never, RoleMenuTreeSelect>({
+  return $http.request<never, RoleMenuTreeSelect>({
     url: `/system/menu/roleMenuTreeSelect/${roleId}`,
     method: "get"
   });
@@ -28,7 +28,7 @@ export function roleMenuTreeSelect(roleId: number) {
 
 // 新增菜单
 export function addMenu(data: UpdateMenuDto) {
-  return $http<UpdateMenuDto, never>({
+  return $http.request<UpdateMenuDto, never>({
     url: `/system/menu/create`,
     method: "post",
     data: data
@@ -37,7 +37,7 @@ export function addMenu(data: UpdateMenuDto) {
 
 // 修改菜单
 export function updateMenu(data: UpdateMenuDto) {
-  return $http<UpdateMenuDto, never>({
+  return $http.request<UpdateMenuDto, never>({
     url: `/system/menu/update`,
     method: "post",
     data: data
@@ -46,7 +46,7 @@ export function updateMenu(data: UpdateMenuDto) {
 
 // 删除菜单
 export function delMenu(menuId: number) {
-  return $http({
+  return $http.request({
     url: `/system/menu/delete/${menuId}`,
     method: "get"
   });

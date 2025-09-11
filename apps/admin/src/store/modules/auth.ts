@@ -77,13 +77,17 @@ export const useAuthStore = defineStore("auth", {
     /** 刷新`token` */
     async handRefreshToken(data): Promise<{ token: string }> {
       return new Promise((resolve, reject) => {
+        if (!data) {
+          $feedback.message.error("登录失效");
+          this.logOut();
+          reject(null);
+        }
         refreshToken(data)
-          .then(data => {
-            setToken(data.data.token);
-            resolve(data.data);
+          .then(res => {
+            setToken(res.data.token);
+            resolve(res.data);
           })
           .catch(error => {
-            console.log("🚀 ~ handRefreshToken ~ error:", error);
             // 登录过期或权限变更处理
             $feedback.message.error("登录失效");
             this.webLogout();

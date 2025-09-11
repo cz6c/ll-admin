@@ -149,7 +149,7 @@ class CzHttp {
               const data = getToken();
               // token过期刷新
               useAuthStore()
-                .handRefreshToken({ refreshToken: data.token })
+                .handRefreshToken({ refreshToken: data?.token })
                 .then(res => {
                   const { token } = res;
                   $config.headers["Authorization"] = formatToken(token);

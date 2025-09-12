@@ -2,10 +2,8 @@
   <div class="side-bar">
     <div v-if="sidebarLogo" class="logo-container">
       <div class="logo-link">
-        <Transition name="el-zoom-in-center" mode="out-in">
-          <LogoSvgCom v-if="sidebar.opened" width="26px" height="26px" />
-          <LogoSvgCom v-else width="26px" height="26px" />
-        </Transition>
+        <LogoSvgCom width="26px" height="26px" />
+        <span v-if="sidebar.opened" class="sidebar-title">{{ productConfig.title }}</span>
       </div>
     </div>
     <div class="side-menu">
@@ -26,6 +24,7 @@ import { useLayoutStore } from "@/store/modules/layout";
 import { usePermissionStore } from "@/store/modules/permission";
 import { useSettingsStore } from "@/store/modules/settings";
 import LogoSvgCom from "@/assets/svg/logo.svg?component";
+import { productConfig } from "@/config";
 
 defineOptions({
   name: "Sidebar"
@@ -45,25 +44,37 @@ const getActiveRoutePath = computed((): string => {
 <style lang="scss" scoped>
 .side-bar {
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  width: 100%;
 
   .logo-container {
     position: relative;
     height: 50px;
+    width: 100%;
 
     .logo-link {
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       width: 100%;
       height: 100%;
-      color: #000;
+      color: #000000;
+
+      .sidebar-title {
+        display: inline-block;
+        font-size: 18px;
+        font-weight: 600;
+        height: 32px;
+        line-height: 32px;
+        margin: 2px 0 0 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
   }
 
   .side-menu {
-    flex: 1;
+    height: calc(100% - 94px);
     overflow: hidden;
   }
 

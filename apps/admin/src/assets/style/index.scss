@@ -15,7 +15,7 @@
 
 .cz-card{
   border-radius: 8px;
-  background-color: #fff;
+  background-color: var(--bg-color);
   padding: 16px;
 }
 
@@ -25,7 +25,7 @@
     margin: 16px;
     box-sizing: border-box;
     /* 50= navbar  50  */
-    height: calc(100vh - 50px - 36px);
+    height: calc(100vh - 50px - 32px);
     // 内容区高度-自动
     &.auto-height {
       height: auto;
@@ -34,8 +34,8 @@
 
   &.hasTagsView {
     .app-page {
-      /* 84 = navbar + tags-view = 50 + 35 */
-      height: calc(100vh - 85px - 36px);
+      /* 88 = navbar + tags-view = 50 + 38 */
+      height: calc(100vh - 88px - 32px);
     }
   }
 }

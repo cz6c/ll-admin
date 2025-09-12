@@ -107,7 +107,7 @@ async function logout() {
 
       &.icon {
         &:hover {
-          background-color: #f6f6f6;
+          background-color: var(--fill-color);
         }
       }
       .img-wrap {

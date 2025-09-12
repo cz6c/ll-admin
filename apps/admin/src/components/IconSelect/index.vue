@@ -44,8 +44,8 @@ const iconItemStyle = computed((): ParameterCSSProperties => {
   return item => {
     if (inputValue.value === currentActiveType.value + item) {
       return {
-        borderColor: "var(--el-color-primary)",
-        color: "var(--el-color-primary)"
+        borderColor: "var(--color-primary)",
+        color: "var(--color-primary)"
       };
     }
   };
@@ -164,8 +164,8 @@ watch(
 <style lang="scss" scoped>
 .icon-item {
   &:hover {
-    color: var(--el-color-primary);
-    border-color: var(--el-color-primary);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
     transform: scaleX(1.05);
     transition: all 0.4s;
   }

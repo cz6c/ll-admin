@@ -182,7 +182,7 @@ getCookie();
         .description {
           font-size: 16px;
           font-weight: 400;
-          color: #999;
+          color: #999999;
           line-height: 36px;
         }
       }
@@ -231,7 +231,7 @@ getCookie();
       bottom: 8px;
       font-size: 12px;
       font-weight: 400;
-      color: #999;
+      color: #999999;
       line-height: 26px;
     }
   }

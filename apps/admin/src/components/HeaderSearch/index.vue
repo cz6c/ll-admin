@@ -159,7 +159,7 @@ watch(searchPool, list => {
       padding-left: 0;
       padding-right: 0;
       box-shadow: none !important;
-      border-bottom: 1px solid #d9d9d9;
+      border-bottom: 1px solid var(--border-color);
       vertical-align: middle;
     }
   }

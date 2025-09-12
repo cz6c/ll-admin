@@ -1,8 +1,20 @@
-$--color-primary: #0068ff;
+$--color-primary: rgb(83, 83, 221);
+$--bg-color: #ffffff;
+$--fill-color: #f0f2f5;
+$--border-color: #dcdfe6;
 
 :root {
+  --color-primary: #{$--color-primary};
+  --color-primary-bg: rgba(83, 83, 221, 0.1);
+  --bg-color: #{$--bg-color};
+  --fill-color: #{$--fill-color};
+  --border-color: #{$--border-color};
+
   // element-plus
   --el-color-primary: #{$--color-primary};
+  --el-bg-color: #{$--bg-color};
+  --el-fill-color: #{$--fill-color};
+  --el-border-color: #{$--border-color};
 
   // vxetable
   --vxe-ui-font-primary-color: #{$--color-primary};

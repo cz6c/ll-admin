@@ -18,11 +18,11 @@
 .editor-box {
   /* 防止富文本编辑器全屏时 tabs组件 在其层级之上 */
   z-index: 2;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color);
   width: 100%;
 
   .editor-toolbar {
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid var(--border-color);
   }
 
   .editor-content {

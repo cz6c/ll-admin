@@ -1,30 +1,3 @@
-<template>
-  <div id="tags-view-container" class="tags-view-container">
-    <scroll-pane ref="scrollPaneRef" class="tags-view-wrapper" @scroll="handleScroll">
-      <router-link
-        v-for="tag in visitedViews"
-        :key="tag.path"
-        :data-path="tag.path"
-        :class="isActive(tag) ? 'active' : ''"
-        :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
-        class="tags-view-item"
-        @contextmenu.prevent="openMenu(tag, $event)"
-      >
-        {{ tag.title }}
-        <IconifyIcon v-if="!isAffix(tag)" icon="ep:close" class="ml-1" @click.prevent.stop="closeSelectedTag(tag)" />
-      </router-link>
-    </scroll-pane>
-    <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
-      <li @click="refreshSelectedTag()"><IconifyIcon icon="ep:refresh-right" /> 刷新页面</li>
-      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ep:close" /> 关闭</li>
-      <li @click="closeOthersTags"><IconifyIcon icon="ep:circle-close" /> 关闭其他</li>
-      <li v-if="!isFirstView()" @click="closeLeftTags"><IconifyIcon icon="ep:back" /> 关闭左侧</li>
-      <li v-if="!isLastView()" @click="closeRightTags"><IconifyIcon icon="ep:right" /> 关闭右侧</li>
-      <li @click="closeAllTags()"><IconifyIcon icon="ep:circle-close" /> 全部关闭</li>
-    </ul>
-  </div>
-</template>
-
 <script setup>
 import ScrollPane from "./ScrollPane.vue";
 import { useTagsViewStore } from "@/store/modules/tagsView";
@@ -223,70 +196,179 @@ function handleScroll() {
 }
 </script>
 
+<template>
+  <div id="tags-view-container" class="tags-view-container">
+    <scroll-pane ref="scrollPaneRef" class="tags-view-wrapper" @scroll="handleScroll">
+      <div class="tags-view-list">
+        <router-link
+          v-for="(tag, i) in visitedViews"
+          :key="tag.path"
+          :data-path="tag.path"
+          :class="isActive(tag) ? 'active' : ''"
+          :to="{ path: tag.path, query: tag.query, fullPath: tag.fullPath }"
+          class="tags-view-item select-none"
+          @contextmenu.prevent="openMenu(tag, $event)"
+        >
+          <div class="relative size-full">
+            <!-- divider -->
+            <div v-if="i !== 0 && !isActive(tag)" class="tags-view-item__divider transition-all" />
+            <!-- background -->
+            <div class="tags-view-item__background">
+              <div class="tags-view-item__background-content" />
+              <svg class="tags-view-item__background-before" height="8" width="8">
+                <path d="M 0 8 A 8 8 0 0 0 8 0 L 8 8 Z" />
+              </svg>
+              <svg class="tags-view-item__background-after" height="8" width="8">
+                <path d="M 0 0 A 8 8 0 0 0 8 8 L 0 8 Z" />
+              </svg>
+            </div>
+            <!-- tab-item-main -->
+            <div class="tags-view-item__main">
+              <IconifyIcon v-if="tag.meta.icon" :icon="tag.meta.icon" class="mr-1" />
+              <span class="flex-1 overflow-hidden whitespace-nowrap">
+                {{ tag.title }}
+              </span>
+              <IconifyIcon v-if="!isAffix(tag)" icon="ep:close" class="close ml-1" @click.prevent.stop="closeSelectedTag(tag)" />
+            </div>
+          </div>
+        </router-link>
+      </div>
+    </scroll-pane>
+    <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
+      <li @click="refreshSelectedTag()"><IconifyIcon icon="ep:refresh-right" /> <span>刷新页面</span></li>
+      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ep:close" /> <span>关闭当前标签页</span></li>
+      <li @click="closeOthersTags"><IconifyIcon icon="ep:circle-close" /> <span>关闭其他标签页</span></li>
+      <li v-if="!isFirstView()" @click="closeLeftTags"><IconifyIcon icon="ep:back" /> <span>关闭左侧标签页</span></li>
+      <li v-if="!isLastView()" @click="closeRightTags"><IconifyIcon icon="ep:right" /> <span>关闭右侧标签页</span></li>
+      <li @click="closeAllTags()"><IconifyIcon icon="ep:circle-close" /> <span>全部关闭标签页</span></li>
+    </ul>
+  </div>
+</template>
+
 <style lang="scss" scoped>
 .tags-view-container {
-  height: 34px;
+  height: 38px;
   width: 100%;
-  background: #fff;
-  border-bottom: 1px solid #d8dce5;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
   box-sizing: border-box;
-  .tags-view-wrapper {
+  .tags-view-list {
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
     .tags-view-item {
       display: inline-flex;
-      align-items: center;
-      position: relative;
       cursor: pointer;
-      height: 26px;
-      line-height: 26px;
-      border: 1px solid #d8dce5;
-      border-bottom: none;
-      color: #495060;
-      background: #fff;
-      padding: 0 8px;
-      margin-left: 6px;
-      margin-top: 6px;
-      border-radius: 6px 6px 0 0;
+      height: 34px;
+      margin-left: -12px;
       &:first-of-type {
-        margin-left: 16px;
+        margin-left: 0;
       }
-      &:last-of-type {
-        margin-right: 16px;
+      &__divider {
+        position: absolute;
+        top: 50%;
+        left: 8px;
+        transform: translateY(-50%);
+        height: 16px;
+        width: 1px;
+        background-color: var(--border-color);
+      }
+      &__background {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        padding: 0 8px;
+        &-content {
+          height: 100%;
+        }
+        &-before,
+        &-after {
+          position: absolute;
+          bottom: 0;
+          fill: transparent;
+        }
+        &-before {
+          left: 0px;
+        }
+        &-after {
+          right: 0px;
+        }
+      }
+      &__main {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 100%;
+        overflow: hidden;
+        padding: 0 16px;
+        .close {
+          &:hover {
+            background-color: var(--bg-color);
+            border-radius: 50%;
+          }
+        }
       }
       &.active {
-        background-color: var(--el-color-primary);
-        color: #fff;
-        border-color: var(--el-color-primary);
-        &::before {
-          content: "";
-          background: #fff;
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          position: relative;
-          margin-right: 6px;
+        & + .tags-view-item {
+          .tags-view-item__divider {
+            opacity: 0 !important;
+          }
+        }
+        .tags-view-item__background {
+          &-content {
+            background-color: var(--color-primary-bg) !important;
+            border-radius: 6px 6px 0 0 !important;
+          }
+          &-before {
+            fill: var(--color-primary-bg);
+          }
+          &-after {
+            fill: var(--color-primary-bg);
+          }
+        }
+        .tags-view-item__main {
+          color: var(--color-primary);
+        }
+      }
+      &:hover:not(.active) {
+        & + .tags-view-item {
+          .tags-view-item__divider {
+            opacity: 0;
+          }
+        }
+        .tags-view-item__divider {
+          opacity: 0;
+        }
+        .tags-view-item__background {
+          &-content {
+            background-color: var(--fill-color);
+            border-radius: 6px;
+          }
         }
       }
     }
   }
   .contextmenu {
     margin: 0;
-    background: #fff;
+    background: var(--bg-color);
     z-index: 3000;
     position: absolute;
     list-style-type: none;
-    padding: 5px 0;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 400;
-    color: #333;
+    padding: 2px;
+    border-radius: 6px;
     box-shadow: 2px 2px 3px 0 rgba(0, 0, 0, 0.3);
     li {
       margin: 0;
-      padding: 7px 16px;
+      padding: 8px 16px;
       cursor: pointer;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      span {
+        margin-left: 4px;
+      }
       &:hover {
-        background: #eee;
+        background: var(--fill-color);
       }
     }
   }

@@ -1,9 +1,9 @@
-import { $http } from "@/utils/request";
+import $http from "@/utils/request";
 import type { ListDeptDto, UpdateDeptDto, SysDeptVo, DeptTreeVo, RoleDeptTreeSelectVo } from "#/api/system/dept";
 
 // 查询部门树结构
 export function deptTreeSelect(params?: ListDeptDto) {
-  return $http<never, DeptTreeVo[]>({
+  return $http.request<never, DeptTreeVo[]>({
     url: `/system/dept/treeSelect`,
     method: "get",
     params
@@ -12,7 +12,7 @@ export function deptTreeSelect(params?: ListDeptDto) {
 
 // 根据角色ID查询部门树结构
 export function roleDeptTreeSelect(roleId: number) {
-  return $http<never, RoleDeptTreeSelectVo>({
+  return $http.request<never, RoleDeptTreeSelectVo>({
     url: "/system/dept/roleDeptTreeSelect/" + roleId,
     method: "get"
   });
@@ -20,7 +20,7 @@ export function roleDeptTreeSelect(roleId: number) {
 
 // 查询部门详细
 export function getDept(deptId: number) {
-  return $http<never, SysDeptVo>({
+  return $http.request<never, SysDeptVo>({
     url: "/system/dept/" + deptId,
     method: "get"
   });
@@ -28,7 +28,7 @@ export function getDept(deptId: number) {
 
 // 新增部门
 export function addDept(data: UpdateDeptDto) {
-  return $http<UpdateDeptDto, never>({
+  return $http.request<UpdateDeptDto, never>({
     url: "/system/dept/create",
     method: "post",
     data
@@ -37,7 +37,7 @@ export function addDept(data: UpdateDeptDto) {
 
 // 修改部门
 export function updateDept(data: UpdateDeptDto) {
-  return $http<UpdateDeptDto, never>({
+  return $http.request<UpdateDeptDto, never>({
     url: "/system/dept/update",
     method: "post",
     data
@@ -46,7 +46,7 @@ export function updateDept(data: UpdateDeptDto) {
 
 // 删除部门
 export function delDept(deptId: number) {
-  return $http({
+  return $http.request({
     url: "/system/dept/delete/" + deptId,
     method: "get"
   });

@@ -17,12 +17,11 @@ function setupPermissionGuard(router: Router) {
 
   router.beforeEach(async (to, from, next) => {
     console.log(to, from);
-    const permissionStore = usePermissionStore();
     const authStore = useAuthStore();
-    const token = getToken();
+    const data = getToken();
 
     // 验证token
-    if (token) {
+    if (data?.token) {
       if (to.name === RouterEnum.BASE_LOGIN_NAME) {
         return next({ path: to.query?.redirect ? decodeURIComponent(to.query.redirect as string) : "/" });
       }
@@ -30,10 +29,12 @@ function setupPermissionGuard(router: Router) {
       if (!authStore.userId) {
         try {
           await authStore.getLoginUserInfo();
-          permissionStore.initRouter().then(router => {
-            // 确保动态路由完全加入路由列表并且不影响静态路由（注意：动态路由刷新时router.beforeEach可能会触发两次，第一次触发动态路由还未完全添加，第二次动态路由才完全添加到路由列表，如果需要在router.beforeEach做一些判断可以在to.name存在的条件下去判断，这样就只会触发一次）
-            if (to.name === RouterEnum.BASE_NOT_FOUND_NAME) router.push(to.fullPath);
-          });
+          usePermissionStore()
+            .initRouter()
+            .then(router => {
+              // 确保动态路由完全加入路由列表并且不影响静态路由（注意：动态路由刷新时router.beforeEach可能会触发两次，第一次触发动态路由还未完全添加，第二次动态路由才完全添加到路由列表，如果需要在router.beforeEach做一些判断可以在to.name存在的条件下去判断，这样就只会触发一次）
+              if (to.name === RouterEnum.BASE_NOT_FOUND_NAME) router.push(to.fullPath);
+            });
           next();
         } catch (error) {
           // 登录过期或登录无效，前端登出

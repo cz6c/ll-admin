@@ -128,46 +128,53 @@ getInfo();
             {{ form.parentName }}
           </el-form-item>
         </el-col>
-        <el-col v-if="form.menuType === 'F'" :span="24">
-          <el-form-item label="快捷输入">
-            <el-button v-for="{ label, value } in fOptionts" :key="value" @click="handleF({ label, value })">
-              {{ label }}
-            </el-button>
-          </el-form-item>
-        </el-col>
-        <el-col :span="24">
-          <el-form-item :label="`${form.menuType === 'M' ? '菜单' : '功能'}名称`" prop="menuName">
-            <el-input v-model="form.menuName" :placeholder="`请输入${form.menuType === 'M' ? '菜单' : '功能'}名称`" />
-          </el-form-item>
-        </el-col>
-        <el-col v-if="form.menuType === 'F'" :span="24">
-          <el-form-item prop="perm">
-            <template #label>
-              <span v-tippy="{ content: '页面功能权限标识，如`add,edit`' }">
-                <IconifyIcon icon="ep:question-filled" />
-                功能标识
-              </span>
-            </template>
-            <el-input v-model="form.perm" placeholder="请输入功能标识" />
-          </el-form-item>
-        </el-col>
-        <template v-else>
+        <template v-if="form.menuType === 'F'">
           <el-col :span="24">
+            <el-form-item label="快捷输入">
+              <el-button v-for="{ label, value } in fOptionts" :key="value" @click="handleF({ label, value })">
+                {{ label }}
+              </el-button>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="功能名称" prop="menuName">
+              <el-input v-model="form.menuName" placeholder="请输入功能名称" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item prop="perm">
+              <template #label>
+                <span v-tippy="{ content: '页面功能权限标识，如`add,edit`' }">
+                  <IconifyIcon icon="ep:question-filled" />
+                  功能标识
+                </span>
+              </template>
+              <el-input v-model="form.perm" placeholder="请输入功能标识" />
+            </el-form-item>
+          </el-col>
+        </template>
+        <template v-else>
+          <el-col :span="12">
+            <el-form-item label="菜单名称" prop="menuName">
+              <el-input v-model="form.menuName" placeholder="请输入菜单名称" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="菜单图标" prop="icon">
               <IconSelect v-model="form.icon" />
             </el-form-item>
           </el-col>
-          <el-col :span="24">
-            <el-form-item label="显示排序" prop="orderNum">
-              <el-input-number v-model="form.orderNum" controls-position="right" :min="0" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
+          <el-col :span="12">
             <el-form-item prop="component">
               <template #label>
                 <span v-tippy="{ content: '如：`system/user/index`，默认在`views`目录下' }"> 组件路径 </span>
               </template>
               <el-input v-model="form.component" placeholder="请输入组件路径" :disabled="form.parentId === 0 || form.isFrame === '0'" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="显示排序" prop="orderNum">
+              <el-input-number v-model="form.orderNum" controls-position="right" :min="0" />
             </el-form-item>
           </el-col>
           <el-col :span="12">

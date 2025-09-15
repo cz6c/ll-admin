@@ -36,7 +36,7 @@ function handleClick() {
 <template>
   <div
     v-tippy="{
-      content: !disabledCom ? '' : `<p style='color: #f56c6c' >${options.disabledTooltip}</p>`,
+      content: !disabledCom ? '' : `<p style='color: var(--el-color-danger)' >${options.disabledTooltip}</p>`,
       allowHTML: true,
       theme: 'light'
     }"

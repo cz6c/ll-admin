@@ -58,7 +58,7 @@ export default defineConfig({
   },
   theme: {
     colors: {
-      primary: "var(--primary-color)"
+      primary: "var(--color-primary)"
     }
   }
 });

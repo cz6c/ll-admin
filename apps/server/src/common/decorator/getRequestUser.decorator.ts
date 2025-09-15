@@ -7,7 +7,7 @@ export interface RequestUserPayload {
   ipaddr: string;
   loginTime: Date;
   os: string;
-  token: string;
+  uuid: string;
   user: UserVo;
   roles: Array<SysRoleVo>;
 }

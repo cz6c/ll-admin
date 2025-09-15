@@ -52,10 +52,15 @@ import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 const settingsStore = useSettingsStore();
 const showSettings = ref(false);
-const theme = ref(settingsStore.theme);
 const storeSettings = computed(() => settingsStore);
-const predefineColors = ref(["#409EFF", "#ff4500", "#ff8c00", "#ffd700", "#90ee90", "#00ced1", "#1e90ff", "#c71585"]);
+const predefineColors = ref(["#605fec", "#409EFF", "#ff4500", "#ff8c00", "#ffd700", "#90ee90", "#00ced1", "#1e90ff", "#c71585"]);
 
+const theme = computed({
+  get: () => storeSettings.value.theme,
+  set: val => {
+    settingsStore.changeSetting({ key: "theme", value: val });
+  }
+});
 const greyVal = computed({
   get: () => storeSettings.value.greyVal,
   set: val => {
@@ -81,10 +86,6 @@ const sidebarLogo = computed({
   }
 });
 
-function themeChange(val) {
-  settingsStore.changeSetting({ key: "theme", value: val });
-  theme.value = val;
-}
 function saveSetting() {
   $feedback.loading("正在保存到本地，请稍候...");
   let layoutSetting = {
@@ -112,57 +113,12 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
-.setting-drawer-title {
-  margin-bottom: 12px;
-  color: rgba(0, 0, 0, 0.85);
-  line-height: 22px;
+.drawer-title {
   font-weight: bold;
-  .drawer-title {
-    font-size: 14px;
-  }
-}
-.setting-drawer-block-checbox {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin-top: 10px;
-  margin-bottom: 20px;
-
-  .setting-drawer-block-checbox-item {
-    position: relative;
-    margin-right: 16px;
-    border-radius: 2px;
-    cursor: pointer;
-
-    img {
-      width: 48px;
-      height: 48px;
-    }
-
-    .custom-img {
-      width: 48px;
-      height: 38px;
-      border-radius: 5px;
-      box-shadow: 1px 1px 2px #898484;
-    }
-
-    .setting-drawer-block-checbox-selectIcon {
-      position: absolute;
-      top: 0;
-      right: 0;
-      width: 100%;
-      height: 100%;
-      padding-top: 15px;
-      padding-left: 24px;
-      color: #1890ff;
-      font-weight: 700;
-      font-size: 14px;
-    }
-  }
+  font-size: 16px;
 }
 
 .drawer-item {
-  color: rgba(0, 0, 0, 0.65);
   padding: 12px 0;
   font-size: 14px;
 

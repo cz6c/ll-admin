@@ -25,6 +25,12 @@ export class LoginDto {
 
 export class RegisterDto extends PickType(LoginDto, ["userName", "password"] as const) {}
 
+export class RefreshTokenDto {
+  @ApiProperty({ required: true })
+  @IsString()
+  refreshToken: string;
+}
+
 export class TokenVo {
   @ApiProperty({ description: "token" })
   public token: string;

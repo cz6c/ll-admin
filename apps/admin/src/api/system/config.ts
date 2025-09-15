@@ -1,9 +1,9 @@
-import { $http } from "@/utils/request";
+import $http from "@/utils/request";
 import type { ListConfigDto, UpdateConfigDto, SysConfigListResponse, SysConfigVo } from "#/api/system/config";
 
 // 查询参数列表
 export function listConfig(params: ListConfigDto) {
-  return $http<never, SysConfigListResponse>({
+  return $http.request<never, SysConfigListResponse>({
     url: "/system/config/list",
     method: "get",
     params
@@ -12,7 +12,7 @@ export function listConfig(params: ListConfigDto) {
 
 // 查询参数详细
 export function getConfig(configId: number) {
-  return $http<never, SysConfigVo>({
+  return $http.request<never, SysConfigVo>({
     url: "/system/config/" + configId,
     method: "get"
   });
@@ -20,7 +20,7 @@ export function getConfig(configId: number) {
 
 // 新增参数配置
 export function addConfig(data: UpdateConfigDto) {
-  return $http<UpdateConfigDto, never>({
+  return $http.request<UpdateConfigDto, never>({
     url: "/system/config/create",
     method: "post",
     data
@@ -29,7 +29,7 @@ export function addConfig(data: UpdateConfigDto) {
 
 // 修改参数配置
 export function updateConfig(data: UpdateConfigDto) {
-  return $http<UpdateConfigDto, never>({
+  return $http.request<UpdateConfigDto, never>({
     url: "/system/config/update",
     method: "post",
     data
@@ -38,7 +38,7 @@ export function updateConfig(data: UpdateConfigDto) {
 
 // 删除参数配置
 export function delConfig(configIds: string) {
-  return $http({
+  return $http.request({
     url: "/system/config/delete/" + configIds,
     method: "get"
   });

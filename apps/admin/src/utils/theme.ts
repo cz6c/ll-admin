@@ -8,6 +8,8 @@ export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement
 
 // 处理主题样式
 export function handleThemeStyle(theme) {
+  document.documentElement.style.setProperty("--color-primary", theme);
+  document.documentElement.style.setProperty("--color-primary-bg", getLightColor(theme, 9 / 10));
   document.documentElement.style.setProperty("--el-color-primary", theme);
   for (let i = 1; i <= 9; i++) {
     document.documentElement.style.setProperty(`--el-color-primary-light-${i}`, `${getLightColor(theme, i / 10)}`);

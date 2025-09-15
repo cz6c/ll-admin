@@ -19,7 +19,7 @@ export class ExceptionsFilter implements ExceptionFilter {
       validatorMessage = Array.isArray(message) ? message[0] : message;
     }
 
-    response.status(status).json({
+    response.status(200).json({
       code: status,
       msg: `Service Error: ${validatorMessage}`,
       data: null

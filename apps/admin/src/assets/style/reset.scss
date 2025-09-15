@@ -12,10 +12,9 @@ body {
   height: 100%;
   margin: 0;
   font-size: 14px;
-  font-family:
-    "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
   line-height: inherit;
+  color: #333333;
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizelegibility;
@@ -45,9 +44,7 @@ code,
 kbd,
 samp,
 pre {
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 1em;
 }
 
@@ -170,7 +167,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #9ca3af;
+  color: #999999;
   opacity: 1;
 }
 
@@ -233,4 +230,23 @@ div:focus {
     visibility: hidden;
     content: " ";
   }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar:horizontal {
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: 10px;
+  transition: all 0.2s ease-in-out;
+  background-color: rgba(144, 147, 153, 0.3);
+}
+::-webkit-scrollbar-thumb:hover {
+  cursor: pointer;
+  background-color: rgba(144, 147, 153, 0.5);
 }

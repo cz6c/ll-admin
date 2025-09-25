@@ -48,7 +48,7 @@ export const usePermissionStore = defineStore("permission", {
     }
   },
   persist: {
-    storage: sessionStorage
+    storage: localStorage
   }
 });
 

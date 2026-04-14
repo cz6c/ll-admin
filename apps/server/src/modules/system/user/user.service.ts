@@ -149,10 +149,10 @@ export class UserService {
     if (!dataScopeAll) {
       if (deptIds.length > 0) {
         // 只查和部门相关的数据
-        entity.where("user.deptId IN (:...deptIds)", { deptIds: deptIds });
+        entity.andWhere("user.deptId IN (:...deptIds)", { deptIds: deptIds });
       } else if (dataScopeSelf) {
         // 自己
-        entity.where("user.userId = :userId", {
+        entity.andWhere("user.userId = :userId", {
           userId: tokenData.user.userId
         });
       }
@@ -164,11 +164,11 @@ export class UserService {
     }
 
     if (query.userName) {
-      entity.andWhere(`user.userName LIKE "%${query.userName}%"`);
+      entity.andWhere("user.userName LIKE :userName", { userName: `%${query.userName}%` });
     }
 
     if (query.phonenumber) {
-      entity.andWhere(`user.phonenumber LIKE "%${query.phonenumber}%"`);
+      entity.andWhere("user.phonenumber LIKE :phonenumber", { phonenumber: `%${query.phonenumber}%` });
     }
 
     if (query.status) {
@@ -455,7 +455,9 @@ export class UserService {
    */
   async refreshToken(refreshToken: string, clientInfo: ClientInfoDto) {
     const payload = this.parseToken(refreshToken);
-    console.log("🚀 ~ UserService ~ refreshToken ~ user:", payload);
+    if (!payload) {
+      return ResultData.fail(401, "当前登录已过期，请重新登录");
+    }
     const data = await this.userRepo.findOne({
       where: {
         userId: payload.userId

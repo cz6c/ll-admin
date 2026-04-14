@@ -52,7 +52,7 @@ export class DeptService {
     entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.deptName) {
-      entity.andWhere(`entity.deptName LIKE "%${query.deptName}%"`);
+      entity.andWhere("entity.deptName LIKE :deptName", { deptName: `%${query.deptName}%` });
     }
     if (query.status) {
       entity.andWhere("entity.status = :status", { status: query.status });

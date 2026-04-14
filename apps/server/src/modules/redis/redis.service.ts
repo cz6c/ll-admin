@@ -290,7 +290,7 @@ export class RedisService {
    */
   async lRightPush(key: string, ...val: string[]): Promise<number> {
     if (!key) return 0;
-    return await this.client.lpush(key, ...val);
+    return await this.client.rpush(key, ...val);
   }
 
   /**
@@ -310,7 +310,7 @@ export class RedisService {
   async lLeftPop(key: string): Promise<string> {
     if (!key) return null;
     const result = await this.client.blpop(key);
-    return result.length > 0 ? result[0] : null;
+    return result?.length > 1 ? result[1] : null;
   }
 
   /**
@@ -320,7 +320,7 @@ export class RedisService {
   async lRightPop(key: string): Promise<string> {
     if (!key) return null;
     const result = await this.client.brpop(key);
-    return result.length > 0 ? result[0] : null;
+    return result?.length > 1 ? result[1] : null;
   }
 
   /**

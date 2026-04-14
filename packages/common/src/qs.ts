@@ -1,4 +1,4 @@
-import { isDef, isNull, isObject } from "./is";
+import { isUndefined, isNull, isObject } from "./is";
 
 /**
  * @description: 提取url ?后参数
@@ -25,7 +25,7 @@ export function queryStringify(obj: Record<string, any>): string {
   if (!isObject(obj)) return "";
 
   return Object.entries(obj)
-    .filter(([_, value]) => !isDef(value) && !isNull(value))
+    .filter(([_, value]) => !isUndefined(value) && !isNull(value))
     .map(([key, value]) => {
       // 对键进行编码
       const encodedKey = encodeURIComponent(key);
@@ -33,7 +33,7 @@ export function queryStringify(obj: Record<string, any>): string {
       // 处理数组类型
       if (Array.isArray(value)) {
         return value
-          .filter(v => !isDef(v) && !isNull(v))
+          .filter(v => !isUndefined(v) && !isNull(v))
           .map(item => `${encodedKey}=${encodeURIComponent(item)}`)
           .join("&");
       }
@@ -41,7 +41,7 @@ export function queryStringify(obj: Record<string, any>): string {
       // 处理对象类型
       if (isObject(value)) {
         return Object.entries(value)
-          .filter(([_, v]) => !isDef(v) && !isNull(v))
+          .filter(([_, v]) => !isUndefined(v) && !isNull(v))
           .map(([k, v]) => `encodedKey[${encodeURIComponent(k)}]=${encodeURIComponent(v)}`)
           .join("&");
       }

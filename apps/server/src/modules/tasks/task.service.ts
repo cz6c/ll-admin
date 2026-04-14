@@ -15,6 +15,10 @@ import { CronJob } from "cron";
 export class TaskService {
   private readonly logger = new Logger(TaskService.name);
 
+  private getJobName(task: Pick<TaskEntity, "taskId">) {
+    return `job_${task.taskId}`;
+  }
+
   constructor(
     @InjectRepository(TaskEntity)
     private readonly taskRepository: Repository<TaskEntity>,
@@ -31,7 +35,7 @@ export class TaskService {
 
   // 动态添加任务到调度器
   scheduleTask(task: TaskEntity) {
-    const jobName = `job_${task.taskName}`;
+    const jobName = this.getJobName(task);
 
     // 存在相同的任务先删除
     if (this.schedulerRegistry.doesExist("cron", jobName)) {
@@ -50,8 +54,10 @@ export class TaskService {
 
   // 从队列中移除待处理任务
   async removeTask(task: TaskEntity) {
-    const jobName = `job_${task.taskName}`;
-    this.schedulerRegistry.deleteCronJob(jobName);
+    const jobName = this.getJobName(task);
+    if (this.schedulerRegistry.doesExist("cron", jobName)) {
+      this.schedulerRegistry.deleteCronJob(jobName);
+    }
     const jobs = await this.taskQueue.getJobs(["waiting", "delayed"]);
     for (const job of jobs) {
       if (job.data.taskId === task.taskId) {
@@ -142,19 +148,22 @@ export class TaskService {
    */
   async markTaskFailed(taskId: number, error: string): Promise<void> {
     const task = await this.getTask(taskId);
+    const nextRetries = task.retries + 1;
 
-    if (task.retries >= task.maxRetries) {
+    if (nextRetries >= task.maxRetries) {
       await this.taskRepository.update(taskId, {
         taskStatus: TaskStatusEnum.FAIL,
+        retries: nextRetries,
         remark: error
       });
       this.logger.error(`任务 ${taskId} 最终失败: ${error}`);
     } else {
       await this.taskRepository.update(taskId, {
         taskStatus: TaskStatusEnum.PENDING,
+        retries: nextRetries,
         remark: task.remark + "---" + error
       });
-      this.scheduleTask(task);
+      this.scheduleTask({ ...task, retries: nextRetries });
       this.logger.warn(`任务 ${taskId} 失败将重试: ${error}`);
     }
   }
@@ -165,7 +174,9 @@ export class TaskService {
   async cancelTask(taskId: number): Promise<void> {
     const lockKey = `task_cancel:${taskId}`;
     const lock = await this.lockService.acquireLock(lockKey, 5000);
-    if (!lock) true;
+    if (!lock) {
+      throw new Error("任务取消处理中，请稍后再试");
+    }
 
     try {
       const task = await this.getTask(taskId);

@@ -79,8 +79,9 @@ export const useAuthStore = defineStore("auth", {
       return new Promise((resolve, reject) => {
         if (!data) {
           $feedback.message.error("登录失效");
-          this.logOut();
+          this.webLogout();
           reject(null);
+          return;
         }
         refreshToken(data)
           .then(res => {

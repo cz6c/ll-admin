@@ -61,7 +61,7 @@ export function isFunction(val: unknown): val is Function {
  * @param {unknown} val
  * @return {*}
  */
-export function isDef<T = unknown>(val?: T): val is T {
+export function isUndefined<T = unknown>(val?: T): val is T {
   return typeof val === "undefined";
 }
 

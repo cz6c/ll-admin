@@ -20,7 +20,7 @@ export class TaskController {
 
   @ApiOperation({ summary: "任务-取消" })
   @ApiResult()
-  @Get("/delete:id")
+  @Get("/delete/:id")
   async cancelTask(@Param("id") id: string) {
     await this.tasksService.cancelTask(+id);
     return ResultData.ok();

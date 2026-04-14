@@ -16,7 +16,6 @@ function setupPermissionGuard(router: Router) {
   const whitePathList: string[] = ["/login", "/test"];
 
   router.beforeEach(async (to, from, next) => {
-    console.log(to, from);
     const authStore = useAuthStore();
     const data = getToken();
 
@@ -29,19 +28,24 @@ function setupPermissionGuard(router: Router) {
       if (!authStore.userId) {
         try {
           await authStore.getLoginUserInfo();
-          usePermissionStore()
-            .initRouter()
-            .then(router => {
-              // 确保动态路由完全加入路由列表并且不影响静态路由（注意：动态路由刷新时router.beforeEach可能会触发两次，第一次触发动态路由还未完全添加，第二次动态路由才完全添加到路由列表，如果需要在router.beforeEach做一些判断可以在to.name存在的条件下去判断，这样就只会触发一次）
-              if (to.name === RouterEnum.BASE_NOT_FOUND_NAME) router.push(to.fullPath);
-            });
-          next();
+          await usePermissionStore().initRouter();
+          // 这里不能直接 `next({ ...to })`，因为首次刷新动态路由页面时，`to`
+          // 可能已经被解析成 404 路由对象，继续展开会把 `name: NOT_FOUND`
+          // 一并带上，导致注入完成后仍然命中 404。显式使用原始 path/query/hash
+          // 重新匹配，才能让新注入的动态路由生效。
+          return next({
+            path: to.path,
+            query: to.query,
+            hash: to.hash,
+            replace: true
+          });
         } catch (error) {
           // 登录过期或登录无效，前端登出
           useAuthStore().webLogout();
+          return false;
         }
       } else {
-        next();
+        return next();
       }
     } else {
       if (whitePathList.includes(to.path)) {
@@ -49,6 +53,7 @@ function setupPermissionGuard(router: Router) {
       } else {
         // 无权限，前端登出
         useAuthStore().webLogout();
+        return false;
       }
     }
   });

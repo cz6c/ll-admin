@@ -37,7 +37,7 @@ export class PushTaskService {
       }
     }
     // 创建定时任务
-    await this.tasksService.createTask({
+    return await this.tasksService.createTask({
       taskName: `nodemailer_push${res.pushtaskId}`,
       payload: JSON.stringify({
         to: res.acceptEmail,
@@ -69,7 +69,8 @@ export class PushTaskService {
       ...createPushTaskDto,
       createBy: userId
     });
-    await this.handleTask(res);
+    const task = await this.handleTask(res);
+    await this.nodemailerPushTaskEntity.update({ pushtaskId: res.pushtaskId }, { remark: String(task.taskId) });
     return ResultData.ok();
   }
 
@@ -83,7 +84,7 @@ export class PushTaskService {
     entity.where("entity.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
 
     if (query.pushtaskName) {
-      entity.andWhere(`entity.pushtaskName LIKE "%${query.pushtaskName}%"`);
+      entity.andWhere("entity.pushtaskName LIKE :pushtaskName", { pushtaskName: `%${query.pushtaskName}%` });
     }
     entity.orderBy("entity.postSort", "ASC");
 
@@ -133,9 +134,9 @@ export class PushTaskService {
       { status: PushTaskChangeStatusDto.status, updateBy: userId }
     );
     if (PushTaskChangeStatusDto.status === StatusEnum.NORMAL) {
-      this.tasksService.startCronJob(`nodemailer_push${item.pushtaskId}`);
+      this.tasksService.startCronJob(`job_${item.remark}`);
     } else {
-      await this.tasksService.stopCronJob(`nodemailer_push${item.pushtaskId}`);
+      await this.tasksService.stopCronJob(`job_${item.remark}`);
     }
     return ResultData.ok();
   }
@@ -159,7 +160,9 @@ export class PushTaskService {
       const res = await this.nodemailerPushTaskEntity.findOne({
         where: { pushtaskId: id }
       });
-      this.tasksService.deleteCron(`nodemailer_push${res.pushtaskId}`);
+      if (res?.remark) {
+        this.tasksService.deleteCron(`job_${res.remark}`);
+      }
     }
     return ResultData.ok();
   }

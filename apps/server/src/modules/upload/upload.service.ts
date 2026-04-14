@@ -361,14 +361,9 @@ export class UploadService {
         Region: this.config.get("cos.region"),
         Key: targetFile,
         FilePath: sourceFile,
-        SliceSize: 1024 * 1024 * 5 /* 触发分块上传的阈值，超过5MB使用分块上传，非必须 */,
-        onProgress: function (progressData) {
-          /* 非必须 */
-          if (progressData.percent === 1) {
-            this.sysUploadEntityRep.update({ filName: targetFile }, { status: SuccessErrorEnum.SUCCESS });
-          }
-        }
+        SliceSize: 1024 * 1024 * 5 /* 触发分块上传的阈值，超过5MB使用分块上传，非必须 */
       });
+      await this.sysUploadEntityRep.update({ fileName: targetFile }, { status: SuccessErrorEnum.SUCCESS });
     }
     //删除本地文件
     fs.unlinkSync(sourceFile);

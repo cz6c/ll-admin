@@ -19,7 +19,6 @@
     "dev:uniapp:mp": "pnpm --filter @apps/uniapp dev:mp",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
-    "generate:openapi-typescript": "node ./scripts/openapi-typescript.mjs",
     "preinstall": "npx only-allow pnpm"
   },
   "devDependencies": {

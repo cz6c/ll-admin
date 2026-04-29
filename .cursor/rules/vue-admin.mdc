@@ -16,7 +16,7 @@ alwaysApply: false
 
 - HTTP 封装：`src/utils/request`（默认导出 `$http`）。
 - 接口函数放在 `src/api/**`，返回 **`$http.request<...>({ url, method, params/data })`**，类型从 `#/api` 或 `types/api/**/*.d.ts` 引入。
-- 新增后端接口后，优先用 **openapi2ts**（`pnpm openapi2ts`，配置见 `openapi2ts.config.ts`）生成类型，再手写薄封装。
+- 新增后端接口后，优先生成类型，再手写薄封装。
 
 ## 状态与路由
 

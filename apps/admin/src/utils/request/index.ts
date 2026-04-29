@@ -189,12 +189,4 @@ class CzHttp {
 
 const $http = new CzHttp();
 
-// 适配 openapi2ts
-export function request<T = unknown>(url: string, options: AxiosRequestConfig) {
-  return $http.request<Record<string, any>, T>({
-    url,
-    ...options
-  });
-}
-
 export default $http;

@@ -14,7 +14,6 @@ dist-electron
 release
 *.local
 .eslintcache
-temp_openapi
 
 types/auto-imports.d.ts
 types/components.d.ts

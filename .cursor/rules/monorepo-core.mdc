@@ -24,9 +24,6 @@ alwaysApply: true
 | 管理端 Web | `pnpm dev:admin` |
 | UniApp H5 | `pnpm dev:uniapp:h5` |
 | 全仓检查 | `pnpm check`（lint + typecheck + test） |
-| OpenAPI 生成 TS | `pnpm generate:openapi-typescript`（脚本实现见 `scripts/`） |
-
-修改接口契约时，优先更新服务端 Swagger/OpenAPI，再同步前端/uniapp 的类型生成流程（各 app 内 `openapi2ts`）。
 
 ## AI 协作原则
 

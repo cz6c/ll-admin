@@ -29,6 +29,6 @@ export const useDictStore = defineStore("dict", {
     }
   },
   persist: {
-    storage: sessionStorage
+    storage: localStorage
   }
 });

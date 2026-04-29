@@ -28,6 +28,7 @@ declare global {
     VITE_BASE_URL: string;
     VITE_PROXY: [string, string][];
     VITE_USE_COMPRESS: boolean;
+    VITE_ROUTER_HISTORY: string;
   }
 
   interface Window {

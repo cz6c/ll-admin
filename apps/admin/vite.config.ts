@@ -4,6 +4,7 @@ import { createVitePlugins } from "./build/vite";
 import { wrapperEnv } from "./build/utils";
 import { createProxy } from "./build/vite/proxy";
 import { optimizeDepsInclude } from "./build/vite/optimize";
+import { rmSync } from "node:fs";
 
 const pathResolve = (dir: string) => {
   return resolve(process.cwd(), ".", dir);
@@ -11,6 +12,11 @@ const pathResolve = (dir: string) => {
 
 // https://vitejs.dev/config/
 export default ({ command, mode }: ConfigEnv): UserConfigExport => {
+  const lifecycle = process.env.npm_lifecycle_event;
+  const isCS = !lifecycle.includes("bs");
+  if (isCS) {
+    rmSync("dist-electron", { recursive: true, force: true });
+  }
   const isBuild = command === "build";
   const isProduction = mode === "production";
   const root = process.cwd();
@@ -47,7 +53,7 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
       port: viteEnv.VITE_PORT,
       proxy: createProxy(viteEnv.VITE_PROXY)
     },
-    plugins: createVitePlugins(viteEnv, isBuild),
+    plugins: createVitePlugins(viteEnv, isBuild, isCS),
     build: {
       minify: "terser",
       terserOptions: {

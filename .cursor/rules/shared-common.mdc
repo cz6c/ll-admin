@@ -1,0 +1,22 @@
+---
+description: 共享包 @llcz/common 发布与导出约定
+globs: packages/common/**/*.ts
+alwaysApply: false
+---
+
+# @llcz/common
+
+## 角色
+
+- 纯 TS **工具库**（日期、树、uuid、querystring、格式化等），发布为 dual package（`main`/`module`/`types` 指向 `dist/`）。
+- 供 **server / admin / uniapp** 引用；禁止引入 Vue、Nest 或任意 UI 框架。
+
+## 开发流程
+
+- 源码在 `packages/common/src/`；对外 API 从 **`src/index.ts`** 统一 `export`。
+- 构建：`pnpm build`（Rollup）；改代码后本地可用 workspace 链接直接验证各 app。
+- 新增工具：保持函数纯、可 tree-shake；需要时在子路径文件实现并在 `index.ts` 导出。
+
+## 风格
+
+- 与仓库一致的 ESLint + Prettier；类型完整，避免 `any`。

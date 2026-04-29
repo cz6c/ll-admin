@@ -1,0 +1,29 @@
+---
+description: 管理端 Vue3（@apps/admin）路由、API、状态
+globs: apps/admin/**/*.{vue,ts,tsx}
+alwaysApply: false
+---
+
+# Admin（Vue 3 + Vite）
+
+## 栈与别名
+
+- **Vue 3** + **Vite** + **Pinia** + **Vue Router** + **Element Plus** + **VXE Table**；样式可用 **UnoCSS**、SCSS（全局主题见 `vite.config` 中 `additionalData`）。
+- 路径别名：`@/` → `src/`，`#/` → `types/`（API 类型、全局声明）。
+- 构建脚本区分 Web（`bs:*`）与 Electron 桌面端（`cs:*`）；改构建逻辑前确认目标形态。
+
+## API 层
+
+- HTTP 封装：`src/utils/request`（默认导出 `$http`）。
+- 接口函数放在 `src/api/**`，返回 **`$http.request<...>({ url, method, params/data })`**，类型从 `#/api` 或 `types/api/**/*.d.ts` 引入。
+- 新增后端接口后，优先用 **openapi2ts**（`pnpm openapi2ts`，配置见 `openapi2ts.config.ts`）生成类型，再手写薄封装。
+
+## 状态与路由
+
+- Pinia store：`src/store/modules/`（如 `auth`、`permission`）；登录与 token 与 `@/utils/auth` 配合。
+- 路由与权限：`src/router`，与权限 store 联动；勿绕开既有守卫逻辑硬编码跳转。
+
+## Vue 组件
+
+- 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
+- 列表页多为 VXE Table + 查询表单；图表用 ECharts（见 `views/charts`）。

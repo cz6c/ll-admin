@@ -1,0 +1,34 @@
+---
+description: ll-admin 单体仓库根约定（pnpm、Turbo、脚本）
+alwaysApply: true
+---
+
+# Monorepo 核心约定
+
+## 工具链
+
+- **包管理**：只用 `pnpm`（根目录 `preinstall` 已限制）；不要用 npm/yarn 安装依赖。
+- **编排**：`turbo` 串联 `build`；包依赖构建顺序见 `pnpm-workspace.yaml`（`apps/*`、`packages/*`）。
+- **提交**：Conventional Commits + `commitlint`（见根目录 `commitlint.config.cjs`）；可用根脚本 `cz`（cz-git）。
+
+## 包命名与依赖
+
+- 应用：`@apps/server`、`@apps/admin`、`@apps/uniapp` 等。
+- 共享库：`@llcz/common`（workspace:*），放置跨端通用逻辑；改动后按需在各 app 内构建/联调。
+
+## 常用脚本（根 `package.json`）
+
+| 场景 | 命令 |
+|------|------|
+| 后端开发 | `pnpm dev:server` |
+| 管理端 Web | `pnpm dev:admin` |
+| UniApp H5 | `pnpm dev:uniapp:h5` |
+| 全仓检查 | `pnpm check`（lint + typecheck + test） |
+| OpenAPI 生成 TS | `pnpm generate:openapi-typescript`（脚本实现见 `scripts/`） |
+
+修改接口契约时，优先更新服务端 Swagger/OpenAPI，再同步前端/uniapp 的类型生成流程（各 app 内 `openapi2ts`）。
+
+## AI 协作原则
+
+- 改动限制在实际需求涉及的 app 或 package，避免无关重构。
+- 大需求按 app 分包讨论实现（server / admin / uniapp / common）。

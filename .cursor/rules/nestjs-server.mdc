@@ -1,0 +1,41 @@
+---
+description: NestJS 后端（@apps/server）模块与接口约定
+globs: apps/server/**/*.ts
+alwaysApply: false
+---
+
+# Server（NestJS）
+
+## 结构
+
+- 业务按 **Nest 模块** 划分：`src/modules/<domain>/`（controller、service、dto、entities 等）。
+- 全局能力在 `src/common/`（守卫、过滤器、装饰器、工具）、`src/plugins/`、`src/config/`。
+- 数据库：**TypeORM**；迁移脚本在 `src/migrations/`，通过 package.json 中 `migration:*` 脚本执行。
+
+## 控制器与文档
+
+- 使用 `@ApiTags`、`@ApiOperation`、`@ApiBearerAuth()`（需登录的接口）。
+- DTO 用 **class-validator / class-transformer**；入口已配置全局 `ValidationPipe`（whitelist、transform），DTO 字段需有对应装饰器才会进入白名单。
+- 统一响应形态配合项目内 **`@ApiResult()`** 等装饰器（见 `src/common/decorator`），保持与现有 controller 一致。
+- Swagger：`main.ts` 中配置；开发环境可写出 `swagger.json` 供前端生成类型。
+
+## 代码风格
+
+- TypeScript 严格模式；字符串引号与格式以仓库既有 ESLint/Prettier 为准（当前多为双引号）。
+- 复杂查询与事务放在 **Service**，Controller 保持薄层。
+
+## 示例（与现有代码对齐）
+
+```typescript
+@ApiTags("systemDept")
+@ApiBearerAuth()
+@Controller("system/dept")
+export class DeptController {
+  @ApiOperation({ summary: "部门管理-创建" })
+  @ApiResult()
+  @Post("/create")
+  create(@Body() dto: CreateDeptDto, @GetRequestUser("user") user: RequestUserPayload["user"]) {
+    return this.deptService.create(dto, user.userId);
+  }
+}
+```

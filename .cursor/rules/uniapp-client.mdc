@@ -1,0 +1,24 @@
+---
+description: UniApp 客户端（@apps/uniapp）多端与构建约定
+globs: apps/uniapp/**/*.{vue,ts}
+alwaysApply: false
+---
+
+# UniApp
+
+## 栈
+
+- **Vue 3** + uni-app（`@dcloudio/*`）+ **Vite**；UI 可用 **wot-design-uni**、**z-paging**；样式可用 **UnoCSS**（版本与 admin 独立，勿混用配置）。
+- 共享工具：**`@llcz/common`**（日期、树等），从包入口按需导入。
+
+## 工程注意
+
+- **pnpm** `patchedDependencies` 中有 `@dcloudio/uni-h5` 补丁；升级 `@dcloudio` 依赖时需回归 H5/小程序。
+- `vite.config.ts` 内注释说明了 **command/mode** 在各平台下的差异（如小程序 dev 时 `command` 可能为 `build`）；环境变量目录为 `env/`。
+- 使用 **uni-helper** 插件：layouts、pages、manifest、components、platform 等；新增页面遵循 **约定式路由** 配置方式。
+- HTTP：封装在 `src/utils/http.ts`，拦截器在 `src/interceptors/`；与后端前缀、鉴权保持一致。
+
+## 编码
+
+- 条件编译按平台使用官方 `#ifdef` / `#endif` 规范。
+- 优先复用 `src/hooks/`（如 `useRequest`）与现有目录结构，避免在页面内堆叠重复请求逻辑。

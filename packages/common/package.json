@@ -10,6 +10,7 @@
     "clean": "rimraf dist",
     "build:dev": "rollup -c",
     "build": "rollup -c --environment production",
+    "typecheck": "tsc --noEmit",
     "prepack": "pnpm run build",
     "pack": "npm publish --access public",
     "format": "prettier --write \"src/**/*.ts\"",

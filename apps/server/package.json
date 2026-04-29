@@ -13,6 +13,7 @@
     "pm2:prod": "pm2 start ecosystem.config.js --env production",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint \"src/**/*.ts\" --fix",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -27,7 +28,7 @@
   },
   "dependencies": {
     "@liaoliaots/nestjs-redis": "^10.0.0",
-    "@llcz/common": "^1.0.4",
+    "@llcz/common": "workspace:*",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bull": "^11.0.2",
     "@nestjs/common": "^11.1.4",

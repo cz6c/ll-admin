@@ -2,10 +2,16 @@
   "name": "ll-admin",
   "private": true,
   "version": "0.0.6",
+  "packageManager": "pnpm@10.12.3",
   "license": "MIT",
   "scripts": {
     "prepare": "husky install",
     "cz": "git add . && czg",
+    "build": "turbo run build",
+    "lint": "pnpm -r --if-present run lint && pnpm -r --if-present run lint:eslint",
+    "typecheck": "pnpm -r --if-present run typecheck && pnpm -r --if-present run type-check",
+    "test": "pnpm -r --if-present run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
     "dev:server": "pnpm --filter @apps/server start:dev",
     "dev:admin": "pnpm --filter @apps/admin dev",
     "dev:docs": "pnpm --dir ./apps/docs dev",
@@ -21,7 +27,8 @@
     "@commitlint/config-conventional": "^17.8.1",
     "cz-git": "^1.8.0",
     "czg": "^1.8.0",
-    "husky": "^8.0.3"
+    "husky": "^8.0.3",
+    "turbo": "^2.9.6"
   },
   "husky": {
     "hooks": {

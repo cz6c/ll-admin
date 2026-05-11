@@ -1,6 +1,3 @@
 packages:
   - "apps/*"
   - "packages/*"
-
-patchedDependencies:
-  "@dcloudio/uni-h5": "apps/uniapp/patches/@dcloudio__uni-h5.patch"

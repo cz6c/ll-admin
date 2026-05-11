@@ -13,7 +13,7 @@ alwaysApply: true
 
 ## 包命名与依赖
 
-- 应用：`@apps/server`、`@apps/admin`、`@apps/uniapp` 等。
+- 应用：`@apps/server`、`@apps/admin`、`@apps/docs` 等。
 - 共享库：`@llcz/common`（workspace:*），放置跨端通用逻辑；改动后按需在各 app 内构建/联调。
 
 ## 常用脚本（根 `package.json`）
@@ -22,10 +22,10 @@ alwaysApply: true
 |------|------|
 | 后端开发 | `pnpm dev:server` |
 | 管理端 Web | `pnpm dev:admin` |
-| UniApp H5 | `pnpm dev:uniapp:h5` |
+| 文档站 | `pnpm dev:docs` |
 | 全仓检查 | `pnpm check`（lint + typecheck + test） |
 
 ## AI 协作原则
 
 - 改动限制在实际需求涉及的 app 或 package，避免无关重构。
-- 大需求按 app 分包讨论实现（server / admin / uniapp / common）。
+- 大需求按 app 分包讨论实现（server / admin / docs / common）。

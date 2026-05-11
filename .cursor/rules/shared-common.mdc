@@ -9,7 +9,7 @@ alwaysApply: false
 ## 角色
 
 - 纯 TS **工具库**（日期、树、uuid、querystring、格式化等），发布为 dual package（`main`/`module`/`types` 指向 `dist/`）。
-- 供 **server / admin / uniapp** 引用；禁止引入 Vue、Nest 或任意 UI 框架。
+- 供 **server / admin** 等引用；禁止引入 Vue、Nest 或任意 UI 框架。
 
 ## 开发流程
 

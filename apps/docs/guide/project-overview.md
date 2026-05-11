@@ -25,7 +25,7 @@ ll-admin/
 ├─ apps/
 │  ├─ admin/    后台管理前端
 │  ├─ server/   NestJS 后端
-│  └─ uniapp/   移动端模板（本文不展开）
+│  └─ docs/     开发文档站
 ├─ packages/
 │  └─ common/   公共工具库
 └─ scripts/     一些辅助脚本

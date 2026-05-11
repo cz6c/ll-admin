@@ -15,8 +15,6 @@
     "dev:server": "pnpm --filter @apps/server start:dev",
     "dev:admin": "pnpm --filter @apps/admin dev",
     "dev:docs": "pnpm --dir ./apps/docs dev",
-    "dev:uniapp:h5": "pnpm --filter @apps/uniapp dev",
-    "dev:uniapp:mp": "pnpm --filter @apps/uniapp dev:mp",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "preinstall": "npx only-allow pnpm"

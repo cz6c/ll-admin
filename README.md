@@ -17,5 +17,3 @@ This repository uses `pnpm workspace` + `turbo` for task orchestration.
 - `pnpm dev:server`
 - `pnpm dev:admin`
 - `pnpm dev:docs`
-- `pnpm dev:uniapp:h5`
-- `pnpm dev:uniapp:mp`

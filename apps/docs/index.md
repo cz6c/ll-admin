@@ -14,7 +14,6 @@
 
 - 仅覆盖 `apps/admin`
 - 仅覆盖 `apps/server`
-- 不展开 `apps/uniapp`
 - 不展开 `packages/common` 的源码细节，只在需要时说明其用途
 
 ## 推荐阅读顺序

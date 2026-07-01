@@ -1,0 +1,45 @@
+// 测试用的 iconfont，可生效
+// @import './iconfont.css';
+
+.test {
+  // 可以通过 @apply 多个样式封装整体样式
+  @apply mt-4 ml-4;
+
+  padding-top: 4px;
+  color: red;
+}
+
+:root,
+page {
+  /*
+   * @wot-ui/ui v2 主题：组件使用 --wot-primary-*（见 node_modules/@wot-ui/ui/styles/variable.scss），
+   * 不使用旧版 wot-design 的 --wot-color-theme。
+   */
+  --wot-primary-1: #e5f1ff;
+  --wot-primary-2: #cce3ff;
+  --wot-primary-3: #99c7ff;
+  --wot-primary-4: #66abff;
+  --wot-primary-5: #338fff;
+  --wot-primary-6: #007aff;
+  --wot-primary-7: #0062cc;
+  --wot-primary-8: #004999;
+  --wot-primary-9: #003166;
+  --wot-primary-10: #001833;
+}
+
+/*
+border-t-1
+由于uniapp中无法使用*选择器，使用魔法代替*，加上此规则可以简化border与divide的使用，并提升布局的兼容性
+1. 防止padding和border影响元素宽度。 (https://github.com/mozdevs/cssremedy/issues/4)
+2. 允许仅通过添加边框宽度来向元素添加边框。 (https://github.com/tailwindcss/tailwindcss/pull/116)
+3. [UnoCSS]: 允许使用css变量'--un-default-border-color'覆盖默认边框颜色
+*/
+// 这个样式有重大BUG，先去掉！！(2025-08-15)
+// :not(not),
+// ::before,
+// ::after {
+//   box-sizing: border-box; /* 1 */
+//   border-width: 0; /* 2 */
+//   border-style: solid; /* 2 */
+//   border-color: var(--un-default-border-color, #e5e7eb); /* 3 */
+// }

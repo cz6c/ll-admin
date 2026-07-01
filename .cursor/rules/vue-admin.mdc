@@ -1,6 +1,6 @@
 ---
-description: 管理端 Vue3（@apps/admin）路由、API、状态
-globs: apps/admin/**/*.{vue,ts,tsx}
+description: 管理端 Vue3（@apps/admin）路由、API、权限与列表页
+globs: apps/admin/**/*
 alwaysApply: false
 ---
 
@@ -11,19 +11,35 @@ alwaysApply: false
 - **Vue 3** + **Vite** + **Pinia** + **Vue Router** + **Element Plus** + **VXE Table**；样式可用 **UnoCSS**、SCSS（全局主题见 `vite.config` 中 `additionalData`）。
 - 路径别名：`@/` → `src/`，`#/` → `types/`（API 类型、全局声明）。
 - 构建脚本区分 Web（`bs:*`）与 Electron 桌面端（`cs:*`）；改构建逻辑前确认目标形态。
+- 环境：`.env.development` / `.env.production`；勿提交密钥。
 
 ## API 层
 
 - HTTP 封装：`src/utils/request`（默认导出 `$http`）。
-- 接口函数放在 `src/api/**`，返回 **`$http.request<...>({ url, method, params/data })`**，类型从 `#/api` 或 `types/api/**/*.d.ts` 引入。
-- 新增后端接口后，优先生成类型，再手写薄封装。
+- 接口函数放在 `src/api/**`，返回 **`$http.request<Req, Res>({ url, method, params/data })`**，类型从 `#/api/**` 或 `types/api/**/*.d.ts` 引入。
+- 新增后端接口后，优先生成类型，再手写薄封装；url 与 server 路径一致（如 `/system/user/list`）。
 
 ## 状态与路由
 
-- Pinia store：`src/store/modules/`（如 `auth`、`permission`）；登录与 token 与 `@/utils/auth` 配合。
-- 路由与权限：`src/router`，与权限 store 联动；勿绕开既有守卫逻辑硬编码跳转。
+- Pinia store：`src/store/modules/`（如 `auth`、`permission`、`tagsView`）；登录与 token 与 `@/utils/auth` 配合。
+- 动态路由：`store/modules/permission.ts` 与 `router/guard.ts` 联动；勿绕开守卫硬编码跳转。
+
+## 权限
+
+- 按钮级权限：**`v-auth`** 指令 + `hasPermission`（`directives/modules/permission.ts`）。
+- 权限码来自当前路由 `meta.perms`；超级管理员 `userId === 1` 跳过校验。
+- 列表操作栏用 `ToolButtons`，内部已配合 `hasPermission`。
+
+## 列表页模式
+
+- **VXE Table** + **`FormView/SearchForm`** 查询表单 + **`ToolButtons`** 操作栏。
+- 响应式布局可用 **`Grid`** / **`GridItem`**；字典展示用 **`DictTag`**；富文本用 **`WangEditor`**。
 
 ## Vue 组件
 
 - 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
-- 列表页多为 VXE Table + 查询表单；图表用 ECharts（见 `views/charts`）。
+- 图表用 ECharts（见 `views/charts`）。
+
+## 共享库
+
+- 可从 **`@llcz/common`** 引入纯工具（如 `isArray` 用于权限判断）；勿在 common 中引入 Vue/UI。

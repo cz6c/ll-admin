@@ -1,0 +1,20 @@
+---
+description: VitePress 文档站（apps/docs）编写约定
+globs: apps/docs/**/*
+alwaysApply: false
+---
+
+# Docs（VitePress）
+
+## 结构
+
+- 配置：`.vitepress/config.mts`（nav、sidebar、站点标题）。
+- 文档正文：`guide/` 目录；首页 `index.md`。
+- 开发：`pnpm dev:docs`（monorepo 根目录）；构建产物 `.vitepress/dist`。
+
+## 编写约定
+
+- 文档语言：**中文**。
+- 新增页面后同步更新 `config.mts` 的 **nav** 与 **sidebar**。
+- 描述 admin/server 联调时，引用现有 guide 页面（如 `guide/server`、`guide/admin`、`guide/full-link`），勿重复造文档结构。
+- 与代码变更同步：接口、部署、功能地图等以实际代码为准更新对应 guide。

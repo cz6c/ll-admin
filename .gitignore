@@ -1,13 +1,2 @@
 /node_modules
 .turbo
-
-# uni-app (@apps/uni)
-apps/uni/node_modules
-apps/uni/dist
-apps/uni/src/manifest.json
-apps/uni/src/pages.json
-apps/uni/src/types
-!apps/uni/src/types/auto-import.d.ts
-apps/uni/cloudfunctions/**/node_modules
-.hbuilderx
-.eslintcache

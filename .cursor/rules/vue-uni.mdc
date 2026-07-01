@@ -1,0 +1,80 @@
+---
+description: uni-app 薪算工具箱（@apps/uni）页面、API、样式与 wot-ui
+globs: apps/uni/**/*
+alwaysApply: false
+---
+
+# Uni（uni-app + Vue 3 + Vite）
+
+## 栈与别名
+
+- **uni-app** + **Vue 3** + **TypeScript** + **Vite** + **UnoCSS** + **wot-ui**（`wd-*`）+ **Pinia**。
+- 路径别名：`@/` → `src/`。
+- 配置：`vite.config.ts`、`pages.config.ts`、`manifest.config.ts`、`uno.config.ts`；环境变量在 `env/`。
+
+## 开发命令（monorepo 根目录）
+
+| 场景 | 命令 |
+|------|------|
+| H5 | `pnpm dev:uni` |
+| 微信小程序 | `pnpm dev:uni:mp` |
+| 构建 H5 / 小程序 | `pnpm build:uni:h5` / `pnpm build:uni:mp` |
+| Lint / 类型 | `pnpm --filter @apps/uni lint` / `type-check` |
+
+## 目录
+
+- `src/pages/` — 主包页面；`src/pages-sub/` — 分包
+- `src/components/`、`src/layouts/`、`src/tabbar/`
+- `src/api/`、`src/http/`、`src/store/`
+- `src/App.ku.vue` — 全局根组件
+
+## 生成文件（勿手改提交）
+
+- `src/pages.json`、`src/manifest.json` 由 `scripts/create-base-files.js` + uni-pages 插件生成（见 `.gitignore`）。
+- 改路由/页面配置：编辑页面内 **`definePage`** 或 `pages.config.ts`，不要直接改 `pages.json`。
+
+## 路由与拦截
+
+- 路由拦截（登录/白名单）：`src/router/interceptor.ts`。
+- HTTP 拦截（token、错误）：`src/http/interceptor.ts`。
+- Tabbar 配置：`src/tabbar/config.ts`。
+
+## Vue / TypeScript
+
+- **Composition API** + `<script setup lang="ts">`；SFC 顺序：script → template → style（可选）。
+- 避免 `any`；类型用 `import type`；Pinia store 在 `src/store/`。
+- 页面用宏 **`definePage`**（写在 script 最上方）。
+- 平台差异用条件编译（`#ifdef H5` / `#ifdef MP-WEIXIN`）；API 用 `uni.xxx`。
+- 页面生命周期：`onLoad`、`onShow`、`onReady`、`onHide`、`onUnload`。
+
+## API / HTTP
+
+- 封装：`src/http/http.ts`（简单 http）、`alova.ts`、`vue-query.ts`。
+- 接口：`src/api/**`，类型 `src/api/types/`。
+- **后端现状**：API 仍指向 **laf.run**（`env/.env` 的 `VITE_SERVER_BASEURL`），**未对接 @apps/server**；迁移为独立任务。
+
+## 样式
+
+- 优先 **UnoCSS** 原子类；需自定义时用 `lang="scss"` + `scoped`，全局样式 `src/style/`。
+- 750 设计稿：**N px → 2N rpx**（如 24px → `px-48rpx`），勿写 `px-24px`。
+
+## wot-ui（必须遵守）
+
+easycom 已配置，**无需 import**。能用 wot-ui 必须用，禁止原生标签重复造轮子。
+
+| 场景 | ❌ | ✅ |
+|------|----|----|
+| 按钮 | `<button>` | `wd-button` |
+| 表单 | cell 手写 | `wd-form` + `wd-form-item` |
+| 输入 | `<input>` | `wd-input` |
+| 列表 | 手写 flex | `wd-cell` + `wd-cell-group` |
+| 弹层 | 手写遮罩 | `wd-popup` |
+| 空态 | 手写文案 | `wd-empty` |
+| 选择 | 原生 picker | `wd-picker` / `wd-select-picker` |
+
+例外：`view`、`scroll-view`、`canvas`、`image` 等布局/平台能力；wot-ui 无对应能力的原生 API。
+
+- 复杂表单标准写法：`wd-form` 绑 `:model` + `:schema`，提交前 **`formRef.validate()`**。
+- 外观优先 props（`type`、`size`、`variant`）；布局用 UnoCSS；微调用 `custom-class`。
+
+参考：`src/pages-sub/wifi/generate.vue`、`src/pages/salary/calc.vue`、`src/pages/salary/history.vue`。

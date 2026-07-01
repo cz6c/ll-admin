@@ -1,0 +1,9 @@
+node_modules
+dist
+src/manifest.json
+src/pages.json
+src/types
+!src/types/auto-import.d.ts
+cloudfunctions/**/node_modules
+.hbuilderx
+.eslintcache

@@ -9,12 +9,20 @@ alwaysApply: true
 
 - **包管理**：只用 `pnpm`（根目录 `preinstall` 已限制）；不要用 npm/yarn 安装依赖。
 - **编排**：`turbo` 串联 `build`；包依赖构建顺序见 `pnpm-workspace.yaml`（`apps/*`、`packages/*`）。
-- **提交**：Conventional Commits + `commitlint`（见根目录 `commitlint.config.cjs`）；可用根脚本 `cz`（cz-git）。
+- **提交**：Conventional Commits + `commitlint`（见根目录 **`commitlint.config.cjs`**）；可用根脚本 `cz`（cz-git）。
 
-## 包命名与依赖
+## 各 App 职责
 
-- 应用：`@apps/server`、`@apps/admin`、`@apps/docs`、`@apps/uni` 等。
-- 共享库：`@llcz/common`（workspace:*），放置跨端通用逻辑；改动后按需在各 app 内构建/联调。
+| App | 包名 | 说明 |
+|-----|------|------|
+| admin | `@apps/admin` | Vue3 管理后台（Element Plus + VXE Table） |
+| server | `@apps/server` | NestJS API + TypeORM |
+| uni | `@apps/uni` | uni-app 移动端（薪算工具箱） |
+| docs | — | VitePress 开发文档 |
+| common | `@llcz/common` | 跨端纯 TS 工具库 |
+
+- `@llcz/common` 当前被 **admin / server** 使用，**uni 尚未接入**。
+- uni 依赖 hoist：[`apps/uni/.npmrc`](apps/uni/.npmrc) 需 `shamefully-hoist=true`。
 
 ## 常用脚本（根 `package.json`）
 
@@ -25,9 +33,26 @@ alwaysApply: true
 | 文档站 | `pnpm dev:docs` |
 | uni-app H5 | `pnpm dev:uni` |
 | uni-app 微信小程序 | `pnpm dev:uni:mp` |
+| 构建 uni H5 / 小程序 | `pnpm build:uni:h5` / `pnpm build:uni:mp` |
 | 全仓检查 | `pnpm check`（lint + typecheck + test） |
+
+## 全仓检查注意
+
+- 改 uni 后优先单独验证：`pnpm --filter @apps/uni lint` / `type-check`。
+- `pnpm check` 递归所有包；uni 的 type-check 可能因 wot-ui 依赖类型报错、lint 有既有问题导致全仓失败 — 先定位是哪个 app，再决定是否单独处理 uni。
 
 ## AI 协作原则
 
 - 改动限制在实际需求涉及的 app 或 package，避免无关重构。
 - 大需求按 app 分包讨论实现（server / admin / docs / uni / common）。
+
+## Cursor 规则索引
+
+| App | 规则文件 |
+|-----|----------|
+| 全仓 | `monorepo-core.mdc` |
+| admin | `vue-admin.mdc` |
+| uni | `vue-uni.mdc` |
+| server | `nestjs-server.mdc` |
+| docs | `vitepress-docs.mdc` |
+| common | `shared-common.mdc` |

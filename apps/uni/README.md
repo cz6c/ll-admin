@@ -33,3 +33,5 @@ pnpm build:uni:mp
 
 - `src/manifest.json`、`src/pages.json` 由 `scripts/create-base-files.js` 在 `prepare` / `predev` 时自动生成。
 - 当前 API 指向 `laf.run`，见 `env/.env` 中 `VITE_SERVER_BASEURL`。
+- Cursor 规则：根目录 [`.cursor/rules/vue-uni.mdc`](../../.cursor/rules/vue-uni.mdc)。
+- VSCode 配置见 `.vscode/`。

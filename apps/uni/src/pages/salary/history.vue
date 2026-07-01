@@ -17,25 +17,32 @@ definePage({
 const salaryHistoryStore = useSalaryHistoryStore()
 const { items: list } = storeToRefs(salaryHistoryStore)
 
-const keyword = ref('')
+const searchInput = ref('')
+const searchKeyword = ref('')
 
 const WORKBENCH_KEY = '1111'
 
-watch(keyword, (val) => {
-  if (val === WORKBENCH_KEY) {
-    keyword.value = ''
-    uni.navigateTo({ url: '/pages/workbench/workbench' })
-  }
-})
-
-const keywordTrimmed = computed(() => keyword.value.trim())
-
 const filteredList = computed(() => {
-  const q = keywordTrimmed.value.toLowerCase()
+  const q = searchKeyword.value.toLowerCase()
   if (!q || q === WORKBENCH_KEY)
     return list.value
   return list.value.filter(item => item.title.toLowerCase().includes(q))
 })
+
+function onSearch({ value }: { value: string }) {
+  const val = value.trim()
+  if (val === WORKBENCH_KEY) {
+    searchInput.value = ''
+    searchKeyword.value = ''
+    uni.navigateTo({ url: '/pages/workbench/workbench' })
+    return
+  }
+  searchKeyword.value = val
+}
+
+function onSearchClear() {
+  searchKeyword.value = ''
+}
 
 function openDetail(item: SalaryHistoryItem) {
   uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(item.id)}` })
@@ -68,16 +75,18 @@ function confirmDelete(item: SalaryHistoryItem) {
   <view class="page-shell pb-safe" @click="closeOutside">
     <view class="p-24rpx">
       <wd-search
-        v-model="keyword"
+        v-model="searchInput"
         placeholder="搜索历史记录"
         hide-cancel
         variant="light"
         custom-class="search mb-16rpx"
+        @search="onSearch"
+        @clear="onSearchClear"
       />
 
       <view v-if="list.length > 0" class="px-8rpx pb-16rpx">
         <text class="text-26rpx text-#999">
-          {{ keywordTrimmed ? `找到 ${filteredList.length} 条` : `共 ${list.length} 条` }}
+          {{ searchKeyword ? `找到 ${filteredList.length} 条` : `共 ${list.length} 条` }}
         </text>
       </view>
 
@@ -87,7 +96,7 @@ function confirmDelete(item: SalaryHistoryItem) {
       />
 
       <wd-empty
-        v-else-if="keywordTrimmed && keywordTrimmed !== WORKBENCH_KEY && filteredList.length === 0"
+        v-else-if="searchKeyword && searchKeyword !== WORKBENCH_KEY && filteredList.length === 0"
         tip="未找到匹配的历史记录"
       />
 

@@ -1,0 +1,3552 @@
+{
+  "foods": [
+    {
+      "id": "001",
+      "name": "猪肥肠",
+      "category": "畜禽肉类",
+      "purine": 296,
+      "level": "very_high",
+      "image": "pork_intestine.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "002",
+      "name": "猪肝",
+      "category": "畜禽肉类",
+      "purine": 275,
+      "level": "very_high",
+      "image": "pork_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "003",
+      "name": "猪肺",
+      "category": "畜禽肉类",
+      "purine": 272,
+      "level": "very_high",
+      "image": "pork_lung.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "004",
+      "name": "猪肚",
+      "category": "畜禽肉类",
+      "purine": 252,
+      "level": "very_high",
+      "image": "pork_stomach.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "005",
+      "name": "猪肾",
+      "category": "畜禽肉类",
+      "purine": 239,
+      "level": "very_high",
+      "image": "pork_kidney.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "006",
+      "name": "猪胰",
+      "category": "畜禽肉类",
+      "purine": 234,
+      "level": "very_high",
+      "image": "pork_pancreas.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "007",
+      "name": "猪舌",
+      "category": "畜禽肉类",
+      "purine": 186,
+      "level": "very_high",
+      "image": "pork_tongue.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "008",
+      "name": "猪心",
+      "category": "畜禽肉类",
+      "purine": 170,
+      "level": "very_high",
+      "image": "pork_heart.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "009",
+      "name": "猪肉",
+      "category": "畜禽肉类",
+      "purine": 138,
+      "level": "high",
+      "image": "pork.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "010",
+      "name": "猪手",
+      "category": "畜禽肉类",
+      "purine": 134,
+      "level": "high",
+      "image": "pork_trotter.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "011",
+      "name": "叉烧肉",
+      "category": "畜禽肉类",
+      "purine": 124,
+      "level": "high",
+      "image": "bbq_pork.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "012",
+      "name": "猪耳朵",
+      "category": "畜禽肉类",
+      "purine": 114,
+      "level": "high",
+      "image": "pork_ear.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "013",
+      "name": "火腿罐头",
+      "category": "畜禽肉类",
+      "purine": 103,
+      "level": "high",
+      "image": "canned_ham.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "014",
+      "name": "午餐肉罐头",
+      "category": "畜禽肉类",
+      "purine": 94,
+      "level": "high",
+      "image": "luncheon_meat.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "015",
+      "name": "猪肉松",
+      "category": "畜禽肉类",
+      "purine": 76,
+      "level": "medium",
+      "image": "pork_floss.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "016",
+      "name": "猪血",
+      "category": "畜禽肉类",
+      "purine": 40,
+      "level": "low",
+      "image": "pork_blood.jpg",
+      "description": "第四类低嘌呤食物，可适量食用"
+    },
+    {
+      "id": "017",
+      "name": "牛肝",
+      "category": "畜禽肉类",
+      "purine": 251,
+      "level": "very_high",
+      "image": "beef_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "018",
+      "name": "牛肉干",
+      "category": "畜禽肉类",
+      "purine": 127,
+      "level": "high",
+      "image": "beef_jerky.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "019",
+      "name": "牛肉",
+      "category": "畜禽肉类",
+      "purine": 105,
+      "level": "high",
+      "image": "beef.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "020",
+      "name": "牛肉火腿肠",
+      "category": "畜禽肉类",
+      "purine": 85,
+      "level": "high",
+      "image": "beef_sausage.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "021",
+      "name": "牛肉松",
+      "category": "畜禽肉类",
+      "purine": 71,
+      "level": "medium",
+      "image": "beef_floss.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "022",
+      "name": "牛肉汤",
+      "category": "畜禽肉类",
+      "purine": 70,
+      "level": "medium",
+      "image": "beef_soup.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "023",
+      "name": "牛骨头汤(火锅后)",
+      "category": "畜禽肉类",
+      "purine": 53,
+      "level": "medium",
+      "image": "beef_bone_soup.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "024",
+      "name": "牛蹄肉筋",
+      "category": "畜禽肉类",
+      "purine": 40,
+      "level": "low",
+      "image": "beef_tendon.jpg",
+      "description": "第四类低嘌呤食物，可适量食用"
+    },
+    {
+      "id": "025",
+      "name": "牛骨头汤(火锅前)",
+      "category": "畜禽肉类",
+      "purine": 4,
+      "level": "low",
+      "image": "beef_bone_soup_raw.jpg",
+      "description": "第四类低嘌呤食物，可适量食用"
+    },
+    {
+      "id": "026",
+      "name": "羊肝",
+      "category": "畜禽肉类",
+      "purine": 228,
+      "level": "very_high",
+      "image": "lamb_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "027",
+      "name": "羊肉串",
+      "category": "畜禽肉类",
+      "purine": 223,
+      "level": "very_high",
+      "image": "lamb_skewer.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "028",
+      "name": "羊肉",
+      "category": "畜禽肉类",
+      "purine": 109,
+      "level": "high",
+      "image": "lamb.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "029",
+      "name": "鸡肝",
+      "category": "畜禽肉类",
+      "purine": 317,
+      "level": "very_high",
+      "image": "chicken_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "030",
+      "name": "鸡肚",
+      "category": "畜禽肉类",
+      "purine": 229,
+      "level": "very_high",
+      "image": "chicken_gizzard.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "031",
+      "name": "鸡脖",
+      "category": "畜禽肉类",
+      "purine": 218,
+      "level": "very_high",
+      "image": "chicken_neck.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "032",
+      "name": "鸡肉",
+      "category": "畜禽肉类",
+      "purine": 208,
+      "level": "very_high",
+      "image": "chicken.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "033",
+      "name": "鸡心",
+      "category": "畜禽肉类",
+      "purine": 168,
+      "level": "very_high",
+      "image": "chicken_heart.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "034",
+      "name": "烧鸡",
+      "category": "畜禽肉类",
+      "purine": 188,
+      "level": "very_high",
+      "image": "roasted_chicken.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "035",
+      "name": "乌鸡肉",
+      "category": "畜禽肉类",
+      "purine": 173,
+      "level": "very_high",
+      "image": "black_chicken.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "036",
+      "name": "鸭肝",
+      "category": "畜禽肉类",
+      "purine": 398,
+      "level": "very_high",
+      "image": "duck_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "037",
+      "name": "鸭肠",
+      "category": "畜禽肉类",
+      "purine": 346,
+      "level": "very_high",
+      "image": "duck_intestine.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "038",
+      "name": "鸭脖",
+      "category": "畜禽肉类",
+      "purine": 316,
+      "level": "very_high",
+      "image": "duck_neck.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "039",
+      "name": "鸭脑",
+      "category": "畜禽肉类",
+      "purine": 227,
+      "level": "very_high",
+      "image": "duck_brain.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "040",
+      "name": "烧鸭",
+      "category": "畜禽肉类",
+      "purine": 88,
+      "level": "high",
+      "image": "roasted_duck.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "041",
+      "name": "鹅肝",
+      "category": "畜禽肉类",
+      "purine": 377,
+      "level": "very_high",
+      "image": "goose_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "042",
+      "name": "鹅心",
+      "category": "畜禽肉类",
+      "purine": 259,
+      "level": "very_high",
+      "image": "goose_heart.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "043",
+      "name": "鹅脖",
+      "category": "畜禽肉类",
+      "purine": 182,
+      "level": "very_high",
+      "image": "goose_neck.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "044",
+      "name": "鹅脑",
+      "category": "畜禽肉类",
+      "purine": 140,
+      "level": "high",
+      "image": "goose_brain.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "045",
+      "name": "烧鹅",
+      "category": "畜禽肉类",
+      "purine": 89,
+      "level": "high",
+      "image": "roasted_goose.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "046",
+      "name": "驴肉",
+      "category": "畜禽肉类",
+      "purine": 117,
+      "level": "high",
+      "image": "donkey_meat.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "047",
+      "name": "兔肉",
+      "category": "畜禽肉类",
+      "purine": 148,
+      "level": "high",
+      "image": "rabbit_meat.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "048",
+      "name": "牛蛙腿肉",
+      "category": "畜禽肉类",
+      "purine": 92,
+      "level": "high",
+      "image": "frog_leg.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "049",
+      "name": "鸡蛋",
+      "category": "蛋类",
+      "purine": 1,
+      "level": "low",
+      "image": "egg.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "050",
+      "name": "松花蛋",
+      "category": "蛋类",
+      "purine": 1,
+      "level": "low",
+      "image": "preserved_egg.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "051",
+      "name": "鹅蛋",
+      "category": "蛋类",
+      "purine": 1,
+      "level": "low",
+      "image": "goose_egg.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "052",
+      "name": "鹌鹑蛋",
+      "category": "蛋类",
+      "purine": 7,
+      "level": "low",
+      "image": "quail_egg.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "053",
+      "name": "鲅鱼(烤)",
+      "category": "鱼虾蟹贝类",
+      "purine": 452,
+      "level": "very_high",
+      "image": "grilled_mackerel.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "054",
+      "name": "面条鱼(干)",
+      "category": "鱼虾蟹贝类",
+      "purine": 383,
+      "level": "very_high",
+      "image": "dried_noodle_fish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "055",
+      "name": "鲭鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 298,
+      "level": "very_high",
+      "image": "mackerel.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "056",
+      "name": "凤尾鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 263,
+      "level": "very_high",
+      "image": "anchovy.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "057",
+      "name": "泥鳅鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 247,
+      "level": "very_high",
+      "image": "loach.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "058",
+      "name": "鳕鱼(烤)",
+      "category": "鱼虾蟹贝类",
+      "purine": 230,
+      "level": "very_high",
+      "image": "grilled_cod.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "059",
+      "name": "海鲈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 227,
+      "level": "very_high",
+      "image": "sea_bass.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "060",
+      "name": "鱿鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 214,
+      "level": "very_high",
+      "image": "squid.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "061",
+      "name": "黑鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 214,
+      "level": "very_high",
+      "image": "snakehead.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "062",
+      "name": "鸦片鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 211,
+      "level": "very_high",
+      "image": "flatfish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "063",
+      "name": "鲟鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 202,
+      "level": "very_high",
+      "image": "sturgeon.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "064",
+      "name": "红头鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 195,
+      "level": "very_high",
+      "image": "red_snapper.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "065",
+      "name": "鲫鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 190,
+      "level": "very_high",
+      "image": "crucian_carp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "066",
+      "name": "鱼片(烤)",
+      "category": "鱼虾蟹贝类",
+      "purine": 188,
+      "level": "very_high",
+      "image": "grilled_fish_fillet.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "067",
+      "name": "鲶鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 187,
+      "level": "very_high",
+      "image": "catfish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "068",
+      "name": "鱼肝",
+      "category": "鱼虾蟹贝类",
+      "purine": 185,
+      "level": "very_high",
+      "image": "fish_liver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "069",
+      "name": "深海鲈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 179,
+      "level": "very_high",
+      "image": "deep_sea_bass.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "070",
+      "name": "鲽鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 175,
+      "level": "very_high",
+      "image": "flounder.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "071",
+      "name": "虹鳟鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 172,
+      "level": "very_high",
+      "image": "rainbow_trout.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "072",
+      "name": "鱼片",
+      "category": "鱼虾蟹贝类",
+      "purine": 169,
+      "level": "very_high",
+      "image": "fish_fillet.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "073",
+      "name": "三文鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 168,
+      "level": "very_high",
+      "image": "salmon.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "074",
+      "name": "海鲈鱼（熟）",
+      "category": "鱼虾蟹贝类",
+      "purine": 165,
+      "level": "very_high",
+      "image": "cooked_sea_bass.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "075",
+      "name": "黄花鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 165,
+      "level": "very_high",
+      "image": "yellow_croaker.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "076",
+      "name": "河鲈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 165,
+      "level": "very_high",
+      "image": "river_bass.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "077",
+      "name": "草鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 162,
+      "level": "very_high",
+      "image": "grass_carp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "078",
+      "name": "刀鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 161,
+      "level": "very_high",
+      "image": "hairtail.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "079",
+      "name": "白鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 160,
+      "level": "very_high",
+      "image": "white_fish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "080",
+      "name": "鲫鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 154,
+      "level": "very_high",
+      "image": "crucian_carp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "081",
+      "name": "白鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 153,
+      "level": "very_high",
+      "image": "white_fish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "082",
+      "name": "棒棒鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 149,
+      "level": "high",
+      "image": "stick_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "083",
+      "name": "怀头鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 147,
+      "level": "high",
+      "image": "catfish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "084",
+      "name": "大马哈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 147,
+      "level": "high",
+      "image": "salmon.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "085",
+      "name": "金鳟鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 146,
+      "level": "high",
+      "image": "golden_trout.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "086",
+      "name": "鲢鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 141,
+      "level": "high",
+      "image": "silver_carp.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "087",
+      "name": "梭鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 137,
+      "level": "high",
+      "image": "mullet.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "088",
+      "name": "红线鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 136,
+      "level": "high",
+      "image": "red_line_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "089",
+      "name": "象鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 135,
+      "level": "high",
+      "image": "elephant_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "090",
+      "name": "草鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 134,
+      "level": "high",
+      "image": "grass_carp.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "091",
+      "name": "比目鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 134,
+      "level": "high",
+      "image": "flatfish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "092",
+      "name": "河鲈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 133,
+      "level": "high",
+      "image": "river_bass.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "093",
+      "name": "鱼肉松",
+      "category": "鱼虾蟹贝类",
+      "purine": 131,
+      "level": "high",
+      "image": "fish_floss.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "094",
+      "name": "金昌鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 130,
+      "level": "high",
+      "image": "golden_pomfret.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "095",
+      "name": "武昌鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 128,
+      "level": "high",
+      "image": "wuchang_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "096",
+      "name": "鳝鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 127,
+      "level": "high",
+      "image": "eel.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "097",
+      "name": "罗非鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 126,
+      "level": "high",
+      "image": "tilapia.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "098",
+      "name": "鲤鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 122,
+      "level": "high",
+      "image": "carp.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "099",
+      "name": "桂鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 121,
+      "level": "high",
+      "image": "mandarin_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "100",
+      "name": "编织鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 119,
+      "level": "high",
+      "image": "woven_fish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "101",
+      "name": "鳗鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 117,
+      "level": "high",
+      "image": "eel.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "102",
+      "name": "大马哈鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 117,
+      "level": "high",
+      "image": "salmon.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "103",
+      "name": "章鱼片",
+      "category": "鱼虾蟹贝类",
+      "purine": 116,
+      "level": "high",
+      "image": "octopus_slice.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "104",
+      "name": "鲟鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 114,
+      "level": "high",
+      "image": "sturgeon.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "105",
+      "name": "甲鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 110,
+      "level": "high",
+      "image": "soft_shell_turtle.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "106",
+      "name": "比目鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 104,
+      "level": "high",
+      "image": "flatfish.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "107",
+      "name": "鲽鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 85,
+      "level": "high",
+      "image": "flounder.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "108",
+      "name": "沙丁鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 82,
+      "level": "high",
+      "image": "sardine.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "109",
+      "name": "鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 71,
+      "level": "medium",
+      "image": "fish.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "110",
+      "name": "多宝鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 70,
+      "level": "medium",
+      "image": "turbot.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "111",
+      "name": "晶鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 58,
+      "level": "medium",
+      "image": "crystal_fish.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "112",
+      "name": "银鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 23,
+      "level": "low",
+      "image": "whitebait.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "113",
+      "name": "大马哈鱼籽",
+      "category": "鱼虾蟹贝类",
+      "purine": 136,
+      "level": "high",
+      "image": "salmon_roe.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "114",
+      "name": "烤虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 389,
+      "level": "very_high",
+      "image": "grilled_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "115",
+      "name": "干对虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 349,
+      "level": "very_high",
+      "image": "dried_prawn.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "116",
+      "name": "鲜对虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 101.5,
+      "level": "high",
+      "image": "fresh_prawn.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "117",
+      "name": "干虾仁",
+      "category": "鱼虾蟹贝类",
+      "purine": 345,
+      "level": "very_high",
+      "image": "dried_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "118",
+      "name": "江虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 265,
+      "level": "very_high",
+      "image": "river_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "119",
+      "name": "皮皮虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 254,
+      "level": "very_high",
+      "image": "mantis_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "120",
+      "name": "江虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 231,
+      "level": "very_high",
+      "image": "river_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "121",
+      "name": "海米",
+      "category": "鱼虾蟹贝类",
+      "purine": 220,
+      "level": "very_high",
+      "image": "dried_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "122",
+      "name": "皮皮虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 200,
+      "level": "very_high",
+      "image": "mantis_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "123",
+      "name": "基围虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 187,
+      "level": "very_high",
+      "image": "shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "124",
+      "name": "青虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 180,
+      "level": "very_high",
+      "image": "green_shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "125",
+      "name": "基围虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 174,
+      "level": "very_high",
+      "image": "shrimp.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "126",
+      "name": "小龙虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 174,
+      "level": "very_high",
+      "image": "crayfish.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "127",
+      "name": "龙虾",
+      "category": "鱼虾蟹贝类",
+      "purine": 163,
+      "level": "very_high",
+      "image": "lobster.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "128",
+      "name": "河蟹",
+      "category": "鱼虾蟹贝类",
+      "purine": 147,
+      "level": "high",
+      "image": "river_crab.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "129",
+      "name": "河蟹肉",
+      "category": "鱼虾蟹贝类",
+      "purine": 144,
+      "level": "high",
+      "image": "river_crab_meat.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "130",
+      "name": "冬蟹",
+      "category": "鱼虾蟹贝类",
+      "purine": 137,
+      "level": "high",
+      "image": "winter_crab.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "131",
+      "name": "大闸蟹",
+      "category": "鱼虾蟹贝类",
+      "purine": 121,
+      "level": "high",
+      "image": "hairy_crab.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "132",
+      "name": "河蟹黄",
+      "category": "鱼虾蟹贝类",
+      "purine": 182,
+      "level": "very_high",
+      "image": "river_crab_roe.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "133",
+      "name": "河蟹黄",
+      "category": "鱼虾蟹贝类",
+      "purine": 180,
+      "level": "very_high",
+      "image": "river_crab_roe.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "134",
+      "name": "河蟹肉",
+      "category": "鱼虾蟹贝类",
+      "purine": 167,
+      "level": "very_high",
+      "image": "river_crab_meat.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "135",
+      "name": "贻贝",
+      "category": "鱼虾蟹贝类",
+      "purine": 414,
+      "level": "very_high",
+      "image": "mussel.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "136",
+      "name": "毛蚶",
+      "category": "鱼虾蟹贝类",
+      "purine": 343,
+      "level": "very_high",
+      "image": "blood_clam.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "137",
+      "name": "生蚝",
+      "category": "鱼虾蟹贝类",
+      "purine": 282,
+      "level": "very_high",
+      "image": "oyster.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "138",
+      "name": "海兔",
+      "category": "鱼虾蟹贝类",
+      "purine": 266,
+      "level": "very_high",
+      "image": "sea_hare.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "139",
+      "name": "牡蛎",
+      "category": "鱼虾蟹贝类",
+      "purine": 242,
+      "level": "very_high",
+      "image": "oyster.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "140",
+      "name": "扇贝",
+      "category": "鱼虾蟹贝类",
+      "purine": 235,
+      "level": "very_high",
+      "image": "scallop.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "141",
+      "name": "蚬子",
+      "category": "鱼虾蟹贝类",
+      "purine": 206,
+      "level": "very_high",
+      "image": "corbicula.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "142",
+      "name": "鸳鸯贝",
+      "category": "鱼虾蟹贝类",
+      "purine": 202,
+      "level": "very_high",
+      "image": "york_duck_scallop.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "143",
+      "name": "干贝",
+      "category": "鱼虾蟹贝类",
+      "purine": 193,
+      "level": "very_high",
+      "image": "dried_scallop.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "144",
+      "name": "蛏子",
+      "category": "鱼虾蟹贝类",
+      "purine": 193,
+      "level": "very_high",
+      "image": "razor_clam.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "145",
+      "name": "牡蛎",
+      "category": "鱼虾蟹贝类",
+      "purine": 193,
+      "level": "very_high",
+      "image": "oyster.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "146",
+      "name": "蚡子",
+      "category": "鱼虾蟹贝类",
+      "purine": 180,
+      "level": "very_high",
+      "image": "clam.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "147",
+      "name": "干鲍鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 171,
+      "level": "very_high",
+      "image": "dried_abalone.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "148",
+      "name": "鲜贝",
+      "category": "鱼虾蟹贝类",
+      "purine": 167,
+      "level": "very_high",
+      "image": "fresh_scallop.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "149",
+      "name": "蛏子",
+      "category": "鱼虾蟹贝类",
+      "purine": 149,
+      "level": "high",
+      "image": "razor_clam.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "150",
+      "name": "鲜鲍鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 112,
+      "level": "high",
+      "image": "fresh_abalone.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "151",
+      "name": "即食鲍鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 110,
+      "level": "high",
+      "image": "instant_abalone.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "152",
+      "name": "鲜鲍鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 102,
+      "level": "high",
+      "image": "fresh_abalone.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "153",
+      "name": "小海螺",
+      "category": "鱼虾蟹贝类",
+      "purine": 97,
+      "level": "high",
+      "image": "small_conch.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "154",
+      "name": "干鲍鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 9,
+      "level": "low",
+      "image": "dried_abalone.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "155",
+      "name": "鱿鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 244,
+      "level": "very_high",
+      "image": "squid.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "156",
+      "name": "八爪鱼",
+      "category": "鱼虾蟹贝类",
+      "purine": 198,
+      "level": "very_high",
+      "image": "octopus.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "157",
+      "name": "鱿鱼丝",
+      "category": "鱼虾蟹贝类",
+      "purine": 106,
+      "level": "high",
+      "image": "squid_shreds.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "158",
+      "name": "干海参",
+      "category": "鱼虾蟹贝类",
+      "purine": 18,
+      "level": "low",
+      "image": "dried_sea_cucumber.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "159",
+      "name": "燕窝",
+      "category": "鱼虾蟹贝类",
+      "purine": 10,
+      "level": "low",
+      "image": "bird_nest.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "160",
+      "name": "海蜇丝",
+      "category": "鱼虾蟹贝类",
+      "purine": 9,
+      "level": "low",
+      "image": "jellyfish_shreds.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "161",
+      "name": "面包",
+      "category": "谷类及制品",
+      "purine": 51,
+      "level": "medium",
+      "image": "bread.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "162",
+      "name": "面包",
+      "category": "谷类及制品",
+      "purine": 50,
+      "level": "medium",
+      "image": "bread.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "163",
+      "name": "花卷",
+      "category": "谷类及制品",
+      "purine": 45,
+      "level": "medium",
+      "image": "steamed_roll.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "164",
+      "name": "全麦粉",
+      "category": "谷类及制品",
+      "purine": 42,
+      "level": "medium",
+      "image": "whole_wheat_flour.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "165",
+      "name": "麻花",
+      "category": "谷类及制品",
+      "purine": 39,
+      "level": "medium",
+      "image": "fried_dough_twist.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "166",
+      "name": "富强粉",
+      "category": "谷类及制品",
+      "purine": 37,
+      "level": "medium",
+      "image": "refined_flour.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "167",
+      "name": "煎饼",
+      "category": "谷类及制品",
+      "purine": 36,
+      "level": "medium",
+      "image": "pancake.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "168",
+      "name": "馒头",
+      "category": "谷类及制品",
+      "purine": 27,
+      "level": "low",
+      "image": "steamed_bun.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "169",
+      "name": "油饼",
+      "category": "谷类及制品",
+      "purine": 27,
+      "level": "low",
+      "image": "oil_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "170",
+      "name": "烧饼",
+      "category": "谷类及制品",
+      "purine": 27,
+      "level": "low",
+      "image": "baked_pancake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "171",
+      "name": "面粉",
+      "category": "谷类及制品",
+      "purine": 26,
+      "level": "low",
+      "image": "flour.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "172",
+      "name": "挂面",
+      "category": "谷类及制品",
+      "purine": 21,
+      "level": "low",
+      "image": "dried_noodle.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "173",
+      "name": "高筋粉",
+      "category": "谷类及制品",
+      "purine": 21,
+      "level": "low",
+      "image": "high_gluten_flour.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "174",
+      "name": "油炸糕",
+      "category": "谷类及制品",
+      "purine": 21,
+      "level": "low",
+      "image": "fried_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "175",
+      "name": "肉粽子",
+      "category": "谷类及制品",
+      "purine": 18,
+      "level": "low",
+      "image": "meat_zongzi.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "176",
+      "name": "油条",
+      "category": "谷类及制品",
+      "purine": 19,
+      "level": "low",
+      "image": "fried_dough_stick.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "177",
+      "name": "虎皮糕",
+      "category": "谷类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "tiger_skin_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "178",
+      "name": "长白糕",
+      "category": "谷类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "long_white_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "179",
+      "name": "粽子",
+      "category": "谷类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "zongzi.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "180",
+      "name": "玉米面发糕",
+      "category": "谷类及制品",
+      "purine": 19,
+      "level": "low",
+      "image": "corn_steamed_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "181",
+      "name": "玉米面",
+      "category": "谷类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "corn_flour.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "182",
+      "name": "小碴子",
+      "category": "谷类及制品",
+      "purine": 10,
+      "level": "low",
+      "image": "small_grits.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "183",
+      "name": "大碴子",
+      "category": "谷类及制品",
+      "purine": 8,
+      "level": "low",
+      "image": "large_grits.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "184",
+      "name": "黑米",
+      "category": "谷类及制品",
+      "purine": 63,
+      "level": "medium",
+      "image": "black_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "185",
+      "name": "糯米",
+      "category": "谷类及制品",
+      "purine": 50,
+      "level": "medium",
+      "image": "glutinous_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "186",
+      "name": "江米",
+      "category": "谷类及制品",
+      "purine": 48,
+      "level": "medium",
+      "image": "jiang_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "187",
+      "name": "大米",
+      "category": "谷类及制品",
+      "purine": 44,
+      "level": "medium",
+      "image": "rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "188",
+      "name": "糙米",
+      "category": "谷类及制品",
+      "purine": 35,
+      "level": "medium",
+      "image": "brown_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "189",
+      "name": "红米",
+      "category": "谷类及制品",
+      "purine": 33,
+      "level": "medium",
+      "image": "red_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "190",
+      "name": "粳米",
+      "category": "谷类及制品",
+      "purine": 31,
+      "level": "medium",
+      "image": "japonica_rice.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "191",
+      "name": "雪饼",
+      "category": "谷类及制品",
+      "purine": 28,
+      "level": "low",
+      "image": "snow_cracker.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "192",
+      "name": "薏米",
+      "category": "谷类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "job_tears.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "193",
+      "name": "高粱米",
+      "category": "谷类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "sorghum_rice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "194",
+      "name": "大麦",
+      "category": "谷类及制品",
+      "purine": 47,
+      "level": "medium",
+      "image": "barley.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "195",
+      "name": "小米",
+      "category": "谷类及制品",
+      "purine": 20,
+      "level": "low",
+      "image": "millet.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "196",
+      "name": "黄米",
+      "category": "谷类及制品",
+      "purine": 16,
+      "level": "low",
+      "image": "yellow_rice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "197",
+      "name": "燕麦",
+      "category": "谷类及制品",
+      "purine": 59,
+      "level": "medium",
+      "image": "oats.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "198",
+      "name": "荞麦",
+      "category": "谷类及制品",
+      "purine": 34,
+      "level": "medium",
+      "image": "buckwheat.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "199",
+      "name": "甘薯",
+      "category": "薯类、淀粉及制品",
+      "purine": 24,
+      "level": "low",
+      "image": "sweet_potato.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "200",
+      "name": "甘薯",
+      "category": "薯类、淀粉及制品",
+      "purine": 19,
+      "level": "low",
+      "image": "sweet_potato.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "201",
+      "name": "地瓜",
+      "category": "薯类、淀粉及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "sweet_potato.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "202",
+      "name": "马铃薯",
+      "category": "薯类、淀粉及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "potato.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "203",
+      "name": "木薯",
+      "category": "薯类、淀粉及制品",
+      "purine": 10,
+      "level": "low",
+      "image": "cassava.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "204",
+      "name": "土豆淀粉",
+      "category": "薯类、淀粉及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "potato_starch.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "205",
+      "name": "拉皮",
+      "category": "薯类、淀粉及制品",
+      "purine": 3,
+      "level": "low",
+      "image": "starch_noodle.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "206",
+      "name": "粉条",
+      "category": "薯类、淀粉及制品",
+      "purine": 2,
+      "level": "low",
+      "image": "vermicelli.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "207",
+      "name": "番薯粉干",
+      "category": "薯类、淀粉及制品",
+      "purine": 2,
+      "level": "low",
+      "image": "sweet_potato_noodle.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "208",
+      "name": "干豆腐",
+      "category": "干豆类及制品",
+      "purine": 94,
+      "level": "high",
+      "image": "dried_tofu.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "209",
+      "name": "黄豆",
+      "category": "干豆类及制品",
+      "purine": 218,
+      "level": "very_high",
+      "image": "soybean.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "210",
+      "name": "黑豆",
+      "category": "干豆类及制品",
+      "purine": 170,
+      "level": "very_high",
+      "image": "black_bean.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "211",
+      "name": "豆粉",
+      "category": "干豆类及制品",
+      "purine": 167,
+      "level": "very_high",
+      "image": "soy_flour.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "212",
+      "name": "纳豆",
+      "category": "干豆类及制品",
+      "purine": 110,
+      "level": "high",
+      "image": "natto.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "213",
+      "name": "豆腐渣",
+      "category": "干豆类及制品",
+      "purine": 109,
+      "level": "high",
+      "image": "tofu_residue.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "214",
+      "name": "内酯豆腐",
+      "category": "干豆类及制品",
+      "purine": 100,
+      "level": "high",
+      "image": "lactone_tofu.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "215",
+      "name": "水豆腐",
+      "category": "干豆类及制品",
+      "purine": 68,
+      "level": "medium",
+      "image": "soft_tofu.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "216",
+      "name": "生豆浆",
+      "category": "干豆类及制品",
+      "purine": 63,
+      "level": "medium",
+      "image": "raw_soy_milk.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "217",
+      "name": "生豆浆",
+      "category": "干豆类及制品",
+      "purine": 46,
+      "level": "medium",
+      "image": "raw_soy_milk.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "218",
+      "name": "生豆浆",
+      "category": "干豆类及制品",
+      "purine": 29,
+      "level": "low",
+      "image": "raw_soy_milk.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "219",
+      "name": "熟豆浆",
+      "category": "干豆类及制品",
+      "purine": 29,
+      "level": "low",
+      "image": "cooked_soy_milk.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "220",
+      "name": "生豆浆",
+      "category": "干豆类及制品",
+      "purine": 18,
+      "level": "low",
+      "image": "raw_soy_milk.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "221",
+      "name": "绿豆",
+      "category": "干豆类及制品",
+      "purine": 196,
+      "level": "very_high",
+      "image": "mung_bean.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "222",
+      "name": "红小豆",
+      "category": "干豆类及制品",
+      "purine": 156,
+      "level": "very_high",
+      "image": "red_bean.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "223",
+      "name": "白芸豆",
+      "category": "干豆类及制品",
+      "purine": 125,
+      "level": "high",
+      "image": "white_kidney_bean.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "224",
+      "name": "花芸豆",
+      "category": "干豆类及制品",
+      "purine": 118,
+      "level": "high",
+      "image": "pinto_bean.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "225",
+      "name": "蚕豆",
+      "category": "干豆类及制品",
+      "purine": 307,
+      "level": "very_high",
+      "image": "broad_bean.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "226",
+      "name": "豌豆",
+      "category": "干豆类及制品",
+      "purine": 86,
+      "level": "high",
+      "image": "pea.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "227",
+      "name": "胡萝卜",
+      "category": "蔬菜类及制品",
+      "purine": 17,
+      "level": "low",
+      "image": "carrot.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "228",
+      "name": "水萝卜",
+      "category": "蔬菜类及制品",
+      "purine": 14,
+      "level": "low",
+      "image": "water_radish.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "229",
+      "name": "红萝卜",
+      "category": "蔬菜类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "red_radish.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "230",
+      "name": "白萝卜",
+      "category": "蔬菜类及制品",
+      "purine": 11,
+      "level": "low",
+      "image": "white_radish.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "231",
+      "name": "豌豆",
+      "category": "蔬菜类及制品",
+      "purine": 86,
+      "level": "high",
+      "image": "pea.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "232",
+      "name": "豇豆角",
+      "category": "蔬菜类及制品",
+      "purine": 45,
+      "level": "medium",
+      "image": "cowpea.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "233",
+      "name": "豆角",
+      "category": "蔬菜类及制品",
+      "purine": 40,
+      "level": "medium",
+      "image": "green_bean.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "234",
+      "name": "黄豆芽",
+      "category": "蔬菜类及制品",
+      "purine": 29,
+      "level": "low",
+      "image": "soybean_sprout.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "235",
+      "name": "四季豆",
+      "category": "蔬菜类及制品",
+      "purine": 23,
+      "level": "low",
+      "image": "kidney_bean.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "236",
+      "name": "绿豆芽",
+      "category": "蔬菜类及制品",
+      "purine": 11,
+      "level": "low",
+      "image": "mung_bean_sprout.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "237",
+      "name": "南瓜",
+      "category": "蔬菜类及制品",
+      "purine": 29,
+      "level": "low",
+      "image": "pumpkin.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "238",
+      "name": "蛇瓜",
+      "category": "蔬菜类及制品",
+      "purine": 23,
+      "level": "low",
+      "image": "snake_gourd.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "239",
+      "name": "西葫芦",
+      "category": "蔬菜类及制品",
+      "purine": 20,
+      "level": "low",
+      "image": "zucchini.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "240",
+      "name": "番茄",
+      "category": "蔬菜类及制品",
+      "purine": 17,
+      "level": "low",
+      "image": "tomato.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "241",
+      "name": "倭瓜",
+      "category": "蔬菜类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "winter_squash.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "242",
+      "name": "丝瓜",
+      "category": "蔬菜类及制品",
+      "purine": 14,
+      "level": "low",
+      "image": "loofah.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "243",
+      "name": "茄子",
+      "category": "蔬菜类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "eggplant.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "244",
+      "name": "苦瓜",
+      "category": "蔬菜类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "bitter_gourd.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "245",
+      "name": "黄瓜",
+      "category": "蔬菜类及制品",
+      "purine": 11,
+      "level": "low",
+      "image": "cucumber.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "246",
+      "name": "尖椒",
+      "category": "蔬菜类及制品",
+      "purine": 6,
+      "level": "low",
+      "image": "chili_pepper.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "247",
+      "name": "青椒",
+      "category": "蔬菜类及制品",
+      "purine": 6,
+      "level": "low",
+      "image": "green_pepper.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "248",
+      "name": "冬瓜",
+      "category": "蔬菜类及制品",
+      "purine": 1,
+      "level": "low",
+      "image": "winter_melon.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "249",
+      "name": "大葱",
+      "category": "蔬菜类及制品",
+      "purine": 31,
+      "level": "medium",
+      "image": "scallion.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "250",
+      "name": "西兰花",
+      "category": "蔬菜类及制品",
+      "purine": 58,
+      "level": "medium",
+      "image": "broccoli.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "251",
+      "name": "菜花",
+      "category": "蔬菜类及制品",
+      "purine": 41,
+      "level": "medium",
+      "image": "cauliflower.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "252",
+      "name": "香椿",
+      "category": "蔬菜类及制品",
+      "purine": 40,
+      "level": "medium",
+      "image": "chinese_toon.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "253",
+      "name": "茴香",
+      "category": "蔬菜类及制品",
+      "purine": 38,
+      "level": "medium",
+      "image": "fennel.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "254",
+      "name": "黄花菜",
+      "category": "蔬菜类及制品",
+      "purine": 32,
+      "level": "medium",
+      "image": "day_lily.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "255",
+      "name": "茭白",
+      "category": "蔬菜类及制品",
+      "purine": 23,
+      "level": "low",
+      "image": "water_bamboo.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "256",
+      "name": "空心菜",
+      "category": "蔬菜类及制品",
+      "purine": 22,
+      "level": "low",
+      "image": "water_spinach.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "257",
+      "name": "香菜",
+      "category": "蔬菜类及制品",
+      "purine": 21,
+      "level": "low",
+      "image": "coriander.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "258",
+      "name": "芥蓝",
+      "category": "蔬菜类及制品",
+      "purine": 19,
+      "level": "low",
+      "image": "chinese_kale.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "259",
+      "name": "油菜",
+      "category": "蔬菜类及制品",
+      "purine": 17,
+      "level": "low",
+      "image": "rape.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "260",
+      "name": "酸白菜",
+      "category": "蔬菜类及制品",
+      "purine": 17,
+      "level": "low",
+      "image": "sauerkraut.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "261",
+      "name": "菜心",
+      "category": "蔬菜类及制品",
+      "purine": 17,
+      "level": "low",
+      "image": "choi_sum.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "262",
+      "name": "生菜",
+      "category": "蔬菜类及制品",
+      "purine": 16,
+      "level": "low",
+      "image": "lettuce.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "263",
+      "name": "茼蒿",
+      "category": "蔬菜类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "crowndaisy.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "264",
+      "name": "黄花菜",
+      "category": "蔬菜类及制品",
+      "purine": 14,
+      "level": "low",
+      "image": "day_lily.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "265",
+      "name": "大白菜",
+      "category": "蔬菜类及制品",
+      "purine": 14,
+      "level": "low",
+      "image": "chinese_cabbage.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "266",
+      "name": "油麦菜",
+      "category": "蔬菜类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "leaf_lettuce.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "267",
+      "name": "竹笋",
+      "category": "蔬菜类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "bamboo_shoot.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "268",
+      "name": "莴笋",
+      "category": "蔬菜类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "asparagus_lettuce.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "269",
+      "name": "大头菜",
+      "category": "蔬菜类及制品",
+      "purine": 10,
+      "level": "low",
+      "image": "kohlrabi.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "270",
+      "name": "莲藕",
+      "category": "蔬菜类及制品",
+      "purine": 10,
+      "level": "low",
+      "image": "lotus_root.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "271",
+      "name": "菠菜",
+      "category": "蔬菜类及制品",
+      "purine": 8,
+      "level": "low",
+      "image": "spinach.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "272",
+      "name": "芹菜",
+      "category": "蔬菜类及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "celery.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "273",
+      "name": "香芋",
+      "category": "蔬菜类及制品",
+      "purine": 21,
+      "level": "low",
+      "image": "taro.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "274",
+      "name": "芋头",
+      "category": "蔬菜类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "taro.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "275",
+      "name": "山药",
+      "category": "蔬菜类及制品",
+      "purine": 15,
+      "level": "low",
+      "image": "chinese_yam.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "276",
+      "name": "香芋",
+      "category": "蔬菜类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "taro.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "277",
+      "name": "鲍鱼菇",
+      "category": "菌藻类",
+      "purine": 424,
+      "level": "very_high",
+      "image": "abalone_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "278",
+      "name": "榆黄蘑",
+      "category": "菌藻类",
+      "purine": 415,
+      "level": "very_high",
+      "image": "yellow_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "279",
+      "name": "香菇",
+      "category": "菌藻类",
+      "purine": 405,
+      "level": "very_high",
+      "image": "shiitake_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "280",
+      "name": "香菇",
+      "category": "菌藻类",
+      "purine": 357,
+      "level": "very_high",
+      "image": "shiitake_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "281",
+      "name": "茶树菇",
+      "category": "菌藻类",
+      "purine": 293,
+      "level": "very_high",
+      "image": "tea_tree_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "282",
+      "name": "竹荪",
+      "category": "菌藻类",
+      "purine": 285,
+      "level": "very_high",
+      "image": "bamboo_fungus.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "283",
+      "name": "元蘑",
+      "category": "菌藻类",
+      "purine": 267,
+      "level": "very_high",
+      "image": "yuan_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "284",
+      "name": "姬松茸",
+      "category": "菌藻类",
+      "purine": 226,
+      "level": "very_high",
+      "image": "ji_song_rong.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "285",
+      "name": "滑子蘑",
+      "category": "菌藻类",
+      "purine": 205,
+      "level": "very_high",
+      "image": "hua_zi_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "286",
+      "name": "白灵菇",
+      "category": "菌藻类",
+      "purine": 201,
+      "level": "very_high",
+      "image": "bai_ling_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "287",
+      "name": "榛蘑",
+      "category": "菌藻类",
+      "purine": 186,
+      "level": "very_high",
+      "image": "zhen_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "288",
+      "name": "猴头菇",
+      "category": "菌藻类",
+      "purine": 178,
+      "level": "very_high",
+      "image": "monkey_head_mushroom.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "289",
+      "name": "木耳",
+      "category": "菌藻类",
+      "purine": 166,
+      "level": "very_high",
+      "image": "black_fungus.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "290",
+      "name": "银耳",
+      "category": "菌藻类",
+      "purine": 124,
+      "level": "high",
+      "image": "white_fungus.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "291",
+      "name": "杏鲍蘑",
+      "category": "菌藻类",
+      "purine": 94,
+      "level": "high",
+      "image": "xing_bao_mushroom.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "292",
+      "name": "平菇",
+      "category": "菌藻类",
+      "purine": 89,
+      "level": "high",
+      "image": "oyster_mushroom.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "293",
+      "name": "滑子蘑",
+      "category": "菌藻类",
+      "purine": 84,
+      "level": "high",
+      "image": "hua_zi_mushroom.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "294",
+      "name": "滑子蘑",
+      "category": "菌藻类",
+      "purine": 73,
+      "level": "medium",
+      "image": "hua_zi_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "295",
+      "name": "鸡腿蘑",
+      "category": "菌藻类",
+      "purine": 68,
+      "level": "medium",
+      "image": "chicken_leg_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "296",
+      "name": "金针菇",
+      "category": "菌藻类",
+      "purine": 59,
+      "level": "medium",
+      "image": "enoki_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "297",
+      "name": "白玉菇",
+      "category": "菌藻类",
+      "purine": 56,
+      "level": "medium",
+      "image": "white_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "298",
+      "name": "猴头菇",
+      "category": "菌藻类",
+      "purine": 53,
+      "level": "medium",
+      "image": "monkey_head_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "299",
+      "name": "黄蘑",
+      "category": "菌藻类",
+      "purine": 52,
+      "level": "medium",
+      "image": "yellow_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "300",
+      "name": "口蘑",
+      "category": "菌藻类",
+      "purine": 50,
+      "level": "medium",
+      "image": "kou_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "301",
+      "name": "猴头菇",
+      "category": "菌藻类",
+      "purine": 50,
+      "level": "medium",
+      "image": "monkey_head_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "302",
+      "name": "茶树菇",
+      "category": "菌藻类",
+      "purine": 48,
+      "level": "medium",
+      "image": "tea_tree_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "303",
+      "name": "白灵菇",
+      "category": "菌藻类",
+      "purine": 39,
+      "level": "medium",
+      "image": "bai_ling_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "304",
+      "name": "木耳",
+      "category": "菌藻类",
+      "purine": 38,
+      "level": "medium",
+      "image": "black_fungus.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "305",
+      "name": "香菇",
+      "category": "菌藻类",
+      "purine": 37,
+      "level": "medium",
+      "image": "shiitake_mushroom.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "306",
+      "name": "榛蘑",
+      "category": "菌藻类",
+      "purine": 23,
+      "level": "low",
+      "image": "zhen_mushroom.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "307",
+      "name": "鸡腿蘑",
+      "category": "菌藻类",
+      "purine": 21,
+      "level": "low",
+      "image": "chicken_leg_mushroom.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "308",
+      "name": "紫菜",
+      "category": "菌藻类",
+      "purine": 415,
+      "level": "very_high",
+      "image": "purple_laver.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "309",
+      "name": "海苔",
+      "category": "菌藻类",
+      "purine": 249,
+      "level": "very_high",
+      "image": "seaweed.jpg",
+      "description": "第一类高嘌呤食物，严格避免食用"
+    },
+    {
+      "id": "310",
+      "name": "裙带菜",
+      "category": "菌藻类",
+      "purine": 136,
+      "level": "high",
+      "image": "wakame.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "311",
+      "name": "海木耳",
+      "category": "菌藻类",
+      "purine": 90,
+      "level": "high",
+      "image": "sea_mushroom.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "312",
+      "name": "海带根",
+      "category": "菌藻类",
+      "purine": 17,
+      "level": "low",
+      "image": "kelp_root.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "313",
+      "name": "香梨",
+      "category": "水果类及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "fragrant_pear.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "314",
+      "name": "苹果",
+      "category": "水果类及制品",
+      "purine": 1,
+      "level": "low",
+      "image": "apple.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "315",
+      "name": "桃",
+      "category": "水果类及制品",
+      "purine": 14,
+      "level": "low",
+      "image": "peach.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "316",
+      "name": "大枣",
+      "category": "水果类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "jujube.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "317",
+      "name": "樱桃",
+      "category": "水果类及制品",
+      "purine": 11,
+      "level": "low",
+      "image": "cherry.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "318",
+      "name": "杨梅",
+      "category": "水果类及制品",
+      "purine": 10,
+      "level": "low",
+      "image": "bayberry.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "319",
+      "name": "李子",
+      "category": "水果类及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "plum.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "320",
+      "name": "杏",
+      "category": "水果类及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "apricot.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "321",
+      "name": "菇娘",
+      "category": "水果类及制品",
+      "purine": 25,
+      "level": "low",
+      "image": "ground_cherry.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "322",
+      "name": "提子",
+      "category": "水果类及制品",
+      "purine": 9,
+      "level": "low",
+      "image": "grape.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "323",
+      "name": "巨峰葡萄",
+      "category": "水果类及制品",
+      "purine": 8,
+      "level": "low",
+      "image": "kyoho_grape.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "324",
+      "name": "马奶葡萄",
+      "category": "水果类及制品",
+      "purine": 7,
+      "level": "low",
+      "image": "mare_milk_grape.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "325",
+      "name": "蜜橘",
+      "category": "水果类及制品",
+      "purine": 9,
+      "level": "low",
+      "image": "honey_tangerine.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "326",
+      "name": "砂糖橘",
+      "category": "水果类及制品",
+      "purine": 5,
+      "level": "low",
+      "image": "sugar_tangerine.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "327",
+      "name": "荔枝",
+      "category": "水果类及制品",
+      "purine": 20,
+      "level": "low",
+      "image": "lychee.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "328",
+      "name": "火龙果",
+      "category": "水果类及制品",
+      "purine": 13,
+      "level": "low",
+      "image": "dragon_fruit.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "329",
+      "name": "大芒果",
+      "category": "水果类及制品",
+      "purine": 12,
+      "level": "low",
+      "image": "mango.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "330",
+      "name": "菠萝",
+      "category": "水果类及制品",
+      "purine": 11,
+      "level": "low",
+      "image": "pineapple.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "331",
+      "name": "龙眼",
+      "category": "水果类及制品",
+      "purine": 7,
+      "level": "low",
+      "image": "longan.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "332",
+      "name": "香蕉",
+      "category": "水果类及制品",
+      "purine": 7,
+      "level": "low",
+      "image": "banana.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "333",
+      "name": "木瓜",
+      "category": "水果类及制品",
+      "purine": 4,
+      "level": "low",
+      "image": "papaya.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "334",
+      "name": "香瓜",
+      "category": "水果类及制品",
+      "purine": 7,
+      "level": "low",
+      "image": "muskmelon.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "335",
+      "name": "伊丽莎白瓜",
+      "category": "水果类及制品",
+      "purine": 7,
+      "level": "low",
+      "image": "elizabeth_melon.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "336",
+      "name": "西瓜",
+      "category": "水果类及制品",
+      "purine": 6,
+      "level": "low",
+      "image": "watermelon.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "337",
+      "name": "野生榛子",
+      "category": "坚果、种子类",
+      "purine": 76,
+      "level": "medium",
+      "image": "wild_hazelnut.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "338",
+      "name": "松子",
+      "category": "坚果、种子类",
+      "purine": 75,
+      "level": "medium",
+      "image": "pine_nut.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "339",
+      "name": "开心果",
+      "category": "坚果、种子类",
+      "purine": 70,
+      "level": "medium",
+      "image": "pistachio.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "340",
+      "name": "腰果",
+      "category": "坚果、种子类",
+      "purine": 80,
+      "level": "medium",
+      "image": "cashew.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "341",
+      "name": "大杏仁",
+      "category": "坚果、种子类",
+      "purine": 45,
+      "level": "medium",
+      "image": "almond.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "342",
+      "name": "开口大榛子",
+      "category": "坚果、种子类",
+      "purine": 42,
+      "level": "medium",
+      "image": "opened_hazelnut.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "343",
+      "name": "核桃",
+      "category": "坚果、种子类",
+      "purine": 40,
+      "level": "medium",
+      "image": "walnut.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "344",
+      "name": "香框",
+      "category": "坚果、种子类",
+      "purine": 37,
+      "level": "medium",
+      "image": "xiang_frame.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "345",
+      "name": "栗子",
+      "category": "坚果、种子类",
+      "purine": 35,
+      "level": "medium",
+      "image": "chestnut.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "346",
+      "name": "小野杏",
+      "category": "坚果、种子类",
+      "purine": 34,
+      "level": "medium",
+      "image": "small_wild_apricot.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "347",
+      "name": "杏仁",
+      "category": "坚果、种子类",
+      "purine": 32,
+      "level": "medium",
+      "image": "almond.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "348",
+      "name": "碧根果",
+      "category": "坚果、种子类",
+      "purine": 32,
+      "level": "medium",
+      "image": "pecan.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "349",
+      "name": "夏威夷果",
+      "category": "坚果、种子类",
+      "purine": 26,
+      "level": "low",
+      "image": "macadamia_nut.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "350",
+      "name": "鲍鱼果",
+      "category": "坚果、种子类",
+      "purine": 16,
+      "level": "low",
+      "image": "brazil_nut.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "351",
+      "name": "花生",
+      "category": "坚果、种子类",
+      "purine": 85,
+      "level": "high",
+      "image": "peanut.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "352",
+      "name": "白芝麻",
+      "category": "坚果、种子类",
+      "purine": 66,
+      "level": "medium",
+      "image": "white_sesame.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "353",
+      "name": "南瓜子",
+      "category": "坚果、种子类",
+      "purine": 61,
+      "level": "medium",
+      "image": "pumpkin_seed.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "354",
+      "name": "黑芝麻",
+      "category": "坚果、种子类",
+      "purine": 43,
+      "level": "medium",
+      "image": "black_sesame.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "355",
+      "name": "葵花子",
+      "category": "坚果、种子类",
+      "purine": 27,
+      "level": "low",
+      "image": "sunflower_seed.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "356",
+      "name": "奶粉",
+      "category": "乳类及制品",
+      "purine": 4,
+      "level": "low",
+      "image": "milk_powder.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "357",
+      "name": "奶酪",
+      "category": "乳类及制品",
+      "purine": 2,
+      "level": "low",
+      "image": "cheese.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "358",
+      "name": "水饺",
+      "category": "速食食品",
+      "purine": 145,
+      "level": "high",
+      "image": "dumpling.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "359",
+      "name": "饺子",
+      "category": "速食食品",
+      "purine": 56,
+      "level": "medium",
+      "image": "dumpling.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "360",
+      "name": "黑芝麻糊",
+      "category": "速食食品",
+      "purine": 47,
+      "level": "medium",
+      "image": "black_sesame_paste.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "361",
+      "name": "饺子",
+      "category": "速食食品",
+      "purine": 42,
+      "level": "medium",
+      "image": "dumpling.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "362",
+      "name": "方便面",
+      "category": "速食食品",
+      "purine": 36,
+      "level": "medium",
+      "image": "instant_noodle.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "363",
+      "name": "包子",
+      "category": "速食食品",
+      "purine": 35,
+      "level": "medium",
+      "image": "steamed_bun.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "364",
+      "name": "饼干",
+      "category": "速食食品",
+      "purine": 11,
+      "level": "low",
+      "image": "biscuit.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "365",
+      "name": "锅巴",
+      "category": "速食食品",
+      "purine": 73,
+      "level": "medium",
+      "image": "rice_crust.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "366",
+      "name": "绿豆糕",
+      "category": "速食食品",
+      "purine": 56,
+      "level": "medium",
+      "image": "mung_bean_cake.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "367",
+      "name": "薯片",
+      "category": "速食食品",
+      "purine": 32,
+      "level": "medium",
+      "image": "potato_chip.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "368",
+      "name": "月饼",
+      "category": "速食食品",
+      "purine": 29,
+      "level": "low",
+      "image": "moon_cake.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "369",
+      "name": "爆米花",
+      "category": "速食食品",
+      "purine": 20,
+      "level": "low",
+      "image": "popcorn.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "370",
+      "name": "雪碧",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "sprite.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "371",
+      "name": "杏仁露",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "almond_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "372",
+      "name": "苹果汁",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "apple_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "373",
+      "name": "芒果味果肉果汁",
+      "category": "饮料类",
+      "purine": 3,
+      "level": "low",
+      "image": "mango_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "374",
+      "name": "橙汁",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "orange_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "375",
+      "name": "山楂汁",
+      "category": "饮料类",
+      "purine": 2,
+      "level": "low",
+      "image": "hawthorn_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "376",
+      "name": "沙棘汁",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "sea_buckthorn_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "377",
+      "name": "菠萝汁",
+      "category": "饮料类",
+      "purine": 2,
+      "level": "low",
+      "image": "pineapple_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "378",
+      "name": "C柚汁",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "c_pomelo_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "379",
+      "name": "南瓜汁",
+      "category": "饮料类",
+      "purine": 3,
+      "level": "low",
+      "image": "pumpkin_juice.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "380",
+      "name": "绿茶",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "green_tea.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "381",
+      "name": "冰红茶",
+      "category": "饮料类",
+      "purine": 1,
+      "level": "low",
+      "image": "iced_black_tea.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "382",
+      "name": "海鲜酱油",
+      "category": "调味品类",
+      "purine": 58,
+      "level": "medium",
+      "image": "seafood_soy_sauce.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "383",
+      "name": "山西陈醋",
+      "category": "调味品类",
+      "purine": 12,
+      "level": "low",
+      "image": "shanxi_vinegar.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "384",
+      "name": "米醋",
+      "category": "调味品类",
+      "purine": 3,
+      "level": "low",
+      "image": "rice_vinegar.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "385",
+      "name": "豆瓣酱",
+      "category": "调味品类",
+      "purine": 77,
+      "level": "high",
+      "image": "broad_bean_paste.jpg",
+      "description": "第二类较高嘌呤食物，严格控制食用"
+    },
+    {
+      "id": "386",
+      "name": "葱味虾酱",
+      "category": "调味品类",
+      "purine": 45,
+      "level": "medium",
+      "image": "scallion_shrimp_paste.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "387",
+      "name": "颗粒花生酱",
+      "category": "调味品类",
+      "purine": 41,
+      "level": "medium",
+      "image": "granular_peanut_butter.jpg",
+      "description": "第三类较低嘌呤食物，适量食用"
+    },
+    {
+      "id": "388",
+      "name": "甜面酱",
+      "category": "调味品类",
+      "purine": 10,
+      "level": "low",
+      "image": "sweet_bean_paste.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "389",
+      "name": "番茄酱",
+      "category": "调味品类",
+      "purine": 7,
+      "level": "low",
+      "image": "ketchup.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    },
+    {
+      "id": "390",
+      "name": "沙拉酱",
+      "category": "调味品类",
+      "purine": 3,
+      "level": "low",
+      "image": "salad_dressing.jpg",
+      "description": "第四类低嘌呤食物，可放心食用"
+    }
+  ],
+  "purineLevels": {
+    "very_high": {
+      "range": "150-1000 mg/100g",
+      "title": "高嘌呤",
+      "description": "第一类：高嘌呤食物，痛风患者应严格避免食用"
+    },
+    "high": {
+      "range": "75-150 mg/100g",
+      "title": "较高嘌呤",
+      "description": "第二类：较高嘌呤食物，痛风患者应严格控制食用"
+    },
+    "medium": {
+      "range": "30-75 mg/100g",
+      "title": "较低嘌呤",
+      "description": "第三类：较低嘌呤食物，痛风患者可适量食用"
+    },
+    "low": {
+      "range": "<30 mg/100g",
+      "title": "低嘌呤",
+      "description": "第四类：低嘌呤食物，痛风患者可放心食用"
+    }
+  },
+  "categories": [
+    "畜禽肉类",
+    "蛋类",
+    "鱼虾蟹贝类",
+    "谷类及制品",
+    "薯类、淀粉及制品",
+    "干豆类及制品",
+    "蔬菜类及制品",
+    "菌藻类",
+    "水果类及制品",
+    "坚果、种子类",
+    "乳类及制品",
+    "速食食品",
+    "饮料类",
+    "调味品类"
+  ]
+}

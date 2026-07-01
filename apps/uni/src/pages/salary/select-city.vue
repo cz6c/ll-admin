@@ -18,13 +18,13 @@ definePage({
 })
 
 const store = useSalaryCalcStore()
-const keyword = ref('')
+const searchInput = ref('')
+const searchKeyword = ref('')
 
 const grouped = groupSalaryCitiesByIndex()
 const hotList = hotSalaryCityOptions()
 
-const keywordTrimmed = computed(() => keyword.value.trim())
-const filtered = computed(() => filterSalaryCities(keyword.value))
+const filtered = computed(() => filterSalaryCities(searchKeyword.value))
 
 const lettersWithData = computed(() =>
   SALARY_INDEX_LETTERS.filter(letter => (grouped[letter]?.length ?? 0) > 0),
@@ -43,19 +43,29 @@ function selectCity(id: string) {
   }
   uni.navigateBack()
 }
+
+function onSearch({ value }: { value: string }) {
+  searchKeyword.value = value.trim()
+}
+
+function onSearchClear() {
+  searchKeyword.value = ''
+}
 </script>
 
 <template>
-  <view class="page-shell-white flex flex-col h-screen">
+  <view class="h-screen page-shell-white flex flex-col">
     <view class="shrink-0 px-24rpx pb-24rpx pt-16rpx">
       <wd-search
-        v-model="keyword"
+        v-model="searchInput"
         placeholder="请输入城市名（中文）"
         hide-cancel
+        @search="onSearch"
+        @clear="onSearchClear"
       />
     </view>
 
-    <scroll-view v-if="keywordTrimmed" scroll-y class="city-select__scroll">
+    <scroll-view v-if="searchKeyword" scroll-y class="city-select__scroll">
       <view v-if="filtered.length === 0" class="px-32rpx py-96rpx text-center text-28rpx text-#999">
         暂无匹配城市
       </view>

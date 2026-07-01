@@ -39,6 +39,12 @@ const tools: ToolEntry[] = [
     icon: 'camera',
     url: '/pages-sub/id-watermark/id-watermark',
   },
+  {
+    title: '嘌呤含量查询',
+    desc: '查询常见食物嘌呤含量与等级',
+    icon: 'search',
+    url: '/pages-sub/foodPurineInquiry/index',
+  },
 ]
 
 function openTool(url: string) {

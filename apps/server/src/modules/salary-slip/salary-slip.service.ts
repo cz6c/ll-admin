@@ -6,7 +6,6 @@ import { ResultData } from "@/common/utils/result";
 import { ImagePreprocessMeta, ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
 import { OpenAIService } from "@/plugins/openai.service";
-import { SALARY_SLIP_FIELD_MAPPING } from "./constants/field-mapping";
 import {
   buildJsonRepairUserPrompt,
   buildSalarySlipSystemPrompt,
@@ -19,8 +18,6 @@ import { DEFAULT_TEMPLATE_ID, getTemplateById, matchTemplateByKeywords, SalarySl
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { parseAiJson } from "./utils/json-cleaner";
 import {
-  buildValidateStepSnapshot,
-  countNullFields,
   createTraceId,
   logSalarySlipRecognize,
   RecognizeStepsSnapshot,
@@ -28,7 +25,6 @@ import {
   TemplateMatchBy,
   truncateForLog
 } from "./utils/recognize-logger";
-import { validateSalarySlipPayload } from "./utils/salary-slip.validator";
 
 /** OCR 文本低于此长度视为无效识别 */
 const OCR_MIN_TEXT_LENGTH = 10;
@@ -38,7 +34,7 @@ interface TemplateResolveResult {
   matchBy: TemplateMatchBy;
 }
 
-/** 工资条识别：预处理 → OCR → 模板匹配 → LLM 结构化 → 校验归一化 */
+/** 工资条识别：预处理 → OCR → 模板匹配 → LLM 结构化 → 解析 */
 @Injectable()
 export class SalarySlipService {
   private readonly logger = new Logger(SalarySlipService.name);
@@ -56,7 +52,6 @@ export class SalarySlipService {
     const metrics: Omit<SalarySlipRecognizeMetrics, "outcome" | "durationMs"> = {
       event: "salary_slip_recognize",
       traceId,
-      fileSizeBytes: file.buffer?.length ?? 0,
       steps
     };
 
@@ -71,11 +66,10 @@ export class SalarySlipService {
     };
 
     if (!file?.buffer?.length) {
-      emit("fail", { errorCode: "empty_file", httpStatus: 400 });
+      emit("fail", { errorCode: "empty_file" });
       return ResultData.fail(400, "请上传工资条图片");
     }
 
-    const fieldMapping = SALARY_SLIP_FIELD_MAPPING;
     const workDir = await mkdtemp(join(tmpdir(), "salary-slip-"));
     const ext = extname(file.originalname || "") || ".jpg";
     const ocrPath = join(workDir, `upload${ext}`);
@@ -86,13 +80,7 @@ export class SalarySlipService {
         mode: "auto"
       });
       const preprocessMs = Date.now() - preprocessStart;
-      metrics.preprocessMs = preprocessMs;
-      metrics.preprocessApplied = preprocessMeta.applied;
-      metrics.preprocessSkipReason = preprocessMeta.skipReason;
-      metrics.preprocessError = preprocessMeta.error;
-      metrics.imageWidth = preprocessMeta.inputWidth;
-      metrics.imageHeight = preprocessMeta.inputHeight;
-      steps.preprocess = this.buildPreprocessStep(preprocessMs, preprocessMeta, ocrBuffer.length);
+      steps.preprocess = this.buildPreprocessStep(preprocessMs, preprocessMeta, file.buffer.length, ocrBuffer.length);
       await writeFile(ocrPath, ocrBuffer);
 
       // 1. OCR
@@ -102,10 +90,6 @@ export class SalarySlipService {
         const ocrResult = await this.ocrService.recognize(ocrPath);
         const ocrMs = Date.now() - ocrStart;
         ocrText = ocrResult.text;
-        metrics.ocrMs = ocrMs;
-        metrics.ocrTextLength = ocrText.length;
-        metrics.ocrLayout = ocrResult.layout;
-        metrics.ocrCellCount = ocrResult.cells.length;
         steps.ocr = {
           ms: ocrMs,
           ok: true,
@@ -116,23 +100,22 @@ export class SalarySlipService {
         };
       } catch (error: unknown) {
         const code = error instanceof Error ? error.message : "ocr_error";
-        steps.ocr = { ms: metrics.ocrMs ?? 0, ok: false, error: code };
-        metrics.errorCode = code;
+        steps.ocr = { ms: steps.ocr?.ms ?? 0, ok: false, error: code };
         if (code === "ocr_executable_missing") {
-          emit("fail", { errorCode: code, httpStatus: 503 });
+          emit("fail", { errorCode: code });
           return ResultData.fail(503, "OCR 服务未就绪，请联系管理员");
         }
         if (code === "ocr_init_failed" || code.startsWith("ocr_exit_")) {
-          emit("fail", { errorCode: code, httpStatus: 503 });
+          emit("fail", { errorCode: code });
           return ResultData.fail(503, "OCR 引擎启动失败，请确认已部署完整 RapidOCR-json 运行包");
         }
-        emit("fail", { errorCode: code, httpStatus: 500 });
+        emit("fail", { errorCode: code });
         return ResultData.fail(500, "图片识别失败，请稍后重试");
       }
 
       if (ocrText.trim().length < OCR_MIN_TEXT_LENGTH) {
         steps.ocr = { ...steps.ocr, ok: false, tooShort: true, textLength: ocrText.length };
-        emit("fail", { errorCode: "ocr_text_too_short", httpStatus: 400, ocrTextLength: ocrText.length });
+        emit("fail", { errorCode: "ocr_text_too_short" });
         return ResultData.fail(400, "未识别到有效文字，请重新拍摄");
       }
 
@@ -141,8 +124,6 @@ export class SalarySlipService {
       const { template, matchBy } = await this.resolveTemplate(ocrText);
       const templateMs = Date.now() - templateStart;
       const templateId = template?.id ?? DEFAULT_TEMPLATE_ID;
-      metrics.templateMs = templateMs;
-      metrics.templateId = templateId;
       steps.template = {
         ms: templateMs,
         ok: true,
@@ -164,7 +145,6 @@ export class SalarySlipService {
           { role: "user", content: buildSalarySlipUserPrompt(ocrText) }
         ]);
         const llmMs = Date.now() - llmStart;
-        metrics.llmMs = llmMs;
         steps.llm = {
           ms: llmMs,
           ok: true,
@@ -173,17 +153,16 @@ export class SalarySlipService {
         };
       } catch (error: unknown) {
         const code = error instanceof Error ? error.message : "";
-        steps.llm = { ms: metrics.llmMs ?? 0, ok: false, error: code || "llm_error" };
-        metrics.errorCode = code || "llm_error";
+        steps.llm = { ms: steps.llm?.ms ?? 0, ok: false, error: code || "llm_error" };
         if (code === "ai_timeout") {
-          emit("fail", { errorCode: code, httpStatus: 408 });
+          emit("fail", { errorCode: code });
           return ResultData.fail(408, "识别超时，请稍后重试");
         }
         if (code === "openai_not_configured") {
-          emit("fail", { errorCode: code, httpStatus: 503 });
+          emit("fail", { errorCode: code });
           return ResultData.fail(503, "AI 服务未配置，请联系管理员");
         }
-        emit("fail", { errorCode: metrics.errorCode, httpStatus: 500 });
+        emit("fail", { errorCode: code || "llm_error" });
         return ResultData.fail(500, "薪资解析失败，请稍后重试");
       }
 
@@ -203,44 +182,27 @@ export class SalarySlipService {
           parsed = parseAiJson<Record<string, unknown>>(repaired);
         } catch {
           const parseMs = Date.now() - parseStart;
-          metrics.parseMs = parseMs;
-          metrics.jsonRepairUsed = jsonRepairUsed;
           steps.parse = { ms: parseMs, ok: false, jsonRepairUsed };
-          emit("fail", { errorCode: "json_parse_failed", httpStatus: 500, jsonRepairUsed });
+          emit("fail", { errorCode: "json_parse_failed" });
           return ResultData.fail(500, "识别结果解析失败，请重试");
         }
       }
       const parseMs = Date.now() - parseStart;
-      metrics.parseMs = parseMs;
-      metrics.jsonRepairUsed = jsonRepairUsed;
       const parsedLineItems = (parsed.line_items as Record<string, unknown>) || {};
+      const lineItemKeys = Object.keys(parsedLineItems);
       steps.parse = {
         ms: parseMs,
         ok: true,
         jsonRepairUsed,
-        parsedFieldCount: Object.keys(parsed).length,
-        parsedLineItemKeys: Object.keys(parsedLineItems)
+        lineItemKeys,
+        lineItemCount: lineItemKeys.length
       };
-
-      // 5. 校验归一化 + warnings / confidence
-      const validated = validateSalarySlipPayload(parsed, fieldMapping);
-      steps.validate = buildValidateStepSnapshot(validated);
 
       const result: SalarySlipResultDto = {
-        ...validated.data,
-        line_items: validated.line_items,
-        template_id: templateId,
-        confidence: validated.confidence,
-        warnings: validated.warnings.length ? validated.warnings : undefined
+        line_items: parsed.line_items as Record<string, number | null>
       };
 
-      emit("success", {
-        confidence: validated.confidence,
-        warningsCount: validated.warnings.length,
-        nullFieldCount: countNullFields(validated.data),
-        lineItemCount: Object.keys(validated.line_items).length,
-        jsonRepairUsed
-      });
+      emit("success", { lineItemCount: lineItemKeys.length });
 
       return ResultData.ok(result);
     } finally {
@@ -248,7 +210,7 @@ export class SalarySlipService {
     }
   }
 
-  private buildPreprocessStep(ms: number, meta: ImagePreprocessMeta, outputBytes: number) {
+  private buildPreprocessStep(ms: number, meta: ImagePreprocessMeta, inputBytes: number, outputBytes: number) {
     return {
       ms,
       ok: !meta.error,
@@ -257,6 +219,7 @@ export class SalarySlipService {
       skipReason: meta.skipReason,
       inputWidth: meta.inputWidth,
       inputHeight: meta.inputHeight,
+      inputBytes,
       outputBytes,
       error: meta.error
     };

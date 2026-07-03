@@ -81,7 +81,7 @@ async function startRecognize(filePath: string) {
         拍摄或选择工资条
       </view>
       <view class="mt-12rpx text-26rpx text-gray-500 leading-relaxed">
-        请确保文字清晰、光线充足。系统将自动识别姓名、应发/实发工资等关键字段，供您核对。
+        请确保文字清晰、光线充足。系统将自动识别工资条全部金额明细，供您核对。
       </view>
 
       <view

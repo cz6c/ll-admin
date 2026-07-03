@@ -11,7 +11,7 @@ export const SALARY_SLIP_TEMPLATES: SalarySlipTemplate[] = [
     id: "wide_table",
     name: "横向宽表",
     matchKeywords: ["应发工资", "实发工资", "基本工资", "岗位工资"],
-    promptSnippet: "本工资条为横向宽表：表头与数据可能分列对齐，请按列理解，勿将扣款小计误填为实发。"
+    promptSnippet: "本工资条为横向宽表：表头与数据可能分列对齐，按列对齐抄录，勿漏列、勿把表头当金额。"
   },
   {
     id: "key_value",
@@ -23,7 +23,7 @@ export const SALARY_SLIP_TEMPLATES: SalarySlipTemplate[] = [
     id: "section_block",
     name: "分区块",
     matchKeywords: ["收入合计", "扣款合计", "应发项", "扣款项"],
-    promptSnippet: "本工资条按收入区/扣款区分块展示，请区分区块后再汇总应发、扣款、实发。"
+    promptSnippet: "本工资条按收入区/扣款区分块展示，按区块逐行抄录 line_items。"
   }
 ];
 

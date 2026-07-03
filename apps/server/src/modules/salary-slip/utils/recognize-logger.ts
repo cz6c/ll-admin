@@ -1,55 +1,50 @@
-import { Logger } from "@nestjs/common";
-import { SalarySlipConfidence } from "../dto/salary-slip-result.dto";
+import type { Logger } from "@nestjs/common";
 
 export type RecognizeOutcome = "success" | "fail";
 
 export type TemplateMatchBy = "keyword" | "llm" | "default";
 
-/** 单节点处理结果 */
+/** 单阶段处理快照 */
 export interface RecognizeStepSnapshot {
+  /** 该阶段耗时（毫秒） */
   ms: number;
+  /** 该阶段是否成功完成 */
   ok: boolean;
   [key: string]: unknown;
 }
 
+/** 各阶段调试快照，失败时可定位卡在哪个环节 */
 export interface RecognizeStepsSnapshot {
+  /** 图像预处理：是否增强、跳过原因、尺寸 */
   preprocess?: RecognizeStepSnapshot;
+  /** OCR：版式、字数、文本预览 */
   ocr?: RecognizeStepSnapshot;
+  /** 模板匹配：命中方式与模板 ID */
   template?: RecognizeStepSnapshot;
+  /** LLM 抽取：响应长度与预览 */
   llm?: RecognizeStepSnapshot;
+  /** JSON 解析：repair 是否触发、line_items 键名 */
   parse?: RecognizeStepSnapshot;
-  validate?: RecognizeStepSnapshot;
 }
 
-/** 工资条识别结构化指标（不含姓名等敏感字段） */
+/**
+ * 工资条识别结构化日志。
+ * 顶层仅保留检索/概览字段，阶段细节见 steps（不含 OCR 全文与 line_items 金额）。
+ */
 export interface SalarySlipRecognizeMetrics {
+  /** 固定事件名，便于日志平台过滤 */
   event: "salary_slip_recognize";
+  /** 请求最终成败 */
   outcome: RecognizeOutcome;
+  /** 单次识别唯一 ID，用于串联同一次请求的多条日志 */
   traceId: string;
+  /** 端到端总耗时（毫秒） */
   durationMs: number;
-  preprocessMs?: number;
-  ocrMs?: number;
-  templateMs?: number;
-  llmMs?: number;
-  parseMs?: number;
-  fileSizeBytes?: number;
-  preprocessApplied?: boolean;
-  preprocessSkipReason?: string;
-  preprocessError?: string;
-  imageWidth?: number | null;
-  imageHeight?: number | null;
-  ocrTextLength?: number;
-  ocrLayout?: string;
-  ocrCellCount?: number;
-  templateId?: string;
-  jsonRepairUsed?: boolean;
-  confidence?: string;
-  warningsCount?: number;
-  nullFieldCount?: number;
-  lineItemCount?: number;
+  /** 失败时的内部错误码，如 ocr_text_too_short、ai_timeout、json_parse_failed */
   errorCode?: string;
-  httpStatus?: number;
-  /** 各关键节点的处理结果快照 */
+  /** 成功时解析出的 line_items 条目数，用于评估识别完整度 */
+  lineItemCount?: number;
+  /** 各阶段明细：耗时、关键参数、文本预览、错误原因 */
   steps?: RecognizeStepsSnapshot;
 }
 
@@ -78,55 +73,6 @@ export function shouldLogRecognizeMetrics(outcome: RecognizeOutcome): boolean {
     return true;
   }
   return Math.random() < SUCCESS_SAMPLE_RATE;
-}
-
-export function countNullFields(data: {
-  name: unknown;
-  fixed_salary: unknown;
-  welfare_bonus: unknown;
-  gross_pay: unknown;
-  total_deductions: unknown;
-  net_pay: unknown;
-  pay_date: unknown;
-}): number {
-  return [data.name, data.fixed_salary, data.welfare_bonus, data.gross_pay, data.total_deductions, data.net_pay, data.pay_date].filter(
-    v => v === null || v === undefined
-  ).length;
-}
-
-export function buildValidateStepSnapshot(input: {
-  confidence: SalarySlipConfidence;
-  warnings: string[];
-  data: {
-    fixed_salary: number | null;
-    welfare_bonus: number | null;
-    gross_pay: number | null;
-    total_deductions: number | null;
-    net_pay: number | null;
-    pay_date: string | null;
-    name: string | null;
-  };
-  line_items: Record<string, number | null>;
-}): RecognizeStepSnapshot {
-  const lineItemKeys = Object.keys(input.line_items);
-  return {
-    ms: 0,
-    ok: true,
-    confidence: input.confidence,
-    warnings: input.warnings,
-    nullFieldCount: countNullFields(input.data),
-    hasName: input.data.name !== null && input.data.name !== "",
-    summary: {
-      fixed_salary: input.data.fixed_salary,
-      welfare_bonus: input.data.welfare_bonus,
-      gross_pay: input.data.gross_pay,
-      total_deductions: input.data.total_deductions,
-      net_pay: input.data.net_pay,
-      pay_date: input.data.pay_date
-    },
-    lineItemKeys,
-    lineItemCount: lineItemKeys.length
-  };
 }
 
 export function logSalarySlipRecognize(logger: Logger, metrics: SalarySlipRecognizeMetrics): void {

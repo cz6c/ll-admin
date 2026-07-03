@@ -48,7 +48,7 @@ export class TaskService {
       // // 往 tasks 任务队列 增加 execute-task 任务
       await this.taskQueue.add("execute-task", { taskId: task.taskId });
     });
-    this.schedulerRegistry.addCronJob(jobName, job);
+    this.schedulerRegistry.addCronJob(jobName, job as any);
     job.start();
   }
 

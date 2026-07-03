@@ -11,8 +11,16 @@ alwaysApply: false
 - 业务按 **Nest 模块** 划分：`src/modules/<domain>/`（controller、service、dto、entities 等）。
 - 模块域：`system/*`（用户/角色/菜单/部门等）、`monitor/*`（日志/缓存/服务器）、`upload`、`tasks`、`area` 等；新功能按域建 module。
 - 全局能力在 `src/common/`（守卫、过滤器、装饰器、工具）、`src/plugins/`、`src/config/`。
+- **通用能力放 `src/plugins/`**：OCR（`OcrService`）、LLM（`OpenAIService`）、HTTP/MQTT/邮件等；通过 `PluginsModule` 导出，业务模块 `imports: [PluginsModule]` 注入使用。
+- **业务模块只保留领域逻辑**：prompt、DTO/校验、编排流程、错误码到用户文案的映射；不要把 RapidOCR 初始化、chat/completions 请求等通用实现写进 `modules/`。
 - 数据库：**TypeORM**；迁移在 `src/migrations/`，通过 `migration:*` 脚本执行。
 - 配置：`src/config/dev.yml` / `prod.yml` + `typeorm.config.ts`。
+
+## 注释约定
+
+- 注释说明**非显而易见**的设计：懒加载/并发、坐标排版算法、plugins 与业务的边界、错误码映射、配置键含义。
+- 不写复述代码的注释（如「调用 recognize 方法」）；已有 JSDoc 的工具函数不再重复。
+- plugins 类/对外方法用简短 JSDoc；业务 `Service.recognize` 等主流程用步骤注释（`// 1. OCR`）标清编排顺序。
 
 ## 鉴权
 

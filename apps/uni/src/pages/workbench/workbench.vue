@@ -28,6 +28,12 @@ const tools: ToolEntry[] = [
     url: '/pages/salary/calc',
   },
   {
+    title: '工资条识别与核对',
+    desc: '拍照识别工资条并核对关键字段',
+    icon: 'read',
+    url: '/pages-sub/salary-slip/index',
+  },
+  {
     title: 'WiFi小助手',
     desc: '扫码连网、分享 WiFi',
     icon: 'wifi',

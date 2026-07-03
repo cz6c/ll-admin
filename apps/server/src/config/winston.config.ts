@@ -2,44 +2,53 @@ import type { WinstonModuleOptions } from "nest-winston";
 import { format, transports } from "winston";
 import * as DailyRotateFile from "winston-daily-rotate-file";
 
+const rotateDefaults = {
+  datePattern: "YYYY-MM-DD",
+  zippedArchive: true,
+  maxSize: "20m",
+  maxFiles: "14d"
+};
+
+/** 仅写入指定 level，避免 error/warn/info 重复落盘到多个文件 */
+function levelOnly(targetLevel: string) {
+  return format(info => (info.level === targetLevel ? info : false))();
+}
+
+function createLevelFileTransport(filename: string, level: string) {
+  return new DailyRotateFile({
+    ...rotateDefaults,
+    filename,
+    level,
+    format: format.combine(
+      levelOnly(level),
+      format.timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }),
+      format.errors({ stack: true }),
+      format.json()
+    )
+  });
+}
+
+const fileTransports = [
+  createLevelFileTransport("logs/errors/error-%DATE%.log", "error"),
+  createLevelFileTransport("logs/warnings/warning-%DATE%.log", "warn"),
+  createLevelFileTransport("logs/info/info-%DATE%.log", "info"),
+  createLevelFileTransport("logs/debug/debug-%DATE%.log", "debug")
+];
+
 export const winstonConfig = (): WinstonModuleOptions => {
   const isProd = process.env.NODE_ENV === "production";
+
   return {
     level: isProd ? "info" : "debug",
     format: format.combine(
-      format.timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }), // 精确到毫秒
-      format.errors({ stack: true }), // 记录错误堆栈
-      format.json() // 结构化 JSON 输出
+      format.timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }),
+      format.errors({ stack: true }),
+      format.json()
     ),
     transports: isProd
-      ? [
-          // 日志文件
-          new DailyRotateFile({
-            filename: "logs/errors/error-%DATE%.log", // 日志名称，占位符 %DATE% 取值为 datePattern 值。
-            datePattern: "YYYY-MM-DD", // 日志轮换的频率，此处表示每天。
-            zippedArchive: true, // 是否通过压缩的方式归档被轮换的日志文件。
-            maxSize: "20m", // 设置日志文件的最大大小，m 表示 mb 。
-            maxFiles: "14d", // 保留日志文件的最大天数，此处表示自动删除超过 14 天的日志文件。
-            level: "error" // 日志类型，此处表示只记录错误日志。
-          }),
-          new DailyRotateFile({
-            filename: "logs/warnings/warning-%DATE%.log",
-            datePattern: "YYYY-MM-DD",
-            zippedArchive: true,
-            maxSize: "20m",
-            maxFiles: "14d",
-            level: "warn"
-          }),
-          new DailyRotateFile({
-            filename: "logs/app/app-%DATE%.log",
-            datePattern: "YYYY-MM-DD",
-            zippedArchive: true,
-            maxSize: "20m",
-            maxFiles: "14d"
-          })
-        ]
+      ? fileTransports
       : [
-          // 控制台
+          ...fileTransports,
           new transports.Console({
             level: "debug",
             format: format.combine(

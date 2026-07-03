@@ -63,9 +63,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerOptions);
   // 生产环境使用 nginx 可以将当前文档地址 屏蔽外部访问
   SwaggerModule.setup(`${prefix}/swagger-ui`, app, document);
-  if (process.env.NODE_ENV === "development") {
-    await fs.writeFile("./swagger.json", JSON.stringify(document));
-  }
+  // if (process.env.NODE_ENV === "development") {
+  //   await fs.writeFile("./swagger.json", JSON.stringify(document));
+  // }
 
   // 获取真实 ip
   app.use(requestIpMw({ attributeName: "ip" }));

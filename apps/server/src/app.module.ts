@@ -17,6 +17,7 @@ import { TaskModule } from "./modules/tasks/task.module";
 import { PushTaskModule } from "./modules/pushtask/pushtask.module";
 import { AreaModule } from "./modules/area/area.module";
 import { UploadModule } from "./modules/upload/upload.module";
+import { SalarySlipModule } from "./modules/salary-slip/salary-slip.module";
 
 import { AuthModule } from "./modules/system/auth/auth.module";
 import { UserModule } from "./modules/system/user/user.module";
@@ -88,6 +89,7 @@ import { ServerModule } from "./modules/monitor/server/server.module";
     PushTaskModule,
     AreaModule,
     UploadModule,
+    SalarySlipModule,
     AuthModule,
     UserModule,
     DeptModule,

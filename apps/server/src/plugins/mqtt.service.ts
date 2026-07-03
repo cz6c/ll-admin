@@ -14,7 +14,7 @@ export class MqttService implements OnApplicationBootstrap {
    * 应用启动时自动执行
    */
   async onApplicationBootstrap() {
-    await this.tryAcquireLock();
+    // await this.tryAcquireLock();
   }
 
   /**

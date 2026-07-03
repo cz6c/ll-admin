@@ -67,9 +67,11 @@
     "passport-local": "^1.0.0",
     "path-to-regexp": "^8.2.0",
     "qiniu": "^7.14.0",
+    "rapidocrjson": "^0.1.1",
     "reflect-metadata": "^0.2.2",
     "request-ip": "^3.3.0",
     "rxjs": "^7.8.2",
+    "sharp": "^0.35.3",
     "svg-captcha": "^1.4.0",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.25",
@@ -124,6 +126,9 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1"
+    }
   }
 }

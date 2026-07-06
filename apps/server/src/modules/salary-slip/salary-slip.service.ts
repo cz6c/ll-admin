@@ -1,48 +1,27 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { mkdtemp, rm, writeFile } from "fs/promises";
-import { tmpdir } from "os";
-import { extname, join } from "path";
 import { ResultData } from "@/common/utils/result";
 import { ImagePreprocessMeta, ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
-import { OpenAIService } from "@/plugins/openai.service";
-import {
-  buildJsonRepairUserPrompt,
-  buildSalarySlipSystemPrompt,
-  buildSalarySlipUserPrompt,
-  buildTemplateClassifyUserPrompt,
-  SALARY_JSON_REPAIR_PROMPT,
-  TEMPLATE_CLASSIFY_SYSTEM_PROMPT
-} from "./constants/prompt";
-import { DEFAULT_TEMPLATE_ID, getTemplateById, matchTemplateByKeywords, SalarySlipTemplate } from "./constants/templates";
+import { extractAlignedPairs } from "@/plugins/utils/ocr-layout";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
-import { parseAiJson } from "./utils/json-cleaner";
-import {
-  createTraceId,
-  logSalarySlipRecognize,
-  RecognizeStepsSnapshot,
-  SalarySlipRecognizeMetrics,
-  TemplateMatchBy,
-  truncateForLog
-} from "./utils/recognize-logger";
+import { lineItemsFromOcr } from "./utils/line-items-from-ocr";
+import { createTraceId, logSalarySlipRecognize, RecognizeStepsSnapshot, SalarySlipRecognizeMetrics, truncateForLog } from "./utils/recognize-logger";
 
-/** OCR 文本低于此长度视为无效识别 */
-const OCR_MIN_TEXT_LENGTH = 10;
+const MIME_BY_FORMAT: Record<string, string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  webp: "image/webp"
+};
 
-interface TemplateResolveResult {
-  template: SalarySlipTemplate | null;
-  matchBy: TemplateMatchBy;
-}
-
-/** 工资条识别：预处理 → OCR → 模板匹配 → LLM 结构化 → 解析 */
+/** 工资条识别：预处理 → OCR → 列对齐 → 规则直出 line_items */
 @Injectable()
 export class SalarySlipService {
   private readonly logger = new Logger(SalarySlipService.name);
 
   constructor(
     private readonly imagePreprocessService: ImagePreprocessService,
-    private readonly ocrService: OcrService,
-    private readonly openaiService: OpenAIService
+    private readonly ocrService: OcrService
   ) {}
 
   async recognize(file: Express.Multer.File) {
@@ -70,10 +49,6 @@ export class SalarySlipService {
       return ResultData.fail(400, "请上传工资条图片");
     }
 
-    const workDir = await mkdtemp(join(tmpdir(), "salary-slip-"));
-    const ext = extname(file.originalname || "") || ".jpg";
-    const ocrPath = join(workDir, `upload${ext}`);
-
     try {
       const preprocessStart = Date.now();
       const { buffer: ocrBuffer, meta: preprocessMeta } = await this.imagePreprocessService.preprocessForOcr(file.buffer, {
@@ -81,26 +56,32 @@ export class SalarySlipService {
       });
       const preprocessMs = Date.now() - preprocessStart;
       steps.preprocess = this.buildPreprocessStep(preprocessMs, preprocessMeta, file.buffer.length, ocrBuffer.length);
-      await writeFile(ocrPath, ocrBuffer);
 
-      // 1. OCR
-      let ocrText: string;
+      const mimeType = MIME_BY_FORMAT[preprocessMeta.outputFormat] || "image/jpeg";
+
+      let ocrResult;
       try {
         const ocrStart = Date.now();
-        const ocrResult = await this.ocrService.recognize(ocrPath);
+        ocrResult = await this.ocrService.recognize(ocrBuffer, mimeType);
         const ocrMs = Date.now() - ocrStart;
-        ocrText = ocrResult.text;
         steps.ocr = {
           ms: ocrMs,
           ok: true,
           layout: ocrResult.layout,
-          textLength: ocrText.length,
+          ocrProvider: ocrResult.provider,
+          fallbackFrom: ocrResult.fallbackFrom,
+          fallbackReason: ocrResult.fallbackReason,
+          textLength: ocrResult.text.length,
           cellCount: ocrResult.cells.length,
-          textPreview: truncateForLog(ocrText)
+          textPreview: truncateForLog(ocrResult.text)
         };
       } catch (error: unknown) {
         const code = error instanceof Error ? error.message : "ocr_error";
         steps.ocr = { ms: steps.ocr?.ms ?? 0, ok: false, error: code };
+        if (code === "ocr_not_configured") {
+          emit("fail", { errorCode: code });
+          return ResultData.fail(503, "OCR 服务未配置，请联系管理员");
+        }
         if (code === "ocr_executable_missing") {
           emit("fail", { errorCode: code });
           return ResultData.fail(503, "OCR 服务未就绪，请联系管理员");
@@ -109,104 +90,58 @@ export class SalarySlipService {
           emit("fail", { errorCode: code });
           return ResultData.fail(503, "OCR 引擎启动失败，请确认已部署完整 RapidOCR-json 运行包");
         }
+        if (code === "ocr_timeout") {
+          emit("fail", { errorCode: code });
+          return ResultData.fail(408, "OCR 识别超时，请稍后重试");
+        }
         emit("fail", { errorCode: code });
         return ResultData.fail(500, "图片识别失败，请稍后重试");
       }
 
-      if (ocrText.trim().length < OCR_MIN_TEXT_LENGTH) {
-        steps.ocr = { ...steps.ocr, ok: false, tooShort: true, textLength: ocrText.length };
+      if (!ocrResult.cells.length) {
+        steps.ocr = { ...steps.ocr, ok: false, tooShort: true, cellCount: 0 };
         emit("fail", { errorCode: "ocr_text_too_short" });
         return ResultData.fail(400, "未识别到有效文字，请重新拍摄");
       }
 
-      // 2. 模板匹配（关键词 + LLM 分类）
-      const templateStart = Date.now();
-      const { template, matchBy } = await this.resolveTemplate(ocrText);
-      const templateMs = Date.now() - templateStart;
-      const templateId = template?.id ?? DEFAULT_TEMPLATE_ID;
-      steps.template = {
-        ms: templateMs,
+      const alignStart = Date.now();
+      const { pairs, orphans } = extractAlignedPairs(ocrResult.cells, ocrResult.layout);
+      const alignMs = Date.now() - alignStart;
+      steps.align = {
+        ms: alignMs,
         ok: true,
-        templateId,
-        matchBy,
-        templateName: template?.name ?? "通用"
+        layout: ocrResult.layout,
+        pairCount: pairs.length,
+        orphanCount: orphans.length
       };
 
-      // 3. LLM 结构化抽取
-      let aiRaw: string;
-      try {
-        const llmStart = Date.now();
-        aiRaw = await this.openaiService.chatCompletions([
-          {
-            role: "system",
-            content: buildSalarySlipSystemPrompt(template ?? undefined),
-            cache_control: { type: "ephemeral" }
-          },
-          { role: "user", content: buildSalarySlipUserPrompt(ocrText) }
-        ]);
-        const llmMs = Date.now() - llmStart;
-        steps.llm = {
-          ms: llmMs,
-          ok: true,
-          responseLength: aiRaw.length,
-          responsePreview: truncateForLog(aiRaw)
-        };
-      } catch (error: unknown) {
-        const code = error instanceof Error ? error.message : "";
-        steps.llm = { ms: steps.llm?.ms ?? 0, ok: false, error: code || "llm_error" };
-        if (code === "ai_timeout") {
-          emit("fail", { errorCode: code });
-          return ResultData.fail(408, "识别超时，请稍后重试");
-        }
-        if (code === "openai_not_configured") {
-          emit("fail", { errorCode: code });
-          return ResultData.fail(503, "AI 服务未配置，请联系管理员");
-        }
-        emit("fail", { errorCode: code || "llm_error" });
-        return ResultData.fail(500, "薪资解析失败，请稍后重试");
-      }
+      const rulesStart = Date.now();
+      const rulesResult = lineItemsFromOcr(pairs, orphans);
+      const rulesMs = Date.now() - rulesStart;
 
-      // 4. JSON 解析（失败时 repair 重试一次）
-      let parsed: Record<string, unknown>;
-      let jsonRepairUsed = false;
-      const parseStart = Date.now();
-      try {
-        parsed = parseAiJson<Record<string, unknown>>(aiRaw);
-      } catch {
-        try {
-          jsonRepairUsed = true;
-          const repaired = await this.openaiService.chatCompletions([
-            { role: "system", content: SALARY_JSON_REPAIR_PROMPT },
-            { role: "user", content: buildJsonRepairUserPrompt(aiRaw) }
-          ]);
-          parsed = parseAiJson<Record<string, unknown>>(repaired);
-        } catch {
-          const parseMs = Date.now() - parseStart;
-          steps.parse = { ms: parseMs, ok: false, jsonRepairUsed };
-          emit("fail", { errorCode: "json_parse_failed" });
-          return ResultData.fail(500, "识别结果解析失败，请重试");
-        }
-      }
-      const parseMs = Date.now() - parseStart;
-      const parsedLineItems = (parsed.line_items as Record<string, unknown>) || {};
-      const lineItemKeys = Object.keys(parsedLineItems);
-      steps.parse = {
-        ms: parseMs,
+      const lineItemKeys = Object.keys(rulesResult.line_items);
+      steps.rules = {
+        ms: rulesMs,
         ok: true,
-        jsonRepairUsed,
-        lineItemKeys,
-        lineItemCount: lineItemKeys.length
+        confidence: rulesResult.confidence,
+        warningCount: rulesResult.warnings.length,
+        lineItemCount: lineItemKeys.length,
+        lineItemKeys
       };
 
       const result: SalarySlipResultDto = {
-        line_items: parsed.line_items as Record<string, number | null>
+        line_items: rulesResult.line_items,
+        warnings: rulesResult.warnings.length ? rulesResult.warnings : undefined,
+        confidence: rulesResult.confidence
       };
 
-      emit("success", { lineItemCount: lineItemKeys.length });
+      emit("success", { lineItemCount: lineItemKeys.length, confidence: rulesResult.confidence });
 
       return ResultData.ok(result);
-    } finally {
-      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    } catch (error: unknown) {
+      const code = error instanceof Error ? error.message : "unknown_error";
+      emit("fail", { errorCode: code });
+      return ResultData.fail(500, "识别失败，请稍后重试");
     }
   }
 
@@ -221,31 +156,9 @@ export class SalarySlipService {
       inputHeight: meta.inputHeight,
       inputBytes,
       outputBytes,
+      inputFormat: meta.inputFormat,
+      outputFormat: meta.outputFormat,
       error: meta.error
     };
-  }
-
-  /** Stage-1：关键词匹配；无结果时用轻量 LLM 分类 */
-  private async resolveTemplate(ocrText: string): Promise<TemplateResolveResult> {
-    const keywordMatch = matchTemplateByKeywords(ocrText);
-    if (keywordMatch) {
-      return { template: keywordMatch, matchBy: "keyword" };
-    }
-
-    try {
-      const raw = await this.openaiService.chatCompletions([
-        { role: "system", content: TEMPLATE_CLASSIFY_SYSTEM_PROMPT },
-        { role: "user", content: buildTemplateClassifyUserPrompt(ocrText) }
-      ]);
-      const parsed = parseAiJson<{ template_id?: string; reason?: string }>(raw);
-      const templateId = parsed.template_id || DEFAULT_TEMPLATE_ID;
-      const template = getTemplateById(templateId) ?? null;
-      return {
-        template,
-        matchBy: template ? "llm" : "default"
-      };
-    } catch {
-      return { template: null, matchBy: "default" };
-    }
   }
 }

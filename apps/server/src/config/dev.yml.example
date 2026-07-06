@@ -1,0 +1,87 @@
+# 开发环境配置模板（复制为 dev.yml 并填入真实密钥）
+app:
+  prefix: ''
+  port: 6060
+  file:
+    isLocal: true
+    location: '../upload'
+    domain: 'http://127.0.0.1:6060'
+    serveRoot: '/upload'
+    maxSize: 10
+
+db:
+  mysql:
+    host: '127.0.0.1'
+    username: 'root'
+    password: 'your_password'
+    database: 'your_database'
+    port: 3306
+    charset: 'utf8mb4'
+    timezone: '+08:00'
+    logging: true
+    logger: 'file'
+    multipleStatements: true
+    dropSchema: false
+    synchronize: false
+
+redis:
+  host: '127.0.0.1'
+  password: 'your_redis_password'
+  port: 6379
+  db: 1
+  keyPrefix: ''
+
+jwt:
+  secretkey: 'your_secretkey'
+
+perm:
+  router:
+    whitelist:
+      - { path: '/captchaImage', method: 'GET' }
+      - { path: '/register', method: 'POST' }
+      - { path: '/login', method: 'POST' }
+      - { path: '/refreshToken', method: 'POST' }
+      - { path: '/common/area/trees', method: 'GET' }
+      - { path: '/common/upload', method: 'POST' }
+      - { path: '/common/salary-slip/recognize', method: 'POST' }
+      - { path: '/tasks', method: 'POST' }
+      - { path: '/tasks/delete', method: 'GET' }
+
+mail:
+  host: 'smtp.example.com'
+  port: 465
+  secure: true
+  auth: { user: 'your@email.com', pass: 'your_mail_password' }
+
+zhipu:
+  apiKey: 'your_zhipu_api_key'
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
+  model: 'glm-4.7-flash'
+  timeout: 180000
+
+aliyun:
+  apiKey: 'your_dashscope_api_key'
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  model: 'qwen3.7-plus'
+  timeout: 180000
+
+# OCR 配置
+ocr:
+  provider: qwen           # qwen | local
+  timeout: 180000        # native Qwen OCR 常需 60-120s，可与 aliyun.timeout 对齐
+  fallbackToLocal: true
+  qwen:
+    # 未配置时复用 aliyun.apiKey / aliyun.baseUrl
+    model: qwen3.5-ocr
+    task: advanced_recognition
+    # baseUrl 未配置时从 aliyun.baseUrl 推导 workspace api/v1
+    enableRotate: true
+  executable: 'resources/RapidOCR-json/RapidOCR-json.exe'
+  options:
+    maxSideLen: 2048
+    padding: 50
+
+nowapi:
+  host: 'https://sapi.k780.com'
+  appkey: 0
+  sign: 'your_nowapi_sign'

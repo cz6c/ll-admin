@@ -1,144 +1,58 @@
-import { Injectable, OnModuleDestroy } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { existsSync } from "fs";
-import { resolve } from "path";
-import {
-  detectLayout,
-  extractPlainText,
-  formatForLlm,
-  OcrCell,
-  OcrLayoutType,
-  parseOcrCells
-} from "./utils/ocr-layout";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const OCR = require("rapidocrjson");
+import type { OcrProviderName } from "./ocr/ocr-provider.interface";
+import { QwenOcrProvider } from "./ocr/qwen-ocr.provider";
+import { RapidOcrProvider } from "./ocr/rapid-ocr.provider";
+import { detectLayout, formatOcrText, OcrCell, OcrLayoutType } from "./utils/ocr-layout";
 
-interface OcrResponse {
-  code?: number;
-  data?: unknown;
-  message?: string;
-}
-
-/** OCR 识别结果：text 供 LLM 消费，cells 保留坐标供业务扩展，raw 为引擎原始响应 */
+/** OCR 识别结果 */
 export interface OcrRecognizeResult {
+  /** 结构化文本，供日志预览 */
   text: string;
   cells: OcrCell[];
   layout: OcrLayoutType;
   raw: unknown;
+  provider: OcrProviderName;
+  fallbackFrom?: OcrProviderName;
+  fallbackReason?: string;
 }
 
-/** RapidOCR-json 通用封装，配置见 config 中 ocr.* */
+/** OCR 门面：Qwen 优先，失败可降级 RapidOCR */
 @Injectable()
-export class OcrService implements OnModuleDestroy {
-  private ocr: InstanceType<typeof OCR> | null = null;
-  private initPromise: Promise<void> | null = null;
-  private recognizeQueue: Promise<unknown> = Promise.resolve();
-  private readonly serverRoot: string;
+export class OcrService {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly qwenOcrProvider: QwenOcrProvider,
+    private readonly rapidOcrProvider: RapidOcrProvider
+  ) {}
 
-  constructor(private readonly config: ConfigService) {
-    this.serverRoot = resolve(__dirname, "../..");
-  }
+  async recognize(buffer: Buffer, mimeType = "image/jpeg"): Promise<OcrRecognizeResult> {
+    const provider = this.resolveProvider();
+    const fallbackToLocal = this.config.get<boolean>("ocr.fallbackToLocal") ?? true;
 
-  async onModuleDestroy() {
-    await this.terminate();
-  }
-
-  private getExecutablePaths() {
-    const configured = this.config.get<string>("ocr.executable");
-    const defaultName = process.platform === "win32" ? "RapidOCR-json.exe" : "RapidOCR-json";
-    const executable = configured ? resolve(this.serverRoot, configured) : resolve(this.serverRoot, "resources/RapidOCR-json", defaultName);
-    const cwd = resolve(executable, "..");
-    return { executable, cwd };
-  }
-
-  private getOcrOptions(imagePath: string): Record<string, unknown> {
-    const options = this.config.get<Record<string, unknown>>("ocr.options") || {};
-    return {
-      image_path: imagePath,
-      maxSideLen: 2048,
-      padding: 50,
-      ...options
-    };
-  }
-
-  /** 懒加载 OCR 子进程，并发请求共享同一次 initPromise */
-  private async ensureReady(): Promise<void> {
-    if (this.ocr) {
-      return;
-    }
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.initPromise = new Promise<void>((resolveInit, reject) => {
-      const { executable, cwd } = this.getExecutablePaths();
-
-      if (!existsSync(executable)) {
-        this.initPromise = null;
-        reject(new Error("ocr_executable_missing"));
-        return;
+    try {
+      return await this.runWithProvider(provider, buffer, mimeType);
+    } catch (error: unknown) {
+      if (provider === "qwen" && fallbackToLocal) {
+        const fallbackReason = error instanceof Error ? error.message : "qwen_error";
+        const result = await this.runWithProvider("local", buffer, mimeType);
+        return { ...result, fallbackFrom: "qwen", fallbackReason };
       }
-
-      const instance = new OCR(executable, [], { cwd }, false);
-
-      instance.once("init", () => {
-        this.ocr = instance;
-        resolveInit();
-      });
-      instance.once("error", () => {
-        this.initPromise = null;
-        reject(new Error("ocr_init_failed"));
-      });
-      instance.once("exit", (code: number) => {
-        if (!this.ocr) {
-          this.initPromise = null;
-          reject(new Error(`ocr_exit_${code}`));
-        }
-      });
-    });
-
-    return this.initPromise;
+      throw error;
+    }
   }
 
-  private async runRecognize(imagePath: string): Promise<OcrRecognizeResult> {
-    await this.ensureReady();
+  private resolveProvider(): OcrProviderName {
+    const configured = this.config.get<string>("ocr.provider");
+    return configured === "local" ? "local" : "qwen";
+  }
 
-    if (!this.ocr) {
-      throw new Error("ocr_not_ready");
-    }
-
-    const response = (await this.ocr.flush(this.getOcrOptions(imagePath))) as OcrResponse;
-
-    if (response?.code !== 100) {
-      throw new Error("ocr_recognize_failed");
-    }
-
-    const cells = parseOcrCells(response.data);
+  private async runWithProvider(provider: OcrProviderName, buffer: Buffer, mimeType: string): Promise<OcrRecognizeResult> {
+    const engine = provider === "local" ? this.rapidOcrProvider : this.qwenOcrProvider;
+    const { cells, raw } = await engine.recognize(buffer, mimeType);
     const layout = detectLayout(cells);
-    const structuredText = formatForLlm(cells, layout);
-    const plainText = extractPlainText(response.data);
+    const text = formatOcrText(cells, layout);
 
-    // 双通道：结构化排版 + 纯文本兜底，提升多样版式可读性
-    const text =
-      structuredText && plainText && structuredText !== plainText
-        ? `${structuredText}\n\n【纯文本兜底】\n${plainText}`
-        : structuredText || plainText;
-
-    return { text, cells, layout, raw: response.data };
-  }
-
-  /** 串行化 flush，避免单实例子进程并发竞态 */
-  async recognize(imagePath: string): Promise<OcrRecognizeResult> {
-    const task = this.recognizeQueue.then(() => this.runRecognize(imagePath));
-    this.recognizeQueue = task.catch(() => undefined);
-    return task;
-  }
-
-  private async terminate() {
-    if (this.ocr) {
-      await this.ocr.terminate();
-      this.ocr = null;
-      this.initPromise = null;
-    }
+    return { text, cells, layout, raw, provider };
   }
 }

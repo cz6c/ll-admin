@@ -2,8 +2,6 @@ import type { Logger } from "@nestjs/common";
 
 export type RecognizeOutcome = "success" | "fail";
 
-export type TemplateMatchBy = "keyword" | "llm" | "default";
-
 /** 单阶段处理快照 */
 export interface RecognizeStepSnapshot {
   /** 该阶段耗时（毫秒） */
@@ -17,14 +15,12 @@ export interface RecognizeStepSnapshot {
 export interface RecognizeStepsSnapshot {
   /** 图像预处理：是否增强、跳过原因、尺寸 */
   preprocess?: RecognizeStepSnapshot;
-  /** OCR：版式、字数、文本预览 */
+  /** OCR：版式、字数、文本预览、ocrProvider */
   ocr?: RecognizeStepSnapshot;
-  /** 模板匹配：命中方式与模板 ID */
-  template?: RecognizeStepSnapshot;
-  /** LLM 抽取：响应长度与预览 */
-  llm?: RecognizeStepSnapshot;
-  /** JSON 解析：repair 是否触发、line_items 键名 */
-  parse?: RecognizeStepSnapshot;
+  /** 列对齐：配对数、孤儿金额数 */
+  align?: RecognizeStepSnapshot;
+  /** 规则直出：置信度、warnings 数量 */
+  rules?: RecognizeStepSnapshot;
 }
 
 /**
@@ -40,10 +36,12 @@ export interface SalarySlipRecognizeMetrics {
   traceId: string;
   /** 端到端总耗时（毫秒） */
   durationMs: number;
-  /** 失败时的内部错误码，如 ocr_text_too_short、ai_timeout、json_parse_failed */
+  /** 失败时的内部错误码，如 ocr_text_too_short、ocr_timeout */
   errorCode?: string;
   /** 成功时解析出的 line_items 条目数，用于评估识别完整度 */
   lineItemCount?: number;
+  /** 规则直出置信度 */
+  confidence?: string;
   /** 各阶段明细：耗时、关键参数、文本预览、错误原因 */
   steps?: RecognizeStepsSnapshot;
 }

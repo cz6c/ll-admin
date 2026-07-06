@@ -15,6 +15,7 @@ const salarySlipStore = useSalarySlipStore()
 const { hasResult } = storeToRefs(salarySlipStore)
 
 const lineItems = reactive<Record<string, number | null>>({})
+const warnings = computed(() => salarySlipStore.result.warnings ?? [])
 
 onMounted(() => {
   if (!hasResult.value) {
@@ -44,7 +45,11 @@ function formatAmount(value: number | null | undefined): string {
 const lineItemLabels = computed(() => Object.keys(lineItems))
 
 function confirmResult() {
-  salarySlipStore.setResult({ line_items: { ...lineItems } })
+  salarySlipStore.setResult({
+    line_items: { ...lineItems },
+    warnings: salarySlipStore.result.warnings,
+    confidence: salarySlipStore.result.confidence,
+  })
   uni.showToast({ title: '已确认', icon: 'success' })
 }
 
@@ -55,6 +60,22 @@ function goBack() {
 
 <template>
   <view class="page-shell px-24rpx pb-48rpx">
+    <view
+      v-if="warnings.length"
+      class="mt-24rpx card-rounded bg-amber-50 p-24rpx"
+    >
+      <view class="text-28rpx text-amber-800 font-500">
+        识别提示
+      </view>
+      <view
+        v-for="(msg, idx) in warnings"
+        :key="idx"
+        class="mt-8rpx text-26rpx text-amber-700 leading-relaxed"
+      >
+        · {{ msg }}
+      </view>
+    </view>
+
     <wd-cell-group
       v-if="lineItemLabels.length"
       custom-class="card-rounded mt-24rpx"

@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 
 export interface SalarySlipResult {
   line_items?: Record<string, number | null>
+  warnings?: string[]
+  confidence?: 'high' | 'medium' | 'low'
 }
 
 export function createEmptySalarySlipResult(): SalarySlipResult {

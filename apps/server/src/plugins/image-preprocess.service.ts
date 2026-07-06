@@ -18,6 +18,25 @@ export interface ImagePreprocessMeta {
   mode?: OcrPreprocessMode;
   skipReason?: string;
   error?: string;
+  /** sharp 检测到的输入格式，如 webp、jpeg */
+  inputFormat?: string;
+  /** 输出 buffer 格式；经转换时为 png */
+  outputFormat?: string;
+}
+
+/** RapidOCR-json（OpenCV）可直接解码的格式 */
+const OCR_NATIVE_FORMATS = new Set(["jpeg", "jpg", "png", "bmp"]);
+
+function needsOcrFormatConversion(format: string | undefined): boolean {
+  if (!format) {
+    return false;
+  }
+  return !OCR_NATIVE_FORMATS.has(format.toLowerCase());
+}
+
+/** 转为 OCR 可读 PNG，仅解码重编码，不做增强 */
+async function convertToOcrSafePng(input: Buffer): Promise<Buffer> {
+  return sharp(input, { failOn: "none" }).rotate().png().toBuffer();
 }
 
 /** 宽表截图特征：横向极宽、行高很矮（Excel/表格导出常见） */
@@ -39,16 +58,34 @@ export class ImagePreprocessService {
       const inputMeta = await sharp(input, { failOn: "none" }).metadata();
       const width = inputMeta.width ?? 0;
       const height = inputMeta.height ?? 0;
+      const inputFormat = inputMeta.format;
       const baseMeta: ImagePreprocessMeta = {
         inputWidth: width || null,
         inputHeight: height || null,
         outputBytes: input.length,
         applied: false,
-        mode
+        mode,
+        inputFormat,
+        outputFormat: inputFormat
       };
 
       if (mode === "none") {
         return { buffer: input, meta: { ...baseMeta, skipReason: "disabled" } };
+      }
+
+      // webp/heic/avif 等 OpenCV 无法解码，须先转 PNG（宽表截图同理）
+      if (needsOcrFormatConversion(inputFormat)) {
+        const buffer = await convertToOcrSafePng(input);
+        return {
+          buffer,
+          meta: {
+            ...baseMeta,
+            outputBytes: buffer.length,
+            applied: true,
+            outputFormat: "png",
+            skipReason: `format_convert_${inputFormat}`
+          }
+        };
       }
 
       if (mode === "auto" && isWideTableScreenshot(width, height)) {
@@ -69,6 +106,7 @@ export class ImagePreprocessService {
             ...baseMeta,
             outputBytes: buffer.length,
             applied: true,
+            outputFormat: "png",
             skipReason: undefined
           }
         };
@@ -81,7 +119,8 @@ export class ImagePreprocessService {
         meta: {
           ...baseMeta,
           outputBytes: buffer.length,
-          applied: true
+          applied: true,
+          outputFormat: "png"
         }
       };
     } catch (error: unknown) {

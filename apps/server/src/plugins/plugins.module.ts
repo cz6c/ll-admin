@@ -5,11 +5,20 @@ import { ImagePreprocessService } from "./image-preprocess.service";
 import { MqttService } from "./mqtt.service";
 import { NodemailerService } from "./nodemailer.service";
 import { OcrService } from "./ocr.service";
-import { OpenAIService } from "./openai.service";
+import { QwenOcrProvider } from "./ocr/qwen-ocr.provider";
+import { RapidOcrProvider } from "./ocr/rapid-ocr.provider";
 
 @Module({
   imports: [HttpModule],
-  providers: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, OcrService, OpenAIService],
-  exports: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, OcrService, OpenAIService]
+  providers: [
+    AxiosService,
+    ImagePreprocessService,
+    MqttService,
+    NodemailerService,
+    QwenOcrProvider,
+    RapidOcrProvider,
+    OcrService
+  ],
+  exports: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, OcrService]
 })
 export class PluginsModule {}

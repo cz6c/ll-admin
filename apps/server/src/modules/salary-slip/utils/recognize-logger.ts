@@ -1,66 +1,129 @@
 import type { Logger } from "@nestjs/common";
+import type { OcrPriorAttempt, OcrProviderMeta } from "@/plugins/ocr/ocr-provider.interface";
+import type { OcrCell } from "@/plugins/utils/ocr-layout";
+import type { LineItem, LineItemsFromOcrResult } from "./line-items-from-ocr";
 
 export type RecognizeOutcome = "success" | "fail";
 
-/** 单阶段处理快照 */
-export interface RecognizeStepSnapshot {
-  /** 该阶段耗时（毫秒） */
-  ms: number;
-  /** 该阶段是否成功完成 */
-  ok: boolean;
-  [key: string]: unknown;
+/** OCR 单元格日志项（含坐标，便于排查对齐问题） */
+export interface OcrCellLogEntry {
+  text: string;
+  cx: number;
+  cy: number;
 }
 
-/** 各阶段调试快照，失败时可定位卡在哪个环节 */
-export interface RecognizeStepsSnapshot {
-  /** 图像预处理：是否增强、跳过原因、尺寸 */
-  preprocess?: RecognizeStepSnapshot;
-  /** OCR：版式、字数、文本预览、ocrProvider */
-  ocr?: RecognizeStepSnapshot;
-  /** 列对齐：配对数、孤儿金额数 */
-  align?: RecognizeStepSnapshot;
-  /** 规则直出：置信度、warnings 数量 */
-  rules?: RecognizeStepSnapshot;
+/** OCR 识别快照（日志专用） */
+export interface OcrLogSnapshot {
+  ok: boolean;
+  provider?: string;
+  layout?: string;
+  fallbackFrom?: string;
+  fallbackReason?: string;
+  /** 引擎调用参数（model / task / baseUrl 等） */
+  providerMeta?: OcrProviderMeta;
+  /** 降级前失败的引擎尝试（如 qwen → local） */
+  priorAttempt?: OcrPriorAttempt;
+  cellCount?: number;
+  /** 全量识别单元格（含坐标，不截断） */
+  cells?: OcrCellLogEntry[];
+  error?: string;
+  tooShort?: boolean;
+}
+
+/** 接口返回快照（日志专用） */
+export interface ResultLogSnapshot {
+  confidence?: string;
+  lineItemCount: number;
+  line_items: LineItem[];
+}
+
+/** 各阶段耗时（毫秒） */
+export interface RecognizeTiming {
+  preprocess: number;
+  ocr: number;
+  align: number;
+  rules: number;
 }
 
 /**
  * 工资条识别结构化日志。
- * 顶层仅保留检索/概览字段，阶段细节见 steps（不含 OCR 全文与 line_items 金额）。
+ * 顶层聚焦 ocr（识别输入）与 result（最终输出），timing 记录各阶段耗时。
  */
 export interface SalarySlipRecognizeMetrics {
-  /** 固定事件名，便于日志平台过滤 */
   event: "salary_slip_recognize";
-  /** 请求最终成败 */
-  outcome: RecognizeOutcome;
-  /** 单次识别唯一 ID，用于串联同一次请求的多条日志 */
   traceId: string;
-  /** 端到端总耗时（毫秒） */
+  outcome: RecognizeOutcome;
   durationMs: number;
-  /** 失败时的内部错误码，如 ocr_text_too_short、ocr_timeout */
   errorCode?: string;
-  /** 成功时解析出的 line_items 条目数，用于评估识别完整度 */
-  lineItemCount?: number;
-  /** 规则直出置信度 */
-  confidence?: string;
-  /** 各阶段明细：耗时、关键参数、文本预览、错误原因 */
-  steps?: RecognizeStepsSnapshot;
+  timing?: RecognizeTiming;
+  ocr?: OcrLogSnapshot;
+  result?: ResultLogSnapshot;
 }
 
 /** 生产环境成功请求采样率（失败始终记录） */
 const SUCCESS_SAMPLE_RATE = 0.1;
 
-const TEXT_PREVIEW_MAX = 280;
-
 export function createTraceId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function truncateForLog(text: string, maxLen = TEXT_PREVIEW_MAX): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLen) {
-    return normalized;
+function roundCoord(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function toCellLogEntries(cells: OcrCell[]): OcrCellLogEntry[] {
+  return cells.map(cell => ({
+    text: cell.text,
+    cx: roundCoord(cell.cx),
+    cy: roundCoord(cell.cy)
+  }));
+}
+
+function roundConfidence(items: LineItem[]): LineItem[] {
+  return items.map(item => ({
+    ...item,
+    confidence: Math.round(item.confidence * 1000) / 1000
+  }));
+}
+
+export function buildOcrLogSnapshot(input: {
+  ok: boolean;
+  provider?: string;
+  layout?: string;
+  fallbackFrom?: string;
+  fallbackReason?: string;
+  providerMeta?: OcrProviderMeta;
+  priorAttempt?: OcrPriorAttempt;
+  cells?: OcrCell[];
+  text?: string;
+  error?: string;
+  tooShort?: boolean;
+}): OcrLogSnapshot {
+  const snapshot: OcrLogSnapshot = { ok: input.ok };
+
+  if (input.provider) snapshot.provider = input.provider;
+  if (input.layout) snapshot.layout = input.layout;
+  if (input.fallbackFrom) snapshot.fallbackFrom = input.fallbackFrom;
+  if (input.fallbackReason) snapshot.fallbackReason = input.fallbackReason;
+  if (input.providerMeta) snapshot.providerMeta = input.providerMeta;
+  if (input.priorAttempt) snapshot.priorAttempt = input.priorAttempt;
+  if (input.error) snapshot.error = input.error;
+  if (input.tooShort) snapshot.tooShort = input.tooShort;
+
+  if (input.cells?.length) {
+    snapshot.cellCount = input.cells.length;
+    snapshot.cells = toCellLogEntries(input.cells);
   }
-  return `${normalized.slice(0, maxLen)}…`;
+
+  return snapshot;
+}
+
+export function buildResultLogSnapshot(rulesResult: LineItemsFromOcrResult): ResultLogSnapshot {
+  return {
+    confidence: rulesResult.confidence,
+    lineItemCount: rulesResult.line_items.length,
+    line_items: roundConfidence(rulesResult.line_items)
+  };
 }
 
 export function shouldLogRecognizeMetrics(outcome: RecognizeOutcome): boolean {
@@ -78,5 +141,7 @@ export function logSalarySlipRecognize(logger: Logger, metrics: SalarySlipRecogn
     return;
   }
 
-  logger.log(JSON.stringify(metrics));
+  const isProd = process.env.NODE_ENV === "production";
+  const payload = isProd ? JSON.stringify(metrics) : JSON.stringify(metrics, null, 2);
+  logger.log(payload);
 }

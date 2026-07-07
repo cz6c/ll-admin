@@ -1,9 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 import { deriveNativeBaseUrl, extractOcrResultFromResponse, parseQwenOcrResult } from "./qwen-ocr.adapter";
-import type { OcrProvider, OcrProviderRecognizeResult } from "./ocr-provider.interface";
+import type { OcrProvider, OcrProviderMeta, OcrProviderRecognizeResult } from "./ocr-provider.interface";
+import { OcrProviderError } from "./ocr-provider.interface";
 
 const DEFAULT_MODEL = "qwen3.5-ocr";
 const DEFAULT_TASK = "advanced_recognition";
@@ -15,7 +16,6 @@ const RESPONSE_PREVIEW_MAX = 1200;
 @Injectable()
 export class QwenOcrProvider implements OcrProvider {
   readonly name = "qwen" as const;
-  private readonly logger = new Logger(QwenOcrProvider.name);
 
   constructor(
     private readonly config: ConfigService,
@@ -25,7 +25,7 @@ export class QwenOcrProvider implements OcrProvider {
   async recognize(buffer: Buffer, mimeType = "image/jpeg"): Promise<OcrProviderRecognizeResult> {
     const apiKey = this.config.get<string>("ocr.qwen.apiKey") || this.config.get<string>("aliyun.apiKey");
     if (!apiKey) {
-      throw new Error("ocr_not_configured");
+      throw new OcrProviderError("ocr_not_configured");
     }
 
     const baseUrl = this.resolveNativeBaseUrl();
@@ -33,15 +33,10 @@ export class QwenOcrProvider implements OcrProvider {
     const task = this.config.get<string>("ocr.qwen.task") || DEFAULT_TASK;
     const enableRotate = this.config.get<boolean>("ocr.qwen.enableRotate") ?? true;
     const timeout =
-      this.config.get<number>("ocr.qwen.timeout") ??
-      this.config.get<number>("ocr.timeout") ??
-      this.config.get<number>("aliyun.timeout") ??
-      120000;
+      this.config.get<number>("ocr.qwen.timeout") ?? this.config.get<number>("ocr.timeout") ?? this.config.get<number>("aliyun.timeout") ?? 120000;
     const imageDataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
 
-    this.logger.log(JSON.stringify({ event: "qwen_ocr_start", task, baseUrl, model, timeoutMs: timeout }));
-
-    const startedAt = Date.now();
+    const requestMeta: OcrProviderMeta = { model, task, baseUrl, timeoutMs: timeout, enableRotate };
 
     try {
       const data = await this.callNativeOcr({
@@ -57,59 +52,55 @@ export class QwenOcrProvider implements OcrProvider {
       const remoteCode = (data as { code?: string; message?: string })?.code;
       const remoteMessage = (data as { message?: string })?.message;
       const cells = parseQwenOcrResult(extractOcrResultFromResponse(data));
-      const ms = Date.now() - startedAt;
       const responsePreview = truncateJson(data);
 
       if (remoteCode) {
-        this.logger.log(
-          JSON.stringify({
-            event: "qwen_ocr_attempt",
-            ms,
-            ok: false,
-            cellCount: 0,
-            failReason: `remote_code:${remoteCode}${remoteMessage ? `:${remoteMessage}` : ""}`,
-            responsePreview
-          })
-        );
-        throw new Error(`qwen_ocr_${remoteCode}`);
+        throw new OcrProviderError(`qwen_ocr_${remoteCode}`, {
+          ...requestMeta,
+          remoteCode,
+          remoteMessage,
+          failReason: `remote_code:${remoteCode}${remoteMessage ? `:${remoteMessage}` : ""}`,
+          responsePreview
+        });
       }
 
       if (!cells.length) {
-        this.logger.log(
-          JSON.stringify({
-            event: "qwen_ocr_attempt",
-            ms,
-            ok: false,
-            cellCount: 0,
-            failReason: "no_cells",
-            responsePreview
-          })
-        );
-        throw new Error("qwen_ocr_empty");
+        throw new OcrProviderError("qwen_ocr_empty", {
+          ...requestMeta,
+          failReason: "no_cells",
+          responsePreview
+        });
       }
 
-      this.logger.log(JSON.stringify({ event: "qwen_ocr_attempt", ms, ok: true, cellCount: cells.length }));
-
-      return { cells, raw: data };
+      return { cells, raw: data, meta: requestMeta };
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string; response?: { data?: unknown } };
       if (err?.code === "ECONNABORTED" || String(err?.message).includes("timeout")) {
-        const ms = Date.now() - startedAt;
-        this.logger.log(
-          JSON.stringify({ event: "qwen_ocr_attempt", ms, ok: false, cellCount: 0, failReason: "ocr_timeout", timeoutMs: timeout })
-        );
-        throw new Error("ocr_timeout");
+        throw new OcrProviderError("ocr_timeout", {
+          ...requestMeta,
+          failReason: "ocr_timeout"
+        });
       }
-      if (error instanceof Error && (error.message.startsWith("qwen_ocr_") || error.message.startsWith("ocr_"))) {
+      if (error instanceof OcrProviderError) {
         throw error;
       }
 
       const remoteData = err?.response?.data as { code?: string; message?: string } | undefined;
       if (remoteData?.code) {
-        throw new Error(`qwen_ocr_${remoteData.code}`);
+        throw new OcrProviderError(`qwen_ocr_${remoteData.code}`, {
+          ...requestMeta,
+          remoteCode: remoteData.code,
+          remoteMessage: remoteData.message,
+          failReason: `remote_code:${remoteData.code}${remoteData.message ? `:${remoteData.message}` : ""}`,
+          responsePreview: truncateJson(remoteData)
+        });
       }
       const remoteMsg = remoteData?.message;
-      throw new Error(remoteMsg ? `qwen_ocr_error:${remoteMsg}` : "qwen_ocr_error");
+      throw new OcrProviderError(remoteMsg ? `qwen_ocr_error:${remoteMsg}` : "qwen_ocr_error", {
+        ...requestMeta,
+        failReason: remoteMsg ?? "qwen_ocr_error",
+        responsePreview: remoteData ? truncateJson(remoteData) : undefined
+      });
     }
   }
 
@@ -171,7 +162,7 @@ export class QwenOcrProvider implements OcrProvider {
       return derived;
     }
 
-    throw new Error("ocr_not_configured");
+    throw new OcrProviderError("ocr_not_configured");
   }
 }
 

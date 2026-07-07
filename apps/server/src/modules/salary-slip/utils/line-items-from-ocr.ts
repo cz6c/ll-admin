@@ -2,15 +2,24 @@ import type { AlignedPair } from "@/plugins/utils/ocr-layout";
 
 export type LineItemsConfidence = "high" | "medium" | "low";
 
+export interface LineItem {
+  key: string;
+  value: string;
+  confidence: number;
+  warning: string;
+}
+
 export interface LineItemsFromOcrResult {
-  line_items: Record<string, number | null>;
-  warnings: string[];
+  line_items: LineItem[];
   confidence: LineItemsConfidence;
 }
 
 function parseAmount(text: string): number | null {
   const normalized = text.replace(/,/g, "").trim();
-  if (!normalized || !/^-?\d+([.,]\d+)?$/.test(normalized.replace(",", "."))) {
+  if (!normalized || normalized === "-") {
+    return null;
+  }
+  if (!/^-?\d+([.,]\d+)?$/.test(normalized.replace(",", "."))) {
     return null;
   }
   const num = Number(normalized.replace(",", "."));
@@ -20,14 +29,50 @@ function parseAmount(text: string): number | null {
   return Math.round(num * 100) / 100;
 }
 
+function formatAmountDisplay(text: string): string {
+  const amount = parseAmount(text);
+  if (amount === null) {
+    return text.trim() || "-";
+  }
+  return (Math.round(amount * 100) / 100).toFixed(2);
+}
+
 function isValidLabel(label: string): boolean {
   return Boolean(label?.trim()) && label !== "?";
 }
 
+function resolveLineItemKey(label: string, existingKeys: Set<string>): string {
+  if (!existingKeys.has(label)) {
+    return label;
+  }
+  let index = 2;
+  while (existingKeys.has(`${label}(${index})`)) {
+    index += 1;
+  }
+  return `${label}(${index})`;
+}
+
+function buildPairWarning(pair: AlignedPair): string {
+  if (pair.ambiguous) {
+    return `「${pair.label}」金额存在歧义，请核对`;
+  }
+  if (pair.confidence < 0.55) {
+    return `「${pair.label}」对齐置信度较低（${Math.round(pair.confidence * 100)}%），请核对`;
+  }
+  return "";
+}
+
+function appendWarning(current: string, extra: string): string {
+  if (!extra) {
+    return current;
+  }
+  return current ? `${current}；${extra}` : extra;
+}
+
 /** 将对齐配对转为 line_items，并评估置信度 */
 export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): LineItemsFromOcrResult {
-  const line_items: Record<string, number | null> = {};
-  const warnings: string[] = [];
+  const line_items: LineItem[] = [];
+  const existingKeys = new Set<string>();
   let pairedCount = 0;
   let validPairCount = 0;
   let ambiguousCount = 0;
@@ -36,41 +81,60 @@ export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): 
   for (const pair of pairs) {
     if (!isValidLabel(pair.label)) {
       missingLabelCount += 1;
-      if (pair.value) {
-        warnings.push(`未配对金额：${pair.value}`);
+      if (pair.value && pair.value !== "-") {
+        line_items.push({
+          key: "",
+          value: formatAmountDisplay(pair.value),
+          confidence: pair.confidence,
+          warning: `未配对金额：${pair.value}`
+        });
       }
       continue;
     }
 
     pairedCount += 1;
+    let warning = buildPairWarning(pair);
 
     if (pair.ambiguous) {
       ambiguousCount += 1;
-      warnings.push(`「${pair.label}」金额存在歧义，请核对`);
+    } else if (pair.confidence < 0.55) {
+      ambiguousCount += 1;
     }
 
-    if (pair.value === null) {
-      line_items[pair.label] = null;
-      continue;
+    let value = "-";
+    if (pair.value !== null && pair.value !== "-") {
+      const amount = parseAmount(pair.value);
+      if (amount === null) {
+        warning = appendWarning(warning, `「${pair.label}」金额格式异常：${pair.value}`);
+        value = pair.value;
+      } else {
+        validPairCount += 1;
+        value = formatAmountDisplay(pair.value);
+      }
     }
 
-    const amount = parseAmount(pair.value);
-    if (amount === null) {
-      warnings.push(`「${pair.label}」金额格式异常：${pair.value}`);
-      line_items[pair.label] = null;
-      continue;
+    let key = pair.label;
+    if (existingKeys.has(key)) {
+      key = resolveLineItemKey(pair.label, existingKeys);
+      warning = appendWarning(warning, `重复项目「${pair.label}」，已记为「${key}」`);
     }
+    existingKeys.add(key);
 
-    validPairCount += 1;
-    if (pair.label in line_items) {
-      warnings.push(`重复项目「${pair.label}」，已保留首次识别值`);
-      continue;
-    }
-    line_items[pair.label] = amount;
+    line_items.push({
+      key,
+      value,
+      confidence: pair.confidence,
+      warning
+    });
   }
 
   for (const orphan of orphans) {
-    warnings.push(`未配对金额：${orphan}`);
+    line_items.push({
+      key: "",
+      value: formatAmountDisplay(orphan),
+      confidence: 0,
+      warning: `未配对金额：${orphan}`
+    });
   }
 
   const totalCandidates = pairedCount + orphans.length + missingLabelCount;
@@ -85,9 +149,9 @@ export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): 
     confidence = "low";
   }
 
-  if (!Object.keys(line_items).length && (orphans.length || missingLabelCount)) {
+  if (!line_items.length && (orphans.length || missingLabelCount)) {
     confidence = "low";
   }
 
-  return { line_items, warnings, confidence };
+  return { line_items, confidence };
 }

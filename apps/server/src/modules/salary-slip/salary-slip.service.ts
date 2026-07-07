@@ -1,11 +1,20 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ResultData } from "@/common/utils/result";
-import { ImagePreprocessMeta, ImagePreprocessService } from "@/plugins/image-preprocess.service";
+import { ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
-import { extractAlignedPairs } from "@/plugins/utils/ocr-layout";
+import { OcrProviderError } from "@/plugins/ocr/ocr-provider.interface";
+import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { lineItemsFromOcr } from "./utils/line-items-from-ocr";
-import { createTraceId, logSalarySlipRecognize, RecognizeStepsSnapshot, SalarySlipRecognizeMetrics, truncateForLog } from "./utils/recognize-logger";
+import {
+  buildOcrLogSnapshot,
+  buildResultLogSnapshot,
+  createTraceId,
+  logSalarySlipRecognize,
+  OcrLogSnapshot,
+  RecognizeTiming,
+  ResultLogSnapshot
+} from "./utils/recognize-logger";
 
 const MIME_BY_FORMAT: Record<string, string> = {
   png: "image/png",
@@ -27,25 +36,25 @@ export class SalarySlipService {
   async recognize(file: Express.Multer.File) {
     const traceId = createTraceId();
     const startedAt = Date.now();
-    const steps: RecognizeStepsSnapshot = {};
-    const metrics: Omit<SalarySlipRecognizeMetrics, "outcome" | "durationMs"> = {
-      event: "salary_slip_recognize",
-      traceId,
-      steps
-    };
+    const timing: RecognizeTiming = { preprocess: 0, ocr: 0, align: 0, rules: 0 };
+    let ocrSnapshot: OcrLogSnapshot | undefined;
+    let resultSnapshot: ResultLogSnapshot | undefined;
 
-    const emit = (outcome: SalarySlipRecognizeMetrics["outcome"], extra?: Partial<SalarySlipRecognizeMetrics>) => {
+    const emit = (outcome: "success" | "fail", errorCode?: string) => {
       logSalarySlipRecognize(this.logger, {
-        ...metrics,
-        ...extra,
-        steps,
+        event: "salary_slip_recognize",
+        traceId,
         outcome,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        errorCode,
+        timing,
+        ocr: ocrSnapshot,
+        result: resultSnapshot
       });
     };
 
     if (!file?.buffer?.length) {
-      emit("fail", { errorCode: "empty_file" });
+      emit("fail", "empty_file");
       return ResultData.fail(400, "请上传工资条图片");
     }
 
@@ -54,111 +63,85 @@ export class SalarySlipService {
       const { buffer: ocrBuffer, meta: preprocessMeta } = await this.imagePreprocessService.preprocessForOcr(file.buffer, {
         mode: "auto"
       });
-      const preprocessMs = Date.now() - preprocessStart;
-      steps.preprocess = this.buildPreprocessStep(preprocessMs, preprocessMeta, file.buffer.length, ocrBuffer.length);
+      timing.preprocess = Date.now() - preprocessStart;
 
       const mimeType = MIME_BY_FORMAT[preprocessMeta.outputFormat] || "image/jpeg";
 
       let ocrResult;
+      const ocrStart = Date.now();
       try {
-        const ocrStart = Date.now();
         ocrResult = await this.ocrService.recognize(ocrBuffer, mimeType);
-        const ocrMs = Date.now() - ocrStart;
-        steps.ocr = {
-          ms: ocrMs,
+        timing.ocr = Date.now() - ocrStart;
+        ocrSnapshot = buildOcrLogSnapshot({
           ok: true,
+          provider: ocrResult.provider,
           layout: ocrResult.layout,
-          ocrProvider: ocrResult.provider,
           fallbackFrom: ocrResult.fallbackFrom,
           fallbackReason: ocrResult.fallbackReason,
-          textLength: ocrResult.text.length,
-          cellCount: ocrResult.cells.length,
-          textPreview: truncateForLog(ocrResult.text)
-        };
+          providerMeta: ocrResult.meta,
+          priorAttempt: ocrResult.priorAttempt,
+          cells: ocrResult.cells,
+          text: ocrResult.text
+        });
       } catch (error: unknown) {
+        timing.ocr = Date.now() - ocrStart;
         const code = error instanceof Error ? error.message : "ocr_error";
-        steps.ocr = { ms: steps.ocr?.ms ?? 0, ok: false, error: code };
+        const providerMeta = error instanceof OcrProviderError ? error.meta : undefined;
+        ocrSnapshot = buildOcrLogSnapshot({ ok: false, error: code, providerMeta });
         if (code === "ocr_not_configured") {
-          emit("fail", { errorCode: code });
+          emit("fail", code);
           return ResultData.fail(503, "OCR 服务未配置，请联系管理员");
         }
         if (code === "ocr_executable_missing") {
-          emit("fail", { errorCode: code });
+          emit("fail", code);
           return ResultData.fail(503, "OCR 服务未就绪，请联系管理员");
         }
         if (code === "ocr_init_failed" || code.startsWith("ocr_exit_")) {
-          emit("fail", { errorCode: code });
+          emit("fail", code);
           return ResultData.fail(503, "OCR 引擎启动失败，请确认已部署完整 RapidOCR-json 运行包");
         }
         if (code === "ocr_timeout") {
-          emit("fail", { errorCode: code });
+          emit("fail", code);
           return ResultData.fail(408, "OCR 识别超时，请稍后重试");
         }
-        emit("fail", { errorCode: code });
+        emit("fail", code);
         return ResultData.fail(500, "图片识别失败，请稍后重试");
       }
 
       if (!ocrResult.cells.length) {
-        steps.ocr = { ...steps.ocr, ok: false, tooShort: true, cellCount: 0 };
-        emit("fail", { errorCode: "ocr_text_too_short" });
+        ocrSnapshot = buildOcrLogSnapshot({ ok: false, tooShort: true, error: "ocr_text_too_short" });
+        emit("fail", "ocr_text_too_short");
         return ResultData.fail(400, "未识别到有效文字，请重新拍摄");
       }
 
       const alignStart = Date.now();
       const { pairs, orphans } = extractAlignedPairs(ocrResult.cells, ocrResult.layout);
-      const alignMs = Date.now() - alignStart;
-      steps.align = {
-        ms: alignMs,
-        ok: true,
-        layout: ocrResult.layout,
-        pairCount: pairs.length,
-        orphanCount: orphans.length
-      };
+      timing.align = Date.now() - alignStart;
 
       const rulesStart = Date.now();
       const rulesResult = lineItemsFromOcr(pairs, orphans);
-      const rulesMs = Date.now() - rulesStart;
+      timing.rules = Date.now() - rulesStart;
+      resultSnapshot = buildResultLogSnapshot(rulesResult);
 
-      const lineItemKeys = Object.keys(rulesResult.line_items);
-      steps.rules = {
-        ms: rulesMs,
-        ok: true,
-        confidence: rulesResult.confidence,
-        warningCount: rulesResult.warnings.length,
-        lineItemCount: lineItemKeys.length,
-        lineItemKeys
-      };
+      const skewResult = detectTableSkew(ocrResult.cells, ocrResult.layout);
+
+      if (skewResult.skewed) {
+        emit("fail", "table_skewed");
+        return ResultData.fail(400, "表格倾斜，请重新拍摄");
+      }
 
       const result: SalarySlipResultDto = {
         line_items: rulesResult.line_items,
-        warnings: rulesResult.warnings.length ? rulesResult.warnings : undefined,
         confidence: rulesResult.confidence
       };
 
-      emit("success", { lineItemCount: lineItemKeys.length, confidence: rulesResult.confidence });
+      emit("success");
 
       return ResultData.ok(result);
     } catch (error: unknown) {
       const code = error instanceof Error ? error.message : "unknown_error";
-      emit("fail", { errorCode: code });
+      emit("fail", code);
       return ResultData.fail(500, "识别失败，请稍后重试");
     }
-  }
-
-  private buildPreprocessStep(ms: number, meta: ImagePreprocessMeta, inputBytes: number, outputBytes: number) {
-    return {
-      ms,
-      ok: !meta.error,
-      mode: meta.mode,
-      applied: meta.applied,
-      skipReason: meta.skipReason,
-      inputWidth: meta.inputWidth,
-      inputHeight: meta.inputHeight,
-      inputBytes,
-      outputBytes,
-      inputFormat: meta.inputFormat,
-      outputFormat: meta.outputFormat,
-      error: meta.error
-    };
   }
 }

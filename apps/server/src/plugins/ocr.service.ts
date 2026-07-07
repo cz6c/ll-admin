@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { OcrProviderName } from "./ocr/ocr-provider.interface";
+import { OcrProviderError, type OcrPriorAttempt, type OcrProviderMeta, type OcrProviderName } from "./ocr/ocr-provider.interface";
 import { QwenOcrProvider } from "./ocr/qwen-ocr.provider";
 import { RapidOcrProvider } from "./ocr/rapid-ocr.provider";
 import { detectLayout, formatOcrText, OcrCell, OcrLayoutType } from "./utils/ocr-layout";
@@ -13,8 +13,10 @@ export interface OcrRecognizeResult {
   layout: OcrLayoutType;
   raw: unknown;
   provider: OcrProviderName;
+  meta?: OcrProviderMeta;
   fallbackFrom?: OcrProviderName;
   fallbackReason?: string;
+  priorAttempt?: OcrPriorAttempt;
 }
 
 /** OCR 门面：Qwen 优先，失败可降级 RapidOCR */
@@ -35,8 +37,14 @@ export class OcrService {
     } catch (error: unknown) {
       if (provider === "qwen" && fallbackToLocal) {
         const fallbackReason = error instanceof Error ? error.message : "qwen_error";
+        const priorMeta = error instanceof OcrProviderError ? error.meta : undefined;
         const result = await this.runWithProvider("local", buffer, mimeType);
-        return { ...result, fallbackFrom: "qwen", fallbackReason };
+        return {
+          ...result,
+          fallbackFrom: "qwen",
+          fallbackReason,
+          priorAttempt: { provider: "qwen", reason: fallbackReason, meta: priorMeta }
+        };
       }
       throw error;
     }
@@ -49,10 +57,10 @@ export class OcrService {
 
   private async runWithProvider(provider: OcrProviderName, buffer: Buffer, mimeType: string): Promise<OcrRecognizeResult> {
     const engine = provider === "local" ? this.rapidOcrProvider : this.qwenOcrProvider;
-    const { cells, raw } = await engine.recognize(buffer, mimeType);
+    const { cells, raw, meta } = await engine.recognize(buffer, mimeType);
     const layout = detectLayout(cells);
     const text = formatOcrText(cells, layout);
 
-    return { text, cells, layout, raw, provider };
+    return { text, cells, layout, raw, provider, meta };
   }
 }

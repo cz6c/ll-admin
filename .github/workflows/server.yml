@@ -27,7 +27,7 @@ jobs:
           # 私钥
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           # SCP参数
-          ARGS: '-avzr --delete'
+          ARGS: '-avzr --delete --exclude=logs/ --exclude=ormlogs.log --exclude=node_modules/ --exclude=dist/ --exclude=src/config/prod.yml'
           # 源目录
           SOURCE: 'apps/server/'
           # 服务器ip
@@ -52,5 +52,6 @@ jobs:
             if pm2 list | grep -q "ll_api"; then
               pm2 delete ll_api
             fi
+            export NODE_ENV=production
             pm2 start ecosystem.config.js --env production
             pm2 save

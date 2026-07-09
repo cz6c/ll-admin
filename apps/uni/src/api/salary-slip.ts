@@ -1,4 +1,4 @@
-import type { SalarySlipResult } from '@/store/salarySlip'
+import type { SalarySlipResult } from '@/types/salary-slip'
 import { ResultEnum } from '@/http/tools/enum'
 
 interface ApiResponse<T> {

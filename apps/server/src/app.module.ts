@@ -2,6 +2,7 @@ import { Module, Global } from "@nestjs/common";
 import { TypeOrmModule, TypeOrmModuleOptions } from "@nestjs/typeorm";
 import { ConfigService, ConfigModule } from "@nestjs/config";
 import configuration from "./config/index";
+import { buildMysqlTypeOrmOptions } from "./config/typeorm-options";
 import { RedisClientOptions } from "@liaoliaots/nestjs-redis";
 import { RedisModule } from "./modules/redis/redis.module";
 import { APP_GUARD } from "@nestjs/core";
@@ -47,11 +48,8 @@ import { ServerModule } from "./modules/monitor/server/server.module";
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
-        ({
-          type: "mysql",
-          autoLoadEntities: true, // 自动导入实体
-          // keepConnectionAlive: true,
-          ...config.get("db.mysql")
+        buildMysqlTypeOrmOptions(config.get("db.mysql"), {
+          autoLoadEntities: true
         }) as TypeOrmModuleOptions
     }),
     // redis

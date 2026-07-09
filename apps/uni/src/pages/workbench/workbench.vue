@@ -31,7 +31,7 @@ const tools: ToolEntry[] = [
     title: '工资条识别与核对',
     desc: '拍照识别工资条并核对关键字段',
     icon: 'read',
-    url: '/pages-sub/salary-slip/index',
+    url: '/pages/salary/verify',
   },
   {
     title: 'WiFi小助手',

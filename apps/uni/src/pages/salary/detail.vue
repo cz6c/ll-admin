@@ -102,11 +102,11 @@ const INCOME_TAX_BRACKETS = [
         </view>
       </view>
 
-      <view class="section-title mt-40rpx">
+      <view class="mt-40rpx section-title">
         <view class="section-bar" />
         <text>每月到手工资</text>
       </view>
-      <view class="card-rounded mt-16rpx">
+      <view class="mt-16rpx card-rounded">
         <view class="month-table">
           <view class="month-head">
             <view class="month-cell month-cell--narrow">
@@ -170,22 +170,22 @@ const INCOME_TAX_BRACKETS = [
         </view>
       </view>
 
-      <view v-if="detailInput.yearEndBonus > 0" class="section-title mt-40rpx">
+      <view v-if="detailInput.yearEndBonus > 0" class="mt-40rpx section-title">
         <view class="section-bar" />
         <text>年终奖</text>
       </view>
-      <view v-if="detailInput.yearEndBonus > 0" class="card-rounded mt-24rpx p-24rpx text-26rpx leading-relaxed">
+      <view v-if="detailInput.yearEndBonus > 0" class="mt-24rpx card-rounded p-24rpx text-26rpx leading-relaxed">
         <text class="text-#666">
           年终奖 {{ fmt(detailInput.yearEndBonus) }}，个税 {{ fmt(r.yearEndBonusTax) }}，到手 {{ fmt(r.yearEndBonusNet) }}
           （{{ yearEndTaxLabel }}）
         </text>
       </view>
 
-      <view class="section-title mt-40rpx">
+      <view class="mt-40rpx section-title">
         <view class="section-bar" />
         <text>个人所得税税率表（综合所得适用）</text>
       </view>
-      <view class="card-rounded mt-16rpx">
+      <view class="mt-16rpx card-rounded">
         <view class="pit-table">
           <view class="pit-head">
             <view class="pit-cell pit-cell--level">
@@ -240,7 +240,7 @@ const INCOME_TAX_BRACKETS = [
       </view>
 
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
-        注：由于各地政策有细微差异，计算结果仅供参考
+        注：计算结果仅供参考
       </view>
     </view>
   </view>

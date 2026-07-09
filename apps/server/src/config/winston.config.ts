@@ -1,6 +1,8 @@
 import type { WinstonModuleOptions } from "nest-winston";
+import { join } from "node:path";
 import { format, transports } from "winston";
 import * as DailyRotateFile from "winston-daily-rotate-file";
+import { ensureRuntimeDirs, getAppLogDir } from "./runtime-paths";
 
 const rotateDefaults = {
   datePattern: "YYYY-MM-DD",
@@ -28,15 +30,20 @@ function createLevelFileTransport(filename: string, level: string) {
   });
 }
 
-const fileTransports = [
-  createLevelFileTransport("logs/errors/error-%DATE%.log", "error"),
-  createLevelFileTransport("logs/warnings/warning-%DATE%.log", "warn"),
-  createLevelFileTransport("logs/info/info-%DATE%.log", "info"),
-  createLevelFileTransport("logs/debug/debug-%DATE%.log", "debug")
-];
+function createFileTransports() {
+  const logDir = getAppLogDir();
+  return [
+    createLevelFileTransport(join(logDir, "errors/error-%DATE%.log"), "error"),
+    createLevelFileTransport(join(logDir, "warnings/warning-%DATE%.log"), "warn"),
+    createLevelFileTransport(join(logDir, "info/info-%DATE%.log"), "info"),
+    createLevelFileTransport(join(logDir, "debug/debug-%DATE%.log"), "debug")
+  ];
+}
 
 export const winstonConfig = (): WinstonModuleOptions => {
+  ensureRuntimeDirs();
   const isProd = process.env.NODE_ENV === "production";
+  const fileTransports = createFileTransports();
 
   return {
     level: isProd ? "info" : "debug",

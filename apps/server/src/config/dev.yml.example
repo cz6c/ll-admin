@@ -1,4 +1,8 @@
 # 开发环境配置模板（复制为 dev.yml 并填入真实密钥）
+# 生产部署目录结构（与 prod.yml、upload 同级，部署 rsync 不覆盖）：
+#   /www/wwwroot/ll_api/prod.yml   — 生产配置
+#   /www/wwwroot/ll_api/upload/    — 用户上传（app.file.location: '../upload'）
+#   /www/wwwroot/ll_api/data/      — 运行时日志（Winston / PM2 / TypeORM，见 runtime-paths.ts）
 app:
   prefix: ''
   port: 6060
@@ -19,7 +23,7 @@ db:
     charset: 'utf8mb4'
     timezone: '+08:00'
     logging: true
-    logger: 'file'
+    logger: 'file'  # 开发：apps/server/ormlogs.log；生产：../data/ormlogs.log（见 runtime-paths.ts）
     multipleStatements: true
     dropSchema: false
     synchronize: false

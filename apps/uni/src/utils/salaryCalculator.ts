@@ -1,84 +1,25 @@
 /**
  *
- * 流程概览：解析社保/公积金个人缴费基数或个缴额 → 算五险与公积金个人月缴额 → 按累计预扣法算 12 个月个税与税后
+ * 流程概览：按用户填写的社保/公积金个缴额 → 算五险一金个人月缴额 → 按累计预扣法算 12 个月个税与税后
  * → 年终奖单独计税或并入综合所得 → 汇总年度到手与税额。
  */
 
-import { getSalaryCityName } from '@/constants/salaryCityPicker'
+import { parsePayPeriod } from '@/utils/payPeriod'
 
 /** 年终奖计税方式：单独计税 | 并入综合所得 */
 export type YearEndTaxMode = 'none' | 'separate' | 'merge'
-/** 社保计算方式：按基数比例 | 按个缴金额（直接填五险个人合计，不按比例） */
-export type SsPaymentType = 'base' | 'custom'
-/** 公积金计算方式：不缴纳 | 按基数比例 | 按个缴金额（直接填个人月缴，不按比例） */
-export type HfPaymentType = 'none' | 'base' | 'custom'
-
-export interface CityProfile {
-  /** 城市 id，与选择器、输入里的 cityId 对应 */
-  id: string
-  /** 展示用城市名 */
-  name: string
-  /** 社保公积金缴费基数下限（参考当地最低工资或政策说明） */
-  ssBaseMin: number
-  /** 缴费基数上限（简化：取常见上限，实际以当地为准） */
-  ssBaseCap: number
-  /** 个人比例：养老、医疗、失业 */
-  ssPersonalRates: { pension: number, medical: number, unemployment: number }
-}
-
-/** 内置城市参保参数表（当前仅深圳一条完整数据） */
-export const CITY_LIST: CityProfile[] = [
-  {
-    id: 'shenzhen',
-    name: '深圳市',
-    ssBaseMin: 4775,
-    // ssBaseMin1: 6727,
-    // ssBaseMin2: 2520,
-    ssBaseCap: 27549,
-    ssPersonalRates: { pension: 0.08, medical: 0.02, unemployment: 0.002 },
-  },
-]
-
-/**
- * 按 cityId 取参保模板：在 `CITY_LIST` 中命中则返回该条；否则用深圳比例 + `getSalaryCityName` 展示名拼一条近似配置。
- */
-export function getCityProfile(cityId: string): CityProfile {
-  const hit = CITY_LIST.find(c => c.id === cityId)
-  if (hit)
-    return hit
-  const t = CITY_LIST[0]
-  return {
-    id: cityId,
-    name: getSalaryCityName(cityId) || cityId,
-    ssBaseMin: t.ssBaseMin,
-    ssBaseCap: t.ssBaseCap,
-    ssPersonalRates: { ...t.ssPersonalRates },
-  }
-}
 
 /** 用户输入的薪资与参保参数，用于一次完整测算 */
 export interface SalaryCalcInput {
-  /** 参保城市 id，用于取缴费比例与基数上下限 */
-  cityId: string
   /** 每月税前固定工资（元），本模型按 12 个月相同月薪计算 */
   preTaxMonthly: number
   /** 年终奖计税方式：`separate` 单独计税，`merge` 并入当年综合所得 */
   yearEndTaxMode: YearEndTaxMode
   /** 年终奖税前金额（元），为 0 表示无年终奖 */
   yearEndBonus: number
-  /** 社保计算方式：`base` 按基数比例，`custom` 按个缴金额 */
-  ssPaymentType: SsPaymentType
-  /** 社保缴费基数（元），仅 `ssPaymentType === 'base'` 时参与比例计算 */
-  ssBase: number
-  /** 五险个人部分月缴合计（元），仅 `ssPaymentType === 'custom'` 时生效 */
+  /** 五险个人部分月缴合计（元） */
   ssPersonalAmount: number
-  /** 公积金计算方式，见 `HfPaymentType` */
-  hfPaymentType: HfPaymentType
-  /** 公积金缴存比例（小数，如 0.12）；仅 `hfPaymentType === 'base'` 时使用 */
-  hfRate: number
-  /** 公积金缴费基数（元），仅 `hfPaymentType === 'base'` 时使用 */
-  hfBase: number
-  /** 公积金个人月缴额（元），仅 `hfPaymentType === 'custom'` 时生效 */
+  /** 公积金个人月缴额（元） */
   hfPersonalAmount: number
   /** 每月专项附加扣除合计（元），将多项简化为月度固定额参与累计预扣 */
   specialDeductionMonthly: number
@@ -101,17 +42,8 @@ export interface MonthlySalaryRow {
   postTax: number
 }
 
-/** 一次测算的完整输出：基数、月度明细、年度汇总与年终奖 */
+/** 一次测算的完整输出：月度明细、年度汇总与年终奖 */
 export interface SalaryCalcResult {
-  /** 实际采用的参保城市参数（比例、基数上下限等） */
-  city: CityProfile
-  /**
-   * 核算后的社保缴费基数（元），仅 `ssPaymentType === 'base'` 时有值（夹在上下限）；
-   * `custom`（按个缴金额）时为 0。
-   */
-  resolvedSsBase: number
-  /** 核算后的公积金缴费基数（元），不缴公积金时为 0 */
-  resolvedHfBase: number
   /** 五险一金个人缴纳月度合计（元），与累计预扣专项扣除中的「三险一金」部分一致 */
   fiveInsFundPersonalMonthly: number
   /** 当年税后现金流合计（元）：12 个月税后工资 + 年终奖税后（单独计税时年终奖一次性计入） */
@@ -123,7 +55,7 @@ export interface SalaryCalcResult {
 
   /** 五险个人部分每月合计（元），不含公积金 */
   ssPersonalMonthly: number
-  /** 公积金个人每月缴存额（元），不缴时为 0 */
+  /** 公积金个人每月缴存额（元） */
   hfPersonalMonthly: number
 
   /** 年终奖应缴个人所得税（元），无年终奖时为 0 */
@@ -193,57 +125,18 @@ function round2(n: number): number {
 }
 
 /**
- * 社保个人缴费基数：`base` 时为用户基数夹在政策上下限；`custom` 时不按基数计，返回 0。
- */
-function resolveSsBase(input: SalaryCalcInput, city: CityProfile): number {
-  const floor = city.ssBaseMin
-  const cap = city.ssBaseCap
-  if (input.ssPaymentType === 'custom')
-    return 0
-  return Math.min(Math.max(input.ssBase || floor, floor), cap)
-}
-
-/** 公积金缴费基数：`base` 时夹在上下限；不缴或个缴时为 0 */
-function resolveHfBase(input: SalaryCalcInput, city: CityProfile): number {
-  if (input.hfPaymentType === 'none' || input.hfPaymentType === 'custom')
-    return 0
-  const floor = city.ssBaseMin
-  const cap = city.ssBaseCap
-  return Math.min(Math.max(input.hfBase || floor, floor), cap)
-}
-
-/**
  * 根据输入测算税前月薪、五险一金与专项附加扣除，按累计预扣法计算全年工资个税及税后现金流，并处理年终奖。
- * @param input 城市、工资、社保公积金与扣除项等
+ * @param input 工资、社保公积金与扣除项等
  * @returns 含月度明细、年度汇总等完整结果
  */
 export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
-  /** ---------- 1. 城市与缴费基数 ---------- */
-  const city = getCityProfile(input.cityId)
-  const resolvedSsBase = resolveSsBase(input, city)
-  const resolvedHfBase = resolveHfBase(input, city)
-  const ssBase = resolvedSsBase
-  const hfBase = resolvedHfBase
-  const r = city.ssPersonalRates
-
-  /** ---------- 2. 五险与公积金个人月缴额 ---------- */
-  /** 五险个人：养老 + 医疗 + 失业；个缴模式为直接取值 */
-  const ssPersonalMonthly = input.ssPaymentType === 'custom'
-    ? round2(Math.max(0, input.ssPersonalAmount || 0))
-    : round2(
-        ssBase * (r.pension + r.medical + r.unemployment),
-      )
-  const hfPersonalMonthly = input.hfPaymentType === 'none'
-    ? 0
-    : input.hfPaymentType === 'custom'
-      ? round2(Math.max(0, input.hfPersonalAmount || 0))
-      : round2(hfBase * input.hfRate)
-
-  /** ---------- 3. 五险一金个人月缴额（与专项附加扣除一并参与累计预扣中的「扣除」侧） ---------- */
+  /** ---------- 1. 五险与公积金个人月缴额 ---------- */
+  const ssPersonalMonthly = round2(Math.max(0, input.ssPersonalAmount || 0))
+  const hfPersonalMonthly = round2(Math.max(0, input.hfPersonalAmount || 0))
   const fiveInsFundPersonalMonthly = round2(ssPersonalMonthly + hfPersonalMonthly)
 
   /**
-   * ---------- 4. 工资薪金：累计预扣预缴（与税法公式对齐） ----------
+   * ---------- 2. 工资薪金：累计预扣预缴（与税法公式对齐） ----------
    *
    * 本期应预扣预缴税额 =（累计预扣预缴应纳税所得额 × 预扣率 − 速算扣除数）− 累计已预扣预缴税额
    *
@@ -295,7 +188,7 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
     })
   }
 
-  /** ---------- 5. 年终奖个税（单独计税 / 并入综合所得） ---------- */
+  /** ---------- 3. 年终奖个税（单独计税 / 并入综合所得） ---------- */
   /** 近似：每月在减除 5000、五险一金个人、专项附加后的应纳税所得额相同，×12 作为年度工资部分应纳税所得额（并入年终奖时用） */
   const monthlyTaxableApprox = Math.max(0, input.preTaxMonthly - 5000 - fiveInsFundPersonalMonthly - input.specialDeductionMonthly)
   const annualSalaryTaxable = monthlyTaxableApprox * 12
@@ -311,17 +204,14 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
   }
   const yearEndBonusNet = round2(Math.max(0, input.yearEndBonus - yearEndBonusTax))
 
-  /** ---------- 6. 年度汇总：到手、工资个税 + 年终奖个税 ---------- */
+  /** ---------- 4. 年度汇总：到手、工资个税 + 年终奖个税 ---------- */
   const sumMonthlyNet = monthlyRows.reduce((s, row) => s + row.postTax, 0)
   const annualTakeHome = round2(sumMonthlyNet + yearEndBonusNet)
   const salaryTaxTotal = monthlyRows.reduce((s, row) => s + row.tax, 0)
   const annualTaxTotal = round2(salaryTaxTotal + yearEndBonusTax)
 
-  /** ---------- 7. 返回完整测算结果 ---------- */
+  /** ---------- 5. 返回完整测算结果 ---------- */
   return {
-    city,
-    resolvedSsBase: ssBase,
-    resolvedHfBase: hfBase,
     fiveInsFundPersonalMonthly,
     annualTakeHome,
     annualTaxTotal,
@@ -331,4 +221,155 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
     yearEndBonusTax,
     yearEndBonusNet,
   }
+}
+
+const VERIFY_TOLERANCE = 0.01
+
+/** 单月工资快照（用于累计预扣，不含工资条个税/税后） */
+export interface PayslipMonthSnapshot {
+  preTaxMonthly: number
+  ssPersonalAmount: number
+  hfPersonalAmount: number
+  specialDeductionMonthly: number
+}
+
+/** 按可变月薪逐月累计预扣，返回最后一月的个税与税后 */
+export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
+  tax: number
+  postTax: number
+  fiveInsFundPersonal: number
+} {
+  if (!months.length) {
+    return { tax: 0, postTax: 0, fiveInsFundPersonal: 0 }
+  }
+  let cumulativeTaxAlreadyWithheld = 0
+  let cumulativeIncome = 0
+  let cumulativeStandardDeduction = 0
+  let cumulativeSpecialDeduction = 0
+  let cumulativeSpecialAdditionalDeduction = 0
+  let lastTax = 0
+  let lastPostTax = 0
+  let lastFiveIns = 0
+
+  for (const m of months) {
+    const fiveInsFundPersonal = round2(
+      Math.max(0, m.ssPersonalAmount || 0) + Math.max(0, m.hfPersonalAmount || 0),
+    )
+    cumulativeIncome += m.preTaxMonthly
+    cumulativeStandardDeduction += 5000
+    cumulativeSpecialDeduction += fiveInsFundPersonal
+    cumulativeSpecialAdditionalDeduction += m.specialDeductionMonthly || 0
+
+    const cumulativeWithholdingTaxableIncome = cumulativeIncome
+      - cumulativeStandardDeduction
+      - cumulativeSpecialDeduction
+      - cumulativeSpecialAdditionalDeduction
+
+    const cumulativeTaxPayable = cumulativeSalaryTax(cumulativeWithholdingTaxableIncome)
+    lastTax = round2(Math.max(0, cumulativeTaxPayable - cumulativeTaxAlreadyWithheld))
+    cumulativeTaxAlreadyWithheld = cumulativeTaxPayable
+    lastPostTax = round2(m.preTaxMonthly - fiveInsFundPersonal - lastTax)
+    lastFiveIns = fiveInsFundPersonal
+  }
+
+  return { tax: lastTax, postTax: lastPostTax, fiveInsFundPersonal: lastFiveIns }
+}
+
+/** 工资条核对输入 */
+export interface PayslipVerifyInput {
+  /** 工资所属月份 YYYY-MM */
+  payPeriod: string
+  preTaxMonthly: number
+  ssPersonalAmount: number
+  hfPersonalAmount: number
+  specialDeductionMonthly: number
+  /** 工资条上的个人所得税（元） */
+  personalIncomeTax: number
+  /** 工资条上的税后工资（元） */
+  postTaxMonthly: number
+}
+
+/** 工资条核对结果 */
+export interface PayslipVerifyResult {
+  expectedTax: number
+  expectedPostTax: number
+  taxDiff: number
+  postTaxDiff: number
+  taxMatch: boolean
+  postTaxMatch: boolean
+  overallMatch: boolean
+  calcMode: 'history' | 'ideal'
+  /** ideal 模式下缺失的前序月份（1..M-1） */
+  missingPriorMonths?: number[]
+}
+
+function toMonthSnapshot(input: Pick<PayslipVerifyInput, 'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'specialDeductionMonthly'>): PayslipMonthSnapshot {
+  return {
+    preTaxMonthly: input.preTaxMonthly,
+    ssPersonalAmount: input.ssPersonalAmount,
+    hfPersonalAmount: input.hfPersonalAmount,
+    specialDeductionMonthly: input.specialDeductionMonthly,
+  }
+}
+
+function buildVerifyResult(
+  input: PayslipVerifyInput,
+  expectedTax: number,
+  expectedPostTax: number,
+  calcMode: 'history' | 'ideal',
+  missingPriorMonths?: number[],
+): PayslipVerifyResult {
+  const taxDiff = round2(input.personalIncomeTax - expectedTax)
+  const postTaxDiff = round2(input.postTaxMonthly - expectedPostTax)
+  const taxMatch = Math.abs(taxDiff) <= VERIFY_TOLERANCE
+  const postTaxMatch = Math.abs(postTaxDiff) <= VERIFY_TOLERANCE
+  return {
+    expectedTax,
+    expectedPostTax,
+    taxDiff,
+    postTaxDiff,
+    taxMatch,
+    postTaxMatch,
+    overallMatch: taxMatch,
+    calcMode,
+    missingPriorMonths,
+  }
+}
+
+/** 按累计预扣法核对工资条个税；有完整前序历史时用真实月薪累计，否则理想模型 */
+export function verifyPayslipTax(
+  input: PayslipVerifyInput,
+  options?: {
+    /** 同年 1..M-1 月的历史快照（不含当月） */
+    priorMonths?: PayslipMonthSnapshot[]
+    missingPriorMonths?: number[]
+  },
+): PayslipVerifyResult {
+  const { month } = parsePayPeriod(input.payPeriod)
+  const missing = options?.missingPriorMonths ?? []
+  const prior = options?.priorMonths ?? []
+  const current = toMonthSnapshot(input)
+  const useHistory = missing.length === 0 && prior.length === month - 1
+
+  if (useHistory) {
+    const { tax, postTax } = calcCumulativeTaxForMonth([...prior, current])
+    return buildVerifyResult(input, tax, postTax, 'history')
+  }
+
+  const calcResult = calcSalary({
+    preTaxMonthly: input.preTaxMonthly,
+    yearEndTaxMode: 'none',
+    yearEndBonus: 0,
+    ssPersonalAmount: input.ssPersonalAmount,
+    hfPersonalAmount: input.hfPersonalAmount,
+    specialDeductionMonthly: input.specialDeductionMonthly,
+  })
+  const row = calcResult.monthlyRows[month - 1]
+  return buildVerifyResult(
+    input,
+    row.tax,
+    row.postTax,
+    'ideal',
+    month > 1 && missing.length > 0 ? missing : undefined,
+  )
 }

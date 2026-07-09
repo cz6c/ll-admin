@@ -43,3 +43,15 @@ alwaysApply: false
 ## 共享库
 
 - 可从 **`@llcz/common`** 引入纯工具（如 `isArray` 用于权限判断）；勿在 common 中引入 Vue/UI。
+
+## 注释约定
+
+遵循全仓 **`comment-standards.mdc`**。Admin 侧额外强调：
+
+- **`src/api/**`**：接口函数 JSDoc 写清业务语义与特殊参数（分页字段名、导出格式）；url 与 server 一致，差异处注释原因。
+- **`src/store/modules/`**：permission、auth 等核心模块的 action 注释**状态变更意图**（如「清空 tagsView 再注入动态路由」），避免误改守卫链路。
+- **列表页**（VXE Table + SearchForm）：查询条件与后端 DTO 的映射、默认排序/分页、导出列与权限码，在 `setup` 或 composable 顶部用块注释说明。
+- **权限**：`v-auth` 旁非显而易见的权限码、超级管理员例外逻辑，注释对应菜单/按钮的业务含义。
+- **动态路由**：`permission.ts` / `router/guard.ts` 中绕开常规流程的分支（白名单、外链、404 回退）必须注释「为什么」。
+- **复杂组件**（`FormView`、`ToolButtons`、图表页）：props 默认值或 hack（如表格高度、resize 监听）注释平台/布局原因。
+- **勿注释**：Element Plus / VXE 常规用法、已有类型的 API 入参字段名复述。

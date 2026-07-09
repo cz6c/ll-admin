@@ -7,7 +7,7 @@ const MAX = 20
  * 一次「保存并查看明细」写入的成对数据：
  * - `input`：用户当时的表单条件，用于说明文案、与明细中的假设一致；
  * - `result`：当时 `calcSalary(input)` 的完整输出。历史明细页只展示 `result`，
- *   这样以后即使调整税率表或城市参数，已保存记录上的数字也不会被悄悄改掉。
+ *   这样以后即使调整税率表，已保存记录上的数字也不会被悄悄改掉。
  */
 export interface SalaryCalcSnapshot {
   input: SalaryCalcInput

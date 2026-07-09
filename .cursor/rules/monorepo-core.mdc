@@ -50,7 +50,7 @@ alwaysApply: true
 
 | App | 规则文件 |
 |-----|----------|
-| 全仓 | `monorepo-core.mdc` |
+| 全仓 | `monorepo-core.mdc`、`comment-standards.mdc`（注释规范） |
 | admin | `vue-admin.mdc` |
 | uni | `vue-uni.mdc` |
 | server | `nestjs-server.mdc` |

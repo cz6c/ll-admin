@@ -1,3 +1,5 @@
+const logDir = process.env.NODE_ENV === 'production' ? '../data/logs' : './logs';
+
 module.exports = {
   apps: [
     {
@@ -11,9 +13,9 @@ module.exports = {
       shutdown_with_message: true, // 允许通过消息关闭
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       combine_logs: true,
-      log_file: './logs/combined.outerr.log', // 日志目录
-      out_file: './logs/out.log',
-      error_file: './logs/err.log',
+      log_file: `${logDir}/combined.outerr.log`,
+      out_file: `${logDir}/out.log`,
+      error_file: `${logDir}/err.log`,
       env: {
         NODE_ENV: 'development',
       },

@@ -18,7 +18,9 @@ alwaysApply: false
 
 ## 注释约定
 
-- 注释说明**非显而易见**的设计：懒加载/并发、坐标排版算法、plugins 与业务的边界、错误码映射、配置键含义。
+遵循全仓 **`comment-standards.mdc`**。Server 侧额外强调：
+
+- 注释**非显而易见**的设计：懒加载/并发、坐标排版算法、plugins 与业务的边界、错误码映射、配置键含义。
 - 不写复述代码的注释（如「调用 recognize 方法」）；已有 JSDoc 的工具函数不再重复。
 - plugins 类/对外方法用简短 JSDoc；业务 `Service.recognize` 等主流程用步骤注释（`// 1. OCR`）标清编排顺序。
 

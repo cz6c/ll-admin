@@ -7,6 +7,7 @@ import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
+import { formatHistoryTime } from '@/utils/formatTime'
 import { formatPayPeriodLabel } from '@/utils/payPeriod'
 import { computeVerifyForRecord, formatVerifyAbnormalSummary } from '@/utils/payslipVerify'
 import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
@@ -77,11 +78,6 @@ function getVerifyResult(item: PayslipVerifyRecord): PayslipVerifyResult {
 
 function fmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
-}
-
-function formatTime(ts: number) {
-  const d = new Date(ts)
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function confirmDelete(item: PayslipVerifyRecord) {
@@ -176,7 +172,7 @@ function confirmDelete(item: PayslipVerifyRecord) {
               </view>
 
               <view class="mt-16rpx text-24rpx text-#999">
-                {{ formatTime(item.savedAt) }}
+                {{ formatHistoryTime(item.savedAt) }}
               </view>
             </view>
             <template #right>

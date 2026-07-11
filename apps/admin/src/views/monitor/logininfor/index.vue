@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listLogininfor } from "@/api/monitor/logininfor";
 import { LoginlogListParams, MonitorLoginlogVO } from "#/api/monitor/logininfor";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
@@ -151,7 +151,7 @@ function handleExport() {
       pageSize: gridOptions.pagerConfig.pageSize,
       ...apiQuery
     },
-    `logininfor_${new Date().getTime()}.xlsx`
+    `logininfor_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 </script>

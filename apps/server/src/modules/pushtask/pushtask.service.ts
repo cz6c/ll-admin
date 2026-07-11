@@ -5,6 +5,7 @@ import { ResultData } from "@/common/utils/result";
 import { PushTaskEntity } from "./entities/pushtask.entity";
 import { CreatePushTaskDto, ListPushTaskDto, PushTaskChangeStatusDto } from "./dto/index";
 import { DelFlagEnum, PushIntervalEnum, PushModelEnum, StatusEnum, TaskTypeEnum } from "@/common/enum/dict";
+import { dateUtil } from "@llcz/common";
 import { TaskService } from "@/modules/tasks/task.service";
 
 @Injectable()
@@ -46,7 +47,7 @@ export class PushTaskService {
         pushTask: res
       }),
       taskType: cronTime ? TaskTypeEnum.LOOP : TaskTypeEnum.ONCE,
-      executeAt: new Date(res.pushTime),
+      executeAt: dateUtil(res.pushTime).toDate(),
       cronExpression: cronTime
     });
   }

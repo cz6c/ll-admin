@@ -1,3 +1,5 @@
+import { dateUtil } from "@llcz/common";
+
 export const mapData: any = [
   {
     name: "北京",
@@ -173,13 +175,13 @@ export const mapData: any = [
 
 export const getLineData = (() => {
   const category: any[] = [];
-  let dottedBase = +new Date();
+  let dottedBase = dateUtil().valueOf();
   const lineData: any[] = [];
   const barData: any[] = [];
 
   for (let i = 0; i < 20; i++) {
-    const date = new Date((dottedBase += 1000 * 3600 * 24));
-    category.push([date.getFullYear(), date.getMonth() + 1, date.getDate()].join("-"));
+    const date = dateUtil((dottedBase += 1000 * 3600 * 24));
+    category.push(date.format("YYYY-M-D"));
     const b = Math.random() * 200;
     const d = Math.random() * 200;
     barData.push(b);

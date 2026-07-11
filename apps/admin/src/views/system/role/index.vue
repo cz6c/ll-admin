@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { changeRoleStatus, delRole, listRole } from "@/api/system/role";
 import { ListRoleDto, SysRoleVo } from "#/api/system/role";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -238,7 +238,7 @@ function handleExport() {
       pageSize: gridOptions.pagerConfig.pageSize,
       ...apiQuery
     },
-    `role_${new Date().getTime()}.xlsx`
+    `role_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 /** 角色状态修改 */

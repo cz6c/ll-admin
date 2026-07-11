@@ -53,6 +53,12 @@ alwaysApply: false
 - 接口：`src/api/**`，类型 `src/api/types/`。
 - **后端现状**：API 仍指向 **laf.run**（`env/.env` 的 `VITE_SERVER_BASEURL`），**未对接 @apps/server**；迁移为独立任务。
 
+## 日期与工具复用
+
+- 日期解析、月份推导、展示格式化统一用 **day.js**；不要在业务代码里重复写原生 `Date` 计算逻辑。
+- 优先复用已有工具（如 `src/utils/formatTime.ts`、`src/utils/payPeriod.ts`），不要在页面内再写同类 `formatTime`/月份计算函数。
+- 仅在非日历语义场景（性能计时、随机后缀、请求去重时间戳）可保留 `Date.now()`。
+
 ## 样式
 
 - 优先 **UnoCSS** 原子类；需自定义时用 `lang="scss"` + `scoped`，全局样式 `src/style/`。

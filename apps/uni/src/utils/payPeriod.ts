@@ -1,17 +1,18 @@
 import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
+import dayjs from 'dayjs'
 
 /** 由时间戳格式化为 YYYY-MM（取本地年月） */
 export function formatPayPeriod(ts: number): string {
-  const d = new Date(ts)
-  const y = d.getFullYear()
-  const m = d.getMonth() + 1
-  return `${y}-${String(m).padStart(2, '0')}`
+  return dayjs(ts).format('YYYY-MM')
 }
 
 /** 解析 YYYY-MM */
 export function parsePayPeriod(payPeriod: string): { year: number, month: number } {
   const [y, m] = payPeriod.split('-').map(Number)
-  return { year: y, month: m }
+  return {
+    year: Number.isFinite(y) ? y : 0,
+    month: Number.isFinite(m) ? m : 0,
+  }
 }
 
 /** 展示用：2026年8月 */
@@ -22,8 +23,7 @@ export function formatPayPeriodLabel(payPeriod: string): string {
 
 /** 当月 1 日 0 点的时间戳（本地） */
 export function payPeriodToTimestamp(payPeriod: string): number {
-  const { year, month } = parsePayPeriod(payPeriod)
-  return new Date(year, month - 1, 1).getTime()
+  return dayjs(`${payPeriod}-01`).startOf('day').valueOf()
 }
 
 /** 由 year、month 构造 YYYY-MM */
@@ -33,15 +33,12 @@ export function buildPayPeriod(year: number, month: number): string {
 
 /** 当前自然月的 YYYY-MM */
 export function currentPayPeriod(): string {
-  return formatPayPeriod(Date.now())
+  return dayjs().format('YYYY-MM')
 }
 
 /** 上一自然月的 YYYY-MM */
 export function previousPayPeriod(): string {
-  const d = new Date()
-  d.setDate(1)
-  d.setMonth(d.getMonth() - 1)
-  return formatPayPeriod(d.getTime())
+  return dayjs().subtract(1, 'month').format('YYYY-MM')
 }
 
 /** 同年 1..M-1 中缺失的月份序号 */

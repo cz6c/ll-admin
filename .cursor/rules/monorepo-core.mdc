@@ -45,6 +45,9 @@ alwaysApply: true
 
 - 改动限制在实际需求涉及的 app 或 package，避免无关重构。
 - 大需求按 app 分包讨论实现（server / admin / docs / uni / common）。
+- 日期处理统一使用 **day.js**：涉及日期解析、日历计算、展示格式化、持久化时间字段时，不使用原生 `Date` 重新实现。
+- 非日历语义场景（性能计时、traceId、cache-bust）可保留 `Date.now()`。
+- 优先复用现有插件/公共工具（如 `@llcz/common`、app 内已有 util）；禁止重复造轮子实现同类能力。
 
 ## Cursor 规则索引
 

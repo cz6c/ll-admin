@@ -49,6 +49,12 @@ alwaysApply: false
 
 - TypeScript 严格模式；字符串引号与格式以仓库 ESLint/Prettier 为准（当前多为双引号）。
 
+## 日期与公共能力
+
+- 服务端日期处理统一使用 **day.js**（通过 `@llcz/common` 的 `dateUtil`/相关工具），避免在业务模块重复实现原生 `Date` 逻辑。
+- 涉及持久化时间字段、调度时间计算、对外时间格式化时，优先复用 `@llcz/common`，不要在模块内重复造轮子。
+- 非日历语义场景（耗时统计、traceId、缓存戳）允许使用 `Date.now()`。
+
 ## 示例
 
 ```typescript

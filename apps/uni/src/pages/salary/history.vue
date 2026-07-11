@@ -3,6 +3,7 @@ import type { SalaryHistoryItem } from '@/store/salaryHistory'
 import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { formatHistoryTime } from '@/utils/formatTime'
 
 defineOptions({ name: 'SalaryHistory' })
 
@@ -50,11 +51,6 @@ function openDetail(item: SalaryHistoryItem) {
 
 function fmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
-}
-
-function formatTime(ts: number) {
-  const d = new Date(ts)
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function confirmDelete(item: SalaryHistoryItem) {
@@ -110,7 +106,7 @@ function confirmDelete(item: SalaryHistoryItem) {
                     {{ item.title }}
                   </view>
                   <view class="mt-12rpx text-24rpx text-#999">
-                    {{ formatTime(item.savedAt) }}
+                    {{ formatHistoryTime(item.savedAt) }}
                   </view>
                 </view>
                 <view class="shrink-0 text-right">

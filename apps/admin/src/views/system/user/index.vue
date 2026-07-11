@@ -2,7 +2,7 @@
 import { changeUserStatus, listUser, resetUserPwd, delUser } from "@/api/system/user";
 import { SysUserListParams, UserVo } from "#/api/system/user";
 import { deptTreeSelect } from "@/api/system/dept";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -366,7 +366,7 @@ function handleExport() {
       pageSize: gridOptions.pagerConfig.pageSize,
       ...apiQuery
     },
-    `user_${new Date().getTime()}.xlsx`
+    `user_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listPost, delPost } from "@/api/system/post";
 import { ListPostDto, SysPostVo } from "#/api/system/post";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -217,7 +217,7 @@ function handleExport() {
       pageSize: gridOptions.pagerConfig.pageSize,
       ...apiQuery
     },
-    `post_${new Date().getTime()}.xlsx`
+    `post_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 

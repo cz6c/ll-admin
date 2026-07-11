@@ -2,7 +2,7 @@
 import type { LineItem } from '@/types/salary-slip'
 import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
 import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFieldMap'
-import { onShow } from '@dcloudio/uni-app'
+import dayjs from 'dayjs'
 import { computed, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
@@ -28,8 +28,8 @@ const popupZIndex = 1100
 const verifyHistoryStore = useSalaryVerifyHistoryStore()
 const { loading, previewPath, lineItems, chooseImage, recognize } = useSalarySlipRecognize()
 
-const calendarMinDate = new Date(2020, 0, 1).getTime()
-const calendarMaxDate = new Date(new Date().getFullYear() + 1, 11, 31).getTime()
+const calendarMinDate = dayjs('2020-01-01').valueOf()
+const calendarMaxDate = dayjs().add(1, 'year').endOf('year').valueOf()
 
 const showPayPeriodCalendar = ref(false)
 const showFieldAssignPicker = ref(false)

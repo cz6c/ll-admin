@@ -6,7 +6,7 @@ import { RedisService } from "@/modules/redis/redis.service";
 import * as bcrypt from "bcryptjs";
 import type { Response as ExpressResponse } from "express";
 import { Uniq } from "@/common/utils/index";
-import { formatToDatetime, generateUUID } from "@llcz/common";
+import { dateUtil, generateUUID } from "@llcz/common";
 import { ExportTable } from "@/common/utils/export";
 
 import { DataScopeEnum, DelFlagEnum, StatusEnum } from "@/common/enum/dict";
@@ -57,7 +57,7 @@ export class UserService {
    * @return
    */
   async create(createUserDto: CreateUserDto, userId: number) {
-    const loginDate = formatToDatetime();
+    const loginDate = dateUtil().toDate();
 
     // 密码加密
     if (createUserDto.password) {
@@ -342,7 +342,7 @@ export class UserService {
     }
 
     if (!data) {
-      const loginDate = new Date();
+      const loginDate = dateUtil().toDate();
       const password = bcrypt.hashSync(generateUUID(), this.salt);
       data = await this.userRepo.save({
         userName,
@@ -390,7 +390,7 @@ export class UserService {
    * @param {ClientInfoDto} clientInfo
    */
   async afterLogin(data: UserEntity, clientInfo: ClientInfoDto) {
-    const loginDate = new Date();
+    const loginDate = dateUtil().toDate();
     await this.userRepo.update(
       {
         userId: data.userId
@@ -467,7 +467,7 @@ export class UserService {
    * @return
    */
   async register(user: RegisterDto) {
-    const loginDate = formatToDatetime();
+    const loginDate = dateUtil().toDate();
     const checkUserNameUnique = await this.userRepo.findOne({
       where: {
         userName: user.userName

@@ -20,7 +20,7 @@
           range-separator="-"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          :default-time="[new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]"
+          :default-time="[dateUtil('2000-02-01 00:00:00').toDate(), dateUtil('2000-02-01 23:59:59').toDate()]"
         />
       </el-form-item>
       <el-form-item>
@@ -134,7 +134,7 @@
 <script setup lang="ts">
 import { list, delOperlog } from "@/api/monitor/operlog";
 import { addDateRange } from "@/utils";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import { useDict } from "@/hooks/useDict";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
@@ -244,7 +244,7 @@ function handleExport() {
     {
       ...queryParams.value
     },
-    `config_${new Date().getTime()}.xlsx`
+    `config_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 

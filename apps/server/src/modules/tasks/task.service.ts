@@ -5,6 +5,7 @@ import { TaskEntity } from "./entities/task.entity";
 import CronExpressionParser from "cron-parser";
 import { TaskStatusEnum, TaskTypeEnum } from "@/common/enum/dict";
 import { CreateTaskDto } from "./dto";
+import { dateUtil } from "@llcz/common";
 import { RedisLockService } from "../redis/redis-lock.service";
 import { SchedulerRegistry } from "@nestjs/schedule";
 import { InjectQueue } from "@nestjs/bull";
@@ -106,7 +107,7 @@ export class TaskService {
     return this.taskRepository.find({
       where: {
         taskStatus: TaskStatusEnum.PENDING,
-        executeAt: LessThanOrEqual(new Date(Date.now() + 300000)) // 未来5分钟之前未完成的任务  executeAt <= now + 5分钟
+        executeAt: LessThanOrEqual(dateUtil().add(5, "minute").toDate()) // 未来5分钟之前未完成的任务  executeAt <= now + 5分钟
       },
       order: { executeAt: "ASC" }
     });

@@ -1,7 +1,7 @@
 <script setup lang="tsx">
 import { listConfig, delConfig } from "@/api/system/config";
 import { ListConfigDto, SysConfigVo } from "#/api/system/config";
-import { formatToDatetime } from "@llcz/common";
+import { dateUtil, formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
@@ -233,7 +233,7 @@ function handleExport() {
       pageSize: gridOptions.pagerConfig.pageSize,
       ...apiQuery
     },
-    `config_${new Date().getTime()}.xlsx`
+    `config_${dateUtil().format("YYYYMMDDHHmmss")}.xlsx`
   );
 }
 

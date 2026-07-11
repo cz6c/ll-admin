@@ -113,3 +113,23 @@ export function formatUtc(_date: dayjs.ConfigType): dayjs.Dayjs {
   const date = dateUtil(_date);
   return date.isValid() ? date.utc() : null;
 }
+
+/**
+ * 获取毫秒时间戳
+ * @param date 日期对象、时间戳或字符串，默认为当前
+ * @returns 毫秒时间戳
+ */
+export function toTimestamp(date: dayjs.ConfigType = dateUtil()): number {
+  const parsed = dateUtil(date);
+  return parsed.isValid() ? parsed.valueOf() : Number.NaN;
+}
+
+/**
+ * 转为原生 Date（用于 ORM / 调度等需要 Date 实例的场景）
+ * @param date 日期对象、时间戳或字符串，默认为当前
+ * @returns Date 实例
+ */
+export function toDate(date: dayjs.ConfigType = dateUtil()): Date {
+  const parsed = dateUtil(date);
+  return parsed.isValid() ? parsed.toDate() : new Date("");
+}

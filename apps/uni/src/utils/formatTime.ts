@@ -11,6 +11,6 @@ export function formatHistoryTime(ts: number): string {
   if (diffDays === 1)
     return `昨天 ${d.format('HH:mm')}`
   if (diffDays < 7)
-    return d.format('ddd HH:mm')
-  return d.format('MM/DD HH:mm')
+    return `${diffDays}天前 ${d.format('HH:mm')}`
+  return d.format('YYYY-MM-DD HH:mm')
 }

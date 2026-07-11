@@ -1,10 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { DelFlagEnum } from "@/common/enum/dict";
+import { UserEntity } from "@/modules/system/user/entities/user.entity";
 import { ResultData } from "@/common/utils/result";
 import { ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
 import { OcrProviderError } from "@/plugins/ocr/ocr-provider.interface";
 import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
+import { SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
+import { SalaryVerifyHistoryEntity } from "./entities/salary-verify-history.entity";
 import { lineItemsFromOcr } from "./utils/line-items-from-ocr";
 import {
   buildOcrLogSnapshot,
@@ -30,10 +36,28 @@ export class SalarySlipService {
 
   constructor(
     private readonly imagePreprocessService: ImagePreprocessService,
-    private readonly ocrService: OcrService
+    private readonly ocrService: OcrService,
+    @InjectRepository(UserEntity)
+    private readonly userRep: Repository<UserEntity>,
+    @InjectRepository(SalaryVerifyHistoryEntity)
+    private readonly salaryVerifyHistoryRep: Repository<SalaryVerifyHistoryEntity>
   ) {}
 
-  async recognize(file: Express.Multer.File) {
+  private toHistoryItemDto(row: SalaryVerifyHistoryEntity): SalaryVerifyHistoryItemDto {
+    return {
+      id: row.id,
+      payPeriod: row.payPeriod,
+      preTaxMonthly: Number(row.preTaxMonthly),
+      ssPersonalAmount: Number(row.ssPersonalAmount),
+      hfPersonalAmount: Number(row.hfPersonalAmount),
+      specialDeductionMonthly: Number(row.specialDeductionMonthly),
+      personalIncomeTax: Number(row.personalIncomeTax),
+      postTaxMonthly: Number(row.postTaxMonthly),
+      savedAt: Number(row.savedAt)
+    };
+  }
+
+  async recognize(file: Express.Multer.File, userId: number) {
     const traceId = createTraceId();
     const startedAt = Date.now();
     const timing: RecognizeTiming = { preprocess: 0, ocr: 0, align: 0, rules: 0 };
@@ -56,6 +80,10 @@ export class SalarySlipService {
     if (!file?.buffer?.length) {
       emit("fail", "empty_file");
       return ResultData.fail(400, "请上传工资条图片");
+    }
+    if (!userId) {
+      emit("fail", "missing_user_id");
+      return ResultData.fail(400, "缺少用户信息");
     }
 
     try {
@@ -135,6 +163,18 @@ export class SalarySlipService {
         confidence: rulesResult.confidence
       };
 
+      const user = await this.userRep.findOne({ where: { userId } });
+      if (!user) {
+        emit("fail", "user_not_found");
+        return ResultData.fail(404, "用户不存在");
+      }
+      await this.userRep.update(
+        { userId },
+        {
+          recognizeCount: (user.recognizeCount || 0) + 1
+        }
+      );
+
       emit("success");
 
       return ResultData.ok(result);
@@ -143,5 +183,77 @@ export class SalarySlipService {
       emit("fail", code);
       return ResultData.fail(500, "识别失败，请稍后重试");
     }
+  }
+
+  async upsertHistory(userId: number, dto: UpsertSalaryVerifyHistoryDto) {
+    if (!userId) {
+      return ResultData.fail(400, "缺少用户信息");
+    }
+    const savedAt = dto.savedAt ?? Date.now();
+    const payload: Partial<SalaryVerifyHistoryEntity> = {
+      userId,
+      payPeriod: dto.payPeriod,
+      preTaxMonthly: String(dto.preTaxMonthly),
+      ssPersonalAmount: String(dto.ssPersonalAmount ?? 0),
+      hfPersonalAmount: String(dto.hfPersonalAmount ?? 0),
+      specialDeductionMonthly: String(dto.specialDeductionMonthly ?? 0),
+      personalIncomeTax: String(dto.personalIncomeTax),
+      postTaxMonthly: String(dto.postTaxMonthly),
+      savedAt: String(savedAt)
+    };
+    const existed = await this.salaryVerifyHistoryRep.findOne({
+      where: {
+        userId,
+        payPeriod: dto.payPeriod,
+        delFlag: DelFlagEnum.NORMAL
+      }
+    });
+    if (existed) {
+      const updatedEntity = this.salaryVerifyHistoryRep.create({ ...existed, ...payload });
+      const updated = await this.salaryVerifyHistoryRep.save(updatedEntity);
+      return ResultData.ok(this.toHistoryItemDto(updated));
+    }
+    const createdEntity = this.salaryVerifyHistoryRep.create(payload);
+    const created = await this.salaryVerifyHistoryRep.save(createdEntity);
+    return ResultData.ok(this.toHistoryItemDto(created));
+  }
+
+  async listHistory(userId: number, keyword?: string) {
+    if (!userId) {
+      return ResultData.fail(400, "缺少用户信息");
+    }
+    const queryBuilder = this.salaryVerifyHistoryRep.createQueryBuilder("history");
+    queryBuilder.where("history.userId = :userId", { userId });
+    queryBuilder.andWhere("history.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
+    const trimmedKeyword = String(keyword || "").trim();
+    if (trimmedKeyword) {
+      queryBuilder.andWhere("(history.payPeriod LIKE :keyword OR history.preTaxMonthly LIKE :keyword)", {
+        keyword: `%${trimmedKeyword}%`
+      });
+    }
+    queryBuilder.orderBy("history.payPeriod", "DESC").addOrderBy("history.savedAt", "DESC");
+    const list = await queryBuilder.getMany();
+    return ResultData.ok(list.map(item => this.toHistoryItemDto(item)));
+  }
+
+  async removeHistory(userId: number, id: number) {
+    if (!userId) {
+      return ResultData.fail(400, "缺少用户信息");
+    }
+    if (!Number.isInteger(id) || id <= 0) {
+      return ResultData.fail(400, "历史记录ID不合法");
+    }
+    const history = await this.salaryVerifyHistoryRep.findOne({
+      where: {
+        id,
+        userId,
+        delFlag: DelFlagEnum.NORMAL
+      }
+    });
+    if (!history) {
+      return ResultData.fail(404, "未找到历史记录");
+    }
+    await this.salaryVerifyHistoryRep.update({ id: history.id }, { delFlag: DelFlagEnum.DELETE });
+    return ResultData.ok();
   }
 }

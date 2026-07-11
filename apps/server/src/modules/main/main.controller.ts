@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Request, Param, Query } from "@nestjs/comm
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from "@nestjs/swagger";
 import * as Useragent from "useragent";
 import { MainService } from "./main.service";
-import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo, RefreshTokenDto } from "./dto/index";
+import { RegisterDto, LoginDto, TokenVo, DictVo, RoutersVo, CaptchaImageVo, RefreshTokenDto, WxLoginDto, WxLoginVo } from "./dto/index";
 import { ApiResult, GetRequestUser, RequestUserPayload } from "@/common/decorator";
 import { UserVo } from "../system/user/dto";
 
@@ -41,6 +41,22 @@ export class MainController {
       os: os
     };
     return this.mainService.refreshToken(data.refreshToken, clientInfo);
+  }
+
+  @ApiOperation({ summary: "微信小程序登录" })
+  @ApiBody({ type: WxLoginDto })
+  @ApiResult(WxLoginVo)
+  @Post(["/wxLogin", "/auth/wxLogin"])
+  wxLogin(@Body() dto: WxLoginDto, @Request() req) {
+    const agent = Useragent.parse(req.headers["user-agent"]);
+    const os = agent.os.toJSON().family;
+    const browser = agent.toAgent();
+    const clientInfo = {
+      ipaddr: req.ip,
+      browser: browser,
+      os: os
+    };
+    return this.mainService.wxLogin(dto.code, clientInfo);
   }
 
   @ApiOperation({ summary: "用户注册" })

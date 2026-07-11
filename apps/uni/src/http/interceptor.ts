@@ -1,6 +1,7 @@
 import type { CustomRequestOptions } from '@/http/types'
 import { useTokenStore } from '@/store'
 import { getEnvBaseUrl } from '@/utils'
+import { shouldInjectAuthHeader } from './tools/auth-policy'
 import { stringifyQuery } from './tools/queryString'
 
 // 请求基准地址
@@ -9,7 +10,7 @@ const baseUrl = getEnvBaseUrl()
 // 拦截器配置
 const httpInterceptor = {
   // 拦截前触发
-  invoke(options: CustomRequestOptions) {
+  async invoke(options: CustomRequestOptions) {
     // 如果您使用了alova，则请把下面的代码放开注释
     // alova 执行流程：alova beforeRequest --> 本拦截器 --> alova responded
     // return options
@@ -48,11 +49,11 @@ const httpInterceptor = {
     options.header = {
       ...options.header,
     }
-    // 3. 添加 token 请求头标识
+    // 3. 添加 token 请求头标识（拦截器只负责注入，不做会话恢复）
     const tokenStore = useTokenStore()
     const token = tokenStore.updateNowTime().validToken
 
-    if (token) {
+    if (shouldInjectAuthHeader(options) && token) {
       options.header.Authorization = `Bearer ${token}`
     }
     return options

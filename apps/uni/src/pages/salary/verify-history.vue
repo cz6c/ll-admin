@@ -2,6 +2,7 @@
 import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
 import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
 import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
+import { onShow } from '@dcloudio/uni-app'
 import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -35,20 +36,7 @@ const fieldKeys: PayslipFieldKey[] = [
   'postTaxMonthly',
 ]
 
-const sortedList = computed(() =>
-  [...list.value].sort((a, b) => b.payPeriod.localeCompare(a.payPeriod)),
-)
-
-const filteredList = computed(() => {
-  const q = searchKeyword.value.toLowerCase()
-  if (!q)
-    return sortedList.value
-  return sortedList.value.filter(item =>
-    item.payPeriod.includes(q)
-    || formatPayPeriodLabel(item.payPeriod).includes(q)
-    || String(item.preTaxMonthly).includes(q),
-  )
-})
+const filteredList = computed(() => list.value)
 
 const verifyResultMap = computed(() => {
   const map = new Map<string, PayslipVerifyResult>()
@@ -57,12 +45,30 @@ const verifyResultMap = computed(() => {
   return map
 })
 
+onShow(async () => {
+  try {
+    await verifyHistoryStore.fetchHistory()
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
+})
+
 function onSearch({ value }: { value: string }) {
   searchKeyword.value = value.trim()
+  verifyHistoryStore.fetchHistory(searchKeyword.value).catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
 }
 
 function onSearchClear() {
   searchKeyword.value = ''
+  verifyHistoryStore.fetchHistory().catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
 }
 
 function getVerifyResult(item: PayslipVerifyRecord): PayslipVerifyResult {
@@ -82,11 +88,17 @@ function confirmDelete(item: PayslipVerifyRecord) {
   uni.showModal({
     title: '删除记录',
     content: `确定删除 ${formatPayPeriodLabel(item.payPeriod)} 的核对记录吗？`,
-    success(res) {
+    async success(res) {
       if (!res.confirm)
         return
-      verifyHistoryStore.removeById(item.id)
-      uni.showToast({ title: '已删除', icon: 'success' })
+      try {
+        await verifyHistoryStore.removeById(item.id)
+        uni.showToast({ title: '已删除', icon: 'success' })
+      }
+      catch (err) {
+        const msg = err instanceof Error ? err.message : '删除失败'
+        uni.showToast({ title: msg, icon: 'none' })
+      }
     },
   })
 }

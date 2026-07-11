@@ -322,6 +322,68 @@ export class UserService {
     );
   }
 
+  async loginByWechatOpenid(openid: string, clientInfo: ClientInfoDto) {
+    if (!openid) {
+      return ResultData.fail(400, "缺少微信 openid");
+    }
+    const userName = `wx_${openid}`;
+    let data = await this.userRepo.findOne({
+      where: {
+        openid
+      }
+    });
+
+    if (!data) {
+      data = await this.userRepo.findOne({
+        where: {
+          userName
+        }
+      });
+    }
+
+    if (!data) {
+      const loginDate = new Date();
+      const password = bcrypt.hashSync(generateUUID(), this.salt);
+      data = await this.userRepo.save({
+        userName,
+        nickName: userName,
+        password,
+        loginIp: clientInfo.ipaddr,
+        loginDate,
+        userType: UserTypeEnum.CUSTOM,
+        loginType: "weixin",
+        openid,
+        remark: "微信小程序用户"
+      });
+    } else if (data.openid !== openid || data.loginType !== "weixin") {
+      await this.userRepo.update(
+        { userId: data.userId },
+        {
+          openid,
+          loginType: "weixin",
+          updateBy: data.userId
+        }
+      );
+      data.openid = openid;
+      data.loginType = "weixin";
+    }
+    if (data.delFlag === DelFlagEnum.DELETE) {
+      return ResultData.fail(500, "当前微信用户已禁用");
+    }
+    if (data.status === StatusEnum.STOP) {
+      return ResultData.fail(500, "当前微信用户已停用");
+    }
+
+    const token = await this.afterLogin(data, clientInfo);
+    return ResultData.ok(
+      {
+        token,
+        openid
+      },
+      "登录成功"
+    );
+  }
+
   /**
    * @description: 生成用户token
    * @param {UserEntity} data

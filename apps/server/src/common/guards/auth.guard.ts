@@ -1,7 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import { AuthGuard } from "@nestjs/passport";
 import { pathToRegexp } from "path-to-regexp";
-import { ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { ExecutionContext, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { UserService } from "@/modules/system/user/user.service";
 import * as url from "url";
 
@@ -25,7 +25,7 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
 
     const req = ctx.switchToHttp().getRequest();
     const accessToken = req.get("Authorization");
-    if (!accessToken) throw new ForbiddenException("请重新登录");
+    if (!accessToken) throw new UnauthorizedException("未登录，请重新登录");
     const payload = this.userService.parseToken(accessToken);
     if (!payload) throw new UnauthorizedException("当前登录已过期，请重新登录");
     return await this.activate(ctx);

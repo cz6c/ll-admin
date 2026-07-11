@@ -33,6 +33,9 @@ alwaysApply: false
 ## 控制器与文档
 
 - 使用 `@ApiTags`、`@ApiOperation`。
+- 接口方法约定：**获取数据只用 `@Get`**，**修改数据只用 `@Post`**（包含创建、更新、删除、状态变更等写操作）。
+- 为保持接口风格统一，默认不使用 `@Delete`、`@Put`、`@Patch`。
+- 路由命名语义与方法保持一致：查询类如 `/list`、`/:id` 使用 `GET`；写操作如 `/create`、`/update`、`/delete/:id` 使用 `POST`。
 - DTO 用 **class-validator / class-transformer**；全局 `ValidationPipe`（whitelist、transform），DTO 字段需装饰器才进白名单。
 - 统一响应：**`@ApiResult()`** 等装饰器（见 `src/common/decorator`）。
 - Swagger：`main.ts` 配置；开发环境可导出 `swagger.json` 供 admin 生成类型。

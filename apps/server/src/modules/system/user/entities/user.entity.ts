@@ -39,6 +39,33 @@ export class UserEntity extends BaseEntity {
 
   @Column({
     type: "varchar",
+    name: "login_type",
+    length: 20,
+    default: "admin",
+    comment: "登录类型：admin/weixin"
+  })
+  public loginType: string;
+
+  @Column({
+    type: "varchar",
+    name: "openid",
+    length: 128,
+    nullable: true,
+    default: null,
+    comment: "微信 openid"
+  })
+  public openid: string | null;
+
+  @Column({
+    type: "int",
+    name: "recognize_count",
+    default: 0,
+    comment: "识别成功次数"
+  })
+  public recognizeCount: number;
+
+  @Column({
+    type: "varchar",
     name: "email",
     length: 50,
     default: "",

@@ -8,7 +8,6 @@ import { currRoute } from './utils'
 const privacyRef = ref<InstanceType<typeof PrivacyAgreementPopup>>()
 const isCurrentPageTabbar = ref(true)
 onShow(() => {
-  console.log('App.ku.vue onShow', currRoute())
   privacyRef.value?.checkPrivacy()
   const { path } = currRoute()
   // “蜡笔小开心”提到本地是 '/pages/index/index'，线上是 '/' 导致线上 tabbar 不见了

@@ -13,6 +13,7 @@ import { getEnum2Array } from "@/common/enum";
 import { ClientInfoDto } from "../monitor/loginlog/dto";
 import { createMath } from "@/common/utils/captcha";
 import { CacheEnum } from "@/common/enum/loca";
+import { WechatService } from "@/plugins/wechat.service";
 
 @Injectable()
 export class MainService {
@@ -20,6 +21,7 @@ export class MainService {
     private readonly userService: UserService,
     private readonly loginlogService: LoginlogService,
     private readonly axiosService: AxiosService,
+    private readonly wechatService: WechatService,
     private readonly menuService: MenuService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService
@@ -58,6 +60,28 @@ export class MainService {
    */
   async refreshToken(refreshToken: string, clientInfo: ClientInfoDto) {
     return await this.userService.refreshToken(refreshToken, clientInfo);
+  }
+
+  async wxLogin(code: string, clientInfo: ClientInfoDto) {
+    try {
+      const { openid } = await this.wechatService.code2Session(code);
+      return await this.userService.loginByWechatOpenid(openid, clientInfo);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "wechat_login_failed";
+      if (msg === "wechat_config_missing") {
+        return ResultData.fail(503, "微信登录未配置，请联系管理员");
+      }
+      if (msg === "wechat_code_missing") {
+        return ResultData.fail(400, "缺少微信登录凭证");
+      }
+      if (msg === "wechat_code_invalid") {
+        return ResultData.fail(400, "微信登录凭证无效，请重试");
+      }
+      if (msg === "wechat_rate_limited") {
+        return ResultData.fail(429, "微信登录过于频繁，请稍后再试");
+      }
+      return ResultData.fail(500, "微信登录失败，请稍后重试");
+    }
   }
 
   /**

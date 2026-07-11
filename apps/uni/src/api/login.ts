@@ -1,4 +1,5 @@
-import type { IAuthLoginRes, ICaptcha, IDoubleTokenRes, IUpdateInfo, IUpdatePassword, IUserInfoRes } from './types/login'
+import type { IAuthLoginRes, ICaptcha, IUpdateInfo, IUpdatePassword, IUserInfoRes } from './types/login'
+import type { CustomRequestOptions } from '@/http/types'
 import { http } from '@/http/http'
 
 /**
@@ -30,21 +31,40 @@ export function login(loginForm: ILoginForm) {
  * @param refreshToken 刷新token
  */
 export function refreshToken(refreshToken: string) {
-  return http.post<IDoubleTokenRes>('/auth/refreshToken', { refreshToken })
+  return http.post<IAuthLoginRes>('/refreshToken', { refreshToken })
 }
 
 /**
  * 获取用户信息
  */
 export function getUserInfo() {
-  return http.get<IUserInfoRes>('/user/info')
+  return getUserInfoWithOptions()
+}
+
+/**
+ * 获取用户信息（可传请求选项）
+ */
+export async function getUserInfoWithOptions(options?: Partial<CustomRequestOptions>) {
+  const raw = await http.get<IUserInfoRes>('/getLoginUserInfo', undefined, undefined, options)
+  return normalizeUserInfo(raw)
+}
+
+function normalizeUserInfo(raw: IUserInfoRes): IUserInfoRes {
+  const source = raw as IUserInfoRes & { userName?: string, nickName?: string }
+  const username = String(source.username || source.userName || '').trim()
+  const nickname = String(source.nickname || source.nickName || '').trim()
+  return {
+    ...raw,
+    username,
+    nickname,
+  }
 }
 
 /**
  * 退出登录
  */
 export function logout() {
-  return http.get<void>('/auth/logout')
+  return Promise.resolve()
 }
 
 /**

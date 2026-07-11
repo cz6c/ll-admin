@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
+import { deleteSalaryVerifyHistory, getSalaryVerifyHistoryList, upsertSalaryVerifyHistory } from '@/api/salary-verify'
 import { isPriorHistoryComplete, parsePayPeriod } from '@/utils/payPeriod'
-
-const MAX = 48
 
 export interface PayslipVerifyRecord {
   id: string
@@ -16,25 +15,60 @@ export interface PayslipVerifyRecord {
   savedAt: number
 }
 
-/** 工资核对历史：Pinia persist → `salary-verify-history` */
+/** 工资核对历史：服务端为主，Store 仅作页面态缓存。 */
 export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
   state: () => ({
     items: [] as PayslipVerifyRecord[],
   }),
 
   actions: {
-    upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'savedAt'> & { savedAt?: number }) {
-      const row: PayslipVerifyRecord = {
-        ...entry,
-        savedAt: entry.savedAt ?? Date.now(),
-      }
-      this.items = [
-        row,
-        ...this.items.filter(i => i.payPeriod !== row.payPeriod && i.id !== row.id),
-      ].slice(0, MAX)
+    async fetchHistory(keyword?: string) {
+      const list = await getSalaryVerifyHistoryList(keyword)
+      this.items = list
+        .map(item => ({
+          id: String(item.id),
+          payPeriod: item.payPeriod,
+          preTaxMonthly: Number(item.preTaxMonthly ?? 0),
+          ssPersonalAmount: Number(item.ssPersonalAmount ?? 0),
+          hfPersonalAmount: Number(item.hfPersonalAmount ?? 0),
+          specialDeductionMonthly: Number(item.specialDeductionMonthly ?? 0),
+          personalIncomeTax: Number(item.personalIncomeTax ?? 0),
+          postTaxMonthly: Number(item.postTaxMonthly ?? 0),
+          savedAt: Number(item.savedAt ?? Date.now()),
+        }))
     },
 
-    removeById(id: string) {
+    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'savedAt'> & { savedAt?: number }) {
+      const data = await upsertSalaryVerifyHistory({
+        payPeriod: entry.payPeriod,
+        preTaxMonthly: entry.preTaxMonthly,
+        ssPersonalAmount: entry.ssPersonalAmount,
+        hfPersonalAmount: entry.hfPersonalAmount,
+        specialDeductionMonthly: entry.specialDeductionMonthly,
+        personalIncomeTax: entry.personalIncomeTax,
+        postTaxMonthly: entry.postTaxMonthly,
+        savedAt: entry.savedAt,
+      })
+      const row: PayslipVerifyRecord = {
+        id: String(data.id),
+        payPeriod: data.payPeriod,
+        preTaxMonthly: Number(data.preTaxMonthly ?? 0),
+        ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
+        hfPersonalAmount: Number(data.hfPersonalAmount ?? 0),
+        specialDeductionMonthly: Number(data.specialDeductionMonthly ?? 0),
+        personalIncomeTax: Number(data.personalIncomeTax ?? 0),
+        postTaxMonthly: Number(data.postTaxMonthly ?? 0),
+        savedAt: Number(data.savedAt ?? Date.now()),
+      }
+      this.items = [row, ...this.items.filter(i => i.payPeriod !== row.payPeriod && i.id !== row.id)]
+      return row
+    },
+
+    async removeById(id: string) {
+      const numericId = Number(id)
+      if (!Number.isInteger(numericId) || numericId <= 0)
+        throw new Error('历史记录ID不合法')
+      await deleteSalaryVerifyHistory(numericId)
       this.items = this.items.filter(i => i.id !== id)
     },
 
@@ -56,10 +90,5 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
     isHistoryComplete(payPeriod: string): boolean {
       return isPriorHistoryComplete(payPeriod, this.items)
     },
-  },
-
-  persist: {
-    key: 'salary-verify-history',
-    paths: ['items'],
   },
 })

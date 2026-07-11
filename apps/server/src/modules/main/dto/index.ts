@@ -36,6 +36,18 @@ export class TokenVo {
   public token: string;
 }
 
+export class WxLoginDto {
+  @ApiProperty({ required: true, description: "wx.login 返回的临时 code" })
+  @IsString()
+  @Length(1, 128)
+  code: string;
+}
+
+export class WxLoginVo extends TokenVo {
+  @ApiProperty({ description: "微信 openid" })
+  public openid: string;
+}
+
 export class CaptchaImageVo {
   @ApiProperty({ description: "是否开启验证码" })
   public captchaEnabled: boolean;

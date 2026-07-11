@@ -2,6 +2,7 @@
 import type { LineItem } from '@/types/salary-slip'
 import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
 import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFieldMap'
+import { onShow } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
@@ -49,7 +50,7 @@ const form = ref<PayslipMappedFields>({
 
 const unmappedItems = ref<LineItem[]>([])
 
-const showVerifyForm = computed(() => lineItems.value.length > 0)
+const showVerifyForm = computed(() => lineItems.value.length >= 0)
 
 const payPeriodLabel = computed(() => formatPayPeriodLabel(payPeriod.value))
 
@@ -126,7 +127,7 @@ function fmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
 }
 
-function submitVerify() {
+async function submitVerify() {
   const required: PayslipFieldKey[] = ['preTaxMonthly', 'personalIncomeTax', 'postTaxMonthly']
   const missing = required.filter(key => !(form.value[key] > 0))
   if (missing.length) {
@@ -135,21 +136,22 @@ function submitVerify() {
     return
   }
 
-  const id = `${payPeriod.value}-${Date.now()}`
-  verifyHistoryStore.upsertByPayPeriod({
-    id,
-    payPeriod: payPeriod.value,
-    preTaxMonthly: form.value.preTaxMonthly,
-    ssPersonalAmount: form.value.ssPersonalAmount,
-    hfPersonalAmount: form.value.hfPersonalAmount,
-    specialDeductionMonthly: form.value.specialDeductionMonthly,
-    personalIncomeTax: form.value.personalIncomeTax,
-    postTaxMonthly: form.value.postTaxMonthly,
-  })
-
-  const record = verifyHistoryStore.findByPayPeriod(payPeriod.value)
-  if (record)
+  try {
+    const record = await verifyHistoryStore.upsertByPayPeriod({
+      payPeriod: payPeriod.value,
+      preTaxMonthly: form.value.preTaxMonthly,
+      ssPersonalAmount: form.value.ssPersonalAmount,
+      hfPersonalAmount: form.value.hfPersonalAmount,
+      specialDeductionMonthly: form.value.specialDeductionMonthly,
+      personalIncomeTax: form.value.personalIncomeTax,
+      postTaxMonthly: form.value.postTaxMonthly,
+    })
     verifyResult.value = computeVerifyForRecord(record, verifyHistoryStore.items)
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '核对记录保存失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
 }
 
 function displayUnmappedLabel(item: LineItem): string {
@@ -190,29 +192,29 @@ function goVerifyHistory() {
     <view class="px-24rpx pt-24rpx">
       <!-- A. 识别区 -->
       <view class="mb-24rpx card-rounded bg-white p-32rpx">
-        <view class="text-30rpx text-#333 font-500">
-          拍摄或选择工资条
-          <wd-tooltip>
-            <wd-icon name="question-circle" size="28rpx" color="#007aff" />
-            <template #content>
-              <view class="w-500rpx p-16rpx text-26rpx text-#666 leading-relaxed">
-                <view>1.请确保文字清晰，角度正常，系统将自动识别工资条全部金额明细。</view>
-                <view>2.识别后会映射到核对字段，您可修改后再提交核对。</view>
-              </view>
-            </template>
-          </wd-tooltip>
+        <view class="flex items-center justify-between">
+          <view class="text-30rpx text-#333 font-500">
+            工资条识别
+            <wd-tooltip>
+              <wd-icon name="question-circle" size="28rpx" color="#007aff" />
+              <template #content>
+                <view class="w-500rpx p-16rpx text-26rpx text-#666 leading-relaxed">
+                  <view>1.请确保文字清晰，角度正常，系统将自动识别工资条全部金额明细。</view>
+                  <view>2.识别后会自动填入核对表单中，您可修改确认无误后再提交核对。</view>
+                </view>
+              </template>
+            </wd-tooltip>
+          </view>
+          <wd-text type="primary" text="核对历史" @click="goVerifyHistory" />
         </view>
 
-        <view
-          v-if="previewPath"
-          class="mt-32rpx overflow-hidden border border-#f0f0f0 rounded-16rpx"
-        >
-          <image :src="previewPath" mode="widthFix" class="w-full" />
-        </view>
-        <view v-else class="mt-32rpx flex flex-col items-center justify-center rounded-16rpx bg-#fafafa py-80rpx">
-          <wd-icon name="camera" size="64rpx" color="#999" />
-          <view class="mt-16rpx text-26rpx text-#999">
-            尚未选择图片
+        <view class="mt-32rpx">
+          <wd-img v-if="previewPath" width="100%" :src="previewPath" :enable-preview="true" mode="widthFix" radius="8rpx" />
+          <view v-else class="flex flex-col items-center justify-center rounded-16rpx bg-#fafafa py-60rpx">
+            <wd-icon name="camera" size="64rpx" color="#999" />
+            <view class="mt-16rpx text-26rpx text-#999">
+              尚未选择图片
+            </view>
           </view>
         </view>
 
@@ -332,10 +334,13 @@ function goVerifyHistory() {
             class="verify-result verify-result--ok"
           >
             <text class="verify-result__title">
-              ✅ 个税核对无误
+              ✅ 核对无误
             </text>
             <text class="verify-result__desc">
-              工资条个人所得税与系统按累计预扣法计算结果一致。
+              1.个税与系统累计预扣法计算结果一致；
+            </text>
+            <text class="verify-result__desc">
+              2.税后工资 = 税前 − 个人社保 − 个人公积金 − 个税，加减。
             </text>
             <text v-if="calcModeHint" class="verify-result__mode mt-12rpx">
               {{ calcModeHint }}
@@ -351,7 +356,10 @@ function goVerifyHistory() {
             <text v-if="calcModeHint" class="verify-result__mode mt-12rpx">
               {{ calcModeHint }}
             </text>
-            <view class="verify-detail mt-24rpx">
+            <view v-if="!verifyResult.taxMatch" class="verify-detail mt-24rpx">
+              <view class="mb-16rpx text-26rpx text-#666">
+                个税核对
+              </view>
               <view class="verify-detail__row">
                 <text class="verify-detail__label">
                   系统应扣个税
@@ -380,9 +388,13 @@ function goVerifyHistory() {
                 {{ taxDiffHint(verifyResult.taxDiff) }}
               </view>
             </view>
-            <view v-if="!verifyResult.postTaxMatch" class="verify-detail mt-32rpx border-t border-#f0e6c8 pt-24rpx">
+            <view
+              v-if="!verifyResult.postTaxMatch"
+              class="verify-detail mt-24rpx"
+              :class="{ 'border-t border-#f0e6c8 pt-24rpx': !verifyResult.taxMatch }"
+            >
               <view class="mb-16rpx text-26rpx text-#666">
-                税后工资参考
+                税后工资核对
               </view>
               <view class="verify-detail__row">
                 <text class="verify-detail__label">
@@ -394,13 +406,13 @@ function goVerifyHistory() {
               </view>
               <view class="verify-detail__row">
                 <text class="verify-detail__label">
-                  工资条税后
+                  工资条税后工资
                 </text>
                 <text class="verify-detail__val tabular-nums">
                   ¥{{ fmt(form.postTaxMonthly) }}
                 </text>
               </view>
-              <view class="verify-detail__row">
+              <view class="verify-detail__row verify-detail__row--highlight">
                 <text class="verify-detail__label">
                   差异
                 </text>
@@ -408,13 +420,16 @@ function goVerifyHistory() {
                   {{ verifyResult.postTaxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.postTaxDiff) }} 元
                 </text>
               </view>
+              <view class="verify-detail__hint mt-16rpx">
+                应发税后 = 税前 − 个人社保 − 个人公积金 − 个税
+              </view>
             </view>
           </view>
         </view>
       </view>
 
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
-        注：核对基于累计预扣法，需选择正确年月；补全历史月份后可提高浮动月薪的核对精度
+        注：个税按累计预扣法核对；税后按「税前 − 个人社保 − 个人公积金 − 个税」核对。补全历史月份可提高浮动月薪的个税精度。
       </view>
     </view>
 

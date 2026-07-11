@@ -38,16 +38,21 @@ redis:
 jwt:
   secretkey: 'your_secretkey'
 
+wechat:
+  appId: 'your_wechat_appid'
+  appSecret: 'your_wechat_appsecret'
+
 perm:
   router:
     whitelist:
       - { path: '/captchaImage', method: 'GET' }
       - { path: '/register', method: 'POST' }
       - { path: '/login', method: 'POST' }
+      - { path: '/wxLogin', method: 'POST' }
+      - { path: '/auth/wxLogin', method: 'POST' }
       - { path: '/refreshToken', method: 'POST' }
       - { path: '/common/area/trees', method: 'GET' }
       - { path: '/common/upload', method: 'POST' }
-      - { path: '/common/salary-slip/recognize', method: 'POST' }
       - { path: '/tasks', method: 'POST' }
       - { path: '/tasks/delete', method: 'GET' }
 

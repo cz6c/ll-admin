@@ -312,13 +312,23 @@ function toMonthSnapshot(input: Pick<PayslipVerifyInput, 'preTaxMonthly' | 'ssPe
   }
 }
 
+/** 税后应发：税前 − 个人社保 − 个人公积金 − 个人所得税（工资条自洽） */
+function expectedPostTaxFromSlip(input: PayslipVerifyInput): number {
+  return round2(
+    input.preTaxMonthly
+    - input.ssPersonalAmount
+    - input.hfPersonalAmount
+    - input.personalIncomeTax,
+  )
+}
+
 function buildVerifyResult(
   input: PayslipVerifyInput,
   expectedTax: number,
-  expectedPostTax: number,
   calcMode: 'history' | 'ideal',
   missingPriorMonths?: number[],
 ): PayslipVerifyResult {
+  const expectedPostTax = expectedPostTaxFromSlip(input)
   const taxDiff = round2(input.personalIncomeTax - expectedTax)
   const postTaxDiff = round2(input.postTaxMonthly - expectedPostTax)
   const taxMatch = Math.abs(taxDiff) <= VERIFY_TOLERANCE
@@ -330,7 +340,7 @@ function buildVerifyResult(
     postTaxDiff,
     taxMatch,
     postTaxMatch,
-    overallMatch: taxMatch,
+    overallMatch: taxMatch && postTaxMatch,
     calcMode,
     missingPriorMonths,
   }
@@ -352,8 +362,8 @@ export function verifyPayslipTax(
   const useHistory = missing.length === 0 && prior.length === month - 1
 
   if (useHistory) {
-    const { tax, postTax } = calcCumulativeTaxForMonth([...prior, current])
-    return buildVerifyResult(input, tax, postTax, 'history')
+    const { tax } = calcCumulativeTaxForMonth([...prior, current])
+    return buildVerifyResult(input, tax, 'history')
   }
 
   const calcResult = calcSalary({
@@ -368,7 +378,6 @@ export function verifyPayslipTax(
   return buildVerifyResult(
     input,
     row.tax,
-    row.postTax,
     'ideal',
     month > 1 && missing.length > 0 ? missing : undefined,
   )

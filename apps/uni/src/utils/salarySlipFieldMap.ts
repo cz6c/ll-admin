@@ -82,7 +82,7 @@ function emptyFields(): PayslipMappedFields {
   }
 }
 
-/** 将 OCR 识别明细映射到工资核对 6 字段 */
+/** 将 OCR 识别明细映射到月薪核对 6 字段 */
 export function mapLineItemsToPayslipFields(lineItems: LineItem[]): MapLineItemsResult {
   const fields = emptyFields()
 

@@ -2,8 +2,8 @@ import { BaseEntity } from "@/common/entities/base";
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { UserEntity } from "@/modules/system/user/entities/user.entity";
 
-@Entity("salary_verify_history", { comment: "工资核对历史表" })
-@Index("idx_salary_verify_history_user_period", ["userId", "payPeriod"], { unique: true })
+@Entity("salary_verify_history", { comment: "薪资历史表（月薪核对/年薪测算）" })
+@Index("idx_salary_verify_history_user_period", ["userId", "historyType", "payPeriod"], { unique: true })
 export class SalaryVerifyHistoryEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: "int", comment: "主键ID" })
   public id: number;
@@ -17,11 +17,21 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
 
   @Column({
     type: "varchar",
+    name: "history_type",
+    length: 20,
+    default: "verify",
+    comment: "历史类型：verify月薪核对/calc年薪测算"
+  })
+  public historyType: "verify" | "calc";
+
+  @Column({
+    type: "varchar",
     name: "pay_period",
     length: 7,
-    comment: "工资所属月份 YYYY-MM"
+    nullable: true,
+    comment: "工资所属月份 YYYY-MM（verify 类型必填）"
   })
-  public payPeriod: string;
+  public payPeriod: string | null;
 
   @Column({
     type: "decimal",
@@ -72,6 +82,25 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
     comment: "个税"
   })
   public personalIncomeTax: string;
+
+  @Column({
+    type: "varchar",
+    name: "year_end_tax_mode",
+    length: 20,
+    nullable: true,
+    comment: "年终奖计税方式：none/separate/merge"
+  })
+  public yearEndTaxMode: "none" | "separate" | "merge" | null;
+
+  @Column({
+    type: "decimal",
+    name: "year_end_bonus",
+    precision: 12,
+    scale: 2,
+    default: 0,
+    comment: "年终奖"
+  })
+  public yearEndBonus: string;
 
   @Column({
     type: "decimal",

@@ -41,7 +41,7 @@ export class SalaryVerifyHistory1762500000000 implements MigrationInterface {
         UNIQUE INDEX \`idx_salary_verify_history_user_period\` (\`c_user_id\`, \`pay_period\`),
         PRIMARY KEY (\`id\`),
         CONSTRAINT \`FK_salary_verify_history_c_user\` FOREIGN KEY (\`c_user_id\`) REFERENCES \`c_user\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION
-      ) ENGINE=InnoDB COMMENT='工资核对历史表'`
+      ) ENGINE=InnoDB COMMENT='月薪核对历史表'`
     );
   }
 

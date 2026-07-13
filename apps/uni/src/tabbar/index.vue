@@ -77,7 +77,7 @@ onMounted(() => {
 
 <template>
   <view v-if="customTabbarEnable" class="h-100rpx pb-safe">
-    <view class="fixed bottom-0 left-0 right-0 z-1000 box-border border-t border-#eee bg-white" @touchmove.stop.prevent>
+    <view class="fixed bottom-0 left-0 right-0 z-1000 box-border border-t border-#edf0f6 bg-white" @touchmove.stop.prevent>
       <view class="h-100rpx flex items-center">
         <view
           v-for="(item, index) in tabbarList" :key="index"

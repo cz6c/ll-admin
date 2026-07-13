@@ -1,9 +1,19 @@
 <script lang="ts" setup>
 import type { SalaryHistoryItem } from '@/store/salaryHistory'
+import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
+import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
+import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
+import { computed, ref } from 'vue'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
 import { formatHistoryTime } from '@/utils/formatTime'
+import { formatPayPeriodLabel } from '@/utils/payPeriod'
+import { computeVerifyForRecord, formatVerifyAbnormalSummary } from '@/utils/payslipVerify'
+import { calcSalary } from '@/utils/salaryCalculator'
+import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 
 defineOptions({ name: 'SalaryHistory' })
 
@@ -15,37 +25,105 @@ definePage({
   },
 })
 
-const salaryHistoryStore = useSalaryHistoryStore()
-const { items: list } = storeToRefs(salaryHistoryStore)
+type HistoryTab = 'calc' | 'verify'
 
-const searchInput = ref('')
-const searchKeyword = ref('')
+const salaryHistoryStore = useSalaryHistoryStore()
+const verifyHistoryStore = useSalaryVerifyHistoryStore()
+const { items: calcList } = storeToRefs(salaryHistoryStore)
+const { items: verifyList } = storeToRefs(verifyHistoryStore)
+
+const activeTab = ref<HistoryTab>('verify')
+const calcSearchInput = ref('')
+const calcSearchKeyword = ref('')
+const verifySearchInput = ref('')
+const verifySearchKeyword = ref('')
 
 const WORKBENCH_KEY = '1111'
 
-const filteredList = computed(() => {
-  const q = searchKeyword.value.toLowerCase()
+const fieldKeys: PayslipFieldKey[] = [
+  'preTaxMonthly',
+  'ssPersonalAmount',
+  'hfPersonalAmount',
+  'specialDeductionMonthly',
+  'personalIncomeTax',
+  'postTaxMonthly',
+]
+
+const filteredCalcList = computed(() => {
+  const q = calcSearchKeyword.value.toLowerCase()
   if (!q || q === WORKBENCH_KEY)
-    return list.value
-  return list.value.filter(item => item.title.toLowerCase().includes(q))
+    return calcList.value
+  return calcList.value.filter((item) => {
+    const title = calcHistoryTitle(item).toLowerCase()
+    return title.includes(q)
+  })
 })
 
-function onSearch({ value }: { value: string }) {
+const verifyResultMap = computed(() => {
+  const map = new Map<string, PayslipVerifyResult>()
+  for (const item of verifyList.value)
+    map.set(item.id, computeVerifyForRecord(item, verifyList.value))
+  return map
+})
+
+onLoad((options?: Record<string, string>) => {
+  if (options?.tab === 'calc' || options?.tab === 'verify')
+    activeTab.value = options.tab
+})
+
+onShow(async () => {
+  try {
+    await Promise.all([
+      salaryHistoryStore.fetchHistory(calcSearchKeyword.value || undefined),
+      verifyHistoryStore.fetchHistory(verifySearchKeyword.value || undefined),
+    ])
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
+})
+
+function onCalcSearch({ value }: { value: string }) {
   const val = value.trim()
   if (val === WORKBENCH_KEY) {
-    searchInput.value = ''
-    searchKeyword.value = ''
+    calcSearchInput.value = ''
+    calcSearchKeyword.value = ''
     uni.navigateTo({ url: '/pages/workbench/workbench' })
     return
   }
-  searchKeyword.value = val
+  calcSearchKeyword.value = val
+  salaryHistoryStore.fetchHistory(val || undefined).catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
 }
 
-function onSearchClear() {
-  searchKeyword.value = ''
+function onCalcSearchClear() {
+  calcSearchKeyword.value = ''
+  salaryHistoryStore.fetchHistory().catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
 }
 
-function openDetail(item: SalaryHistoryItem) {
+function onVerifySearch({ value }: { value: string }) {
+  verifySearchKeyword.value = value.trim()
+  verifyHistoryStore.fetchHistory(verifySearchKeyword.value).catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
+}
+
+function onVerifySearchClear() {
+  verifySearchKeyword.value = ''
+  verifyHistoryStore.fetchHistory().catch((err) => {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  })
+}
+
+function openCalcDetail(item: SalaryHistoryItem) {
   uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(item.id)}` })
 }
 
@@ -53,15 +131,52 @@ function fmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
 }
 
-function confirmDelete(item: SalaryHistoryItem) {
+function calcHistoryTitle(item: SalaryHistoryItem) {
+  return `每月税前${fmt(item.input.preTaxMonthly)}`
+}
+
+function calcHistoryAnnualTakeHome(item: SalaryHistoryItem) {
+  return calcSalary(item.input).annualTakeHome
+}
+
+function getVerifyResult(item: PayslipVerifyRecord): PayslipVerifyResult {
+  return verifyResultMap.value.get(item.id)!
+}
+
+function confirmDeleteCalc(item: SalaryHistoryItem) {
   uni.showModal({
     title: '删除记录',
-    content: '确定删除这条历史记录吗？',
-    success(res) {
+    content: '确定删除这条年薪测算记录吗？',
+    async success(res) {
       if (!res.confirm)
         return
-      salaryHistoryStore.removeById(item.id)
-      uni.showToast({ title: '已删除', icon: 'success' })
+      try {
+        await salaryHistoryStore.removeById(item.id)
+        uni.showToast({ title: '已删除', icon: 'success' })
+      }
+      catch (err) {
+        const msg = err instanceof Error ? err.message : '删除失败'
+        uni.showToast({ title: msg, icon: 'none' })
+      }
+    },
+  })
+}
+
+function confirmDeleteVerify(item: PayslipVerifyRecord) {
+  uni.showModal({
+    title: '删除记录',
+    content: `确定删除 ${formatPayPeriodLabel(item.payPeriod)} 的核对记录吗？`,
+    async success(res) {
+      if (!res.confirm)
+        return
+      try {
+        await verifyHistoryStore.removeById(item.id)
+        uni.showToast({ title: '已删除', icon: 'success' })
+      }
+      catch (err) {
+        const msg = err instanceof Error ? err.message : '删除失败'
+        uni.showToast({ title: msg, icon: 'none' })
+      }
     },
   })
 }
@@ -69,70 +184,167 @@ function confirmDelete(item: SalaryHistoryItem) {
 
 <template>
   <view class="page-shell pb-safe" @click="closeOutside">
+    <wd-tabs v-model="activeTab" animated custom-class="history-tabs">
+      <wd-tab name="verify" title="月薪核对" />
+      <wd-tab name="calc" title="年薪测算" />
+    </wd-tabs>
+
     <view class="p-24rpx">
-      <wd-search
-        v-model="searchInput"
-        placeholder="搜索历史记录"
-        hide-cancel
-        variant="light"
-        custom-class="search mb-16rpx"
-        @search="onSearch"
-        @clear="onSearchClear"
-      />
+      <template v-if="activeTab === 'calc'">
+        <wd-search
+          v-model="calcSearchInput"
+          placeholder="搜索历史记录"
+          hide-cancel
+          variant="light"
+          custom-class="search mb-16rpx mt-16rpx"
+          @search="onCalcSearch"
+          @clear="onCalcSearchClear"
+        />
 
-      <view v-if="list.length > 0" class="px-8rpx pb-16rpx">
-        <text class="text-26rpx text-#999">
-          {{ searchKeyword ? `找到 ${filteredList.length} 条` : `共 ${list.length} 条` }}
-        </text>
-      </view>
+        <view v-if="calcList.length > 0" class="px-8rpx pb-16rpx">
+          <text class="text-26rpx text-#999">
+            {{ calcSearchKeyword ? `找到 ${filteredCalcList.length} 条` : `共 ${calcList.length} 条` }}
+          </text>
+        </view>
 
-      <wd-empty
-        v-if="list.length === 0"
-        tip="暂无历史记录，在薪资计算页点击「查看明细」会自动保存一条。"
-      />
+        <wd-empty
+          v-if="calcList.length === 0"
+          tip="暂无年薪测算记录，在年薪测算页点击「查看明细」会自动保存一条。"
+        />
 
-      <wd-empty
-        v-else-if="searchKeyword && searchKeyword !== WORKBENCH_KEY && filteredList.length === 0"
-        tip="未找到匹配的历史记录"
-      />
+        <wd-empty
+          v-else-if="calcSearchKeyword && calcSearchKeyword !== WORKBENCH_KEY && filteredCalcList.length === 0"
+          tip="未找到匹配的历史记录"
+        />
+
+        <template v-else>
+          <view v-for="item in filteredCalcList" :key="item.id" class="mb-20rpx">
+            <wd-swipe-action>
+              <view class="card-rounded p-28rpx" @click="openCalcDetail(item)">
+                <view class="flex items-start justify-between gap-16rpx">
+                  <view class="min-w-0 flex-1">
+                    <view class="text-30rpx text-#333 font-medium">
+                      {{ calcHistoryTitle(item) }}
+                    </view>
+                    <view class="mt-12rpx text-24rpx text-#999">
+                      {{ formatHistoryTime(item.savedAt) }}
+                    </view>
+                  </view>
+                  <view class="shrink-0 text-right">
+                    <view class="text-32rpx text-primary font-semibold tabular-nums">
+                      ¥{{ fmt(calcHistoryAnnualTakeHome(item)) }}
+                    </view>
+                    <view class="mt-8rpx text-22rpx text-#999">
+                      到手年薪
+                    </view>
+                  </view>
+                </view>
+              </view>
+              <template #right>
+                <view class="h-full flex">
+                  <view
+                    class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
+                    @click.stop="confirmDeleteCalc(item)"
+                  >
+                    <text class="text-28rpx text-white">
+                      删除
+                    </text>
+                  </view>
+                </view>
+              </template>
+            </wd-swipe-action>
+          </view>
+        </template>
+      </template>
 
       <template v-else>
-        <view v-for="item in filteredList" :key="item.id" class="mb-20rpx">
-          <wd-swipe-action>
-            <view class="card-rounded p-28rpx" @click="openDetail(item)">
-              <view class="flex items-start justify-between gap-16rpx">
-                <view class="min-w-0 flex-1">
+        <wd-search
+          v-model="verifySearchInput"
+          placeholder="搜索年月或税前金额"
+          hide-cancel
+          variant="light"
+          custom-class="search mb-16rpx mt-16rpx"
+          @search="onVerifySearch"
+          @clear="onVerifySearchClear"
+        />
+
+        <view v-if="verifyList.length > 0" class="px-8rpx pb-16rpx">
+          <text class="text-26rpx text-#999">
+            {{ verifySearchKeyword ? `找到 ${verifyList.length} 条` : `共 ${verifyList.length} 条` }}
+          </text>
+        </view>
+
+        <wd-empty
+          v-if="verifyList.length === 0"
+          tip="暂无月薪核对记录，在月薪核对页点击「开始核对」会自动保存。"
+        />
+
+        <wd-empty
+          v-else-if="verifySearchKeyword && verifyList.length === 0"
+          tip="未找到匹配的历史记录"
+        />
+
+        <template v-else>
+          <view v-for="item in verifyList" :key="item.id" class="mb-20rpx">
+            <wd-swipe-action>
+              <view class="card-rounded p-28rpx">
+                <view class="flex items-center justify-between gap-16rpx">
                   <view class="text-30rpx text-#333 font-medium">
-                    {{ item.title }}
+                    {{ formatPayPeriodLabel(item.payPeriod) }}
                   </view>
-                  <view class="mt-12rpx text-24rpx text-#999">
-                    {{ formatHistoryTime(item.savedAt) }}
+                  <wd-tag
+                    :type="getVerifyResult(item).overallMatch ? 'success' : 'warning'"
+                    variant="light"
+                    size="medium"
+                    custom-class="shrink-0"
+                  >
+                    {{ getVerifyResult(item).overallMatch ? '核对无误' : '异常' }}
+                  </wd-tag>
+                </view>
+
+                <view class="mt-20rpx">
+                  <view
+                    v-for="key in fieldKeys"
+                    :key="key"
+                    class="history-field-row"
+                  >
+                    <text class="history-field-label">
+                      {{ PAYSLIP_FIELD_LABELS[key] }}
+                    </text>
+                    <text class="history-field-val tabular-nums">
+                      ¥{{ fmt(item[key]) }}
+                    </text>
                   </view>
                 </view>
-                <view class="shrink-0 text-right">
-                  <view class="text-32rpx text-primary font-semibold tabular-nums">
-                    ¥{{ fmt(item.snapshot.result.annualTakeHome) }}
-                  </view>
-                  <view class="mt-8rpx text-22rpx text-#999">
-                    到手年薪
-                  </view>
-                </view>
-              </view>
-            </view>
-            <template #right>
-              <view class="h-full flex">
+
                 <view
-                  class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
-                  @click.stop="confirmDelete(item)"
+                  v-if="!getVerifyResult(item).overallMatch"
+                  class="history-abnormal mt-20rpx"
                 >
-                  <text class="text-28rpx text-white">
-                    删除
+                  <text class="history-abnormal__text">
+                    {{ formatVerifyAbnormalSummary(getVerifyResult(item)) }}
                   </text>
                 </view>
+
+                <view class="mt-16rpx text-24rpx text-#999">
+                  {{ formatHistoryTime(item.savedAt) }}
+                </view>
               </view>
-            </template>
-          </wd-swipe-action>
-        </view>
+              <template #right>
+                <view class="h-full flex">
+                  <view
+                    class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
+                    @click.stop="confirmDeleteVerify(item)"
+                  >
+                    <text class="text-28rpx text-white">
+                      删除
+                    </text>
+                  </view>
+                </view>
+              </template>
+            </wd-swipe-action>
+          </view>
+        </template>
       </template>
     </view>
   </view>
@@ -146,5 +358,34 @@ function confirmDelete(item: SalaryHistoryItem) {
 
 .history-swipe-del {
   background: #e2231a;
+}
+
+.history-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0;
+  font-size: 26rpx;
+}
+
+.history-field-label {
+  color: #666;
+}
+
+.history-field-val {
+  color: #333;
+}
+
+.history-abnormal {
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  background: #fffbe6;
+  border: 2rpx solid #ffe58f;
+}
+
+.history-abnormal__text {
+  font-size: 24rpx;
+  color: #d48806;
+  line-height: 1.55;
 }
 </style>

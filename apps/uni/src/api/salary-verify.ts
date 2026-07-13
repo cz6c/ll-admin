@@ -1,25 +1,34 @@
 import { http } from '@/http/http'
 
+export type SalaryHistoryType = 'verify' | 'calc'
+export type YearEndTaxMode = 'none' | 'separate' | 'merge'
+
 export interface SalaryVerifyHistoryItem {
   id: number
-  payPeriod: string
+  historyType: SalaryHistoryType
+  payPeriod: string | null
   preTaxMonthly: number
   ssPersonalAmount: number
   hfPersonalAmount: number
   specialDeductionMonthly: number
   personalIncomeTax: number
+  yearEndTaxMode: YearEndTaxMode | null
+  yearEndBonus: number
   postTaxMonthly: number
   savedAt: number
 }
 
 export interface UpsertSalaryVerifyHistoryPayload {
-  payPeriod: string
+  historyType?: SalaryHistoryType
+  payPeriod?: string
   preTaxMonthly: number
   ssPersonalAmount: number
   hfPersonalAmount: number
   specialDeductionMonthly: number
-  personalIncomeTax: number
-  postTaxMonthly: number
+  personalIncomeTax?: number
+  yearEndTaxMode?: YearEndTaxMode
+  yearEndBonus?: number
+  postTaxMonthly?: number
   savedAt?: number
 }
 
@@ -29,8 +38,11 @@ export function upsertSalaryVerifyHistory(data: UpsertSalaryVerifyHistoryPayload
   return http.post<SalaryVerifyHistoryItem>(`${HISTORY_BASE}/upsert`, data)
 }
 
-export function getSalaryVerifyHistoryList(keyword?: string) {
-  return http.get<SalaryVerifyHistoryItem[]>(`${HISTORY_BASE}/list`, keyword ? { keyword } : undefined)
+export function getSalaryVerifyHistoryList(params?: {
+  keyword?: string
+  historyType?: SalaryHistoryType
+}) {
+  return http.get<SalaryVerifyHistoryItem[]>(`${HISTORY_BASE}/list`, params)
 }
 
 export function deleteSalaryVerifyHistory(id: number) {

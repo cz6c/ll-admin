@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { systemInfo } from '@/utils/systemInfo'
+import { usePageHeight } from '@/composables/usePageHeight'
 import data from './data.json'
 
 defineOptions({ name: 'FoodPurineInquiry' })
@@ -22,6 +22,7 @@ definePage({
   },
 })
 
+const { pageHeight } = usePageHeight()
 const foods = data.foods as Food[]
 const categories = data.categories
 const ALL_CATEGORY = '全部'
@@ -101,21 +102,10 @@ function onSearch({ value }: { value: string }) {
 function onSearchClear() {
   searchKeyword.value = ''
 }
-
-const windowHeight = computed(() => {
-  let height = systemInfo.windowHeight - systemInfo.safeAreaInsets.bottom
-  // #ifdef H5 || APP-PLUS
-  height = height - 44
-  // #endif
-  // #ifndef H5 || APP-PLUS
-  height = height - uni.getMenuButtonBoundingClientRect().bottom
-  // #endif
-  return height
-})
 </script>
 
 <template>
-  <view class="flex flex-col bg-page pb-safe" :style="{ height: `${windowHeight}px` }">
+  <view class="flex flex-col bg-page" :style="{ height: `${pageHeight}px` }">
     <view class="shrink-0 p-24rpx">
       <wd-search
         v-model="searchInput"

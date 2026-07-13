@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import PrivacyAgreementPopup from '@/components/PrivacyAgreementPopup.vue'
 import FgTabbar from '@/tabbar/index.vue'
 import { isPageTabbar } from './tabbar/store'
@@ -7,8 +7,11 @@ import { currRoute } from './utils'
 
 const privacyRef = ref<InstanceType<typeof PrivacyAgreementPopup>>()
 const isCurrentPageTabbar = ref(true)
-onShow(() => {
+onMounted(() => {
+  console.log('App.ku.vue onMounted')
   privacyRef.value?.checkPrivacy()
+})
+onShow(() => {
   const { path } = currRoute()
   // “蜡笔小开心”提到本地是 '/pages/index/index'，线上是 '/' 导致线上 tabbar 不见了
   // 所以这里需要判断一下，如果是 '/' 就当做首页，也要显示 tabbar

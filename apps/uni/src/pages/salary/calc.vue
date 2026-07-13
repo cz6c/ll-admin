@@ -7,12 +7,11 @@ import {
   YEAR_END_TAX_OPTIONS,
 } from '@/constants/salaryFormOptions'
 import { useSalaryCalcStore } from '@/store/salaryCalc'
-import { cloneSalaryCalcResult, useSalaryHistoryStore } from '@/store/salaryHistory'
+import { useSalaryHistoryStore } from '@/store/salaryHistory'
 
 defineOptions({ name: 'SalaryCalc' })
 
 definePage({
-  type: 'home',
   style: {
     navigationBarTitleText: '税后工资计算',
   },
@@ -28,8 +27,6 @@ const { input: salaryForm } = storeToRefs(store)
 const showYearEndModePicker = ref(false)
 /** 七项专项附加扣除标准说明 */
 const showSpecialDeductionTip = ref(false)
-
-const result = computed(() => store.result)
 
 const yearEndModeLabel = computed(() =>
   salaryOptionLabel(YEAR_END_TAX_OPTIONS, salaryForm.value.yearEndTaxMode),
@@ -86,21 +83,19 @@ function onYearEndModeConfirm({ value }: { value: (string | number)[] }) {
   store.patchInput({ yearEndTaxMode: value[0] as YearEndTaxMode })
 }
 
-function goDetail() {
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  salaryHistoryStore.prepend({
-    id,
-    title: `每月税前${salaryForm.value.preTaxMonthly}`,
-    snapshot: {
-      input: { ...salaryForm.value },
-      result: cloneSalaryCalcResult(result.value),
-    },
-  })
-  uni.navigateTo({ url: '/pages/salary/detail' })
+async function goDetail() {
+  try {
+    const row = await salaryHistoryStore.createHistory({ ...salaryForm.value })
+    uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(row.id)}` })
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '历史记录保存失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
 }
 
 function goHistory() {
-  uni.navigateTo({ url: '/pages/salary/history' })
+  uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
 }
 
 function goVerify() {
@@ -216,9 +211,9 @@ function goVerify() {
         custom-class="mt-24rpx"
         @click="goVerify"
       >
-        工资核对
+        月薪核对
       </wd-button>
-      <wd-button
+      <!-- <wd-button
         :block="true"
         :round="true"
         size="large"
@@ -227,7 +222,7 @@ function goVerify() {
         @click="goHistory"
       >
         历史记录
-      </wd-button>
+      </wd-button> -->
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考
       </view>
@@ -252,7 +247,7 @@ function goVerify() {
       lock-scroll
     >
       <view class="special-deduction-sheet max-h-75vh flex flex-col rounded-t-24rpx bg-white">
-        <view class="shrink-0 picker-title">
+        <view class="shrink-0 border-b border-#edf0f6 p-32rpx text-center text-32rpx text-#333 font-600">
           七项扣除具体金额标准
         </view>
         <scroll-view scroll-y class="special-deduction-sheet__scroll" :show-scrollbar="true">

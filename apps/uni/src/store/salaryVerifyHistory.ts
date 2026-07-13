@@ -15,7 +15,7 @@ export interface PayslipVerifyRecord {
   savedAt: number
 }
 
-/** 工资核对历史：服务端为主，Store 仅作页面态缓存。 */
+/** 月薪核对历史：服务端为主，Store 仅作页面态缓存。 */
 export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
   state: () => ({
     items: [] as PayslipVerifyRecord[],
@@ -23,11 +23,11 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
 
   actions: {
     async fetchHistory(keyword?: string) {
-      const list = await getSalaryVerifyHistoryList(keyword)
+      const list = await getSalaryVerifyHistoryList({ keyword, historyType: 'verify' })
       this.items = list
         .map(item => ({
           id: String(item.id),
-          payPeriod: item.payPeriod,
+          payPeriod: item.payPeriod || '',
           preTaxMonthly: Number(item.preTaxMonthly ?? 0),
           ssPersonalAmount: Number(item.ssPersonalAmount ?? 0),
           hfPersonalAmount: Number(item.hfPersonalAmount ?? 0),
@@ -40,6 +40,7 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
 
     async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'savedAt'> & { savedAt?: number }) {
       const data = await upsertSalaryVerifyHistory({
+        historyType: 'verify',
         payPeriod: entry.payPeriod,
         preTaxMonthly: entry.preTaxMonthly,
         ssPersonalAmount: entry.ssPersonalAmount,
@@ -51,7 +52,7 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
       })
       const row: PayslipVerifyRecord = {
         id: String(data.id),
-        payPeriod: data.payPeriod,
+        payPeriod: data.payPeriod || '',
         preTaxMonthly: Number(data.preTaxMonthly ?? 0),
         ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
         hfPersonalAmount: Number(data.hfPersonalAmount ?? 0),

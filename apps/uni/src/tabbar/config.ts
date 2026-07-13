@@ -27,7 +27,7 @@ export const nativeTabbarList: NativeTabBarItem[] = [
   {
     iconPath: 'static/tabbar/home.png',
     selectedIconPath: 'static/tabbar/homeHL.png',
-    pagePath: 'pages/salary/calc',
+    pagePath: 'pages/salary/home',
     text: '首页',
   },
 ]
@@ -88,7 +88,7 @@ const _tabbar: TabBar = {
   // 只有微信小程序支持 custom。App 和 H5 不生效
   custom: selectedTabbarStrategy === TABBAR_STRATEGY_MAP.CUSTOM_TABBAR,
   color: '#999999',
-  selectedColor: '#007AFF',
+  selectedColor: '#1688FF',
   backgroundColor: '#F8F8F8',
   borderStyle: 'black',
   height: '50px',

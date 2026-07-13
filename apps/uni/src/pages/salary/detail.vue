@@ -1,9 +1,10 @@
 <script lang="ts" setup>
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryCalcStore } from '@/store/salaryCalc'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { calcSalary } from '@/utils/salaryCalculator'
 
 defineOptions({ name: 'SalaryDetail' })
 
@@ -23,24 +24,32 @@ onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
 })
 
+onShow(() => {
+  if (!historyId.value)
+    return
+  if (salaryHistoryStore.findById(historyId.value))
+    return
+  salaryHistoryStore.fetchHistory().catch(() => {
+    uni.showToast({ title: '历史记录加载失败', icon: 'none' })
+  })
+})
+
 const historyItem = computed(() => {
   if (!historyId.value)
     return null
   return salaryHistoryStore.findById(historyId.value) ?? null
 })
 
-const r = computed(() => {
-  const snap = historyItem.value?.snapshot
-  if (snap)
-    return snap.result
-  return store.result
+const detailInput = computed(() => {
+  if (historyItem.value)
+    return historyItem.value.input
+  return store.input
 })
 
-const detailInput = computed(() => {
-  const snap = historyItem.value?.snapshot
-  if (snap)
-    return snap.input
-  return store.input
+const r = computed(() => {
+  if (historyItem.value)
+    return calcSalary(detailInput.value)
+  return store.result
 })
 
 const yearEndTaxLabel = computed(() =>
@@ -102,8 +111,8 @@ const INCOME_TAX_BRACKETS = [
         </view>
       </view>
 
-      <view class="mt-40rpx section-title">
-        <view class="section-bar" />
+      <view class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text>每月到手工资</text>
       </view>
       <view class="mt-16rpx card-rounded">
@@ -170,8 +179,8 @@ const INCOME_TAX_BRACKETS = [
         </view>
       </view>
 
-      <view v-if="detailInput.yearEndBonus > 0" class="mt-40rpx section-title">
-        <view class="section-bar" />
+      <view v-if="detailInput.yearEndBonus > 0" class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text>年终奖</text>
       </view>
       <view v-if="detailInput.yearEndBonus > 0" class="mt-24rpx card-rounded p-24rpx text-26rpx leading-relaxed">
@@ -181,8 +190,8 @@ const INCOME_TAX_BRACKETS = [
         </text>
       </view>
 
-      <view class="mt-40rpx section-title">
-        <view class="section-bar" />
+      <view class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text>个人所得税税率表（综合所得适用）</text>
       </view>
       <view class="mt-16rpx card-rounded">
@@ -287,7 +296,7 @@ const INCOME_TAX_BRACKETS = [
 }
 .month-head {
   padding: 20rpx 0;
-  border-bottom: 2rpx solid #f0f0f0;
+  border-bottom: 2rpx solid #edf0f6;
 }
 .month-row {
   padding: 20rpx 0;
@@ -345,7 +354,7 @@ const INCOME_TAX_BRACKETS = [
 }
 .pit-head {
   padding: 20rpx 0;
-  border-bottom: 2rpx solid #f0f0f0;
+  border-bottom: 2rpx solid #edf0f6;
 }
 .pit-row {
   padding: 20rpx 0;

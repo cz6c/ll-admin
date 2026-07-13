@@ -25,7 +25,7 @@ defineExpose({ checkPrivacy })
 </script>
 
 <template>
-  <wd-popup v-model="showPrivacy" :close-on-click-modal="false">
+  <wd-popup v-model="showPrivacy" custom-class="rounded-24rpx" :close-on-click-modal="false">
     <view class="w-600rpx rounded-24rpx bg-white p-40rpx">
       <view class="mb-24rpx text-center text-34rpx text-#333 font-600">
         用户协议与隐私政策

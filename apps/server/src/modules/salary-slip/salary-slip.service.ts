@@ -8,7 +8,7 @@ import { ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
 import { OcrProviderError } from "@/plugins/ocr/ocr-provider.interface";
 import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
-import { SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
+import { SalaryHistoryType, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { SalaryVerifyHistoryEntity } from "./entities/salary-verify-history.entity";
 import { lineItemsFromOcr } from "./utils/line-items-from-ocr";
@@ -46,15 +46,41 @@ export class SalarySlipService {
   private toHistoryItemDto(row: SalaryVerifyHistoryEntity): SalaryVerifyHistoryItemDto {
     return {
       id: row.id,
+      historyType: row.historyType ?? "verify",
       payPeriod: row.payPeriod,
       preTaxMonthly: Number(row.preTaxMonthly),
       ssPersonalAmount: Number(row.ssPersonalAmount),
       hfPersonalAmount: Number(row.hfPersonalAmount),
       specialDeductionMonthly: Number(row.specialDeductionMonthly),
       personalIncomeTax: Number(row.personalIncomeTax),
+      yearEndTaxMode: row.yearEndTaxMode,
+      yearEndBonus: Number(row.yearEndBonus ?? 0),
       postTaxMonthly: Number(row.postTaxMonthly),
       savedAt: Number(row.savedAt)
     };
+  }
+
+  private ensureHistoryPayload(dto: UpsertSalaryVerifyHistoryDto) {
+    const historyType: SalaryHistoryType = dto.historyType ?? "verify";
+    if (historyType === "verify") {
+      if (!dto.payPeriod) {
+        return { ok: false as const, message: "verify 类型缺少 payPeriod" };
+      }
+      if (typeof dto.personalIncomeTax !== "number") {
+        return { ok: false as const, message: "verify 类型缺少 personalIncomeTax" };
+      }
+      if (typeof dto.postTaxMonthly !== "number") {
+        return { ok: false as const, message: "verify 类型缺少 postTaxMonthly" };
+      }
+      return { ok: true as const, historyType };
+    }
+    if (!dto.yearEndTaxMode) {
+      return { ok: false as const, message: "calc 类型缺少 yearEndTaxMode" };
+    }
+    if (typeof dto.yearEndBonus !== "number") {
+      return { ok: false as const, message: "calc 类型缺少 yearEndBonus" };
+    }
+    return { ok: true as const, historyType };
   }
 
   async recognize(file: Express.Multer.File, userId: number) {
@@ -189,42 +215,59 @@ export class SalarySlipService {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");
     }
+    const checked = this.ensureHistoryPayload(dto);
+    if (!checked.ok) {
+      return ResultData.fail(400, checked.message);
+    }
+
+    const historyType = checked.historyType;
     const savedAt = dto.savedAt ?? Date.now();
     const payload: Partial<SalaryVerifyHistoryEntity> = {
       userId,
-      payPeriod: dto.payPeriod,
+      historyType,
+      payPeriod: historyType === "verify" ? dto.payPeriod : null,
       preTaxMonthly: String(dto.preTaxMonthly),
       ssPersonalAmount: String(dto.ssPersonalAmount ?? 0),
       hfPersonalAmount: String(dto.hfPersonalAmount ?? 0),
       specialDeductionMonthly: String(dto.specialDeductionMonthly ?? 0),
-      personalIncomeTax: String(dto.personalIncomeTax),
-      postTaxMonthly: String(dto.postTaxMonthly),
+      personalIncomeTax: String(dto.personalIncomeTax ?? 0),
+      yearEndTaxMode: dto.yearEndTaxMode ?? null,
+      yearEndBonus: String(dto.yearEndBonus ?? 0),
+      postTaxMonthly: String(dto.postTaxMonthly ?? 0),
       savedAt: String(savedAt)
     };
-    const existed = await this.salaryVerifyHistoryRep.findOne({
-      where: {
-        userId,
-        payPeriod: dto.payPeriod,
-        delFlag: DelFlagEnum.NORMAL
+
+    if (historyType === "verify") {
+      const existed = await this.salaryVerifyHistoryRep.findOne({
+        where: {
+          userId,
+          historyType,
+          payPeriod: dto.payPeriod,
+          delFlag: DelFlagEnum.NORMAL
+        }
+      });
+      if (existed) {
+        const updatedEntity = this.salaryVerifyHistoryRep.create({ ...existed, ...payload });
+        const updated = await this.salaryVerifyHistoryRep.save(updatedEntity);
+        return ResultData.ok(this.toHistoryItemDto(updated));
       }
-    });
-    if (existed) {
-      const updatedEntity = this.salaryVerifyHistoryRep.create({ ...existed, ...payload });
-      const updated = await this.salaryVerifyHistoryRep.save(updatedEntity);
-      return ResultData.ok(this.toHistoryItemDto(updated));
     }
+
     const createdEntity = this.salaryVerifyHistoryRep.create(payload);
     const created = await this.salaryVerifyHistoryRep.save(createdEntity);
     return ResultData.ok(this.toHistoryItemDto(created));
   }
 
-  async listHistory(userId: number, keyword?: string) {
+  async listHistory(userId: number, keyword?: string, historyType?: SalaryHistoryType) {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");
     }
     const queryBuilder = this.salaryVerifyHistoryRep.createQueryBuilder("history");
     queryBuilder.where("history.userId = :userId", { userId });
     queryBuilder.andWhere("history.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL });
+    if (historyType) {
+      queryBuilder.andWhere("history.historyType = :historyType", { historyType });
+    }
     const trimmedKeyword = String(keyword || "").trim();
     if (trimmedKeyword) {
       queryBuilder.andWhere("(history.payPeriod LIKE :keyword OR history.preTaxMonthly LIKE :keyword)", {

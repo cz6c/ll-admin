@@ -22,7 +22,7 @@ export class SalarySlipController {
     return this.salarySlipService.recognize(file, user.userId);
   }
 
-  @ApiOperation({ summary: "工资核对历史-新增或更新" })
+  @ApiOperation({ summary: "月薪核对历史-新增或更新" })
   @ApiBody({ type: UpsertSalaryVerifyHistoryDto })
   @ApiResult(SalaryVerifyHistoryItemDto)
   @Post("history/upsert")
@@ -30,14 +30,14 @@ export class SalarySlipController {
     return this.salarySlipService.upsertHistory(user.userId, dto);
   }
 
-  @ApiOperation({ summary: "工资核对历史-列表" })
+  @ApiOperation({ summary: "月薪核对历史-列表" })
   @ApiResult(SalaryVerifyHistoryItemDto, true)
   @Get("history/list")
   listHistory(@Query() query: ListSalaryVerifyHistoryDto, @GetRequestUser("user") user: RequestUserPayload["user"]) {
-    return this.salarySlipService.listHistory(user.userId, query.keyword);
+    return this.salarySlipService.listHistory(user.userId, query.keyword, query.historyType);
   }
 
-  @ApiOperation({ summary: "工资核对历史-删除" })
+  @ApiOperation({ summary: "月薪核对历史-删除" })
   @ApiResult()
   @Post("history/delete/:id")
   removeHistory(@Param("id") id: string, @GetRequestUser("user") user: RequestUserPayload["user"]) {

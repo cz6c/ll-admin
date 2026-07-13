@@ -20,10 +20,11 @@ defineOptions({ name: 'SalaryVerify' })
 
 definePage({
   style: {
-    navigationBarTitleText: '工资核对',
+    navigationBarTitleText: '月薪核对',
   },
 })
 
+const showDialog = ref(false)
 const popupZIndex = 1100
 const verifyHistoryStore = useSalaryVerifyHistoryStore()
 const { loading, previewPath, lineItems, chooseImage, recognize } = useSalarySlipRecognize()
@@ -183,7 +184,7 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
 }
 
 function goVerifyHistory() {
-  uni.navigateTo({ url: '/pages/salary/verify-history' })
+  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
 }
 </script>
 
@@ -194,51 +195,48 @@ function goVerifyHistory() {
       <view class="mb-24rpx card-rounded bg-white p-32rpx">
         <view class="flex items-center justify-between">
           <view class="text-30rpx text-#333 font-500">
-            工资条识别
-            <wd-tooltip>
-              <wd-icon name="question-circle" size="28rpx" color="#007aff" />
-              <template #content>
-                <view class="w-500rpx p-16rpx text-26rpx text-#666 leading-relaxed">
-                  <view>1.请确保文字清晰，角度正常，系统将自动识别工资条全部金额明细。</view>
-                  <view>2.识别后会自动填入核对表单中，您可修改确认无误后再提交核对。</view>
+            <text class="mr-8rpx">工资条识别</text>
+            <wd-icon name="question-circle" size="28rpx" class="text-primary" @click="showDialog = true" />
+            <wd-popup v-model="showDialog" custom-class="rounded-24rpx" :close-on-click-modal="false">
+              <view class="w-520rpx rounded-24rpx bg-white p-40rpx">
+                <scroll-view scroll-y class="max-h-520rpx">
+                  <view class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">
+                    <view>1.请确保文字清晰，角度正常，系统将自动识别工资条全部金额明细。</view>
+                    <view>2.识别后会自动填入核对表单中，您可修改确认无误后再提交核对。</view>
+                  </view>
+                </scroll-view>
+                <view class="mt-32rpx flex gap-24rpx">
+                  <wd-button type="primary" block :round="true" @click="showDialog = false">
+                    知道了
+                  </wd-button>
                 </view>
-              </template>
-            </wd-tooltip>
+              </view>
+            </wd-popup>
           </view>
           <wd-text type="primary" text="核对历史" @click="goVerifyHistory" />
         </view>
 
-        <view class="mt-32rpx">
+        <view class="mt-32rpx" @click="chooseImage">
           <wd-img v-if="previewPath" width="100%" :src="previewPath" :enable-preview="true" mode="widthFix" radius="8rpx" />
           <view v-else class="flex flex-col items-center justify-center rounded-16rpx bg-#fafafa py-60rpx">
             <wd-icon name="camera" size="64rpx" color="#999" />
             <view class="mt-16rpx text-26rpx text-#999">
-              尚未选择图片
+              点击选择图片
             </view>
           </view>
         </view>
 
-        <view class="mt-32rpx flex gap-24rpx">
-          <wd-button
-            type="primary"
-            variant="plain"
-            block
-            :round="true"
-            @click="chooseImage"
-          >
-            {{ previewPath ? '重新选择' : '拍照 / 选图' }}
-          </wd-button>
-          <wd-button
-            v-if="previewPath"
-            type="primary"
-            block
-            :round="true"
-            :loading="loading"
-            @click="recognize"
-          >
-            开始识别
-          </wd-button>
-        </view>
+        <wd-button
+          v-if="previewPath"
+          type="primary"
+          block
+          :round="true"
+          custom-class="mt-32rpx"
+          :loading="loading"
+          @click="recognize"
+        >
+          开始识别
+        </wd-button>
 
         <view v-if="showVerifyForm && unmappedItems.length" class="pt-32rpx">
           <view
@@ -394,7 +392,7 @@ function goVerifyHistory() {
               :class="{ 'border-t border-#f0e6c8 pt-24rpx': !verifyResult.taxMatch }"
             >
               <view class="mb-16rpx text-26rpx text-#666">
-                税后工资核对
+                税后月薪核对
               </view>
               <view class="verify-detail__row">
                 <text class="verify-detail__label">
@@ -538,6 +536,6 @@ function goVerifyHistory() {
 }
 
 .unmapped-row + .unmapped-row {
-  border-top: 2rpx solid #f0f0f0;
+  border-top: 2rpx solid #edf0f6;
 }
 </style>

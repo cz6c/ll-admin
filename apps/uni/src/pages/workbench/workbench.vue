@@ -30,7 +30,7 @@ const tools: ToolEntry[] = [
   {
     title: '工资条识别与核对',
     desc: '拍照识别工资条并核对关键字段',
-    icon: 'read',
+    icon: 'find-replace',
     url: '/pages/salary/verify',
   },
   {

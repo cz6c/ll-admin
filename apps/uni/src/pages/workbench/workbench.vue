@@ -22,7 +22,7 @@ interface ToolEntry {
 
 const tools: ToolEntry[] = [
   {
-    title: '税后工资计算',
+    title: '年薪测算',
     desc: '薪资测算、明细与历史记录',
     icon: 'company',
     url: '/pages/salary/calc',

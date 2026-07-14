@@ -16,7 +16,12 @@ export enum CacheEnum {
   /**
    * 分布式锁 redis key
    */
-  DISTRIBUTED_LOCK_KEY = "distributed_locks:"
+  DISTRIBUTED_LOCK_KEY = "distributed_locks:",
+
+  /**
+   * 工资条识别每日成功次数 redis key（后缀 userId:YYYY-MM-DD）
+   */
+  SALARY_RECOGNIZE_DAILY_KEY = "salary_recognize_daily:"
 
   // /**
   //  * 登录账户密码错误次数 redis key

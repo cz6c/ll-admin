@@ -17,7 +17,7 @@ const pages = {
       path: 'pages/salary/calc',
       type: 'home',
       style: {
-        navigationBarTitleText: '税后工资计算',
+        navigationBarTitleText: '年薪测算',
       },
     },
     {

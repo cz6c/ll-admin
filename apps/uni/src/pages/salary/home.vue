@@ -53,7 +53,7 @@ const features: HomeFeature[] = [
   {
     key: 'verify',
     title: '月薪核对',
-    desc: '识别工资条，自动比对应发与扣款',
+    desc: '识别工资条，自动核对应发与扣款',
     cta: '开始核对',
     url: '/pages/salary/verify',
     theme: 'green',

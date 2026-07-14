@@ -49,16 +49,6 @@ const fieldKeys: PayslipFieldKey[] = [
   'postTaxMonthly',
 ]
 
-const filteredCalcList = computed(() => {
-  const q = calcSearchKeyword.value.toLowerCase()
-  if (!q || q === WORKBENCH_KEY)
-    return calcList.value
-  return calcList.value.filter((item) => {
-    const title = calcHistoryTitle(item).toLowerCase()
-    return title.includes(q)
-  })
-})
-
 const verifyResultMap = computed(() => {
   const map = new Map<string, PayslipVerifyResult>()
   for (const item of verifyList.value)
@@ -203,22 +193,24 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
 
         <view v-if="calcList.length > 0" class="px-8rpx pb-16rpx">
           <text class="text-26rpx text-#999">
-            {{ calcSearchKeyword ? `找到 ${filteredCalcList.length} 条` : `共 ${calcList.length} 条` }}
+            {{ calcSearchKeyword ? `找到 ${calcList.length} 条` : `共 ${calcList.length} 条` }}
           </text>
         </view>
 
-        <wd-empty
-          v-if="calcList.length === 0"
-          tip="暂无年薪测算记录，在年薪测算页点击「查看明细」会自动保存一条。"
-        />
+        <template v-if="calcList.length === 0 ">
+          <wd-empty
+            v-if=" !calcSearchKeyword"
+            tip="暂无年薪测算记录，在年薪测算页点击「查看明细」会自动保存一条。"
+          />
 
-        <wd-empty
-          v-else-if="calcSearchKeyword && calcSearchKeyword !== WORKBENCH_KEY && filteredCalcList.length === 0"
-          tip="未找到匹配的历史记录"
-        />
+          <wd-empty
+            v-else
+            tip="未找到匹配的历史记录"
+          />
+        </template>
 
         <template v-else>
-          <view v-for="item in filteredCalcList" :key="item.id" class="mb-20rpx">
+          <view v-for="item in calcList" :key="item.id" class="mb-20rpx">
             <wd-swipe-action>
               <view class="card-rounded p-28rpx" @click="openCalcDetail(item)">
                 <view class="flex items-start justify-between gap-16rpx">
@@ -274,15 +266,17 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
           </text>
         </view>
 
-        <wd-empty
-          v-if="verifyList.length === 0"
-          tip="暂无月薪核对记录，在月薪核对页点击「开始核对」会自动保存。"
-        />
+        <template v-if="verifyList.length === 0">
+          <wd-empty
+            v-if="!verifySearchKeyword"
+            tip="暂无月薪核对记录，在月薪核对页点击「开始核对」会自动保存。"
+          />
 
-        <wd-empty
-          v-else-if="verifySearchKeyword && verifyList.length === 0"
-          tip="未找到匹配的历史记录"
-        />
+          <wd-empty
+            v-else
+            tip="未找到匹配的历史记录"
+          />
+        </template>
 
         <template v-else>
           <view v-for="item in verifyList" :key="item.id" class="mb-20rpx">

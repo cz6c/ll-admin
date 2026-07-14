@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { QueryFailedError, Repository } from "typeorm";
 import { DelFlagEnum } from "@/common/enum/dict";
+import { CacheEnum } from "@/common/enum/loca";
 import { UserEntity } from "@/modules/system/user/entities/user.entity";
+import { RedisService } from "@/modules/redis/redis.service";
 import { ResultData } from "@/common/utils/result";
 import { ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
@@ -29,6 +31,9 @@ const MIME_BY_FORMAT: Record<string, string> = {
   webp: "image/webp"
 };
 
+const DAILY_RECOGNIZE_LIMIT = 10;
+const SHANGHAI_TIMEZONE = "Asia/Shanghai";
+
 /** 工资条识别：预处理 → OCR → 列对齐 → 规则直出 line_items */
 @Injectable()
 export class SalarySlipService {
@@ -37,11 +42,67 @@ export class SalarySlipService {
   constructor(
     private readonly imagePreprocessService: ImagePreprocessService,
     private readonly ocrService: OcrService,
+    private readonly redisService: RedisService,
     @InjectRepository(UserEntity)
     private readonly userRep: Repository<UserEntity>,
     @InjectRepository(SalaryVerifyHistoryEntity)
     private readonly salaryVerifyHistoryRep: Repository<SalaryVerifyHistoryEntity>
   ) {}
+
+  private formatDateAsiaShanghai(date = new Date()): string {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: SHANGHAI_TIMEZONE }).format(date);
+  }
+
+  private secondsUntilEndOfDayAsiaShanghai(): number {
+    const dateStr = this.formatDateAsiaShanghai();
+    const endMs = new Date(`${dateStr}T23:59:59+08:00`).getTime() + 1000;
+    return Math.max(60, Math.ceil((endMs - Date.now()) / 1000));
+  }
+
+  private buildDailyRecognizeKey(userId: number): string {
+    return `${CacheEnum.SALARY_RECOGNIZE_DAILY_KEY}${userId}:${this.formatDateAsiaShanghai()}`;
+  }
+
+  private isDuplicateEntryError(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+    const driverError = error.driverError as { code?: string } | undefined;
+    return driverError?.code === "ER_DUP_ENTRY";
+  }
+
+  private async getDailyRecognizeCount(userId: number): Promise<number> {
+    const raw = await this.redisService.getClient().get(this.buildDailyRecognizeKey(userId));
+    return Number(raw || 0);
+  }
+
+  private async incrementDailyRecognizeCount(userId: number): Promise<void> {
+    const redisKey = this.buildDailyRecognizeKey(userId);
+    const count = await this.redisService.getClient().incr(redisKey);
+    if (count === 1) {
+      await this.redisService.getClient().expire(redisKey, this.secondsUntilEndOfDayAsiaShanghai());
+    }
+  }
+
+  private async findVerifyHistory(userId: number, payPeriod: string) {
+    return this.salaryVerifyHistoryRep.findOne({
+      where: {
+        userId,
+        historyType: "verify",
+        payPeriod
+      }
+    });
+  }
+
+  private async saveVerifyHistoryUpdate(existed: SalaryVerifyHistoryEntity, payload: Partial<SalaryVerifyHistoryEntity>) {
+    const updatedEntity = this.salaryVerifyHistoryRep.create({
+      ...existed,
+      ...payload,
+      delFlag: DelFlagEnum.NORMAL
+    });
+    const updated = await this.salaryVerifyHistoryRep.save(updatedEntity);
+    return ResultData.ok(this.toHistoryItemDto(updated));
+  }
 
   private toHistoryItemDto(row: SalaryVerifyHistoryEntity): SalaryVerifyHistoryItemDto {
     return {
@@ -110,6 +171,12 @@ export class SalarySlipService {
     if (!userId) {
       emit("fail", "missing_user_id");
       return ResultData.fail(400, "缺少用户信息");
+    }
+
+    const dailyCount = await this.getDailyRecognizeCount(userId);
+    if (dailyCount >= DAILY_RECOGNIZE_LIMIT) {
+      emit("fail", "daily_limit_exceeded");
+      return ResultData.fail(429, "今日识别次数已达上限（10次），请明天再试");
     }
 
     try {
@@ -200,6 +267,7 @@ export class SalarySlipService {
           recognizeCount: (user.recognizeCount || 0) + 1
         }
       );
+      await this.incrementDailyRecognizeCount(userId);
 
       emit("success");
 
@@ -238,18 +306,26 @@ export class SalarySlipService {
     };
 
     if (historyType === "verify") {
-      const existed = await this.salaryVerifyHistoryRep.findOne({
-        where: {
-          userId,
-          historyType,
-          payPeriod: dto.payPeriod,
-          delFlag: DelFlagEnum.NORMAL
-        }
-      });
+      const existed = await this.findVerifyHistory(userId, dto.payPeriod);
       if (existed) {
-        const updatedEntity = this.salaryVerifyHistoryRep.create({ ...existed, ...payload });
-        const updated = await this.salaryVerifyHistoryRep.save(updatedEntity);
-        return ResultData.ok(this.toHistoryItemDto(updated));
+        return this.saveVerifyHistoryUpdate(existed, payload);
+      }
+
+      try {
+        const createdEntity = this.salaryVerifyHistoryRep.create({
+          ...payload,
+          delFlag: DelFlagEnum.NORMAL
+        });
+        const created = await this.salaryVerifyHistoryRep.save(createdEntity);
+        return ResultData.ok(this.toHistoryItemDto(created));
+      } catch (error: unknown) {
+        if (this.isDuplicateEntryError(error)) {
+          const retryExisted = await this.findVerifyHistory(userId, dto.payPeriod);
+          if (retryExisted) {
+            return this.saveVerifyHistoryUpdate(retryExisted, payload);
+          }
+        }
+        throw error;
       }
     }
 

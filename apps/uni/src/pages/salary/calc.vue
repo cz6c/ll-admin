@@ -13,7 +13,7 @@ defineOptions({ name: 'SalaryCalc' })
 
 definePage({
   style: {
-    navigationBarTitleText: '税后工资计算',
+    navigationBarTitleText: '年薪测算',
   },
 })
 
@@ -96,10 +96,6 @@ async function goDetail() {
 
 function goHistory() {
   uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
-}
-
-function goVerify() {
-  uni.navigateTo({ url: '/pages/salary/verify' })
 }
 </script>
 
@@ -209,20 +205,10 @@ function goVerify() {
         size="large"
         variant="plain"
         custom-class="mt-24rpx"
-        @click="goVerify"
-      >
-        月薪核对
-      </wd-button>
-      <!-- <wd-button
-        :block="true"
-        :round="true"
-        size="large"
-        variant="plain"
-        custom-class="mt-24rpx"
         @click="goHistory"
       >
         历史记录
-      </wd-button> -->
+      </wd-button>
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考
       </view>

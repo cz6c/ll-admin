@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
-    "@llcz/common": "^1.0.5",
+    "@llcz/common": "^1.0.6",
     "@vueuse/core": "^13.5.0",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-vue": "^5.1.12",

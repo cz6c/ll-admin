@@ -45,55 +45,6 @@ $ pnpm run start:dev
 $ pnpm run start:prod
 ```
 
-## Migration 使用流程
-
-本项目使用 TypeORM migration 管理表结构，`synchronize` 需保持为 `false`，通过 migration 变更数据库。
-
-### 1) 新建 migration 文件（手写 SQL）
-
-```bash
-$ pnpm run migration:create
-```
-
-执行后会在 `src/migrations/` 下生成新文件，按需补充 `up/down`。
-
-### 2) 根据实体变更自动生成 migration（推荐）
-
-```bash
-$ pnpm run migration:generate
-```
-
-说明：
-- 先改好 `src/modules/**/entities/*.entity.ts`
-- 再执行 `migration:generate` 生成差异 SQL
-- 生成后务必检查一次 SQL 是否符合预期
-
-### 3) 执行 migration（开发环境）
-
-```bash
-$ pnpm run migration:run
-```
-
-### 4) 回滚最近一次 migration（开发环境）
-
-```bash
-$ pnpm run migration:revert
-```
-
-### 5) 生产环境执行/回滚
-
-```bash
-$ pnpm run migration:run:prod
-$ pnpm run migration:revert:prod
-```
-
-### 6) 常见建议
-
-- 一个业务需求尽量对应一个 migration，避免混入无关变更
-- 不要手改已在生产执行过的 migration，新增下一条 migration 修复
-- 提交前建议本地验证一遍：`migration:run -> migration:revert -> migration:run`
-- migration 文件命名保持语义化，便于追踪（如 `salary-verify-history`）
-
 ## Test
 
 ```bash

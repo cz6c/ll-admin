@@ -47,7 +47,7 @@ jobs:
           script: |
             cd /www/wwwroot/ll_api/server
             cp /www/wwwroot/ll_api/prod.yml /www/wwwroot/ll_api/server/src/config/prod.yml
-            pnpm install --config.minimum-release-age-exclude[]=@llcz/common
+            pnpm install
             pnpm run build
             if pm2 list | grep -q "ll_api"; then
               pm2 delete ll_api

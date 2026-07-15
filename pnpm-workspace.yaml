@@ -1,3 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# 自有包发版后需立刻可装，不受 minimumReleaseAge 等待窗口限制
+minimumReleaseAgeExclude:
+  - "@llcz/common"

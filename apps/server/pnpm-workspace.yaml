@@ -1,0 +1,11 @@
+# 部署目录仅含 apps/server 时由此文件提供 pnpm 策略（随 SOURCE 同步）
+minimumReleaseAgeExclude:
+  - "@llcz/common"
+
+# 未审查的依赖脚本在 strictDepBuilds 下会让 install 失败；此处显式登记
+# false = 已审查但不执行脚本；true = 允许执行（如 sharp 原生二进制）
+allowBuilds:
+  sharp: true
+  "@scarf/scarf": false
+  msgpackr-extract: false
+  unrs-resolver: false

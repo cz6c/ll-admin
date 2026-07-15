@@ -16,8 +16,7 @@
     "postpublish": "node ./scripts/sync-consumers.mjs",
     "sync-consumers": "node ./scripts/sync-consumers.mjs",
     "format": "prettier --write \"src/**/*.ts\"",
-    "lint": "eslint \"src/**/*.ts\" --fix",
-    "preinstall": "npx only-allow pnpm"
+    "lint": "eslint \"src/**/*.ts\" --fix"
   },
   "type": "module",
   "main": "./dist/cjs/index.cjs",

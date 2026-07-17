@@ -16,68 +16,57 @@ export class LocalTask {
     private readonly nodemailerService: NodemailerService
   ) {}
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
-  async test() {
-    const key = "task:test",
-      ttl = 5000;
-    let acquired = false;
+  // @Cron(CronExpression.EVERY_30_SECONDS)
+  // async test() {
+  //   const key = "task:test",
+  //     ttl = 5000;
+  //   let acquired = false;
 
-    try {
-      // 尝试获取锁
-      acquired = await this.lockService.acquireLock(key, ttl);
-      if (!acquired) return;
+  //   try {
+  //     // 尝试获取锁
+  //     acquired = await this.lockService.acquireLock(key, ttl);
+  //     if (!acquired) return;
 
-      await this.lockService.getLockKeys();
-    } catch (error) {
-      this.logger.error("任务执行失败:", error);
-    } finally {
-      if (acquired) await this.lockService.releaseLock(key); // 执行后释放锁
-    }
-  }
-
-  // @Cron(new Date('2025-04-25 16:48:30'))
-  // async test1() {
-  //   this.tasksService.createTask({
-  //     taskName: 'test_loop',
-  //     payload: 'test_loop',
-  //     taskType: TaskTypeEnum.LOOP,
-  //     executeAt: new Date('2025-04-25 16:48:50'),
-  //     cronExpression: '*/30 * * * * *',
-  //   });
+  //     await this.lockService.getLockKeys();
+  //   } catch (error) {
+  //     this.logger.error("任务执行失败:", error);
+  //   } finally {
+  //     if (acquired) await this.lockService.releaseLock(key); // 执行后释放锁
+  //   }
   // }
 
   /**
    * 工作日18点推送最新金价（带分布式锁控制）
    */
-  @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
-  async getGoldInfo() {
-    const key = "task:gold_price",
-      ttl = 5 * 60 * 1000;
-    let acquired = false;
+  // @Cron(CronExpression.MONDAY_TO_FRIDAY_AT_6PM)
+  // async getGoldInfo() {
+  //   const key = "task:gold_price",
+  //     ttl = 5 * 60 * 1000;
+  //   let acquired = false;
 
-    try {
-      // 尝试获取锁
-      acquired = await this.lockService.acquireLock(key, ttl);
-      if (!acquired) return;
+  //   try {
+  //     // 尝试获取锁
+  //     acquired = await this.lockService.acquireLock(key, ttl);
+  //     if (!acquired) return;
 
-      const res = await this.axiosService.getGoldInfo();
+  //     const res = await this.axiosService.getGoldInfo();
 
-      const html = this.buildEmailHtml(res);
-      const options = {
-        to: ["1272654068@qq.com", "769763659@qq.com"],
-        subject: "最新金价",
-        text: "pushContent",
-        html,
-        pushTask: { remark: "工作日18点 推送最新金价" }
-      };
+  //     const html = this.buildEmailHtml(res);
+  //     const options = {
+  //       to: ["1272654068@qq.com", "769763659@qq.com"],
+  //       subject: "最新金价",
+  //       text: "pushContent",
+  //       html,
+  //       pushTask: { remark: "工作日18点 推送最新金价" }
+  //     };
 
-      await this.nodemailerService.sendMail(options);
-    } catch (error) {
-      this.logger.error("任务执行失败:", error);
-    } finally {
-      if (acquired) await this.lockService.releaseLock(key);
-    }
-  }
+  //     await this.nodemailerService.sendMail(options);
+  //   } catch (error) {
+  //     this.logger.error("任务执行失败:", error);
+  //   } finally {
+  //     if (acquired) await this.lockService.releaseLock(key);
+  //   }
+  // }
 
   /**
    * 构建邮件HTML内容

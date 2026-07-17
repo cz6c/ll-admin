@@ -32,7 +32,7 @@ export interface UpsertSalaryVerifyHistoryPayload {
   savedAt?: number
 }
 
-const HISTORY_BASE = '/common/salary-slip/history'
+const HISTORY_BASE = '/salary-slip/history'
 
 export function upsertSalaryVerifyHistory(data: UpsertSalaryVerifyHistoryPayload) {
   return http.post<SalaryVerifyHistoryItem>(`${HISTORY_BASE}/upsert`, data)

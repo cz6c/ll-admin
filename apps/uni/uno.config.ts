@@ -111,6 +111,10 @@ export default defineConfig({
     colors: {
       /** 主题色，用法如: text-primary */
       primary: 'var(--wot-primary-6,#1688ff)',
+      /** 语义色，与 wot-ui success/warning/danger 对齐 */
+      success: 'var(--wot-success-main)',
+      warning: 'var(--wot-warning-main)',
+      danger: 'var(--wot-danger-main)',
       page: '#f5f5f5',
     },
     fontSize: {

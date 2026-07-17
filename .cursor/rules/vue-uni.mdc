@@ -63,6 +63,18 @@ alwaysApply: false
 
 - 优先 **UnoCSS** 原子类；需自定义时用 `lang="scss"` + `scoped`，全局样式 `src/style/`。
 - 750 设计稿：**N px → 2N rpx**（如 24px → `px-48rpx`），勿写 `px-24px`。
+- **语义色禁止硬编码**：成功/警告/危险/主色须用 wot-ui CSS 变量（或 Uno 别名），勿写 Ant Design / 随意 hex。
+
+| 用途 | CSS 变量 | Uno 原子类 |
+|------|----------|------------|
+| 主色 | `var(--wot-primary-6)` | `text-primary` / `bg-primary` |
+| 成功文字 | `var(--wot-success-main)` | `text-success` |
+| 成功浅底 / 浅边 | `--wot-success-surface` / `-particular` | — |
+| 警告文字 | `var(--wot-warning-main)` | `text-warning` |
+| 警告浅底 / 浅边 | `--wot-warning-surface` / `-particular` | — |
+| 危险（删除等） | `var(--wot-danger-main)` | `text-danger` / `bg-danger` |
+
+主色阶 `--wot-primary-1..10` 在 `src/style/index.scss` 覆盖；勿使用已废弃的 `--wot-color-theme`。组件 `type="success|warning|danger|primary"` 已走主题，业务自定义样式也应对齐上表。
 
 ## wot-ui（必须遵守）
 

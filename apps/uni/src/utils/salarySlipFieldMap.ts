@@ -107,7 +107,7 @@ export const PAYSLIP_FIELD_LABELS: Record<PayslipFieldKey, string> = {
   preTaxMonthly: '税前工资',
   ssPersonalAmount: '个人社保',
   hfPersonalAmount: '个人公积金',
-  specialDeductionMonthly: '个税专项扣除',
+  specialDeductionMonthly: '专项附加扣除',
   personalIncomeTax: '个人所得税',
   postTaxMonthly: '税后工资',
 }

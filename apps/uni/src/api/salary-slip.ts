@@ -10,7 +10,7 @@ interface ApiResponse<T> {
 /** 须大于服务端 LLM timeout（180s），留网络余量 */
 const RECOGNIZE_TIMEOUT_MS = 200_000
 
-const RECOGNIZE_PATH = '/common/salary-slip/recognize'
+const RECOGNIZE_PATH = '/salary-slip/recognize'
 
 function parseUploadResponse<T>(raw: string): ApiResponse<T> {
   return JSON.parse(raw) as ApiResponse<T>

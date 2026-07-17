@@ -117,6 +117,10 @@ function openCalcDetail(item: SalaryHistoryItem) {
   uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(item.id)}` })
 }
 
+function openVerifyDetail(item: PayslipVerifyRecord) {
+  uni.navigateTo({ url: `/pages/salary/verify-detail?id=${encodeURIComponent(item.id)}` })
+}
+
 function fmt(n: number) {
   return (Math.round(n * 100) / 100).toFixed(2)
 }
@@ -175,8 +179,8 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
 <template>
   <view class="page-shell pb-safe" @click="closeOutside">
     <wd-tabs v-model="activeTab" animated custom-class="history-tabs">
-      <wd-tab name="verify" title="月薪核对" />
       <wd-tab name="calc" title="年薪测算" />
+      <wd-tab name="verify" title="月薪核对" />
     </wd-tabs>
 
     <view class="p-24rpx">
@@ -186,7 +190,7 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
           placeholder="搜索历史记录"
           hide-cancel
           variant="light"
-          custom-class="search mb-16rpx mt-16rpx"
+          custom-class="search mb-16rpx"
           @search="onCalcSearch"
           @clear="onCalcSearchClear"
         />
@@ -197,17 +201,10 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
           </text>
         </view>
 
-        <template v-if="calcList.length === 0 ">
-          <wd-empty
-            v-if=" !calcSearchKeyword"
-            tip="暂无年薪测算记录，在年薪测算页点击「查看明细」会自动保存一条。"
-          />
-
-          <wd-empty
-            v-else
-            tip="未找到匹配的历史记录"
-          />
-        </template>
+        <wd-empty
+          v-if="calcList.length === 0 "
+          :tip="!calcSearchKeyword ? '暂无年薪测算记录' : '未找到匹配的历史记录'"
+        />
 
         <template v-else>
           <view v-for="item in calcList" :key="item.id" class="mb-20rpx">
@@ -252,10 +249,10 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
       <template v-else>
         <wd-search
           v-model="verifySearchInput"
-          placeholder="搜索年月或税前金额"
+          placeholder="搜索历史记录"
           hide-cancel
           variant="light"
-          custom-class="search mb-16rpx mt-16rpx"
+          custom-class="search mb-16rpx"
           @search="onVerifySearch"
           @clear="onVerifySearchClear"
         />
@@ -266,22 +263,15 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
           </text>
         </view>
 
-        <template v-if="verifyList.length === 0">
-          <wd-empty
-            v-if="!verifySearchKeyword"
-            tip="暂无月薪核对记录，在月薪核对页点击「开始核对」会自动保存。"
-          />
-
-          <wd-empty
-            v-else
-            tip="未找到匹配的历史记录"
-          />
-        </template>
+        <wd-empty
+          v-if="verifyList.length === 0"
+          :tip="!verifySearchKeyword ? '暂无月薪核对记录' : '未找到匹配的历史记录'"
+        />
 
         <template v-else>
           <view v-for="item in verifyList" :key="item.id" class="mb-20rpx">
             <wd-swipe-action>
-              <view class="card-rounded p-28rpx">
+              <view class="card-rounded p-28rpx" @click="openVerifyDetail(item)">
                 <view class="flex items-center justify-between gap-16rpx">
                   <view class="text-30rpx text-#333 font-medium">
                     {{ formatPayPeriodLabel(item.payPeriod) }}
@@ -351,7 +341,7 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
 }
 
 .history-swipe-del {
-  background: #e2231a;
+  background: var(--wot-danger-main);
 }
 
 .history-field-row {
@@ -373,13 +363,13 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
 .history-abnormal {
   border-radius: 12rpx;
   padding: 16rpx 20rpx;
-  background: #fffbe6;
-  border: 2rpx solid #ffe58f;
+  background: var(--wot-warning-surface);
+  border: 2rpx solid var(--wot-warning-particular);
 }
 
 .history-abnormal__text {
   font-size: 24rpx;
-  color: #d48806;
+  color: var(--wot-warning-main);
   line-height: 1.55;
 }
 </style>

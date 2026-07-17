@@ -6,9 +6,9 @@ import { SalarySlipResultDto, SalarySlipUploadDto } from "./dto/salary-slip-resu
 import { ListSalaryVerifyHistoryDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipService } from "./salary-slip.service";
 
-@ApiTags("common")
+@ApiTags("salary-slip")
 @ApiBearerAuth()
-@Controller("common/salary-slip")
+@Controller("salary-slip")
 export class SalarySlipController {
   constructor(private readonly salarySlipService: SalarySlipService) {}
 

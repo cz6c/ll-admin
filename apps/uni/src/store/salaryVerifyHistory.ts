@@ -73,6 +73,10 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
       this.items = this.items.filter(i => i.id !== id)
     },
 
+    findById(id: string): PayslipVerifyRecord | undefined {
+      return this.items.find(i => i.id === id)
+    },
+
     findByPayPeriod(payPeriod: string): PayslipVerifyRecord | undefined {
       return this.items.find(i => i.payPeriod === payPeriod)
     },

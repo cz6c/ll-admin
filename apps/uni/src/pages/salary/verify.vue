@@ -88,9 +88,9 @@ const calcModeHint = computed(() => {
   }
   if (r.missingPriorMonths?.length) {
     const months = r.missingPriorMonths.map(m => `${m}月`).join('、')
-    return `前 ${parsePayPeriod(payPeriod.value).month - 1} 月历史不完整，按理想月薪估算；补全 ${months} 后可更精准。`
+    return `缺少 ${months} 核对记录，暂按本月工资推算前序月份，结果仅供参考；补全后更准确`
   }
-  return `按理想月薪估算（${payPeriodLabel.value}）。`
+  return `暂无完整历史，按本月工资估算累计个税（${payPeriodLabel.value}），结果仅供参考`
 })
 
 watch(lineItems, (items) => {
@@ -379,7 +379,7 @@ function goVerifyHistory() {
                   差异
                 </text>
                 <text class="verify-detail__val tabular-nums">
-                  {{ verifyResult.taxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.taxDiff) }} 元
+                  {{ verifyResult.taxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.taxDiff) }}
                 </text>
               </view>
               <view v-if="taxDiffHint(verifyResult.taxDiff)" class="verify-detail__hint mt-16rpx">
@@ -415,7 +415,7 @@ function goVerifyHistory() {
                   差异
                 </text>
                 <text class="verify-detail__val tabular-nums">
-                  {{ verifyResult.postTaxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.postTaxDiff) }} 元
+                  {{ verifyResult.postTaxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.postTaxDiff) }}
                 </text>
               </view>
               <view class="verify-detail__hint mt-16rpx">
@@ -476,13 +476,13 @@ function goVerifyHistory() {
 }
 
 .verify-result--ok {
-  background: #f0faf4;
-  border: 2rpx solid #b7eb8f;
+  background: var(--wot-success-surface);
+  border: 2rpx solid var(--wot-success-particular);
 }
 
 .verify-result--warn {
-  background: #fffbe6;
-  border: 2rpx solid #ffe58f;
+  background: var(--wot-warning-surface);
+  border: 2rpx solid var(--wot-warning-particular);
 }
 
 .verify-result__title {
@@ -531,7 +531,7 @@ function goVerifyHistory() {
 .verify-detail__hint {
   font-size: 28rpx;
   font-weight: 500;
-  color: #d48806;
+  color: var(--wot-warning-main);
   line-height: 1.5;
 }
 

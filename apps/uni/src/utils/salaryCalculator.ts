@@ -11,17 +11,17 @@ export type YearEndTaxMode = 'none' | 'separate' | 'merge'
 
 /** 用户输入的薪资与参保参数，用于一次完整测算 */
 export interface SalaryCalcInput {
-  /** 每月税前固定工资（元），本模型按 12 个月相同月薪计算 */
+  /** 每月税前固定工资，本模型按 12 个月相同月薪计算 */
   preTaxMonthly: number
   /** 年终奖计税方式：`separate` 单独计税，`merge` 并入当年综合所得 */
   yearEndTaxMode: YearEndTaxMode
-  /** 年终奖税前金额（元），为 0 表示无年终奖 */
+  /** 年终奖税前金额，为 0 表示无年终奖 */
   yearEndBonus: number
-  /** 五险个人部分月缴合计（元） */
+  /** 五险个人部分月缴合计 */
   ssPersonalAmount: number
-  /** 公积金个人月缴额（元） */
+  /** 公积金个人月缴额 */
   hfPersonalAmount: number
-  /** 每月专项附加扣除合计（元），将多项简化为月度固定额参与累计预扣 */
+  /** 每月专项附加扣除合计，将多项简化为月度固定额参与累计预扣 */
   specialDeductionMonthly: number
 }
 
@@ -29,73 +29,88 @@ export interface SalaryCalcInput {
 export interface MonthlySalaryRow {
   /** 公历月份 1–12 */
   month: number
-  /** 该月税前工资（元），与输入月薪一致 */
+  /** 该月税前工资，与输入月薪一致 */
   preTax: number
   /**
    * 五险一金个人缴纳（本月，元）。累计预扣时与专项附加扣除一并从累计税前收入中减除后，再按税率表算个税；
    * 本模型各月相同，数值上等于 `SalaryCalcResult.fiveInsFundPersonalMonthly`。
    */
   fiveInsFundPersonal: number
-  /** 该月预扣个人所得税（元），即「本期应预扣预缴税额」 */
+  /** 该月预扣个人所得税，即「本期应预扣预缴税额」 */
   tax: number
-  /** 该月税后实发（元）：税前 − 五险一金个人 − 个税 */
+  /** 该月税后实发：税前 − 五险一金个人 − 个税 */
   postTax: number
 }
 
 /** 一次测算的完整输出：月度明细、年度汇总与年终奖 */
 export interface SalaryCalcResult {
-  /** 五险一金个人缴纳月度合计（元），与累计预扣专项扣除中的「三险一金」部分一致 */
+  /** 五险一金个人缴纳月度合计，与累计预扣专项扣除中的「三险一金」部分一致 */
   fiveInsFundPersonalMonthly: number
-  /** 当年税后现金流合计（元）：12 个月税后工资 + 年终奖税后（单独计税时年终奖一次性计入） */
+  /** 当年税后现金流合计：12 个月税后工资 + 年终奖税后（单独计税时年终奖一次性计入） */
   annualTakeHome: number
-  /** 当年个人所得税合计（元）：12 个月工资预扣个税 + 年终奖个税 */
+  /** 当年个人所得税合计：12 个月工资预扣个税 + 年终奖个税 */
   annualTaxTotal: number
   /** 12 个月的税前、个税、税后明细行；各月个税之和即工资部分预扣总额 */
   monthlyRows: MonthlySalaryRow[]
 
-  /** 五险个人部分每月合计（元），不含公积金 */
+  /** 五险个人部分每月合计，不含公积金 */
   ssPersonalMonthly: number
-  /** 公积金个人每月缴存额（元） */
+  /** 公积金个人每月缴存额 */
   hfPersonalMonthly: number
 
-  /** 年终奖应缴个人所得税（元），无年终奖时为 0 */
+  /** 年终奖应缴个人所得税，无年终奖时为 0 */
   yearEndBonusTax: number
-  /** 年终奖税后到手（元）：税前年终奖 − 年终奖个税 */
+  /** 年终奖税后到手：税前年终奖 − 年终奖个税 */
   yearEndBonusNet: number
+}
+
+/** 累计预扣税率档：上限、预扣率、速算扣除数 */
+const SALARY_TAX_TIERS = [
+  { max: 36000, rate: 0.03, quick: 0 },
+  { max: 144000, rate: 0.1, quick: 2520 },
+  { max: 300000, rate: 0.2, quick: 16920 },
+  { max: 420000, rate: 0.25, quick: 31920 },
+  { max: 660000, rate: 0.3, quick: 52920 },
+  { max: 960000, rate: 0.35, quick: 85920 },
+  { max: Infinity, rate: 0.45, quick: 181920 },
+] as const
+
+/**
+ * 按累计预扣预缴应纳税所得额查预扣率档位。
+ * 累计应预扣预缴税额 = 应纳税所得额 × 预扣率 − 速算扣除数
+ */
+function resolveSalaryTaxTier(cumulativeWithholdingTaxableIncome: number): {
+  tax: number
+  rate: number
+  quick: number
+} {
+  if (cumulativeWithholdingTaxableIncome <= 0)
+    return { tax: 0, rate: 0, quick: 0 }
+  for (const t of SALARY_TAX_TIERS) {
+    if (cumulativeWithholdingTaxableIncome <= t.max) {
+      return {
+        tax: cumulativeWithholdingTaxableIncome * t.rate - t.quick,
+        rate: t.rate,
+        quick: t.quick,
+      }
+    }
+  }
+  return { tax: 0, rate: 0, quick: 0 }
 }
 
 /**
  * 工资薪金累计预扣：按「累计预扣预缴应纳税所得额」适用综合所得七级超额累进，
  * 计算截至本月末的 **累计应预扣预缴税额**。
  *
- * 即：累计应预扣预缴税额 = 累计预扣预缴应纳税所得额 × 预扣率 − 速算扣除数
- * （预扣率、速算扣除数按累计额落入的级距确定，与居民个人工资薪金预扣预缴税率表一致。）
- *
- * @param cumulativeWithholdingTaxableIncome 累计预扣预缴应纳税所得额（元）
+ * @param cumulativeWithholdingTaxableIncome 累计预扣预缴应纳税所得额
  */
 function cumulativeSalaryTax(cumulativeWithholdingTaxableIncome: number): number {
-  if (cumulativeWithholdingTaxableIncome <= 0)
-    return 0
-  /** 各档累计应纳税所得额上限（元）及预扣率、速算扣除数 */
-  const tiers = [
-    { max: 36000, rate: 0.03, quick: 0 },
-    { max: 144000, rate: 0.1, quick: 2520 },
-    { max: 300000, rate: 0.2, quick: 16920 },
-    { max: 420000, rate: 0.25, quick: 31920 },
-    { max: 660000, rate: 0.3, quick: 52920 },
-    { max: 960000, rate: 0.35, quick: 85920 },
-    { max: Infinity, rate: 0.45, quick: 181920 },
-  ]
-  for (const t of tiers) {
-    if (cumulativeWithholdingTaxableIncome <= t.max)
-      return cumulativeWithholdingTaxableIncome * t.rate - t.quick
-  }
-  return 0
+  return resolveSalaryTaxTier(cumulativeWithholdingTaxableIncome).tax
 }
 
 /**
  * 年终奖「单独计税」：将奖金除以 12 的数额对照月度换算表得税率与速算扣除，再按一次性奖金公式计税。
- * @param bonus 年终奖税前金额（元）
+ * @param bonus 年终奖税前金额
  */
 function yearEndBonusSeparateTax(bonus: number): number {
   if (bonus <= 0)
@@ -233,23 +248,72 @@ export interface PayslipMonthSnapshot {
   specialDeductionMonthly: number
 }
 
-/** 按可变月薪逐月累计预扣，返回最后一月的个税与税后 */
-export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
-  tax: number
-  postTax: number
-  fiveInsFundPersonal: number
-} {
-  if (!months.length) {
-    return { tax: 0, postTax: 0, fiveInsFundPersonal: 0 }
-  }
+/** 累计预扣明细（详情页展示用；未建模项固定为 0） */
+export interface WithholdingBreakdown {
+  /** 累计收入 */
+  cumulativeIncome: number
+  /** 累计免税收入，本模型为 0 */
+  cumulativeTaxExemptIncome: number
+  /** 累计减除费用 */
+  cumulativeStandardDeduction: number
+  /** 累计专项扣除：五险一金个人部分累计 */
+  cumulativeSpecialDeduction: number
+  /** 累计专项附加扣除 */
+  cumulativeSpecialAdditionalDeduction: number
+  /** 累计其他扣除，本模型为 0 */
+  cumulativeOtherDeduction: number
+  /** 累计个人养老金，本模型为 0 */
+  cumulativePersonalPension: number
+  /** 累计准予扣除的捐赠额，本模型为 0 */
+  cumulativeDonationDeduction: number
+  /** 累计应纳税所得额 */
+  cumulativeTaxableIncome: number
+  /** 预扣率（小数，如 0.03） */
+  taxRate: number
+  /** 速算扣除数 */
+  quickDeduction: number
+  /** 累计应纳税额 / 累计应预扣预缴税额 */
+  cumulativeTaxPayable: number
+  /** 累计已缴税额：截至上月末累计应预扣 */
+  cumulativeTaxPaid: number
+  /** 累计减免税额，本模型为 0 */
+  cumulativeTaxReduction: number
+  /** 本期申报税额 / 本期应预扣预缴税额 */
+  currentPeriodTax: number
+}
+
+const EMPTY_BREAKDOWN: WithholdingBreakdown = {
+  cumulativeIncome: 0,
+  cumulativeTaxExemptIncome: 0,
+  cumulativeStandardDeduction: 0,
+  cumulativeSpecialDeduction: 0,
+  cumulativeSpecialAdditionalDeduction: 0,
+  cumulativeOtherDeduction: 0,
+  cumulativePersonalPension: 0,
+  cumulativeDonationDeduction: 0,
+  cumulativeTaxableIncome: 0,
+  taxRate: 0,
+  quickDeduction: 0,
+  cumulativeTaxPayable: 0,
+  cumulativeTaxPaid: 0,
+  cumulativeTaxReduction: 0,
+  currentPeriodTax: 0,
+}
+
+/**
+ * 按可变月薪逐月累计预扣，返回最后一月的完整明细。
+ * 公式与 calcSalary / 税法累计预扣一致；免税收入、其他扣除、养老金、捐赠、减免税额按 0。
+ */
+export function calcWithholdingBreakdownForMonths(months: PayslipMonthSnapshot[]): WithholdingBreakdown {
+  if (!months.length)
+    return { ...EMPTY_BREAKDOWN }
+
   let cumulativeTaxAlreadyWithheld = 0
   let cumulativeIncome = 0
   let cumulativeStandardDeduction = 0
   let cumulativeSpecialDeduction = 0
   let cumulativeSpecialAdditionalDeduction = 0
-  let lastTax = 0
-  let lastPostTax = 0
-  let lastFiveIns = 0
+  let last: WithholdingBreakdown = { ...EMPTY_BREAKDOWN }
 
   for (const m of months) {
     const fiveInsFundPersonal = round2(
@@ -260,19 +324,69 @@ export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
     cumulativeSpecialDeduction += fiveInsFundPersonal
     cumulativeSpecialAdditionalDeduction += m.specialDeductionMonthly || 0
 
-    const cumulativeWithholdingTaxableIncome = cumulativeIncome
-      - cumulativeStandardDeduction
-      - cumulativeSpecialDeduction
-      - cumulativeSpecialAdditionalDeduction
+    const cumulativeTaxExemptIncome = 0
+    const cumulativeOtherDeduction = 0
+    const cumulativePersonalPension = 0
+    const cumulativeDonationDeduction = 0
+    const cumulativeTaxReduction = 0
 
-    const cumulativeTaxPayable = cumulativeSalaryTax(cumulativeWithholdingTaxableIncome)
-    lastTax = round2(Math.max(0, cumulativeTaxPayable - cumulativeTaxAlreadyWithheld))
+    const cumulativeTaxableIncome
+      = cumulativeIncome
+        - cumulativeTaxExemptIncome
+        - cumulativeStandardDeduction
+        - cumulativeSpecialDeduction
+        - cumulativeSpecialAdditionalDeduction
+        - cumulativeOtherDeduction
+        - cumulativePersonalPension
+        - cumulativeDonationDeduction
+
+    const tier = resolveSalaryTaxTier(cumulativeTaxableIncome)
+    /** 与 calcSalary / 原 calcCumulativeTaxForMonth 一致：累计税额不先 round，本期税额 round2 */
+    const cumulativeTaxPayable = Math.max(0, tier.tax)
+    const currentPeriodTax = round2(Math.max(0, cumulativeTaxPayable - cumulativeTaxAlreadyWithheld))
+
+    last = {
+      cumulativeIncome: round2(cumulativeIncome),
+      cumulativeTaxExemptIncome,
+      cumulativeStandardDeduction: round2(cumulativeStandardDeduction),
+      cumulativeSpecialDeduction: round2(cumulativeSpecialDeduction),
+      cumulativeSpecialAdditionalDeduction: round2(cumulativeSpecialAdditionalDeduction),
+      cumulativeOtherDeduction,
+      cumulativePersonalPension,
+      cumulativeDonationDeduction,
+      cumulativeTaxableIncome: round2(Math.max(0, cumulativeTaxableIncome)),
+      taxRate: tier.rate,
+      quickDeduction: tier.quick,
+      cumulativeTaxPayable: round2(cumulativeTaxPayable),
+      cumulativeTaxPaid: round2(cumulativeTaxAlreadyWithheld),
+      cumulativeTaxReduction,
+      currentPeriodTax,
+    }
     cumulativeTaxAlreadyWithheld = cumulativeTaxPayable
-    lastPostTax = round2(m.preTaxMonthly - fiveInsFundPersonal - lastTax)
-    lastFiveIns = fiveInsFundPersonal
   }
 
-  return { tax: lastTax, postTax: lastPostTax, fiveInsFundPersonal: lastFiveIns }
+  return last
+}
+
+/** 按可变月薪逐月累计预扣，返回最后一月的个税与税后 */
+export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
+  tax: number
+  postTax: number
+  fiveInsFundPersonal: number
+} {
+  if (!months.length) {
+    return { tax: 0, postTax: 0, fiveInsFundPersonal: 0 }
+  }
+  const breakdown = calcWithholdingBreakdownForMonths(months)
+  const last = months[months.length - 1]!
+  const fiveInsFundPersonal = round2(
+    Math.max(0, last.ssPersonalAmount || 0) + Math.max(0, last.hfPersonalAmount || 0),
+  )
+  return {
+    tax: breakdown.currentPeriodTax,
+    postTax: round2(last.preTaxMonthly - fiveInsFundPersonal - breakdown.currentPeriodTax),
+    fiveInsFundPersonal,
+  }
 }
 
 /** 工资条核对输入 */
@@ -283,9 +397,9 @@ export interface PayslipVerifyInput {
   ssPersonalAmount: number
   hfPersonalAmount: number
   specialDeductionMonthly: number
-  /** 工资条上的个人所得税（元） */
+  /** 工资条上的个人所得税 */
   personalIncomeTax: number
-  /** 工资条上的税后工资（元） */
+  /** 工资条上的税后工资 */
   postTaxMonthly: number
 }
 
@@ -346,6 +460,45 @@ function buildVerifyResult(
   }
 }
 
+/** 核对结果 + 累计预扣明细（详情页） */
+export interface PayslipVerifyBreakdownResult {
+  verify: PayslipVerifyResult
+  breakdown: WithholdingBreakdown
+}
+
+function resolveVerifyMode(
+  input: PayslipVerifyInput,
+  options?: {
+    priorMonths?: PayslipMonthSnapshot[]
+    missingPriorMonths?: number[]
+  },
+): {
+  months: PayslipMonthSnapshot[]
+  calcMode: 'history' | 'ideal'
+  missingPriorMonths?: number[]
+} {
+  const { month } = parsePayPeriod(input.payPeriod)
+  const missing = options?.missingPriorMonths ?? []
+  const prior = options?.priorMonths ?? []
+  const current = toMonthSnapshot(input)
+  const useHistory = missing.length === 0 && prior.length === month - 1
+
+  if (useHistory) {
+    return {
+      months: [...prior, current],
+      calcMode: 'history',
+    }
+  }
+
+  /** 理想模型：当月录入参数按固定月薪复制 1..M 月 */
+  const months = Array.from({ length: month }, () => ({ ...current }))
+  return {
+    months,
+    calcMode: 'ideal',
+    missingPriorMonths: month > 1 && missing.length > 0 ? missing : undefined,
+  }
+}
+
 /** 按累计预扣法核对工资条个税；有完整前序历史时用真实月薪累计，否则理想模型 */
 export function verifyPayslipTax(
   input: PayslipVerifyInput,
@@ -355,30 +508,33 @@ export function verifyPayslipTax(
     missingPriorMonths?: number[]
   },
 ): PayslipVerifyResult {
-  const { month } = parsePayPeriod(input.payPeriod)
-  const missing = options?.missingPriorMonths ?? []
-  const prior = options?.priorMonths ?? []
-  const current = toMonthSnapshot(input)
-  const useHistory = missing.length === 0 && prior.length === month - 1
-
-  if (useHistory) {
-    const { tax } = calcCumulativeTaxForMonth([...prior, current])
-    return buildVerifyResult(input, tax, 'history')
-  }
-
-  const calcResult = calcSalary({
-    preTaxMonthly: input.preTaxMonthly,
-    yearEndTaxMode: 'none',
-    yearEndBonus: 0,
-    ssPersonalAmount: input.ssPersonalAmount,
-    hfPersonalAmount: input.hfPersonalAmount,
-    specialDeductionMonthly: input.specialDeductionMonthly,
-  })
-  const row = calcResult.monthlyRows[month - 1]
+  const resolved = resolveVerifyMode(input, options)
+  const breakdown = calcWithholdingBreakdownForMonths(resolved.months)
   return buildVerifyResult(
     input,
-    row.tax,
-    'ideal',
-    month > 1 && missing.length > 0 ? missing : undefined,
+    breakdown.currentPeriodTax,
+    resolved.calcMode,
+    resolved.missingPriorMonths,
   )
+}
+
+/** 核对结果 + 累计预扣明细；分支规则与 verifyPayslipTax 一致 */
+export function verifyPayslipTaxBreakdown(
+  input: PayslipVerifyInput,
+  options?: {
+    priorMonths?: PayslipMonthSnapshot[]
+    missingPriorMonths?: number[]
+  },
+): PayslipVerifyBreakdownResult {
+  const resolved = resolveVerifyMode(input, options)
+  const breakdown = calcWithholdingBreakdownForMonths(resolved.months)
+  return {
+    verify: buildVerifyResult(
+      input,
+      breakdown.currentPeriodTax,
+      resolved.calcMode,
+      resolved.missingPriorMonths,
+    ),
+    breakdown,
+  }
 }

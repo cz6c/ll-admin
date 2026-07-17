@@ -17,8 +17,8 @@
     "dev:docs": "pnpm --dir ./apps/docs dev",
     "dev:uni": "pnpm --filter @apps/uni dev:h5",
     "dev:uni:mp": "pnpm --filter @apps/uni dev:mp-weixin",
+    "dev:uni:mp:prod": "pnpm --filter @apps/uni dev:mp-weixin --mode production",
     "build:uni:h5": "pnpm --filter @apps/uni build:h5",
-    "build:uni:mp": "pnpm --filter @apps/uni build:mp-weixin",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "preinstall": "npx only-allow pnpm"

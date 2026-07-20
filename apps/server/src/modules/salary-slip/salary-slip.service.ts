@@ -13,6 +13,7 @@ import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout
 import { SalaryHistoryType, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { SalaryVerifyHistoryEntity } from "./entities/salary-verify-history.entity";
+import { SalaryHistoryTypeEnum } from "./enums/salary-history.enum";
 import { lineItemsFromOcr } from "./utils/line-items-from-ocr";
 import {
   buildOcrLogSnapshot,
@@ -84,11 +85,12 @@ export class SalarySlipService {
     }
   }
 
+  /** 含软删行：同月再 upsert 时复活（del_flag 置回 NORMAL），与唯一键语义一致 */
   private async findVerifyHistory(userId: number, payPeriod: string) {
     return this.salaryVerifyHistoryRep.findOne({
       where: {
         userId,
-        historyType: "verify",
+        historyType: SalaryHistoryTypeEnum.VERIFY,
         payPeriod
       }
     });
@@ -107,7 +109,7 @@ export class SalarySlipService {
   private toHistoryItemDto(row: SalaryVerifyHistoryEntity): SalaryVerifyHistoryItemDto {
     return {
       id: row.id,
-      historyType: row.historyType ?? "verify",
+      historyType: row.historyType ?? SalaryHistoryTypeEnum.VERIFY,
       payPeriod: row.payPeriod,
       preTaxMonthly: Number(row.preTaxMonthly),
       ssPersonalAmount: Number(row.ssPersonalAmount),
@@ -117,13 +119,13 @@ export class SalarySlipService {
       yearEndTaxMode: row.yearEndTaxMode,
       yearEndBonus: Number(row.yearEndBonus ?? 0),
       postTaxMonthly: Number(row.postTaxMonthly),
-      savedAt: Number(row.savedAt)
+      updateTime: row.updateTime
     };
   }
 
   private ensureHistoryPayload(dto: UpsertSalaryVerifyHistoryDto) {
-    const historyType: SalaryHistoryType = dto.historyType ?? "verify";
-    if (historyType === "verify") {
+    const historyType: SalaryHistoryType = dto.historyType ?? SalaryHistoryTypeEnum.VERIFY;
+    if (historyType === SalaryHistoryTypeEnum.VERIFY) {
       if (!dto.payPeriod) {
         return { ok: false as const, message: "verify 类型缺少 payPeriod" };
       }
@@ -289,11 +291,10 @@ export class SalarySlipService {
     }
 
     const historyType = checked.historyType;
-    const savedAt = dto.savedAt ?? Date.now();
     const payload: Partial<SalaryVerifyHistoryEntity> = {
       userId,
       historyType,
-      payPeriod: historyType === "verify" ? dto.payPeriod : null,
+      payPeriod: historyType === SalaryHistoryTypeEnum.VERIFY ? dto.payPeriod : null,
       preTaxMonthly: String(dto.preTaxMonthly),
       ssPersonalAmount: String(dto.ssPersonalAmount ?? 0),
       hfPersonalAmount: String(dto.hfPersonalAmount ?? 0),
@@ -301,11 +302,10 @@ export class SalarySlipService {
       personalIncomeTax: String(dto.personalIncomeTax ?? 0),
       yearEndTaxMode: dto.yearEndTaxMode ?? null,
       yearEndBonus: String(dto.yearEndBonus ?? 0),
-      postTaxMonthly: String(dto.postTaxMonthly ?? 0),
-      savedAt: String(savedAt)
+      postTaxMonthly: String(dto.postTaxMonthly ?? 0)
     };
 
-    if (historyType === "verify") {
+    if (historyType === SalaryHistoryTypeEnum.VERIFY) {
       const existed = await this.findVerifyHistory(userId, dto.payPeriod);
       if (existed) {
         return this.saveVerifyHistoryUpdate(existed, payload);
@@ -350,7 +350,7 @@ export class SalarySlipService {
         keyword: `%${trimmedKeyword}%`
       });
     }
-    queryBuilder.orderBy("history.payPeriod", "DESC").addOrderBy("history.savedAt", "DESC");
+    queryBuilder.orderBy("history.payPeriod", "DESC").addOrderBy("history.updateTime", "DESC");
     const list = await queryBuilder.getMany();
     return ResultData.ok(list.map(item => this.toHistoryItemDto(item)));
   }

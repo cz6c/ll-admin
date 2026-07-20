@@ -5,7 +5,7 @@ import { deleteSalaryVerifyHistory, getSalaryVerifyHistoryList, upsertSalaryVeri
 /** 年薪测算历史列表中的一条 */
 export interface SalaryHistoryItem {
   id: string
-  savedAt: number
+  updateTime: string
   input: SalaryCalcInput
 }
 
@@ -17,11 +17,11 @@ function toHistoryItem(data: {
   specialDeductionMonthly: number
   yearEndTaxMode: 'none' | 'separate' | 'merge' | null
   yearEndBonus: number
-  savedAt: number
+  updateTime: string
 }): SalaryHistoryItem {
   return {
     id: String(data.id),
-    savedAt: Number(data.savedAt ?? Date.now()),
+    updateTime: data.updateTime || new Date().toISOString(),
     input: {
       preTaxMonthly: Number(data.preTaxMonthly ?? 0),
       ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
@@ -50,11 +50,11 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
         specialDeductionMonthly: item.specialDeductionMonthly,
         yearEndTaxMode: item.yearEndTaxMode,
         yearEndBonus: item.yearEndBonus,
-        savedAt: item.savedAt,
+        updateTime: item.updateTime,
       }))
     },
 
-    async createHistory(input: SalaryCalcInput, savedAt = Date.now()) {
+    async createHistory(input: SalaryCalcInput) {
       const data = await upsertSalaryVerifyHistory({
         historyType: 'calc',
         preTaxMonthly: input.preTaxMonthly,
@@ -63,7 +63,6 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
         specialDeductionMonthly: input.specialDeductionMonthly,
         yearEndTaxMode: input.yearEndTaxMode,
         yearEndBonus: input.yearEndBonus,
-        savedAt,
       })
       const row = toHistoryItem({
         id: data.id,
@@ -73,7 +72,7 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
         specialDeductionMonthly: data.specialDeductionMonthly,
         yearEndTaxMode: data.yearEndTaxMode,
         yearEndBonus: data.yearEndBonus,
-        savedAt: data.savedAt,
+        updateTime: data.updateTime,
       })
       this.items = [row, ...this.items.filter(i => i.id !== row.id)]
       return row

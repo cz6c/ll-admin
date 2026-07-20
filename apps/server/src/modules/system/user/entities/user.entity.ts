@@ -1,9 +1,10 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 // import { Exclude } from 'class-transformer';
 import { BaseEntity } from "@/common/entities/base";
 import { UserSexEnum, UserTypeEnum } from "@/common/enum/dict";
 
 @Entity("sys_user", { comment: "用户信息表" })
+@Index("idx_sys_user_dept_id", ["deptId"])
 export class UserEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: "int", name: "user_id", comment: "用户ID" })
   public userId: number;
@@ -52,6 +53,7 @@ export class UserEntity extends BaseEntity {
     length: 128,
     nullable: true,
     default: null,
+    unique: true,
     comment: "微信 openid"
   })
   public openid: string | null;

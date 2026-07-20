@@ -1,6 +1,6 @@
 ---
-description: NestJS 后端（@apps/server）模块、鉴权与接口约定
-globs: apps/server/**/*.{ts,yml,yaml}
+description: NestJS 后端（@apps/server）模块、鉴权、接口与库表部署约定
+globs: apps/server/**/*.{ts,yml,yaml,sql,md}
 alwaysApply: false
 ---
 
@@ -13,8 +13,79 @@ alwaysApply: false
 - 全局能力在 `src/common/`（守卫、过滤器、装饰器、工具）、`src/plugins/`、`src/config/`。
 - **通用能力放 `src/plugins/`**：OCR（`OcrService`）、LLM（`OpenAIService`）、HTTP/MQTT/邮件等；通过 `PluginsModule` 导出，业务模块 `imports: [PluginsModule]` 注入使用。
 - **业务模块只保留领域逻辑**：prompt、DTO/校验、编排流程、错误码到用户文案的映射；不要把 RapidOCR 初始化、chat/completions 请求等通用实现写进 `modules/`。
-- 数据库：**TypeORM**；迁移在 `src/migrations/`，通过 `migration:*` 脚本执行。
+- 数据库：**TypeORM**；迁移在 `src/migrations/`，通过 `migration:*` 脚本执行；空库初始化脚本为 `db/init.sql`。
+- **Entity 关联约定（逻辑外键）**：表之间关联在 Entity / 库表上只存 `xxxId` 列（如 `userId`），**不使用** `@ManyToOne` / `@OneToMany` / `@JoinColumn`，也**不建库级 FOREIGN KEY / ON DELETE CASCADE**。完整性由应用层保证（写入时用登录态 `userId`、查询带归属过滤、软删不硬删父行）。需要联表时在 Service 用 `leftJoinAndMapOne` / QueryBuilder。与现有 `sys_user.dept_id`、`sys_user_role` 等风格一致。
 - 配置：`src/config/dev.yml` / `prod.yml` + `typeorm.config.ts`。
+
+## 库表部署约定（init.sql ↔ migration）
+
+两套产物分工不同，**禁止只改其一**：
+
+| 产物 | 路径 | 用途 |
+|------|------|------|
+| 空库初始化 | `db/init.sql` | **全新环境**一次性建表 + 种子数据 |
+| 增量迁移 | `src/migrations/*.ts` | **已有库**升级结构（加列/加表/改索引） |
+
+### 新功能改表时（时机 + 必做）
+
+**一个业务功能尽量只对应一条 migration**，禁止「每改一次 Entity / 每轮对话就新建一条」。
+
+| 阶段 | Agent / 开发做法 |
+|------|------------------|
+| **功能开发中**（表结构还可能再改） | 只改 Entity（及业务代码）与必要时同步 `init.sql` 终态构思；**禁止**新建 `src/migrations/*.ts` |
+| **功能收口** | 在回复中**先询问**用户是否现在生成迁移；**仅当用户明确同意**（如「生成迁移」「可以 generate」）后，才执行 `migration:generate` / 手写一条 migration，并同步 `init.sql` 终态 |
+| **已上线库的事后补丁** | 上一版 migration 已在测服/生产执行过 → 只能再加**新的一条**补丁迁移，禁止改已执行文件；同样须先征得用户同意再落文件 |
+
+**Agent 硬性约束**：未经用户明确同意，**禁止**创建、生成或提交任何 `src/migrations/*.ts` 文件（含「审查落地」「顺手补一条」）。计划 to-do / 收口步骤里若含 migration，也只允许「提醒用户确认」，不得自行落盘。
+
+收口且用户同意后必做：
+
+1. 确认 Entity 已是本功能最终结构（`synchronize` 保持 `false`）。
+2. **生成或补全一条** migration（优先 `pnpm migration:generate`，纯数据迁移等再用 `migration:create` 手写）。
+3. **同步把迁移「跑完后的终态」写进 `init.sql`**（最终列、索引；不要写中间态；**不要**新增库级外键）。
+4. 种子 `INSERT` 若依赖列顺序，加列后必须改对应 `VALUES`。
+
+### 部署场景
+
+| 场景 | 做法 |
+|------|------|
+| **全新环境** | 只导入更新后的 `init.sql` 即可对齐当前代码结构 |
+| **已有环境（测服/生产）** | 执行 `pnpm migration:run` 或 `migration:run:prod`；**禁止**用新 init 覆盖冲库 |
+| **只导了旧 init、没跑迁移** | 会出现「实体有字段、库无列」（如缺 `login_type`）→ 对该库补跑 migration |
+
+### 禁止与注意
+
+- 不要假设「有 migration 就不用改 init」——新环境若只导 init 会缺表/缺列。
+- 不要手改已在生产执行过的 migration；修缺陷用**新迁移**。
+- 新表/改表统一用逻辑外键（只存关联 ID），与全库风格一致。
+- 功能未收口前**禁止**为中间态（加了又删、改了又改）连续堆 migration 文件。
+- 详细 migration 命令见 `src/migrations/README.md`。
+
+### 新业务表对照样板（`sys_dept`）
+
+新建业务 Entity / 表时对照 [`dept.entity.ts`](apps/server/src/modules/system/dept/entities/dept.entity.ts)，清单如下：
+
+1. `@Entity("snake_table", { comment: "..." })`，表名 `snake_case`（业务表可用域前缀，如 `salary_*`；系统表用 `sys_*`）。
+2. `extends BaseEntity`（日志、上传流水、纯关联表除外）。
+3. 主键：`@PrimaryGeneratedColumn({ type: "int", name: "<域>_id", comment: "..." })`（如 `dept_id`），避免无业务含义的裸 `id`（存量例外勿为统一而强改）。
+4. 每列显式 `name: "snake_case"` + `comment`；禁止地理表那种 camelCase 列名、禁止库级 FK。
+5. 受限取值优先 `type: "enum"` + 共享/模块 enum；金额用 `decimal(p,s)`。
+6. 唯一约束在 Entity 用 `@Index(..., { unique: true })`，并与 `init.sql` / migration 同名同步（如 `UQ_sys_user_openid`）。
+7. **二级索引按需**：有慢查询或明确高频过滤再加（候选见下）；禁止「为审查清单盲加」。
+
+### 二级索引（按需，勿盲加）
+
+全库默认几乎只有 PK / UNIQUE。数据量上来后再考虑。审查已落地的逻辑外键/反向列索引（与 Entity `@Index`、`init.sql` 同步）：
+
+- `idx_sys_user_dept_id`、`idx_sys_menu_parent_id`、`idx_sys_dept_parent_id`
+- `idx_sys_user_role_role_id`、`idx_sys_user_post_post_id`、`idx_sys_role_menu_menu_id`、`idx_sys_role_dept_dept_id`
+- `idx_salary_verify_history_user_list`（`user_id, del_flag, history_type`）
+
+其余索引仍须有慢查询或明确高频过滤再加。加索引时：Entity `@Index` + **一条** migration（须用户确认）+ `init.sql` 终态同步。
+
+### 薪资历史软删语义
+
+`salary_verify_history`：同用户同月（verify）仅一条业务记录。软删后再次 upsert **复活**原行（`findVerifyHistory` 不按 `del_flag` 过滤，更新时置回 `NORMAL`）。唯一键不含 `del_flag`；勿改成「软删后可再插第二行」除非同步改唯一约束。列表/展示时间用 BaseEntity 的 `update_time`（API `updateTime`），**不要**再加 `saved_at`。
 
 ## 注释约定
 

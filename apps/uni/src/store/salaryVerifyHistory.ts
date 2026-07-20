@@ -12,7 +12,11 @@ export interface PayslipVerifyRecord {
   specialDeductionMonthly: number
   personalIncomeTax: number
   postTaxMonthly: number
-  savedAt: number
+  updateTime: string
+}
+
+function mapUpdateTime(updateTime?: string): string {
+  return updateTime || new Date().toISOString()
 }
 
 /** 月薪核对历史：服务端为主，Store 仅作页面态缓存。 */
@@ -34,11 +38,11 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
           specialDeductionMonthly: Number(item.specialDeductionMonthly ?? 0),
           personalIncomeTax: Number(item.personalIncomeTax ?? 0),
           postTaxMonthly: Number(item.postTaxMonthly ?? 0),
-          savedAt: Number(item.savedAt ?? Date.now()),
+          updateTime: mapUpdateTime(item.updateTime),
         }))
     },
 
-    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'savedAt'> & { savedAt?: number }) {
+    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime'>) {
       const data = await upsertSalaryVerifyHistory({
         historyType: 'verify',
         payPeriod: entry.payPeriod,
@@ -48,7 +52,6 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
         specialDeductionMonthly: entry.specialDeductionMonthly,
         personalIncomeTax: entry.personalIncomeTax,
         postTaxMonthly: entry.postTaxMonthly,
-        savedAt: entry.savedAt,
       })
       const row: PayslipVerifyRecord = {
         id: String(data.id),
@@ -59,7 +62,7 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
         specialDeductionMonthly: Number(data.specialDeductionMonthly ?? 0),
         personalIncomeTax: Number(data.personalIncomeTax ?? 0),
         postTaxMonthly: Number(data.postTaxMonthly ?? 0),
-        savedAt: Number(data.savedAt ?? Date.now()),
+        updateTime: mapUpdateTime(data.updateTime),
       }
       this.items = [row, ...this.items.filter(i => i.payPeriod !== row.payPeriod && i.id !== row.id)]
       return row
@@ -92,7 +95,7 @@ export const useSalaryVerifyHistoryStore = defineStore('salaryVerifyHistory', {
         .sort((a, b) => parsePayPeriod(a.payPeriod).month - parsePayPeriod(b.payPeriod).month)
     },
 
-    isHistoryComplete(payPeriod: string): boolean {
+    isPriorComplete(payPeriod: string): boolean {
       return isPriorHistoryComplete(payPeriod, this.items)
     },
   },

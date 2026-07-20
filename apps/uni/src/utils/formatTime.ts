@@ -1,8 +1,8 @@
 import dayjs from 'dayjs'
 
-/** 历史记录时间展示：今天/昨天/日期 + 时分 */
-export function formatHistoryTime(ts: number): string {
-  const d = dayjs(ts)
+/** 历史记录时间展示：今天/昨天/日期 + 时分（支持毫秒时间戳或 ISO 字符串） */
+export function formatHistoryTime(value: number | string | Date): string {
+  const d = dayjs(value)
   const now = dayjs()
   const diffDays = now.startOf('day').diff(d.startOf('day'), 'day')
 

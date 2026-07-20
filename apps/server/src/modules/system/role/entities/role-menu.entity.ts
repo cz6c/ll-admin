@@ -1,6 +1,7 @@
-import { Entity, PrimaryColumn } from "typeorm";
+import { Entity, Index, PrimaryColumn } from "typeorm";
 
 @Entity("sys_role_menu", { comment: "角色和菜单关联表  角色1-N菜单" })
+@Index("idx_sys_role_menu_menu_id", ["menuId"])
 export class SysRoleWithMenuEntity {
   @PrimaryColumn({
     type: "int",

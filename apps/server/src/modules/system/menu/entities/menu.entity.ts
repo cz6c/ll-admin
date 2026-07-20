@@ -1,8 +1,9 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 import { BaseEntity } from "@/common/entities/base";
 import { MenuTypeEnum, YesNoEnum } from "@/common/enum/dict";
 
 @Entity("sys_menu", { comment: "菜单权限表" })
+@Index("idx_sys_menu_parent_id", ["parentId"])
 export class SysMenuEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: "int", name: "menu_id", comment: "菜单ID" })
   public menuId: number;

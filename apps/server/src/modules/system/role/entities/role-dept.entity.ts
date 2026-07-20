@@ -1,6 +1,7 @@
-import { Entity, PrimaryColumn } from "typeorm";
+import { Entity, Index, PrimaryColumn } from "typeorm";
 
 @Entity("sys_role_dept", { comment: "角色和部门关联表  角色1-N部门" })
+@Index("idx_sys_role_dept_dept_id", ["deptId"])
 export class SysRoleWithDeptEntity {
   @PrimaryColumn({
     type: "int",

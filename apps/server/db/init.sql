@@ -3672,7 +3672,8 @@ CREATE TABLE
     `leader` varchar(20) COLLATE utf8mb4_general_ci NOT NULL COMMENT '负责人',
     `phone` varchar(11) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '联系电话',
     `email` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '邮箱',
-    PRIMARY KEY (`dept_id`)
+    PRIMARY KEY (`dept_id`),
+    KEY `idx_sys_dept_parent_id` (`parent_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 110 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '部门表';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -3946,7 +3947,8 @@ CREATE TABLE
     `icon` varchar(100) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '菜单图标',
     `perm` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '功能权限标识',
     `menu_type` enum ('M', 'F') COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'M' COMMENT '菜单类型',
-    PRIMARY KEY (`menu_id`)
+    PRIMARY KEY (`menu_id`),
+    KEY `idx_sys_menu_parent_id` (`parent_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 204 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '菜单权限表';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4612,7 +4614,8 @@ CREATE TABLE
   `sys_role_dept` (
     `role_id` int NOT NULL DEFAULT '0' COMMENT '角色ID',
     `dept_id` int NOT NULL DEFAULT '0' COMMENT '部门ID',
-    PRIMARY KEY (`role_id`, `dept_id`)
+    PRIMARY KEY (`role_id`, `dept_id`),
+    KEY `idx_sys_role_dept_dept_id` (`dept_id`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '角色和部门关联表  角色1-N部门';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4641,7 +4644,8 @@ CREATE TABLE
   `sys_role_menu` (
     `role_id` int NOT NULL DEFAULT '0' COMMENT '角色ID',
     `menu_id` int NOT NULL DEFAULT '0' COMMENT '菜单ID',
-    PRIMARY KEY (`role_id`, `menu_id`)
+    PRIMARY KEY (`role_id`, `menu_id`),
+    KEY `idx_sys_role_menu_menu_id` (`menu_id`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '角色和菜单关联表  角色1-N菜单';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4713,6 +4717,9 @@ CREATE TABLE
     `user_name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户账号',
     `nick_name` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户昵称',
     `user_type` enum ('00', '10') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '10' COMMENT '用户类型',
+    `login_type` varchar(20) COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'admin' COMMENT '登录类型：admin/weixin',
+    `openid` varchar(128) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '微信 openid',
+    `recognize_count` int NOT NULL DEFAULT '0' COMMENT '识别成功次数',
     `email` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '邮箱',
     `phonenumber` varchar(11) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '手机号码',
     `sex` enum ('0', '1', '2') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '2' COMMENT '性别',
@@ -4721,7 +4728,9 @@ CREATE TABLE
     `login_ip` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '最后登录IP',
     `login_date` timestamp NOT NULL COMMENT '最后登录时间',
     `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
-    PRIMARY KEY (`user_id`)
+    PRIMARY KEY (`user_id`),
+    UNIQUE KEY `UQ_sys_user_openid` (`openid`),
+    KEY `idx_sys_user_dept_id` (`dept_id`)
   ) ENGINE = InnoDB AUTO_INCREMENT = 3 DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户信息表';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4748,6 +4757,9 @@ VALUES
     'admin',
     'll-admin',
     '00',
+    'admin',
+    NULL,
+    0,
     'll@163.com',
     '15888888888',
     '1',
@@ -4769,6 +4781,9 @@ VALUES
     'test',
     'll-test',
     '00',
+    'admin',
+    NULL,
+    0,
     'll@qq.com',
     '15666666666',
     '1',
@@ -4784,6 +4799,42 @@ VALUES
 UNLOCK TABLES;
 
 --
+-- Table structure for table `salary_verify_history`
+--
+DROP TABLE IF EXISTS `salary_verify_history`;
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+
+/*!50503 SET character_set_client = utf8mb4 */;
+
+CREATE TABLE
+  `salary_verify_history` (
+    `status` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '状态',
+    `del_flag` enum ('0', '1') COLLATE utf8mb4_general_ci NOT NULL DEFAULT '0' COMMENT '删除标志',
+    `create_by` int DEFAULT NULL COMMENT '创建者',
+    `create_time` datetime (6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间',
+    `update_by` int DEFAULT NULL COMMENT '更新者',
+    `update_time` datetime (6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间',
+    `id` int NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id` int NOT NULL COMMENT '用户ID',
+    `history_type` enum ('verify', 'calc') COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'verify' COMMENT '历史类型：verify月薪核对/calc年薪测算',
+    `pay_period` varchar(7) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '工资所属月份 YYYY-MM（verify 类型必填；calc 为 NULL，允许多条）',
+    `pre_tax_monthly` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '税前工资',
+    `ss_personal_amount` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '个人社保',
+    `hf_personal_amount` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '个人公积金',
+    `special_deduction_monthly` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '专项附加扣除',
+    `personal_income_tax` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '个税',
+    `year_end_tax_mode` enum ('none', 'separate', 'merge') COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '年终奖计税方式：none/separate/merge',
+    `year_end_bonus` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '年终奖',
+    `post_tax_monthly` decimal(12, 2) NOT NULL DEFAULT '0.00' COMMENT '税后工资',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `idx_salary_verify_history_user_period` (`user_id`, `history_type`, `pay_period`),
+    KEY `idx_salary_verify_history_user_list` (`user_id`, `del_flag`, `history_type`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '薪资历史表（月薪核对/年薪测算）';
+
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `sys_user_post`
 --
 DROP TABLE IF EXISTS `sys_user_post`;
@@ -4796,7 +4847,8 @@ CREATE TABLE
   `sys_user_post` (
     `user_id` int NOT NULL COMMENT '用户ID',
     `post_id` int NOT NULL COMMENT '岗位ID',
-    PRIMARY KEY (`user_id`, `post_id`)
+    PRIMARY KEY (`user_id`, `post_id`),
+    KEY `idx_sys_user_post_post_id` (`post_id`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户与岗位关联表  用户1-N岗位';
 
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -4825,7 +4877,8 @@ CREATE TABLE
   `sys_user_role` (
     `user_id` int NOT NULL COMMENT '用户ID',
     `role_id` int NOT NULL COMMENT '角色ID',
-    PRIMARY KEY (`user_id`, `role_id`)
+    PRIMARY KEY (`user_id`, `role_id`),
+    KEY `idx_sys_user_role_role_id` (`role_id`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '用户和角色关联表  用户N-1角色';
 
 /*!40101 SET character_set_client = @saved_cs_client */;

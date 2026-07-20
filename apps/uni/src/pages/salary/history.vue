@@ -216,7 +216,7 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
                       {{ calcHistoryTitle(item) }}
                     </view>
                     <view class="mt-12rpx text-24rpx text-#999">
-                      {{ formatHistoryTime(item.savedAt) }}
+                      {{ formatHistoryTime(item.updateTime) }}
                     </view>
                   </view>
                   <view class="shrink-0 text-right">
@@ -311,7 +311,7 @@ function confirmDeleteVerify(item: PayslipVerifyRecord) {
                 </view>
 
                 <view class="mt-16rpx text-24rpx text-#999">
-                  {{ formatHistoryTime(item.savedAt) }}
+                  {{ formatHistoryTime(item.updateTime) }}
                 </view>
               </view>
               <template #right>

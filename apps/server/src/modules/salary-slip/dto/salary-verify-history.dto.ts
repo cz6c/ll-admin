@@ -1,25 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from "class-validator";
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from "class-validator";
+import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
-export type SalaryHistoryType = "verify" | "calc";
-export type YearEndTaxMode = "none" | "separate" | "merge";
+export type SalaryHistoryType = SalaryHistoryTypeEnum;
+export type YearEndTaxMode = YearEndTaxModeEnum;
 
 export class UpsertSalaryVerifyHistoryDto {
   @ApiPropertyOptional({
     description: "历史类型：verify 月薪核对，calc 年薪测算。为空时默认 verify",
-    enum: ["verify", "calc"],
-    example: "verify"
+    enum: SalaryHistoryTypeEnum,
+    example: SalaryHistoryTypeEnum.VERIFY
   })
   @IsOptional()
-  @IsIn(["verify", "calc"])
+  @IsEnum(SalaryHistoryTypeEnum)
   historyType?: SalaryHistoryType;
 
   @ApiPropertyOptional({ description: "工资所属月份，格式 YYYY-MM（verify 类型必填）", example: "2026-06" })
-  @ValidateIf(dto => (dto.historyType ?? "verify") === "verify")
+  @ValidateIf(dto => (dto.historyType ?? SalaryHistoryTypeEnum.VERIFY) === SalaryHistoryTypeEnum.VERIFY)
   @IsString()
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: "payPeriod 格式应为 YYYY-MM" })
   payPeriod?: string;
+
 
   @ApiProperty({ description: "税前工资", example: 15000 })
   @Type(() => Number)
@@ -45,42 +47,38 @@ export class UpsertSalaryVerifyHistoryDto {
   specialDeductionMonthly?: number;
 
   @ApiProperty({ description: "个人所得税", example: 320.45 })
-  @ValidateIf(dto => (dto.historyType ?? "verify") === "verify")
+  @ValidateIf(dto => (dto.historyType ?? SalaryHistoryTypeEnum.VERIFY) === SalaryHistoryTypeEnum.VERIFY)
   @Type(() => Number)
   @IsNumber()
   personalIncomeTax?: number;
 
   @ApiProperty({ description: "税后工资", example: 12279.55 })
-  @ValidateIf(dto => (dto.historyType ?? "verify") === "verify")
+  @ValidateIf(dto => (dto.historyType ?? SalaryHistoryTypeEnum.VERIFY) === SalaryHistoryTypeEnum.VERIFY)
   @Type(() => Number)
   @IsNumber()
   postTaxMonthly?: number;
 
-  @ApiPropertyOptional({ description: "年终奖计税方式（calc 类型必填）", enum: ["none", "separate", "merge"], example: "separate" })
-  @ValidateIf(dto => (dto.historyType ?? "verify") === "calc")
-  @IsString()
-  @IsIn(["none", "separate", "merge"])
+  @ApiPropertyOptional({
+    description: "年终奖计税方式（calc 类型必填）",
+    enum: YearEndTaxModeEnum,
+    example: YearEndTaxModeEnum.SEPARATE
+  })
+  @ValidateIf(dto => (dto.historyType ?? SalaryHistoryTypeEnum.VERIFY) === SalaryHistoryTypeEnum.CALC)
+  @IsEnum(YearEndTaxModeEnum)
   yearEndTaxMode?: YearEndTaxMode;
 
   @ApiPropertyOptional({ description: "年终奖（calc 类型必填）", example: 20000 })
-  @ValidateIf(dto => (dto.historyType ?? "verify") === "calc")
+  @ValidateIf(dto => (dto.historyType ?? SalaryHistoryTypeEnum.VERIFY) === SalaryHistoryTypeEnum.CALC)
   @Type(() => Number)
   @IsNumber()
   yearEndBonus?: number;
-
-  @ApiPropertyOptional({ description: "保存时间戳（毫秒）", example: 1762740669502 })
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  savedAt?: number;
 }
 
 export class SalaryVerifyHistoryItemDto {
   @ApiProperty({ description: "历史记录ID", example: 1 })
   id: number;
 
-  @ApiProperty({ description: "历史类型：verify 月薪核对，calc 年薪测算", enum: ["verify", "calc"], example: "verify" })
+  @ApiProperty({ description: "历史类型：verify 月薪核对，calc 年薪测算", enum: SalaryHistoryTypeEnum, example: SalaryHistoryTypeEnum.VERIFY })
   historyType: SalaryHistoryType;
 
   @ApiProperty({ description: "工资所属月份，格式 YYYY-MM", example: "2026-06" })
@@ -101,7 +99,12 @@ export class SalaryVerifyHistoryItemDto {
   @ApiProperty({ description: "个人所得税", example: 320.45 })
   personalIncomeTax: number;
 
-  @ApiProperty({ description: "年终奖计税方式", enum: ["none", "separate", "merge"], example: "separate", nullable: true })
+  @ApiProperty({
+    description: "年终奖计税方式",
+    enum: YearEndTaxModeEnum,
+    example: YearEndTaxModeEnum.SEPARATE,
+    nullable: true
+  })
   yearEndTaxMode: YearEndTaxMode | null;
 
   @ApiProperty({ description: "年终奖", example: 20000 })
@@ -110,8 +113,8 @@ export class SalaryVerifyHistoryItemDto {
   @ApiProperty({ description: "税后工资", example: 12279.55 })
   postTaxMonthly: number;
 
-  @ApiProperty({ description: "保存时间戳（毫秒）", example: 1762740669502 })
-  savedAt: number;
+  @ApiProperty({ description: "更新时间", example: "2026-07-20T08:00:00.000Z" })
+  updateTime: Date;
 }
 
 export class DeleteSalaryVerifyHistoryDto {
@@ -129,8 +132,12 @@ export class ListSalaryVerifyHistoryDto {
   @IsString()
   keyword?: string;
 
-  @ApiPropertyOptional({ description: "历史类型过滤：verify 月薪核对，calc 年薪测算", enum: ["verify", "calc"], example: "calc" })
+  @ApiPropertyOptional({
+    description: "历史类型过滤：verify 月薪核对，calc 年薪测算",
+    enum: SalaryHistoryTypeEnum,
+    example: SalaryHistoryTypeEnum.CALC
+  })
   @IsOptional()
-  @IsIn(["verify", "calc"])
+  @IsEnum(SalaryHistoryTypeEnum)
   historyType?: SalaryHistoryType;
 }

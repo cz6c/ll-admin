@@ -65,22 +65,22 @@ const salaryHistoryStore = useSalaryHistoryStore()
 const verifyHistoryStore = useSalaryVerifyHistoryStore()
 const hasLoaded = ref(false)
 
-const latestCalcSavedAt = computed(() => {
-  return salaryHistoryStore.items.reduce((max, item) => Math.max(max, Number(item.savedAt ?? 0)), 0)
+const latestCalcUpdateMs = computed(() => {
+  return salaryHistoryStore.items.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
 })
 
-const latestVerifySavedAt = computed(() => {
-  return verifyHistoryStore.items.reduce((max, item) => Math.max(max, Number(item.savedAt ?? 0)), 0)
+const latestVerifyUpdateMs = computed(() => {
+  return verifyHistoryStore.items.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
 })
 
 const featureStats = computed(() => {
   return {
     calc: {
-      latestDate: latestCalcSavedAt.value ? dayjs(latestCalcSavedAt.value).format('YYYY-MM-DD') : '',
+      latestDate: latestCalcUpdateMs.value ? dayjs(latestCalcUpdateMs.value).format('YYYY-MM-DD') : '',
       count: salaryHistoryStore.items.length,
     },
     verify: {
-      latestDate: latestVerifySavedAt.value ? dayjs(latestVerifySavedAt.value).format('YYYY-MM-DD') : '',
+      latestDate: latestVerifyUpdateMs.value ? dayjs(latestVerifyUpdateMs.value).format('YYYY-MM-DD') : '',
       count: verifyHistoryStore.items.length,
     },
   }
@@ -91,8 +91,8 @@ const recentEntries = computed<RecentEntry[]>(() => {
     id: item.id,
     key: `calc-${item.id}`,
     title: `月薪 ¥${formatAmount(item.input.preTaxMonthly)} 算税结果`,
-    subtitle: `年薪测算 · ${dayjs(item.savedAt).format('MM-DD')}`,
-    time: Number(item.savedAt ?? 0),
+    subtitle: `年薪测算 · ${dayjs(item.updateTime).format('MM-DD')}`,
+    time: new Date(item.updateTime).getTime() || 0,
     theme: 'blue',
     url: `/pages/salary/detail?id=${encodeURIComponent(item.id)}`,
   }))
@@ -106,8 +106,8 @@ const recentEntries = computed<RecentEntry[]>(() => {
       id: item.id,
       key: `verify-${item.id}`,
       title: `${month} 月工资条核对 · ${verifyText}`,
-      subtitle: `月薪核对 · ${dayjs(item.savedAt).format('MM-DD')}`,
-      time: Number(item.savedAt ?? 0),
+      subtitle: `月薪核对 · ${dayjs(item.updateTime).format('MM-DD')}`,
+      time: new Date(item.updateTime).getTime() || 0,
       theme: 'green',
       url: '/pages/salary/history?tab=verify',
     }

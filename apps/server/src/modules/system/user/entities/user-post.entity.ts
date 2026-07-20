@@ -1,6 +1,7 @@
-import { Entity, PrimaryColumn } from "typeorm";
+import { Entity, Index, PrimaryColumn } from "typeorm";
 
 @Entity("sys_user_post", { comment: "用户与岗位关联表  用户1-N岗位" })
+@Index("idx_sys_user_post_post_id", ["postId"])
 export class SysUserWithPostEntity {
   @PrimaryColumn({ type: "int", name: "user_id", comment: "用户ID" })
   public userId: number;

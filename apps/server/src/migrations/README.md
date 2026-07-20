@@ -42,7 +42,10 @@ $ pnpm run migration:revert:prod
 
 ### 6) 常见建议
 
-- 一个业务需求尽量对应一个 migration，避免混入无关变更
+- **一个业务需求尽量对应一个 migration**，避免混入无关变更
+- **功能开发中只改 Entity；收口后先问用户，得到明确同意再 `migration:generate` / 落盘**；Agent 禁止未经同意主动新建迁移文件
+- 新业务表对照 `sys_dept` Entity 样板（见 `.cursor/rules/nestjs-server.mdc`）
+- 二级索引按慢查询按需添加，勿盲加
 - 不要手改已在生产执行过的 migration，新增下一条 migration 修复
 - 提交前建议本地验证一遍：`migration:run -> migration:revert -> migration:run`
 - migration 文件命名保持语义化，便于追踪（如 `salary-verify-history`）
@@ -66,3 +69,10 @@ $ pnpm run migration:revert:prod
 - 建索引/外键前先通过 `queryRunner.getTable(table)` 判断是否已存在
 - 删除列/索引/外键前也先判断再执行
 - 涉及数据迁移和删表（如 `DROP TABLE`）时，先确认源表仍存在（`queryRunner.hasTable`）
+
+### 9) 与 `db/init.sql` 同步（部署约定）
+
+- **全新环境**：导入 `db/init.sql` 一次性初始化。
+- **已有环境**：只跑 `migration:run` / `migration:run:prod`，禁止用 init 覆盖冲库。
+- **新增 migration 后**：必须把「迁移终态」同步进 `init.sql`（最终表结构，不含中间临时表），否则下次空库只导 init 会缺列/缺表。
+- 细则见 Cursor 规则 `.cursor/rules/nestjs-server.mdc`「库表部署约定」。

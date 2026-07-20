@@ -1,7 +1,8 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 import { BaseEntity } from "@/common/entities/base";
 
 @Entity("sys_dept", { comment: "部门表" })
+@Index("idx_sys_dept_parent_id", ["parentId"])
 export class SysDeptEntity extends BaseEntity {
   @PrimaryGeneratedColumn({ type: "int", name: "dept_id", comment: "部门ID" })
   public deptId: number;

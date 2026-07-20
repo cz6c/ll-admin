@@ -15,7 +15,7 @@ export interface SalaryVerifyHistoryItem {
   yearEndTaxMode: YearEndTaxMode | null
   yearEndBonus: number
   postTaxMonthly: number
-  savedAt: number
+  updateTime: string
 }
 
 export interface UpsertSalaryVerifyHistoryPayload {
@@ -29,7 +29,6 @@ export interface UpsertSalaryVerifyHistoryPayload {
   yearEndTaxMode?: YearEndTaxMode
   yearEndBonus?: number
   postTaxMonthly?: number
-  savedAt?: number
 }
 
 const HISTORY_BASE = '/salary-slip/history'
@@ -38,13 +37,10 @@ export function upsertSalaryVerifyHistory(data: UpsertSalaryVerifyHistoryPayload
   return http.post<SalaryVerifyHistoryItem>(`${HISTORY_BASE}/upsert`, data)
 }
 
-export function getSalaryVerifyHistoryList(params?: {
-  keyword?: string
-  historyType?: SalaryHistoryType
-}) {
+export function getSalaryVerifyHistoryList(params?: { keyword?: string, historyType?: SalaryHistoryType }) {
   return http.get<SalaryVerifyHistoryItem[]>(`${HISTORY_BASE}/list`, params)
 }
 
 export function deleteSalaryVerifyHistory(id: number) {
-  return http.post<void>(`${HISTORY_BASE}/delete/${id}`)
+  return http.post(`${HISTORY_BASE}/delete`, { id })
 }

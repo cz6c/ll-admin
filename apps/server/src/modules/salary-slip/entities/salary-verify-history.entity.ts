@@ -1,35 +1,34 @@
 import { BaseEntity } from "@/common/entities/base";
-import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
-import { UserEntity } from "@/modules/system/user/entities/user.entity";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
 @Entity("salary_verify_history", { comment: "薪资历史表（月薪核对/年薪测算）" })
 @Index("idx_salary_verify_history_user_period", ["userId", "historyType", "payPeriod"], { unique: true })
+@Index("idx_salary_verify_history_user_list", ["userId", "delFlag", "historyType"])
 export class SalaryVerifyHistoryEntity extends BaseEntity {
+  /** 存量表主键为 id；新表应优先用域前缀 *_id */
   @PrimaryGeneratedColumn({ type: "int", comment: "主键ID" })
   public id: number;
 
+  /** 逻辑外键：sys_user.user_id；不建库级 FK */
   @Column({ type: "int", name: "user_id", comment: "用户ID" })
   public userId: number;
 
-  @ManyToOne(() => UserEntity, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "user_id", referencedColumnName: "userId" })
-  public user: UserEntity;
-
   @Column({
-    type: "varchar",
+    type: "enum",
+    enum: SalaryHistoryTypeEnum,
     name: "history_type",
-    length: 20,
-    default: "verify",
+    default: SalaryHistoryTypeEnum.VERIFY,
     comment: "历史类型：verify月薪核对/calc年薪测算"
   })
-  public historyType: "verify" | "calc";
+  public historyType: SalaryHistoryTypeEnum;
 
   @Column({
     type: "varchar",
     name: "pay_period",
     length: 7,
     nullable: true,
-    comment: "工资所属月份 YYYY-MM（verify 类型必填）"
+    comment: "工资所属月份 YYYY-MM（verify 类型必填；calc 为 NULL，允许多条）"
   })
   public payPeriod: string | null;
 
@@ -84,13 +83,14 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
   public personalIncomeTax: string;
 
   @Column({
-    type: "varchar",
+    type: "enum",
+    enum: YearEndTaxModeEnum,
     name: "year_end_tax_mode",
-    length: 20,
     nullable: true,
+    default: null,
     comment: "年终奖计税方式：none/separate/merge"
   })
-  public yearEndTaxMode: "none" | "separate" | "merge" | null;
+  public yearEndTaxMode: YearEndTaxModeEnum | null;
 
   @Column({
     type: "decimal",
@@ -111,12 +111,4 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
     comment: "税后工资"
   })
   public postTaxMonthly: string;
-
-  @Column({
-    type: "bigint",
-    name: "saved_at",
-    default: 0,
-    comment: "前端保存时间戳（毫秒）"
-  })
-  public savedAt: string;
 }

@@ -119,14 +119,11 @@ export function getCurrentPageI18nKey() {
  * 根据微信小程序当前环境，判断应该获取的 baseUrl
  */
 export function getEnvBaseUrl() {
-  // 请求基准地址（dev:mp:prod / build:mp 等 --mode production 时来自 env/.env.production）
+  // 请求基准地址（来自 env/.env.{mode}；如 --mode test → .env.test）
   let baseUrl = import.meta.env.VITE_SERVER_BASEURL
-  const isProductionMode = import.meta.env.MODE === 'production'
 
-  // 微信开发者工具里 envVersion 始终是 develop；仅 development 模式走本地，production 模式跟正式域名
-  const VITE_SERVER_BASEURL__WEIXIN_DEVELOP = isProductionMode
-    ? baseUrl
-    : 'http://127.0.0.1:6060'
+  // 微信开发者工具里 envVersion 始终是 develop
+  const VITE_SERVER_BASEURL__WEIXIN_DEVELOP = baseUrl
   const VITE_SERVER_BASEURL__WEIXIN_TRIAL = baseUrl
   const VITE_SERVER_BASEURL__WEIXIN_RELEASE = baseUrl
 

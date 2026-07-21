@@ -1,14 +1,21 @@
+/**
+ * 年薪测算历史 Store
+ * 职责：服务端 calc 历史的拉取/写入/删除；页面仅缓存 items
+ */
 import type { SalaryCalcInput } from '@/utils/salaryCalculator'
 import { defineStore } from 'pinia'
 import { deleteSalaryVerifyHistory, getSalaryVerifyHistoryList, upsertSalaryVerifyHistory } from '@/api/salary-verify'
 
-/** 年薪测算历史列表中的一条 */
+/** 年薪测算历史列表中的一条（前端展示态） */
 export interface SalaryHistoryItem {
+  /** 服务端数字 id 的字符串形式，便于路由 query */
   id: string
   updateTime: string
+  /** 测算表单快照，用于重算年薪与进详情 */
   input: SalaryCalcInput
 }
 
+/** 接口 DTO → 页面态；id 转 string，金额 Number 化，缺省年终奖模式为 none */
 function toHistoryItem(data: {
   id: number
   preTaxMonthly: number
@@ -40,6 +47,7 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
   }),
 
   actions: {
+    /** 拉取测算历史；keyword 透传列表接口 */
     async fetchHistory(keyword?: string) {
       const list = await getSalaryVerifyHistoryList({ keyword, historyType: 'calc' })
       this.items = list.map(item => toHistoryItem({
@@ -54,6 +62,7 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
       }))
     },
 
+    /** 保存一条测算快照并插入列表头部 */
     async createHistory(input: SalaryCalcInput) {
       const data = await upsertSalaryVerifyHistory({
         historyType: 'calc',
@@ -78,6 +87,7 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
       return row
     },
 
+    /** 软删服务端记录并同步本地缓存；非法 id 直接抛错 */
     async removeById(id: string) {
       const numericId = Number(id)
       if (!Number.isInteger(numericId) || numericId <= 0)
@@ -86,6 +96,7 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
       this.items = this.items.filter(i => i.id !== id)
     },
 
+    /** 按 id 查缓存；详情页用，未命中需先 fetchHistory */
     findById(id: string): SalaryHistoryItem | undefined {
       return this.items.find(i => i.id === id)
     },

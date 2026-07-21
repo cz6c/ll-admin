@@ -1,4 +1,9 @@
 <script lang="ts" setup>
+/**
+ * 年薪测算页
+ * 主流程：编辑表单 → 实时看 result → 保存历史后进明细
+ * 注意：月薪变更时若选了「N 倍月薪」奖金倍数，会同步重算 yearEndBonus
+ */
 import type { YearEndTaxMode } from '@/utils/salaryCalculator'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -33,8 +38,10 @@ const yearEndModeLabel = computed(() =>
 )
 
 const bonusMultipliers = [1, 2, 3, 4, 6, 8, 10] as const
+/** 当前选中的「N 倍月薪」；手动改年终奖金额后置 null，表示脱离倍数联动 */
 const selectedBonusMul = ref<number | null>(1)
 
+// 月薪变化时：若年终奖已是「倍数×月薪」则保持选中态；年终奖为 0 时恢复默认 1 倍选中
 watch(
   () => salaryForm.value.preTaxMonthly,
   () => {
@@ -46,6 +53,7 @@ watch(
   },
 )
 
+/** 快捷设置年终奖 = 月薪 × 倍数 */
 function applyBonusMul(m: number) {
   selectedBonusMul.value = m
   store.patchInput({ yearEndBonus: Math.round(salaryForm.value.preTaxMonthly * m) })
@@ -83,6 +91,7 @@ function onYearEndModeConfirm({ value }: { value: (string | number)[] }) {
   store.patchInput({ yearEndTaxMode: value[0] as YearEndTaxMode })
 }
 
+/** 先落库测算历史再进明细，保证详情可按 id 回看 */
 async function goDetail() {
   try {
     const row = await salaryHistoryStore.createHistory({ ...salaryForm.value })

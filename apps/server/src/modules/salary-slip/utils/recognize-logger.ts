@@ -1,3 +1,7 @@
+/**
+ * 工资条识别结构化日志工具
+ * 生产环境成功请求按 SUCCESS_SAMPLE_RATE 采样；失败始终记录
+ */
 import type { Logger } from "@nestjs/common";
 import type { OcrPriorAttempt, OcrProviderMeta } from "@/plugins/ocr/ocr-provider.interface";
 import type { OcrCell } from "@/plugins/utils/ocr-layout";
@@ -63,6 +67,7 @@ export interface SalarySlipRecognizeMetrics {
 /** 生产环境成功请求采样率（失败始终记录） */
 const SUCCESS_SAMPLE_RATE = 0.1;
 
+/** 生成短 traceId，串联单次识别全链路日志 */
 export function createTraceId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -86,6 +91,7 @@ function roundConfidence(items: LineItem[]): LineItem[] {
   }));
 }
 
+/** 组装 OCR 阶段日志快照（含单元格坐标，便于排查对齐） */
 export function buildOcrLogSnapshot(input: {
   ok: boolean;
   provider?: string;
@@ -118,6 +124,7 @@ export function buildOcrLogSnapshot(input: {
   return snapshot;
 }
 
+/** 组装最终 line_items 结果快照（置信度截断到千分位） */
 export function buildResultLogSnapshot(rulesResult: LineItemsFromOcrResult): ResultLogSnapshot {
   return {
     confidence: rulesResult.confidence,
@@ -126,6 +133,10 @@ export function buildResultLogSnapshot(rulesResult: LineItemsFromOcrResult): Res
   };
 }
 
+/**
+ * 是否落盘本次识别日志
+ * 非生产全记；生产失败必记、成功按 SUCCESS_SAMPLE_RATE 采样
+ */
 export function shouldLogRecognizeMetrics(outcome: RecognizeOutcome): boolean {
   if (process.env.NODE_ENV !== "production") {
     return true;
@@ -136,6 +147,7 @@ export function shouldLogRecognizeMetrics(outcome: RecognizeOutcome): boolean {
   return Math.random() < SUCCESS_SAMPLE_RATE;
 }
 
+/** 按采样策略输出结构化 JSON 日志 */
 export function logSalarySlipRecognize(logger: Logger, metrics: SalarySlipRecognizeMetrics): void {
   if (!shouldLogRecognizeMetrics(metrics.outcome)) {
     return;

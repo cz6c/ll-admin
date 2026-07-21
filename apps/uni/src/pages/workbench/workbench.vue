@@ -3,13 +3,7 @@ defineOptions({ name: 'Workbench' })
 
 definePage({
   style: {
-    'navigationStyle': 'custom',
-    'navigationBarTitleText': '工具工作台',
-    'mp-alipay': {
-      defaultTitle: ' ',
-      transparentTitle: 'always',
-      titlePenetrate: 'YES',
-    },
+    navigationBarTitleText: '更多实用工具入口',
   },
 })
 
@@ -60,18 +54,7 @@ function openTool(url: string) {
 
 <template>
   <view class="page-shell">
-    <view class="workbench-header bg-primary pt-safe">
-      <view class="pb-64rpx text-center text-white">
-        <view class="text-34rpx font-500 leading-88rpx">
-          工具工作台
-        </view>
-        <view class="text-26rpx opacity-85 -mt-8rpx">
-          更多实用工具入口
-        </view>
-      </view>
-    </view>
-
-    <view class="px-24rpx pb-24rpx -mt-24rpx">
+    <view class="p-32rpx">
       <wd-cell-group center border custom-class="card-rounded" :title-width="260">
         <wd-cell
           v-for="item in tools"

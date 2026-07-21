@@ -8,10 +8,10 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
+import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { formatPayPeriodLabel } from '@/utils/payPeriod'
 import {
   computeVerifyBreakdown,
-  taxDiffHint,
 } from '@/utils/payslipVerify'
 import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 
@@ -166,7 +166,7 @@ const taxRows = computed((): AmountRow[] => {
 })
 
 function fmt(n: number) {
-  return (Math.round(n * 100) / 100).toFixed(2)
+  return formatSalaryAmount(n)
 }
 
 function fmtRate(rate: number) {
@@ -183,40 +183,24 @@ function fmtDiff(diff: number) {
 </script>
 
 <template>
-  <view class="page-shell pb-32rpx">
-    <template v-if="record && verify && breakdown">
-      <view class="bg-white p-32rpx">
-        <view class="flex items-center justify-between gap-16rpx">
-          <text class="text-32rpx text-#333 font-medium">
-            {{ formatPayPeriodLabel(record.payPeriod) }}
-          </text>
-          <wd-tag
-            :type="verify.overallMatch ? 'success' : 'warning'"
-            variant="light"
-            size="medium"
-            custom-class="ml-auto shrink-0"
-          >
-            {{ verify.overallMatch ? '核对无误' : '发现差异' }}
-          </wd-tag>
-        </view>
-
-        <view v-if="calcModeHint" class="compare-hint mt-24rpx">
-          {{ calcModeHint }}
-        </view>
+  <view class="page-shell pb-safe">
+    <view v-if="record && verify && breakdown" class="p-24rpx">
+      <view v-if="calcModeHint" class="compare-hint mb-16rpx">
+        {{ calcModeHint }}
       </view>
 
       <!-- 第一层：结论 + 列表对照 -->
-      <view class="mt-16rpx bg-white p-32rpx">
+      <view class="card-rounded p-32rpx">
         <view class="mb-16rpx flex items-center gap-16rpx">
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
           <text class="text-30rpx text-#333 font-600">
-            核对结果
+            核对结果（ {{ formatPayPeriodLabel(record.payPeriod) }}）
           </text>
         </view>
 
-        <text class="mb-16rpx block text-26rpx text-#666 leading-relaxed">
+        <view class="mb-16rpx text-26rpx">
           {{ verdictSummary }}
-        </text>
+        </view>
 
         <view class="compare-table">
           <view class="compare-table__head">
@@ -268,14 +252,10 @@ function fmtDiff(diff: number) {
             </text>
           </view>
         </view>
-
-        <view v-if="taxDiffHint(verify.taxDiff)" class="compare-hint mt-24rpx">
-          {{ taxDiffHint(verify.taxDiff) }}
-        </view>
       </view>
 
       <!-- 第二层：计算过程 -->
-      <view class="mt-16rpx bg-white p-32rpx">
+      <view class="mt-16rpx card-rounded p-32rpx">
         <view class="mb-16rpx flex items-center gap-16rpx">
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
           <text class="text-30rpx text-#333 font-600">
@@ -393,7 +373,7 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- 第三层：完整明细（折叠） -->
-      <view class="mt-16rpx bg-white">
+      <view class="mt-16rpx card-rounded">
         <view
           class="collapse-head"
           @click="showFullBreakdown = !showFullBreakdown"
@@ -438,7 +418,7 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- 第四层：工资条原始数据（折叠） -->
-      <view class="mt-16rpx bg-white">
+      <view class="mt-16rpx card-rounded">
         <view
           class="collapse-head"
           @click="showPayslipRaw = !showPayslipRaw"
@@ -466,7 +446,7 @@ function fmtDiff(diff: number) {
           </view>
         </view>
       </view>
-    </template>
+    </view>
 
     <view v-else-if="loadFailed" class="px-32rpx pt-80rpx">
       <wd-empty tip="记录不存在或加载失败" />

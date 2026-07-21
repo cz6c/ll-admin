@@ -1,7 +1,13 @@
+/**
+ * 工资条拍照识别 Composable
+ * 流程：选图 → 超 2MB 压缩 → 上传 recognize → 写入 lineItems
+ * 副作用：loading toast、失败 toast；依赖 @/api/salary-slip
+ */
 import type { LineItem } from '@/types/salary-slip'
 import { ref } from 'vue'
 import { recognizeSalarySlip } from '@/api/salary-slip'
 
+/** 超过此大小再压缩，减少上传耗时与超时概率 */
 const COMPRESS_THRESHOLD = 2 * 1024 * 1024
 
 function compressImage(src: string): Promise<string> {
@@ -20,6 +26,7 @@ export function useSalarySlipRecognize() {
   const previewPath = ref('')
   const lineItems = ref<LineItem[]>([])
 
+  /** 相册/相机选一张；超阈值则压缩并更新 previewPath */
   function chooseImage() {
     uni.chooseImage({
       count: 1,
@@ -44,6 +51,7 @@ export function useSalarySlipRecognize() {
     })
   }
 
+  /** 对当前 previewPath 发起识别；无图时直接 return */
   async function recognize() {
     if (!previewPath.value)
       return

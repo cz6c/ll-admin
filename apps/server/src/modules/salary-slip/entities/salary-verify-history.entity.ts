@@ -2,6 +2,11 @@ import { BaseEntity } from "@/common/entities/base";
 import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
+/**
+ * 薪资历史表实体（月薪核对 verify + 年薪测算 calc 共表）
+ * 唯一索引：(userId, historyType, payPeriod)；calc 的 payPeriod 为 NULL 允许多条
+ * @note decimal 列 TypeORM 以 string 返回，避免 JS number 精度丢失；DTO 层再 Number()
+ */
 @Entity("salary_verify_history", { comment: "薪资历史表（月薪核对/年薪测算）" })
 @Index("idx_salary_verify_history_user_period", ["userId", "historyType", "payPeriod"], { unique: true })
 @Index("idx_salary_verify_history_user_list", ["userId", "delFlag", "historyType"])

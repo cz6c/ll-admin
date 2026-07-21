@@ -1,4 +1,9 @@
 <script lang="ts" setup>
+/**
+ * 月薪核对页
+ * 主流程：选图识别 → 映射 6 字段（可手动改）→ 选所属月 → 累计预扣核对 → 写入历史
+ * 必填：税前、个税、税后；社保/公积金/专项可 0
+ */
 import type { LineItem } from '@/types/salary-slip'
 import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
 import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFieldMap'
@@ -6,6 +11,7 @@ import dayjs from 'dayjs'
 import { computed, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
+import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import {
   formatPayPeriod,
   formatPayPeriodLabel,
@@ -13,7 +19,7 @@ import {
   payPeriodToTimestamp,
   previousPayPeriod,
 } from '@/utils/payPeriod'
-import { computeVerifyForRecord, taxDiffHint } from '@/utils/payslipVerify'
+import { computeVerifyForRecord, formatVerifyAbnormalSummary } from '@/utils/payslipVerify'
 import { mapLineItemsToPayslipFields, PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 
 defineOptions({ name: 'SalaryVerify' })
@@ -51,6 +57,7 @@ const form = ref<PayslipMappedFields>({
 
 const unmappedItems = ref<LineItem[]>([])
 
+/** 恒为 true：允许无 OCR 结果时也手工填表核对；勿改成 > 0 否则无法纯手填 */
 const showVerifyForm = computed(() => lineItems.value.length >= 0)
 
 const payPeriodLabel = computed(() => formatPayPeriodLabel(payPeriod.value))
@@ -93,6 +100,11 @@ const calcModeHint = computed(() => {
   return `暂无完整历史，按本月工资估算累计个税（${payPeriodLabel.value}），结果仅供参考`
 })
 
+const abnormalSummary = computed(() => {
+  const r = verifyResult.value
+  return r ? formatVerifyAbnormalSummary(r) : ''
+})
+
 watch(lineItems, (items) => {
   if (!items.length)
     return
@@ -125,7 +137,7 @@ function onPayPeriodConfirm({ value }: { value: number }) {
 }
 
 function fmt(n: number) {
-  return (Math.round(n * 100) / 100).toFixed(2)
+  return formatSalaryAmount(n)
 }
 
 async function submitVerify() {
@@ -189,8 +201,8 @@ function goVerifyHistory() {
 </script>
 
 <template>
-  <view class="page-shell pb-48rpx">
-    <view class="px-24rpx pt-24rpx">
+  <view class="page-shell pb-safe">
+    <view class="p-24rpx">
       <!-- A. 识别区 -->
       <view class="mb-24rpx card-rounded bg-white p-32rpx">
         <view class="flex items-center justify-between">
@@ -382,8 +394,8 @@ function goVerifyHistory() {
                   {{ verifyResult.taxDiff > 0 ? '+' : '' }}{{ fmt(verifyResult.taxDiff) }}
                 </text>
               </view>
-              <view v-if="taxDiffHint(verifyResult.taxDiff)" class="verify-detail__hint mt-16rpx">
-                {{ taxDiffHint(verifyResult.taxDiff) }}
+              <view v-if="abnormalSummary" class="verify-detail__hint mt-16rpx">
+                {{ abnormalSummary }}
               </view>
             </view>
             <view

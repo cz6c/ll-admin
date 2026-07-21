@@ -1,3 +1,6 @@
+/**
+ * 工资条识别接口 DTO（上传 + 识别结果）
+ */
 import { ApiProperty } from "@nestjs/swagger";
 
 export class LineItemDto {
@@ -22,7 +25,8 @@ export class SalarySlipResultDto {
   confidence?: "high" | "medium" | "low";
 }
 
+/** multipart 上传体；字段名必须为 file（与 FileInterceptor("file") 一致） */
 export class SalarySlipUploadDto {
-  @ApiProperty({ type: "string", format: "binary" })
+  @ApiProperty({ type: "string", format: "binary", description: "工资条图片，字段名 file" })
   file: Express.Multer.File;
 }

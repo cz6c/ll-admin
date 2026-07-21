@@ -1,3 +1,7 @@
+/**
+ * 工资条识别与薪资历史 HTTP 入口
+ * 薄控制器：鉴权用户态透传 Service；接口说明见各 @ApiOperation
+ */
 import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";

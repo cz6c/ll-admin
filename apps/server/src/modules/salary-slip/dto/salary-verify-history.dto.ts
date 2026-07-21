@@ -3,9 +3,15 @@ import { Type } from "class-transformer";
 import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from "class-validator";
 import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
+/** 与枚举对齐的类型别名，便于 DTO/Service 引用 */
 export type SalaryHistoryType = SalaryHistoryTypeEnum;
 export type YearEndTaxMode = YearEndTaxModeEnum;
 
+/**
+ * 新增或更新薪资历史
+ * - verify：payPeriod + 个税/税后必填；按 user+type+period upsert
+ * - calc：yearEndTaxMode/yearEndBonus 必填；每次新增测算快照（payPeriod 为空）
+ */
 export class UpsertSalaryVerifyHistoryDto {
   @ApiPropertyOptional({
     description: "历史类型：verify 月薪核对，calc 年薪测算。为空时默认 verify",
@@ -74,6 +80,7 @@ export class UpsertSalaryVerifyHistoryDto {
   yearEndBonus?: number;
 }
 
+/** 历史列表/写入接口返回的单条 */
 export class SalaryVerifyHistoryItemDto {
   @ApiProperty({ description: "历史记录ID", example: 1 })
   id: number;
@@ -117,6 +124,7 @@ export class SalaryVerifyHistoryItemDto {
   updateTime: Date;
 }
 
+/** 软删单条历史 */
 export class DeleteSalaryVerifyHistoryDto {
   @ApiProperty({ description: "历史记录ID", example: 1 })
   @Type(() => Number)
@@ -126,6 +134,7 @@ export class DeleteSalaryVerifyHistoryDto {
   id: number;
 }
 
+/** 历史列表查询：可选 keyword / historyType */
 export class ListSalaryVerifyHistoryDto {
   @ApiPropertyOptional({ description: "搜索关键词（支持年月、税前工资）", example: "2026-06" })
   @IsOptional()

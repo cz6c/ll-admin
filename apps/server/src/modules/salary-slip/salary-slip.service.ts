@@ -32,10 +32,16 @@ const MIME_BY_FORMAT: Record<string, string> = {
   webp: "image/webp"
 };
 
+/** 单用户每日识别上限；超限返回 429 */
 const DAILY_RECOGNIZE_LIMIT = 10;
+/** 日切按上海时区，与产品「自然日」口径一致 */
 const SHANGHAI_TIMEZONE = "Asia/Shanghai";
 
-/** 工资条识别：预处理 → OCR → 列对齐 → 规则直出 line_items */
+/**
+ * 工资条识别与薪资历史
+ * 识别主流程：1. 限流校验 2. 图片预处理 3. OCR 4. 列对齐 5. 规则出 line_items
+ * 历史：verify/calc 共表 upsert / 列表 / 软删
+ */
 @Injectable()
 export class SalarySlipService {
   private readonly logger = new Logger(SalarySlipService.name);
@@ -146,6 +152,10 @@ export class SalarySlipService {
     return { ok: true as const, historyType };
   }
 
+  /**
+   * 工资条智能识别
+   * @returns ResultData 包装的 SalarySlipResultDto；限流/空文件/OCR 失败映射为对应业务文案
+   */
   async recognize(file: Express.Multer.File, userId: number) {
     const traceId = createTraceId();
     const startedAt = Date.now();
@@ -281,6 +291,9 @@ export class SalarySlipService {
     }
   }
 
+  /**
+   * 新增或更新薪资历史；verify 按 period upsert（含软删复活），calc 新增快照
+   */
   async upsertHistory(userId: number, dto: UpsertSalaryVerifyHistoryDto) {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");
@@ -334,6 +347,7 @@ export class SalarySlipService {
     return ResultData.ok(this.toHistoryItemDto(created));
   }
 
+  /** 当前用户历史列表；keyword 模糊匹配 payPeriod / 税前月薪 */
   async listHistory(userId: number, keyword?: string, historyType?: SalaryHistoryType) {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");
@@ -355,6 +369,7 @@ export class SalarySlipService {
     return ResultData.ok(list.map(item => this.toHistoryItemDto(item)));
   }
 
+  /** 软删单条历史（delFlag）；仅能删本人记录 */
   async removeHistory(userId: number, id: number) {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");

@@ -1,10 +1,15 @@
 <script lang="ts" setup>
+/**
+ * 年薪测算明细页
+ * 数据源：有 historyId 用历史快照；无 id 用当前 salaryCalcStore.input
+ */
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryCalcStore } from '@/store/salaryCalc'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { calcSalary } from '@/utils/salaryCalculator'
+import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 
 defineOptions({ name: 'SalaryDetail' })
 
@@ -58,10 +63,6 @@ const yearEndTaxLabel = computed(() =>
 
 const annualInsPersonalP = computed(() => r.value.fiveInsFundPersonalMonthly * 12)
 
-function fmt(n: number) {
-  return (Math.round(n * 100) / 100).toFixed(2)
-}
-
 /** 综合所得个税税率表（全年应纳税所得额） */
 const INCOME_TAX_BRACKETS = [
   { level: 1, range: '不超过36000元的', rate: 3, deduction: 0 },
@@ -79,7 +80,7 @@ const INCOME_TAX_BRACKETS = [
     <view class="hero bg-primary px-32rpx pb-40rpx pt-safe">
       <view class="pt-24rpx text-center">
         <text class="text-72rpx text-white font-semibold leading-none tabular-nums">
-          {{ fmt(r.annualTakeHome) }}
+          {{ formatSalaryAmount(r.annualTakeHome) }}
         </text>
         <view class="ml-16rpx mt-16rpx inline-block rounded-8rpx bg-white/20 px-16rpx py-2rpx">
           <text class="text-24rpx text-white/95">
@@ -94,7 +95,7 @@ const INCOME_TAX_BRACKETS = [
         <view class="summary-grid">
           <view class="sum-cell">
             <text class="sum-val tabular-nums">
-              {{ fmt(r.annualTaxTotal) }}
+              {{ formatSalaryAmount(r.annualTaxTotal) }}
             </text>
             <text class="sum-lab">
               年度缴税
@@ -102,7 +103,7 @@ const INCOME_TAX_BRACKETS = [
           </view>
           <view class="sum-cell">
             <text class="sum-val tabular-nums">
-              {{ fmt(annualInsPersonalP) }}
+              {{ formatSalaryAmount(annualInsPersonalP) }}
             </text>
             <text class="sum-lab">
               五险一金（个人）
@@ -157,22 +158,22 @@ const INCOME_TAX_BRACKETS = [
             </view>
             <view class="month-cell month-cell--grow">
               <text class="month-num tabular-nums">
-                {{ fmt(row.preTax) }}
+                {{ formatSalaryAmount(row.preTax) }}
               </text>
             </view>
             <view class="month-cell month-cell--grow">
               <text class="month-num tabular-nums">
-                {{ fmt(row.fiveInsFundPersonal) }}
+                {{ formatSalaryAmount(row.fiveInsFundPersonal) }}
               </text>
             </view>
             <view class="month-cell month-cell--grow">
               <text class="month-num tabular-nums">
-                {{ fmt(row.tax) }}
+                {{ formatSalaryAmount(row.tax) }}
               </text>
             </view>
             <view class="month-cell month-cell--grow">
               <text class="month-num text-primary tabular-nums">
-                {{ fmt(row.postTax) }}
+                {{ formatSalaryAmount(row.postTax) }}
               </text>
             </view>
           </view>
@@ -185,7 +186,7 @@ const INCOME_TAX_BRACKETS = [
       </view>
       <view v-if="detailInput.yearEndBonus > 0" class="mt-24rpx card-rounded p-24rpx text-26rpx leading-relaxed">
         <text class="text-#666">
-          年终奖 {{ fmt(detailInput.yearEndBonus) }}，个税 {{ fmt(r.yearEndBonusTax) }}，到手 {{ fmt(r.yearEndBonusNet) }}
+          年终奖 {{ formatSalaryAmount(detailInput.yearEndBonus) }}，个税 {{ formatSalaryAmount(r.yearEndBonusTax) }}，到手 {{ formatSalaryAmount(r.yearEndBonusNet) }}
           （{{ yearEndTaxLabel }}）
         </text>
       </view>
@@ -241,7 +242,7 @@ const INCOME_TAX_BRACKETS = [
             </view>
             <view class="pit-cell pit-cell--deduct">
               <text class="pit-num tabular-nums">
-                {{ row.deduction }}
+                {{ formatSalaryAmount(row.deduction) }}
               </text>
             </view>
           </view>

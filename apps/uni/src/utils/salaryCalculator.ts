@@ -1,4 +1,7 @@
 /**
+ * 薪资测算与工资条累计预扣核对
+ * 职责：年薪测算（calcSalary）、累计预扣明细、工资条个税/税后核对
+ * 适用：测算页、核对页、历史摘要与详情
  *
  * 流程概览：按用户填写的社保/公积金个缴额 → 算五险一金个人月缴额 → 按累计预扣法算 12 个月个税与税后
  * → 年终奖单独计税或并入综合所得 → 汇总年度到手与税额。
@@ -6,14 +9,19 @@
 
 import { parsePayPeriod } from '@/utils/payPeriod'
 
-/** 年终奖计税方式：单独计税 | 并入综合所得 */
+/**
+ * 年终奖计税方式：
+ * - none：不计年终奖税
+ * - separate：单独计税
+ * - merge：并入综合所得
+ */
 export type YearEndTaxMode = 'none' | 'separate' | 'merge'
 
 /** 用户输入的薪资与参保参数，用于一次完整测算 */
 export interface SalaryCalcInput {
   /** 每月税前固定工资，本模型按 12 个月相同月薪计算 */
   preTaxMonthly: number
-  /** 年终奖计税方式：`separate` 单独计税，`merge` 并入当年综合所得 */
+  /** 年终奖计税方式：none 不计税 / separate 单独计税 / merge 并入综合所得 */
   yearEndTaxMode: YearEndTaxMode
   /** 年终奖税前金额，为 0 表示无年终奖 */
   yearEndBonus: number
@@ -64,7 +72,7 @@ export interface SalaryCalcResult {
   yearEndBonusNet: number
 }
 
-/** 累计预扣税率档：上限、预扣率、速算扣除数 */
+/** 累计预扣税率档：max 档位上限（含）、rate 预扣率、quick 速算扣除数 */
 const SALARY_TAX_TIERS = [
   { max: 36000, rate: 0.03, quick: 0 },
   { max: 144000, rate: 0.1, quick: 2520 },
@@ -78,10 +86,14 @@ const SALARY_TAX_TIERS = [
 /**
  * 按累计预扣预缴应纳税所得额查预扣率档位。
  * 累计应预扣预缴税额 = 应纳税所得额 × 预扣率 − 速算扣除数
+ * @returns tax 累计应预扣税额；rate/quick 为命中档位的预扣率与速算扣除数
  */
 function resolveSalaryTaxTier(cumulativeWithholdingTaxableIncome: number): {
+  /** 累计应预扣预缴税额（未 round） */
   tax: number
+  /** 预扣率 */
   rate: number
+  /** 速算扣除数 */
   quick: number
 } {
   if (cumulativeWithholdingTaxableIncome <= 0)
@@ -238,13 +250,18 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
   }
 }
 
+/** 金额比对容差（元）；分位四舍五入后仍可能有 0.01 级浮点差 */
 const VERIFY_TOLERANCE = 0.01
 
 /** 单月工资快照（用于累计预扣，不含工资条个税/税后） */
 export interface PayslipMonthSnapshot {
+  /** 税前应发月薪 */
   preTaxMonthly: number
+  /** 个人社保合计 */
   ssPersonalAmount: number
+  /** 个人公积金 */
   hfPersonalAmount: number
+  /** 专项附加扣除（月） */
   specialDeductionMonthly: number
 }
 
@@ -282,6 +299,7 @@ export interface WithholdingBreakdown {
   currentPeriodTax: number
 }
 
+/** 空明细模板；months 为空时直接返回其浅拷贝 */
 const EMPTY_BREAKDOWN: WithholdingBreakdown = {
   cumulativeIncome: 0,
   cumulativeTaxExemptIncome: 0,
@@ -368,10 +386,16 @@ export function calcWithholdingBreakdownForMonths(months: PayslipMonthSnapshot[]
   return last
 }
 
-/** 按可变月薪逐月累计预扣，返回最后一月的个税与税后 */
+/**
+ * 按可变月薪逐月累计预扣，返回最后一月的个税与税后
+ * @returns tax 本期个税；postTax 税前−五险一金−个税；fiveInsFundPersonal 最后一月五险一金个人
+ */
 export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
+  /** 本期应预扣预缴税额 */
   tax: number
+  /** 最后一月税后实发 */
   postTax: number
+  /** 最后一月五险一金个人合计 */
   fiveInsFundPersonal: number
 } {
   if (!months.length) {
@@ -389,34 +413,53 @@ export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
   }
 }
 
-/** 工资条核对输入 */
+/** 工资条核对输入（用户填写/识别的工资条字段） */
 export interface PayslipVerifyInput {
   /** 工资所属月份 YYYY-MM */
   payPeriod: string
+  /** 税前应发月薪 */
   preTaxMonthly: number
+  /** 个人社保合计 */
   ssPersonalAmount: number
+  /** 个人公积金 */
   hfPersonalAmount: number
+  /** 专项附加扣除（月） */
   specialDeductionMonthly: number
-  /** 工资条上的个人所得税 */
+  /** 工资条上的个人所得税（与重算值比对） */
   personalIncomeTax: number
-  /** 工资条上的税后工资 */
+  /** 工资条上的税后工资（与「税前−社保公积金−个税」自洽值比对） */
   postTaxMonthly: number
 }
 
-/** 工资条核对结果 */
+/**
+ * 工资条核对结果
+ * 差异口径：工资条值 − 重算期望值；正数表示工资条偏高（可能多扣/多发）
+ */
 export interface PayslipVerifyResult {
+  /** 按累计预扣法重算的本期个税 */
   expectedTax: number
+  /** 由工资条字段自洽推出的税后应发：税前 − 社保 − 公积金 − 个税 */
   expectedPostTax: number
+  /** 个税差异 = 工资条个税 − expectedTax */
   taxDiff: number
+  /** 税后差异 = 工资条税后 − expectedPostTax */
   postTaxDiff: number
+  /** 个税是否在容差内一致 */
   taxMatch: boolean
+  /** 税后是否在容差内一致 */
   postTaxMatch: boolean
+  /** 个税与税后均匹配 */
   overallMatch: boolean
+  /**
+   * history：用已录入前序月份累计预扣；
+   * ideal：前序月按当月快照理想推算（或缺月时降级）
+   */
   calcMode: 'history' | 'ideal'
   /** ideal 模式下缺失的前序月份（1..M-1） */
   missingPriorMonths?: number[]
 }
 
+/** 核对输入 → 累计预扣用的月份快照（去掉工资条个税/税后） */
 function toMonthSnapshot(input: Pick<PayslipVerifyInput, 'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'specialDeductionMonthly'>): PayslipMonthSnapshot {
   return {
     preTaxMonthly: input.preTaxMonthly,
@@ -436,6 +479,10 @@ function expectedPostTaxFromSlip(input: PayslipVerifyInput): number {
   )
 }
 
+/**
+ * 组装核对结果：用重算个税与工资条字段算差异，再按 VERIFY_TOLERANCE 判定是否匹配
+ * @param expectedTax 累计预扣得到的本期个税
+ */
 function buildVerifyResult(
   input: PayslipVerifyInput,
   expectedTax: number,
@@ -462,17 +509,26 @@ function buildVerifyResult(
 
 /** 核对结果 + 累计预扣明细（详情页） */
 export interface PayslipVerifyBreakdownResult {
+  /** 个税/税后比对结果 */
   verify: PayslipVerifyResult
+  /** 截至当月的累计预扣公式拆解 */
   breakdown: WithholdingBreakdown
 }
 
+/**
+ * 决定累计预扣用「真实前序历史」还是「当月参数理想复制 1..M」
+ * history：缺月为空且 prior 条数恰好为 M-1；否则降级 ideal
+ */
 function resolveVerifyMode(
   input: PayslipVerifyInput,
   options?: {
+    /** 同年 1..M-1 月快照（不含当月） */
     priorMonths?: PayslipMonthSnapshot[]
+    /** 调用方已算出的缺月列表；ideal 时透出给结果 */
     missingPriorMonths?: number[]
   },
 ): {
+  /** 参与累计预扣的 1..M 月序列 */
   months: PayslipMonthSnapshot[]
   calcMode: 'history' | 'ideal'
   missingPriorMonths?: number[]
@@ -505,6 +561,7 @@ export function verifyPayslipTax(
   options?: {
     /** 同年 1..M-1 月的历史快照（不含当月） */
     priorMonths?: PayslipMonthSnapshot[]
+    /** 同年 1..M-1 中缺失的月份序号；非空则走 ideal */
     missingPriorMonths?: number[]
   },
 ): PayslipVerifyResult {
@@ -522,7 +579,9 @@ export function verifyPayslipTax(
 export function verifyPayslipTaxBreakdown(
   input: PayslipVerifyInput,
   options?: {
+    /** 同年 1..M-1 月的历史快照（不含当月） */
     priorMonths?: PayslipMonthSnapshot[]
+    /** 同年 1..M-1 中缺失的月份序号；非空则走 ideal */
     missingPriorMonths?: number[]
   },
 ): PayslipVerifyBreakdownResult {

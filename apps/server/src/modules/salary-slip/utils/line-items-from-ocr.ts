@@ -1,11 +1,26 @@
+/**
+ * OCR 对齐结果 → line_items + 整单置信度
+ *
+ * 置信度规则：
+ * - high：有效配对率 ≥ 0.9 且无歧义/孤儿/缺标签
+ * - medium：配对率 ≥ 0.6 且歧义项 ≤ 2
+ * - low：其余；单项 confidence < 0.55 或 ambiguous 会记 warning
+ * 重复标签追加 (2)/(3)… 避免 key 冲突
+ */
 import type { AlignedPair } from "@/plugins/utils/ocr-layout";
 
+/** 整单置信度档位 */
 export type LineItemsConfidence = "high" | "medium" | "low";
 
+/** 与前端 LineItem / DTO 对齐的明细行 */
 export interface LineItem {
+  /** 项目名称；未配对金额时可为空串 */
   key: string;
+  /** 格式化金额或原文本，空为 "-" */
   value: string;
+  /** 对齐置信度 0~1 */
   confidence: number;
+  /** 歧义/低置信度/重复等提示 */
   warning: string;
 }
 
@@ -69,7 +84,11 @@ function appendWarning(current: string, extra: string): string {
   return current ? `${current}；${extra}` : extra;
 }
 
-/** 将对齐配对转为 line_items，并评估置信度 */
+/**
+ * 将对齐配对转为 line_items，并评估整单置信度
+ * @param pairs 标签-金额对齐对
+ * @param orphans 未配对金额文本
+ */
 export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): LineItemsFromOcrResult {
   const line_items: LineItem[] = [];
   const existingKeys = new Set<string>();

@@ -1,3 +1,8 @@
+/**
+ * 工资所属月（payPeriod）工具
+ * 职责：YYYY-MM 解析/展示、当前/上月、累计预扣所需的缺月判定
+ * 适用：核对表单、历史列表、verifyPayslipTax 的 history/ideal 分支
+ */
 import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
 import dayjs from 'dayjs'
 
@@ -6,7 +11,7 @@ export function formatPayPeriod(ts: number): string {
   return dayjs(ts).format('YYYY-MM')
 }
 
-/** 解析 YYYY-MM */
+/** 解析 YYYY-MM；非法段回落为 0，避免 NaN 传播 */
 export function parsePayPeriod(payPeriod: string): { year: number, month: number } {
   const [y, m] = payPeriod.split('-').map(Number)
   return {
@@ -36,12 +41,15 @@ export function currentPayPeriod(): string {
   return dayjs().format('YYYY-MM')
 }
 
-/** 上一自然月的 YYYY-MM */
+/** 上一自然月的 YYYY-MM（核对页默认所属月） */
 export function previousPayPeriod(): string {
   return dayjs().subtract(1, 'month').format('YYYY-MM')
 }
 
-/** 同年 1..M-1 中缺失的月份序号 */
+/**
+ * 同年 1..M-1 中缺失的月份序号
+ * @note 非空时核对应走 ideal（理想推算），不能用残缺 priorMonths 硬算累计预扣
+ */
 export function listMissingPriorMonths(
   payPeriod: string,
   records: PayslipVerifyRecord[],
@@ -62,7 +70,10 @@ export function listMissingPriorMonths(
   return missing
 }
 
-/** 同年 1..M-1 是否均有记录 */
+/**
+ * 同年 1..M-1 是否均有记录
+ * @note 为 true 才允许 history 模式用真实前序月薪累计
+ */
 export function isPriorHistoryComplete(
   payPeriod: string,
   records: PayslipVerifyRecord[],

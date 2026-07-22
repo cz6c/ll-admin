@@ -16,9 +16,9 @@ jobs:
 
     # 定义 job 的具体步骤
     steps:
-      # 官方action，将代码拉取到虚拟机
+      # 官方 action
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 拷贝文件到服务器指定目录
       - name: Deploy to server

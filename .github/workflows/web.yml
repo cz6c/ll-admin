@@ -16,17 +16,16 @@ jobs:
 
     # 定义 job 的具体步骤
     steps:
-      # 官方action，将代码拉取到虚拟机
+      # 官方 action
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
+      # 不写 version：由根 package.json 的 packageManager决定，避免与 Action 硬编码冲突
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22.18.0"
           cache: "pnpm"

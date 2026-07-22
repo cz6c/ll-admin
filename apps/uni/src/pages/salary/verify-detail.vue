@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 月薪核对历史详情：结论对比 → 计算过程 → 可展开完整明细。
+ * 月薪核对历史详情：顶部结论卡 → 项目对比 → 计算过程 → 工资条原始数据。
  * 数据来自历史列表本地重算，不拉详情接口。
  */
 import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
@@ -9,7 +9,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
-import { formatPayPeriodLabel } from '@/utils/payPeriod'
+import { parsePayPeriod } from '@/utils/payPeriod'
 import {
   computeVerifyBreakdown,
 } from '@/utils/payslipVerify'
@@ -28,8 +28,6 @@ const { items: verifyList } = storeToRefs(verifyHistoryStore)
 
 const historyId = ref('')
 const loadFailed = ref(false)
-const showFullBreakdown = ref(false)
-const showPayslipRaw = ref(false)
 
 const fieldKeys: PayslipFieldKey[] = [
   'preTaxMonthly',
@@ -102,6 +100,37 @@ const verdictSummary = computed(() => {
   return '个税与税后均存在差异，请逐项核对工资条'
 })
 
+/** 顶部卡：一致 / 存在差异（优先展示实发差异，否则个税差异） */
+const summaryMatch = computed(() => verify.value?.overallMatch ?? false)
+
+const summaryDiffAmount = computed(() => {
+  const v = verify.value
+  if (!v || v.overallMatch)
+    return 0
+  // 实发列是顶部卡主对照；实发一致时才回退到个税差额
+  if (!v.postTaxMatch)
+    return Math.abs(v.postTaxDiff)
+  return Math.abs(v.taxDiff)
+})
+
+const summaryTitle = computed(() => {
+  if (!verify.value)
+    return ''
+  if (summaryMatch.value)
+    return '核对一致'
+  return `存在差异 ¥${fmt(summaryDiffAmount.value)}`
+})
+
+/**
+ * 副标题「YYYY 年 M 月 工资条」
+ */
+const summarySubtitle = computed(() => {
+  if (!record.value)
+    return ''
+  const { year, month } = parsePayPeriod(record.value.payPeriod)
+  return `${year} 年 ${month} 月 工资条`
+})
+
 interface AmountRow { label: string, value: string }
 
 const activeDeductionItems = computed((): AmountRow[] => {
@@ -133,35 +162,18 @@ const totalDeductions = computed(() => {
   return b.cumulativeIncome - b.cumulativeTaxableIncome
 })
 
-const incomeRows = computed((): AmountRow[] => {
+/**
+ * 累计应纳税额拆解子项：应纳税所得额 × 预扣率 − 速算扣除数
+ * @note 与税法「累计应预扣预缴税额」公式一致，便于对照父级合计
+ */
+const taxPayableCalcItems = computed((): AmountRow[] => {
   const b = breakdown.value
   if (!b)
     return []
+  const rateAmount = Math.round(b.cumulativeTaxableIncome * b.taxRate * 100) / 100
   return [
-    { label: '累计收入', value: fmt(b.cumulativeIncome) },
-    { label: '累计免税收入', value: fmt(b.cumulativeTaxExemptIncome) },
-    { label: '累计减除费用', value: fmt(b.cumulativeStandardDeduction) },
-    { label: '累计专项扣除', value: fmt(b.cumulativeSpecialDeduction) },
-    { label: '累计专项附加扣除', value: fmt(b.cumulativeSpecialAdditionalDeduction) },
-    { label: '累计其他扣除', value: fmt(b.cumulativeOtherDeduction) },
-    { label: '累计个人养老金', value: fmt(b.cumulativePersonalPension) },
-    { label: '累计准予扣除的捐赠额', value: fmt(b.cumulativeDonationDeduction) },
-    { label: '累计应纳税所得额', value: fmt(b.cumulativeTaxableIncome) },
-  ]
-})
-
-const taxRows = computed((): AmountRow[] => {
-  const b = breakdown.value
-  if (!b)
-    return []
-  return [
-    { label: '累计应纳税所得额', value: fmt(b.cumulativeTaxableIncome) },
-    { label: '税率/预扣率', value: fmtRate(b.taxRate) },
-    { label: '速算扣除数', value: fmt(b.quickDeduction) },
-    { label: '累计应纳税额', value: fmt(b.cumulativeTaxPayable) },
-    { label: '累计已缴税额', value: fmt(b.cumulativeTaxPaid) },
-    { label: '累计减免税额', value: fmt(b.cumulativeTaxReduction) },
-    { label: '本期申报税额', value: fmt(b.currentPeriodTax) },
+    { label: `应纳税所得额×${fmtRate(b.taxRate)}`, value: fmt(rateAmount) },
+    { label: '速算扣除数', value: `-${fmt(b.quickDeduction)}` },
   ]
 })
 
@@ -189,15 +201,41 @@ function fmtDiff(diff: number) {
         {{ calcModeHint }}
       </view>
 
-      <!-- 第一层：结论 + 列表对照 -->
-      <view class="card-rounded p-32rpx">
-        <view class="mb-16rpx flex items-center gap-16rpx">
-          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-          <text class="text-30rpx text-#333 font-600">
-            核对结果（ {{ formatPayPeriodLabel(record.payPeriod) }}）
-          </text>
+      <!-- 顶部结论卡：一致或差异状态 -->
+      <view class="summary-card mb-32rpx">
+        <view class="summary-card__head">
+          <view
+            class="summary-card__icon"
+            :class="summaryMatch ? 'is-ok' : 'is-warn'"
+          >
+            <view
+              class="h-36rpx w-36rpx"
+              :class="summaryMatch ? 'i-carbon-checkmark-filled' : 'i-carbon-warning-filled'"
+            />
+          </view>
+          <view class="summary-card__titles">
+            <text
+              class="summary-card__title"
+              :class="summaryMatch ? 'is-ok' : 'is-warn'"
+            >
+              {{ summaryTitle }}
+            </text>
+            <text class="summary-card__sub">
+              {{ summarySubtitle }}
+            </text>
+          </view>
         </view>
+      </view>
 
+      <!-- 第一层：结论 + 列表对照 -->
+      <view class="mb-16rpx flex items-center gap-16rpx">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+        <text class="text-30rpx text-#333 font-600">
+          项目对比
+        </text>
+        <text class="text-24rpx text-#999">系统vs工资条</text>
+      </view>
+      <view class="mb-32rpx card-rounded p-32rpx">
         <view class="mb-16rpx text-26rpx">
           {{ verdictSummary }}
         </view>
@@ -231,7 +269,7 @@ function fmtDiff(diff: number) {
               class="compare-table__cell compare-table__cell--diff tabular-nums"
               :class="verify.taxMatch ? 'is-ok' : 'is-warn'"
             >
-              {{ fmtDiff(verify.taxDiff) }}
+              {{ verify.taxMatch ? '一致' : fmtDiff(verify.taxDiff) }}
             </text>
           </view>
           <view class="compare-table__row">
@@ -248,21 +286,21 @@ function fmtDiff(diff: number) {
               class="compare-table__cell compare-table__cell--diff tabular-nums"
               :class="verify.postTaxMatch ? 'is-ok' : 'is-warn'"
             >
-              {{ fmtDiff(verify.postTaxDiff) }}
+              {{ verify.postTaxMatch ? '一致' : fmtDiff(verify.postTaxDiff) }}
             </text>
           </view>
         </view>
       </view>
 
       <!-- 第二层：计算过程 -->
-      <view class="mt-16rpx card-rounded p-32rpx">
-        <view class="mb-16rpx flex items-center gap-16rpx">
-          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-          <text class="text-30rpx text-#333 font-600">
-            本期个税怎么算出来的
-          </text>
-        </view>
-
+      <view class="mb-16rpx flex items-center gap-16rpx">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+        <text class="text-30rpx text-#333 font-600">
+          个税计算
+        </text>
+        <text class="text-24rpx text-#999">本期个税怎么算出来的</text>
+      </view>
+      <view class="mb-32rpx card-rounded px-32rpx py-16rpx">
         <view class="calc-step">
           <text class="calc-step__no">
             ①
@@ -336,6 +374,18 @@ function fmtDiff(diff: number) {
                 {{ fmt(breakdown.cumulativeTaxPayable) }}
               </text>
             </view>
+            <view
+              v-for="item in taxPayableCalcItems"
+              :key="item.label"
+              class="calc-step__sub"
+            >
+              <text class="calc-step__sub-label">
+                · {{ item.label }}
+              </text>
+              <text class="calc-step__sub-val tabular-nums">
+                {{ item.value }}
+              </text>
+            </view>
           </view>
         </view>
 
@@ -372,78 +422,26 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 第三层：完整明细（折叠） -->
-      <view class="mt-16rpx card-rounded">
-        <view
-          class="collapse-head"
-          @click="showFullBreakdown = !showFullBreakdown"
-        >
-          <view class="flex items-center gap-16rpx">
-            <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-            <text class="text-30rpx text-#333 font-600">
-              完整计算明细
-            </text>
-          </view>
-          <wd-icon :name="showFullBreakdown ? 'down' : 'up'" size="28rpx" />
-        </view>
-        <view v-if="showFullBreakdown" class="px-32rpx pb-28rpx">
-          <view
-            v-for="row in incomeRows"
-            :key="row.label"
-            class="detail-row"
-          >
-            <text class="detail-label">
-              {{ row.label }}
-            </text>
-            <text class="detail-val tabular-nums">
-              {{ row.value }}
-            </text>
-          </view>
-
-          <view class="detail-divider" />
-
-          <view
-            v-for="row in taxRows"
-            :key="`tax-${row.label}`"
-            class="detail-row"
-          >
-            <text class="detail-label">
-              {{ row.label }}
-            </text>
-            <text class="detail-val tabular-nums">
-              {{ row.value }}
-            </text>
-          </view>
-        </view>
+      <!-- 工资条原始数据（折叠） -->
+      <view class="mb-16rpx flex items-center gap-16rpx">
+        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+        <text class="text-30rpx text-#333 font-600">
+          工资条明细
+        </text>
+        <text class="text-24rpx text-#999">原始数据</text>
       </view>
-
-      <!-- 第四层：工资条原始数据（折叠） -->
-      <view class="mt-16rpx card-rounded">
+      <view class="mb-32rpx card-rounded px-32rpx py-16rpx">
         <view
-          class="collapse-head"
-          @click="showPayslipRaw = !showPayslipRaw"
+          v-for="key in fieldKeys"
+          :key="key"
+          class="detail-row"
         >
-          <view class="flex items-center gap-16rpx">
-            <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-            <text class="text-30rpx text-#333 font-600">
-              工资条原始数据
-            </text>
-          </view>
-          <wd-icon :name="showPayslipRaw ? 'down' : 'up'" size="28rpx" />
-        </view>
-        <view v-if="showPayslipRaw" class="px-32rpx pb-28rpx">
-          <view
-            v-for="key in fieldKeys"
-            :key="key"
-            class="detail-row"
-          >
-            <text class="detail-label">
-              {{ PAYSLIP_FIELD_LABELS[key] }}
-            </text>
-            <text class="detail-val tabular-nums">
-              {{ fmt(record[key]) }}
-            </text>
-          </view>
+          <text class="detail-label">
+            {{ PAYSLIP_FIELD_LABELS[key] }}
+          </text>
+          <text class="detail-val tabular-nums">
+            {{ fmt(record[key]) }}
+          </text>
         </view>
       </view>
     </view>
@@ -455,6 +453,68 @@ function fmtDiff(diff: number) {
 </template>
 
 <style scoped lang="scss">
+.summary-card {
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.summary-card__head {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 28rpx 32rpx;
+}
+
+.summary-card__icon {
+  flex-shrink: 0;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.summary-card__icon.is-ok {
+  color: var(--wot-success-main);
+  background: var(--wot-success-surface);
+}
+
+.summary-card__icon.is-warn {
+  color: var(--wot-danger-main);
+  background: var(--wot-danger-surface, #ffecec);
+}
+
+.summary-card__titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-card__title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.summary-card__title.is-ok {
+  color: var(--wot-success-main);
+}
+
+.summary-card__title.is-warn {
+  color: var(--wot-danger-main);
+}
+
+.summary-card__sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #333;
+  line-height: 1.4;
+}
+
 .compare-table {
   border: 2rpx solid #f0f0f0;
   border-radius: 12rpx;
@@ -517,7 +577,6 @@ function fmtDiff(diff: number) {
   display: flex;
   gap: 16rpx;
   padding: 16rpx 0;
-  border-bottom: 2rpx solid #f5f5f5;
 }
 
 .calc-step__no {
@@ -598,34 +657,15 @@ function fmtDiff(diff: number) {
   padding: 16rpx 0;
 }
 
-.detail-row--footer {
-  padding-bottom: 8rpx;
-}
-
 .detail-label {
   flex-shrink: 0;
   font-size: 26rpx;
   color: #333;
 }
 
-.detail-label--em {
-  color: #333;
-  font-weight: 500;
-}
-
 .detail-val {
   font-size: 26rpx;
   color: #333;
   text-align: right;
-}
-
-.detail-val--em {
-  font-weight: 500;
-}
-
-.detail-divider {
-  height: 2rpx;
-  background: #f0f0f0;
-  margin: 4rpx 0;
 }
 </style>

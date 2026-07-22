@@ -58,6 +58,14 @@ export interface SalaryCalcResult {
   annualTakeHome: number
   /** 当年个人所得税合计：12 个月工资预扣个税 + 年终奖个税 */
   annualTaxTotal: number
+  /** 税前应发总额：12 个月税前月薪 + 年终奖税前 */
+  annualPreTaxTotal: number
+  /** 年末累计预扣预缴应纳税所得额（工资部分，不含年终奖并入调整） */
+  annualTaxableIncome: number
+  /** 年末适用预扣率（0–1），取 12 月累计所得档位 */
+  applicableTaxRate: number
+  /** 年末档位对应速算扣除数（元） */
+  quickDeduction: number
   /** 12 个月的税前、个税、税后明细行；各月个税之和即工资部分预扣总额 */
   monthlyRows: MonthlySalaryRow[]
 
@@ -176,6 +184,10 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
   const monthlyRows: MonthlySalaryRow[] = []
   /** 累计已预扣预缴税额（即截至上月末的累计应预扣税额） */
   let cumulativeTaxAlreadyWithheld = 0
+  /** 12 月末累计应纳税所得额与档位，供明细页「适用税率 / 速算扣除」展示 */
+  let yearEndTaxableIncome = 0
+  let yearEndTaxRate = 0
+  let yearEndQuickDeduction = 0
   for (let month = 1; month <= 12; month++) {
     /** 累计收入（本模型为各月相同税前月薪的累计） */
     const cumulativeIncome = input.preTaxMonthly * month
@@ -199,10 +211,17 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
       - cumulativeOtherLawfulDeduction
 
     /** 截至本月末：累计应预扣预缴税额 = 累计预扣预缴应纳税所得额 × 预扣率 − 速算扣除数 */
-    const cumulativeTaxPayableThroughThisMonth = cumulativeSalaryTax(cumulativeWithholdingTaxableIncome)
+    const tier = resolveSalaryTaxTier(cumulativeWithholdingTaxableIncome)
+    const cumulativeTaxPayableThroughThisMonth = tier.tax
     /** 本期应预扣预缴税额 = 累计应预扣预缴税额 − 累计已预扣预缴税额 */
     const currentPeriodWithholdingTax = round2(Math.max(0, cumulativeTaxPayableThroughThisMonth - cumulativeTaxAlreadyWithheld))
     cumulativeTaxAlreadyWithheld = cumulativeTaxPayableThroughThisMonth
+
+    if (month === 12) {
+      yearEndTaxableIncome = Math.max(0, cumulativeWithholdingTaxableIncome)
+      yearEndTaxRate = tier.rate
+      yearEndQuickDeduction = tier.quick
+    }
 
     /** 当月税后实发 = 税前月薪 − 五险一金个人 − 本期应预扣预缴税额 */
     const post = round2(input.preTaxMonthly - fiveInsFundPersonalMonthly - currentPeriodWithholdingTax)
@@ -236,12 +255,17 @@ export function calcSalary(input: SalaryCalcInput): SalaryCalcResult {
   const annualTakeHome = round2(sumMonthlyNet + yearEndBonusNet)
   const salaryTaxTotal = monthlyRows.reduce((s, row) => s + row.tax, 0)
   const annualTaxTotal = round2(salaryTaxTotal + yearEndBonusTax)
+  const annualPreTaxTotal = round2(input.preTaxMonthly * 12 + Math.max(0, input.yearEndBonus || 0))
 
   /** ---------- 5. 返回完整测算结果 ---------- */
   return {
     fiveInsFundPersonalMonthly,
     annualTakeHome,
     annualTaxTotal,
+    annualPreTaxTotal,
+    annualTaxableIncome: round2(yearEndTaxableIncome),
+    applicableTaxRate: yearEndTaxRate,
+    quickDeduction: yearEndQuickDeduction,
     monthlyRows,
     ssPersonalMonthly,
     hfPersonalMonthly,

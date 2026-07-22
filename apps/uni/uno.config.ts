@@ -95,6 +95,14 @@ export default defineConfig({
     'i-carbon-tools',
     'i-carbon-chevron-right',
     'i-carbon-view',
+    'i-carbon-calculator',
+    'i-carbon-arrow-up-right',
+    'i-carbon-arrow-down-right',
+    'i-carbon-information',
+    'i-carbon-chevron-down',
+    'i-carbon-chevron-up',
+    'i-carbon-checkmark-filled',
+    'i-carbon-warning-filled',
   ],
   rules: [
     [

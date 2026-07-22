@@ -14,7 +14,9 @@
     "uiLibrary": "wot-ui-v2",
     "loginStrategy": false,
     "i18n": false,
-    "chartLibraries": [],
+    "chartLibraries": [
+      "qiun"
+    ],
     "cliVersion": "4.0.16",
     "unibestVersion": "4.4.0",
     "unibestUpdateTime": "2026-04-25",
@@ -43,7 +45,7 @@
   "scripts": {
     "openapi": "openapi-ts",
     "init-baseFiles": "node ./scripts/create-base-files.js",
-    "prepare": "node ./scripts/create-base-files.js",
+    "prepare": "node ./scripts/create-base-files.js && node ./scripts/sync-ucharts.js",
     "predev": "pnpm init-baseFiles",
     "predev:app": "pnpm init-baseFiles",
     "predev:mp": "pnpm init-baseFiles",
@@ -132,6 +134,7 @@
     "@dcloudio/uni-mp-weixin": "3.0.0-4070620250821001",
     "@dcloudio/uni-mp-xhs": "3.0.0-4070620250821001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-4070620250821001",
+    "@qiun/uni-ucharts": "2.5.0-20230101",
     "@wot-ui/ui": "latest",
     "abortcontroller-polyfill": "^1.7.8",
     "alova": "^3.3.3",

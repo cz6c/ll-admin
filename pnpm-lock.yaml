@@ -553,6 +553,9 @@ importers:
       '@dcloudio/uni-quickapp-webview':
         specifier: 3.0.0-4070620250821001
         version: 3.0.0-4070620250821001(@vueuse/core@13.9.0(vue@3.5.33(typescript@5.8.3)))(postcss@8.5.12)(rollup@4.60.2)(ts-node@10.9.2(@swc/core@1.4.14)(@types/node@20.19.43)(typescript@5.8.3))(vue@3.5.33(typescript@5.8.3))
+      '@qiun/uni-ucharts':
+        specifier: 2.5.0-20230101
+        version: 2.5.0-20230101
       '@wot-ui/ui':
         specifier: latest
         version: 2.2.0(vue@3.5.33(typescript@5.8.3))
@@ -4887,6 +4890,9 @@ packages:
 
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
+
+  '@qiun/uni-ucharts@2.5.0-20230101':
+    resolution: {integrity: sha512-qpgzAUgrShgKNn0uMoN54n6/MkFeQQpK2gur0Fzokn8oTIMCVjTfnt8C2UhD20pPlm6MFxwkWF+bsJ3qd4QMvg==}
 
   '@quansync/fs@0.1.6':
     resolution: {integrity: sha512-zoA8SqQO11qH9H8FCBR7NIbowYARIPmBz3nKjgAaOUDi/xPAAu1uAgebtV7KXHTc6CDZJVRZ1u4wIGvY5CWYaw==}
@@ -19627,6 +19633,8 @@ snapshots:
   '@protobufjs/pool@1.1.0': {}
 
   '@protobufjs/utf8@1.1.1': {}
+
+  '@qiun/uni-ucharts@2.5.0-20230101': {}
 
   '@quansync/fs@0.1.6':
     dependencies:

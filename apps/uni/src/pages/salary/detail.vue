@@ -1,21 +1,21 @@
 <script lang="ts" setup>
 /**
- * 年薪测算明细页
- * 数据源：有 historyId 用历史快照；无 id 用当前 salaryCalcStore.input
+ * 年度测算明细页
+ * 主流程：历史 id / 当前 store → calcSalary → 蓝卡汇总 + 月度柱状图 + 折叠计算明细
+ * 图表：qiun-data-charts（uCharts）；角标等无 wd-icon 时用 UnoCSS carbon 字体图标
  */
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryCalcStore } from '@/store/salaryCalc'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
 import { calcSalary } from '@/utils/salaryCalculator'
-import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 
 defineOptions({ name: 'SalaryDetail' })
 
 definePage({
   style: {
-    navigationBarTitleText: '薪资明细',
+    navigationBarTitleText: '年度测算明细',
   },
 })
 
@@ -24,6 +24,8 @@ const salaryHistoryStore = useSalaryHistoryStore()
 
 /** 从「历史记录」进入时携带 id，展示该条快照；从「查看明细」进入无 id，用当前 store */
 const historyId = ref('')
+/** 计算明细默认展开，与设计稿一致 */
+const showBreakdown = ref(true)
 
 onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
@@ -57,359 +59,368 @@ const r = computed(() => {
   return store.result
 })
 
-const yearEndTaxLabel = computed(() =>
-  salaryOptionLabel(YEAR_END_TAX_OPTIONS, detailInput.value.yearEndTaxMode),
-)
+const taxRateLabel = computed(() => {
+  const pct = Math.round(r.value.applicableTaxRate * 10000) / 100
+  return Number.isInteger(pct) ? `${pct}%` : `${pct}%`
+})
 
-const annualInsPersonalP = computed(() => r.value.fiveInsFundPersonalMonthly * 12)
+/** 明细行：deduct 为 true 时有额显示红色负号 */
+interface BreakdownRow {
+  label: string
+  value: number
+  deduct?: boolean
+}
 
-/** 综合所得个税税率表（全年应纳税所得额） */
-const INCOME_TAX_BRACKETS = [
-  { level: 1, range: '不超过36000元的', rate: 3, deduction: 0 },
-  { level: 2, range: '超过36000元至144000元的部分', rate: 10, deduction: 2520 },
-  { level: 3, range: '超过144000元至300000元的部分', rate: 20, deduction: 16920 },
-  { level: 4, range: '超过300000元至420000元的部分', rate: 25, deduction: 31920 },
-  { level: 5, range: '超过420000元至660000元的部分', rate: 30, deduction: 52920 },
-  { level: 6, range: '超过660000元至960000元的部分', rate: 35, deduction: 85920 },
-  { level: 7, range: '超过960000元的部分', rate: 45, deduction: 181920 },
-] as const
+const breakdownRows = computed((): BreakdownRow[] => {
+  const input = detailInput.value
+  const result = r.value
+  return [
+    { label: '应发总额（税前）', value: result.annualPreTaxTotal },
+    { label: '社保（个人）', value: result.ssPersonalMonthly * 12, deduct: true },
+    { label: '公积金（个人）', value: result.hfPersonalMonthly * 12, deduct: true },
+    { label: '专项附加扣除', value: input.specialDeductionMonthly * 12, deduct: true },
+    { label: '应纳税所得额', value: result.annualTaxableIncome },
+    { label: '累计应纳税额', value: result.annualTaxTotal, deduct: true },
+  ]
+})
+
+const chartData = computed(() => ({
+  categories: r.value.monthlyRows.map(row => `${row.month}月`),
+  series: [
+    {
+      name: '税后',
+      data: r.value.monthlyRows.map(row => row.postTax),
+    },
+  ],
+}))
+
+/** 柱状图：主色柱、弱化坐标，贴近稿面留白 */
+const chartOpts = {
+  color: ['#1688ff'],
+  padding: [16, 8, 0, 8],
+  legend: { show: false },
+  dataLabel: false,
+  enableScroll: false,
+  xAxis: {
+    disableGrid: true,
+    fontSize: 10,
+    fontColor: '#999999',
+    rotateLabel: false,
+    marginTop: 6,
+  },
+  yAxis: {
+    disabled: true,
+    disableGrid: true,
+  },
+  extra: {
+    column: {
+      type: 'group',
+      width: 12,
+      activeBgColor: '#1688ff',
+      activeBgOpacity: 0.08,
+      barBorderRadius: [6, 6, 0, 0],
+    },
+  },
+}
+
+function fmtYen(n: number) {
+  return `¥${formatSalaryAmount(n)}`
+}
+
+function fmtBreakdownValue(row: BreakdownRow) {
+  if (row.deduct) {
+    if (row.value <= 0)
+      return fmtYen(0)
+    return `-¥${formatSalaryAmount(row.value)}`
+  }
+  return fmtYen(row.value)
+}
 </script>
 
 <template>
-  <view class="page-shell pb-48rpx">
-    <view class="hero bg-primary px-32rpx pb-40rpx pt-safe">
-      <view class="pt-24rpx text-center">
-        <text class="text-72rpx text-white font-semibold leading-none tabular-nums">
-          {{ formatSalaryAmount(r.annualTakeHome) }}
-        </text>
-        <view class="ml-16rpx mt-16rpx inline-block rounded-8rpx bg-white/20 px-16rpx py-2rpx">
-          <text class="text-24rpx text-white/95">
-            到手年薪
+  <view class="page-shell pb-safe">
+    <view class="p-24rpx">
+      <!-- 蓝色汇总卡 -->
+      <view class="hero-card">
+        <view class="hero-card__top">
+          <view class="hero-card__main">
+            <text class="hero-card__label">
+              预估年度税后收入
+            </text>
+            <text class="hero-card__amount tabular-nums">
+              ¥{{ formatSalaryWan(r.annualTakeHome) }}
+            </text>
+            <view class="hero-card__badges">
+              <view class="hero-badge">
+                <view class="i-carbon-arrow-up-right h-24rpx w-24rpx text-white/90" />
+                <text class="hero-badge__text">
+                  税前 ¥{{ formatSalaryWan(r.annualPreTaxTotal) }}
+                </text>
+              </view>
+              <view class="hero-badge">
+                <view class="i-carbon-arrow-down-right h-24rpx w-24rpx text-white/90" />
+                <text class="hero-badge__text">
+                  个税 ¥{{ formatSalaryAmount(r.annualTaxTotal) }}
+                </text>
+              </view>
+            </view>
+          </view>
+          <view class="i-carbon-calculator hero-card__icon" />
+        </view>
+
+        <view class="hero-card__footer">
+          <view class="hero-stat">
+            <text class="hero-stat__lab">
+              月薪基数
+            </text>
+            <text class="hero-stat__val tabular-nums">
+              ¥{{ formatSalaryAmount(detailInput.preTaxMonthly) }}
+            </text>
+          </view>
+          <view class="hero-stat hero-stat--mid">
+            <text class="hero-stat__lab">
+              适用税率
+            </text>
+            <text class="hero-stat__val tabular-nums">
+              {{ taxRateLabel }}
+            </text>
+          </view>
+          <view class="hero-stat">
+            <text class="hero-stat__lab">
+              速算扣除
+            </text>
+            <text class="hero-stat__val tabular-nums">
+              ¥{{ formatSalaryAmount(r.quickDeduction) }}
+            </text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 月度税后柱状图 -->
+      <view class="mt-24rpx card-rounded p-28rpx">
+        <view class="mb-8rpx flex items-center justify-between">
+          <text class="text-30rpx text-#333 font-600">
+            月度税后收入
+          </text>
+          <text class="text-22rpx text-#999">
+            单位：元
           </text>
         </view>
-      </view>
-    </view>
-
-    <view class="px-24rpx -mt-24rpx">
-      <view class="card-rounded p-24rpx">
-        <view class="summary-grid">
-          <view class="sum-cell">
-            <text class="sum-val tabular-nums">
-              {{ formatSalaryAmount(r.annualTaxTotal) }}
-            </text>
-            <text class="sum-lab">
-              年度缴税
-            </text>
-          </view>
-          <view class="sum-cell">
-            <text class="sum-val tabular-nums">
-              {{ formatSalaryAmount(annualInsPersonalP) }}
-            </text>
-            <text class="sum-lab">
-              五险一金（个人）
-            </text>
-          </view>
+        <view class="charts-box">
+          <qiun-data-charts
+            type="column"
+            :opts="chartOpts"
+            :chart-data="chartData"
+            :canvas2d="true"
+            background="none"
+          />
         </view>
       </view>
 
-      <view class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text>每月到手工资</text>
-      </view>
-      <view class="mt-16rpx card-rounded">
-        <view class="month-table">
-          <view class="month-head">
-            <view class="month-cell month-cell--narrow">
-              <text class="month-head-text">
-                月份
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-head-text">
-                税前
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-head-text">
-                五险一金
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-head-text">
-                个人所得税
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-head-text">
-                税后
-              </text>
-            </view>
-          </view>
+      <!-- 计算明细折叠 -->
+      <view class="mt-24rpx card-rounded">
+        <view
+          class="breakdown-head"
+          @click="showBreakdown = !showBreakdown"
+        >
+          <text class="text-30rpx text-#333 font-600">
+            计算明细
+          </text>
           <view
-            v-for="(row, idx) in r.monthlyRows"
-            :key="row.month"
-            class="month-row"
-            :class="idx % 2 === 1 ? 'month-row--alt' : ''"
-          >
-            <view class="month-cell month-cell--narrow">
-              <text class="month-body-text">
-                {{ row.month }}月
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-num tabular-nums">
-                {{ formatSalaryAmount(row.preTax) }}
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-num tabular-nums">
-                {{ formatSalaryAmount(row.fiveInsFundPersonal) }}
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-num tabular-nums">
-                {{ formatSalaryAmount(row.tax) }}
-              </text>
-            </view>
-            <view class="month-cell month-cell--grow">
-              <text class="month-num text-primary tabular-nums">
-                {{ formatSalaryAmount(row.postTax) }}
-              </text>
-            </view>
-          </view>
+            class="h-32rpx w-32rpx text-#c0c4cc"
+            :class="showBreakdown ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'"
+          />
         </view>
-      </view>
-
-      <view v-if="detailInput.yearEndBonus > 0" class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text>年终奖</text>
-      </view>
-      <view v-if="detailInput.yearEndBonus > 0" class="mt-24rpx card-rounded p-24rpx text-26rpx leading-relaxed">
-        <text class="text-#666">
-          年终奖 {{ formatSalaryAmount(detailInput.yearEndBonus) }}，个税 {{ formatSalaryAmount(r.yearEndBonusTax) }}，到手 {{ formatSalaryAmount(r.yearEndBonusNet) }}
-          （{{ yearEndTaxLabel }}）
-        </text>
-      </view>
-
-      <view class="mt-40rpx flex items-center gap-16rpx text-30rpx text-#333 font-600">
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text>个人所得税税率表（综合所得适用）</text>
-      </view>
-      <view class="mt-16rpx card-rounded">
-        <view class="pit-table">
-          <view class="pit-head">
-            <view class="pit-cell pit-cell--level">
-              <text class="pit-head-text">
-                级数
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--range">
-              <text class="pit-head-text">
-                全年应纳税所得额
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--rate">
-              <text class="pit-head-text">
-                税率(%)
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--deduct">
-              <text class="pit-head-text">
-                速算扣除数
-              </text>
-            </view>
-          </view>
+        <view v-if="showBreakdown" class="breakdown-body">
           <view
-            v-for="(row, idx) in INCOME_TAX_BRACKETS"
-            :key="row.level"
-            class="pit-row"
-            :class="idx % 2 === 1 ? 'pit-row--alt' : ''"
+            v-for="row in breakdownRows"
+            :key="row.label"
+            class="breakdown-row"
           >
-            <view class="pit-cell pit-cell--level">
-              <text class="pit-body-text tabular-nums">
-                {{ row.level }}
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--range">
-              <text class="pit-body-text pit-body-text--range">
-                {{ row.range }}
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--rate">
-              <text class="pit-num tabular-nums">
-                {{ row.rate }}
-              </text>
-            </view>
-            <view class="pit-cell pit-cell--deduct">
-              <text class="pit-num tabular-nums">
-                {{ formatSalaryAmount(row.deduction) }}
-              </text>
-            </view>
+            <text class="breakdown-row__lab">
+              {{ row.label }}
+            </text>
+            <text
+              class="breakdown-row__val tabular-nums"
+              :class="row.deduct && row.value > 0 ? 'is-deduct' : ''"
+            >
+              {{ fmtBreakdownValue(row) }}
+            </text>
+          </view>
+          <view class="breakdown-dash" />
+          <view class="breakdown-row breakdown-row--total">
+            <text class="breakdown-row__lab breakdown-row__lab--em">
+              年度税后合计
+            </text>
+            <text class="breakdown-row__val breakdown-row__val--primary tabular-nums">
+              {{ fmtYen(r.annualTakeHome) }}
+            </text>
           </view>
         </view>
-      </view>
-
-      <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
-        注：计算结果仅供参考
       </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.hero {
-  padding-bottom: 56rpx;
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24rpx;
+  background: var(--wot-primary-6);
+  padding: 36rpx 32rpx 0;
+  color: #fff;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24rpx 16rpx;
-}
-.sum-cell {
-  text-align: center;
-}
-.sum-val {
-  display: block;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
-}
-.sum-lab {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #999;
+.hero-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding-bottom: 28rpx;
 }
 
-/* 小程序端 flex 子节点不能用 text，必须用 view 做单元格 */
-.month-table {
-  width: 100%;
-}
-.month-head,
-.month-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-}
-.month-head {
-  padding: 20rpx 0;
-  border-bottom: 2rpx solid #edf0f6;
-}
-.month-row {
-  padding: 20rpx 0;
-  min-height: 88rpx;
-}
-.month-row--alt {
-  background: #fafafa;
-}
-.month-cell {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.month-cell--narrow {
-  width: 14%;
-  padding-left: 16rpx;
-}
-.month-cell--grow {
+.hero-card__main {
   flex: 1;
-  width: 0;
   min-width: 0;
-  align-items: center;
-}
-.month-head-text {
-  font-size: 22rpx;
-  color: #999;
-  text-align: center;
-}
-.month-cell--narrow .month-head-text {
-  text-align: left;
-}
-.month-body-text {
-  font-size: 26rpx;
-  color: #333;
-}
-.month-num {
-  font-size: 26rpx;
-  color: #333;
-  text-align: center;
 }
 
-.pit-table {
-  width: 100%;
-}
-.pit-head,
-.pit-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-}
-.pit-head {
-  padding: 20rpx 0;
-  border-bottom: 2rpx solid #edf0f6;
-}
-.pit-row {
-  padding: 20rpx 0;
-  min-height: 88rpx;
-}
-.pit-row--alt {
-  background: #fafafa;
-}
-.pit-cell {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.pit-cell--level {
-  width: 14%;
-  padding-left: 16rpx;
-}
-.pit-cell--range {
-  flex: 1;
-  width: 0;
-  min-width: 0;
-  padding-right: 12rpx;
-}
-.pit-cell--rate {
-  width: 18%;
-  align-items: center;
-}
-.pit-cell--deduct {
-  width: 24%;
-  align-items: center;
-}
-.pit-head-text {
-  font-size: 22rpx;
-  color: #999;
-  text-align: center;
-}
-.pit-cell--level .pit-head-text {
-  text-align: left;
-}
-.pit-cell--range .pit-head-text {
-  text-align: left;
-}
-.pit-body-text {
+.hero-card__label {
+  display: block;
   font-size: 26rpx;
-  color: #333;
-}
-.pit-body-text--range {
+  color: rgba(255, 255, 255, 0.85);
   line-height: 1.4;
 }
-.pit-num {
-  font-size: 26rpx;
+
+.hero-card__amount {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 56rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 1rpx;
+}
+
+.hero-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 20rpx;
+}
+
+.hero-badge {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.hero-badge__text {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.3;
+}
+
+.hero-card__icon {
+  flex-shrink: 0;
+  width: 96rpx;
+  height: 96rpx;
+  margin-top: 8rpx;
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.hero-card__footer {
+  display: flex;
+  align-items: stretch;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.22);
+  padding: 24rpx 0 28rpx;
+}
+
+.hero-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.hero-stat--mid {
+  border-left: 1rpx solid rgba(255, 255, 255, 0.22);
+  border-right: 1rpx solid rgba(255, 255, 255, 0.22);
+}
+
+.hero-stat__lab {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.hero-stat__val {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+}
+
+.charts-box {
+  width: 100%;
+  height: 360rpx;
+}
+
+.breakdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx;
+}
+
+.breakdown-body {
+  padding: 0 32rpx 28rpx;
+  border-top: 2rpx solid #f0f0f0;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 20rpx 0;
+}
+
+.breakdown-row--total {
+  padding-top: 24rpx;
+  padding-bottom: 8rpx;
+}
+
+.breakdown-row__lab {
+  font-size: 28rpx;
+  color: #666;
+}
+
+.breakdown-row__lab--em {
   color: #333;
-  text-align: center;
+  font-weight: 600;
+}
+
+.breakdown-row__val {
+  font-size: 28rpx;
+  color: #333;
+  text-align: right;
+}
+
+.breakdown-row__val.is-deduct {
+  color: var(--wot-danger-main);
+}
+
+.breakdown-row__val--primary {
+  color: var(--wot-primary-6);
+  font-weight: 600;
+  font-size: 30rpx;
+}
+
+.breakdown-dash {
+  height: 0;
+  border-top: 2rpx dashed #e8e8e8;
+  margin: 4rpx 0;
 }
 </style>

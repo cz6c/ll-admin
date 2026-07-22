@@ -16,6 +16,7 @@ export default defineUniPages({
       '^(?!z-paging-refresh|z-paging-load-more)z-paging(.*)':
         'z-paging/components/z-paging$1/z-paging$1.vue',
       '^wd-(.*)': '@wot-ui/ui/components/wd-$1/wd-$1.vue',
+      '^qiun-(.*)': '@qiun/uni-ucharts/components/qiun-$1/qiun-$1.vue',
     },
   },
   // tabbar 的配置统一在 “./src/tabbar/config.ts” 文件中

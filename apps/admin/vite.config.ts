@@ -42,7 +42,8 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: '@use "@/assets/style/theme.scss" as *;' // 引入配置项目主题色文件
+          // 必须用文件系统绝对路径：@/ 别名在 Linux CI 上会被 Sass 当成相对路径再拼到当前 scss 目录，导致 ENOENT
+          additionalData: `@use "${pathResolve("src/assets/style/theme.scss").replace(/\\/g, "/")}" as *;`
         }
       }
     },

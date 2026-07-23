@@ -31,10 +31,11 @@ jobs:
           cache: "pnpm"
 
       # common 的 main/module 指向 dist（已 gitignore），必须先 build 再编 admin
-      # --filter @apps/admin...：只装 admin 及其依赖（含 workspace @llcz/common），不装 uni/server/docs
+      # --filter @apps/admin...：只装 admin 及其依赖（含 workspace @llcz/common）
+      # --config.shamefully-hoist：对齐 apps/admin/.npmrc；从仓库根 install 不会读子包 .npmrc
       - name: Install And build
         run: |
-          pnpm install --filter @apps/admin...
+          pnpm install --filter @apps/admin... --config.shamefully-hoist=true
           pnpm --filter @llcz/common build
           pnpm --filter @apps/admin run bs:build
 

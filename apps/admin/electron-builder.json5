@@ -12,6 +12,9 @@
     buildResources: "dist",
     output: "release/${version}"
   },
+  // 产物仅含 vite 打好的 dist/dist-electron，无原生依赖；跳过 rebuild，
+  // 避免 @electron/rebuild 遍历 monorepo 里 pnpm 残留路径触发 ENOENT
+  npmRebuild: false,
   files: ["dist-electron/**", "dist/**"],
   nsis: {
     allowToChangeInstallationDirectory: true,

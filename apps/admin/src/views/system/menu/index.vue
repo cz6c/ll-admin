@@ -9,7 +9,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditMenuForm from "./components/EditMenuForm.vue";
-import { findPath } from "@llcz/common";
+import { findPathFromTree } from "@llcz/common";
 
 defineOptions({
   name: "MenuIndex"
@@ -262,7 +262,7 @@ function handleAdd(row, isPerm = false) {
   editDialog.parentId = row ? row.menuId : 0;
   // editDialog.parentName = row ? row.menuName : "";
   editDialog.parentName = row
-    ? findPath(gridOptions.data, c => c.menuName === row.menuName)
+    ? findPathFromTree(gridOptions.data, c => c.menuName === row.menuName)
         .map(c => c.menuName)
         .join(">")
     : "";

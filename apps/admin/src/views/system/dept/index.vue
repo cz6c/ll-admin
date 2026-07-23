@@ -9,7 +9,7 @@ import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import { useTable } from "@/hooks/useVxetable";
 import EditDeptForm from "./components/EditDeptForm.vue";
-import { findPath } from "@llcz/common";
+import { findPathFromTree } from "@llcz/common";
 
 defineOptions({
   name: "Dept"
@@ -216,7 +216,7 @@ function handleAdd(row) {
   editDialog.deptId = undefined;
   editDialog.parentId = row ? row.deptId : 0;
   editDialog.parentName = row
-    ? findPath(gridOptions.data, c => c.deptName === row.deptName)
+    ? findPathFromTree(gridOptions.data, c => c.deptName === row.deptName)
         .map(c => c.deptName)
         .join(">")
     : "";

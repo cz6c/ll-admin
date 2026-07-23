@@ -45,6 +45,9 @@
   "pnpm": {
     "overrides": {
       "unconfig": "7.3.2"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   }
 }

@@ -4,6 +4,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": false,
+    // Pre-existing broken .d.ts in vxe-pc-ui / webpack-virtual-modules; keep typecheck green until dependency upgrade
     "skipLibCheck": true,
     "jsx": "preserve",
     "sourceMap": true,

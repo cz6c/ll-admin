@@ -22,6 +22,4 @@ export interface CzHttpRequestConfig extends AxiosRequestConfig {
 
 export default class CzHttp {
   request<T>(method: RequestMethods, url: string, param?: AxiosRequestConfig, axiosConfig?: CzHttpRequestConfig): Promise<T>;
-  post<T, P>(url: string, params?: P, config?: CzHttpRequestConfig): Promise<T>;
-  get<T, P>(url: string, params?: P, config?: CzHttpRequestConfig): Promise<T>;
 }

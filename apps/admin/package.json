@@ -61,6 +61,7 @@
     "vxe-table": "^4.14.4"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "@eslint/js": "^9.31.0",
     "@iconify/json": "^2.2.362",
     "@iconify/vue": "^5.0.0",

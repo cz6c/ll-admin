@@ -12,8 +12,7 @@ const pathResolve = (dir: string) => {
 // https://vitejs.dev/config/
 export default ({ command, mode }: ConfigEnv): UserConfigExport => {
   const lifecycle = process.env.npm_lifecycle_event ?? "";
-  // isCS: 非 bs:* 生命周期（dev / cs:* 等）；isTauri: Tauri CLI 注入或 cs:* 脚本
-  const isCS = !lifecycle.includes("bs");
+  // isTauri: Tauri CLI 注入 TAURI_ENV_*，或 cs:* npm 脚本（压缩关闭等）
   const isTauri =
     Boolean(process.env.TAURI_ENV_PLATFORM) || lifecycle.startsWith("cs");
   const isBuild = command === "build";
@@ -21,9 +20,6 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
   const root = process.cwd();
   const env = loadEnv(mode, root);
   const viteEnv = wrapperEnv(env);
-
-  // isCS 保留供后续 CS 专用分支；当前插件列表仅用 isBuild + isTauri 压缩开关
-  void isCS;
 
   return {
     root,

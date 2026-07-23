@@ -1,7 +1,7 @@
 /**
  * Vite 插件组装
  * 职责：统一注册 Vue/自动导入/UnoCSS/压缩等插件
- * 适用：admin Web（bs:*）与 Tauri CS（cs:*）共用；Electron 插件已摘掉，待 Task 5 删文件
+ * 适用：admin Web（bs:*）与 Tauri CS（cs:*）共用
  */
 
 import type { PluginOption } from "vite";

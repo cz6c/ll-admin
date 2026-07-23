@@ -183,9 +183,14 @@ apps/admin/
 - token 过期后页面不断重定向
 - 菜单 `component` 字符串与视图文件路径不一致
 
-## 15. Electron 说明
+## 15. 桌面端（Tauri）说明
 
-`admin` 除了浏览器模式，还内置 Electron 打包能力。对于一般后台页面开发，你可以先只把它理解为普通 Web 管理端；只有在需要桌面端发布时再关注 Electron 目录。
+`admin` 除了浏览器模式（`bs:*`），还支持 Tauri 桌面打包（`cs:*`）。
+
+- 日常页面开发用 `pnpm dev:admin` / `bs:*` 即可
+- 桌面调试：`pnpm --filter @apps/admin cs:dev`（需本机 Rust + WebView2）
+- 桌面生产包：`pnpm --filter @apps/admin cs:build`（Windows x64 NSIS）
+- 壳代码在 `apps/admin/src-tauri/`；业务代码仍在 `src/`
 
 ## 16. 页面开发建议
 

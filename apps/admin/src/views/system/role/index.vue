@@ -8,6 +8,7 @@ import { useDict } from "@/hooks/useDict";
 import EditRoleForm from "./components/EditRoleForm.vue";
 import { SearchFormItem } from "@/components/FormView/type";
 import { VxeGridProps } from "vxe-table";
+import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 
@@ -283,7 +284,7 @@ function handleUpdate(row) {
 <template>
   <div class="app-page cz-card">
     <!-- 表格数据 -->
-    <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
+    <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>

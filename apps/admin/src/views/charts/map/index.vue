@@ -10,8 +10,8 @@ defineOptions({
 
 withDefaults(
   defineProps<{
-    width: string;
-    height: string;
+    width?: string;
+    height?: string;
   }>(),
   {
     width: "100%",

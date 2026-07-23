@@ -21,6 +21,7 @@
 import Fuse from "fuse.js";
 import { isHttp } from "@llcz/common";
 import { usePermissionStore } from "@/store/modules/permission";
+import { openWindow } from "@/utils";
 
 defineOptions({
   name: "HeaderSearch"
@@ -49,9 +50,9 @@ function close() {
 function change(val) {
   const path = val.path;
   if (isHttp(path)) {
-    // http(s):// 路径新窗口打开
+    // http(s) 走 openWindow：Tauri CS 走系统浏览器（plugin-opener），浏览器仍 window.open
     const pindex = path.indexOf("http");
-    window.open(path.substr(pindex, path.length), "_blank");
+    void openWindow(path.substr(pindex, path.length));
   } else {
     router.push(path);
   }

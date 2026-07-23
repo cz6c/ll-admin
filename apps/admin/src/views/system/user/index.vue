@@ -9,6 +9,7 @@ import { useDict } from "@/hooks/useDict";
 import { TreeInstance } from "element-plus";
 import ImportTemp from "@/components/ImportTemp/index.vue";
 import { VxeGridProps } from "vxe-table";
+import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditUserForm from "./components/EditUserForm.vue";
@@ -398,7 +399,7 @@ getDeptTree();
 <template>
   <div class="app-page cz-card">
     <!--表格数据-->
-    <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
+    <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>

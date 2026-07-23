@@ -57,6 +57,7 @@ pnpm run bs:build
 
 - `bs:build` 对应浏览器版生产构建
 - 构建产物通常在 `apps/admin/dist`
+- 桌面端（CS）为本地 Tauri Windows 打包（`cs:build`），不走本节 Web 部署流程
 
 ### 4.2 上传构建产物
 

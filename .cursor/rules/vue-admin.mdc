@@ -10,7 +10,7 @@ alwaysApply: false
 
 - **Vue 3** + **Vite** + **Pinia** + **Vue Router** + **Element Plus** + **VXE Table**；样式可用 **UnoCSS**、SCSS（全局主题见 `vite.config` 中 `additionalData`）。
 - 路径别名：`@/` → `src/`，`#/` → `types/`（API 类型、全局声明）。
-- 构建脚本区分 Web（`bs:*`）与 Electron 桌面端（`cs:*`）；改构建逻辑前确认目标形态。
+- 构建脚本区分 Web（`bs:*`）与 Tauri 桌面端（`cs:*`）；改构建逻辑前确认目标形态。壳工程在 `src-tauri/`。
 - 环境：`.env.development` / `.env.production`；勿提交密钥。
 
 ## API 层

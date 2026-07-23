@@ -1,6 +1,7 @@
 /**
- * @name createVitePlugins
- * @description 封装plugins数组统一调用
+ * Vite 插件组装
+ * 职责：统一注册 Vue/自动导入/UnoCSS/压缩等插件
+ * 适用：admin Web（bs:*）与 Tauri CS（cs:*）共用
  */
 
 import type { PluginOption } from "vite";
@@ -11,14 +12,17 @@ import { AutoImportDeps } from "./plugins/autoImport";
 import { ConfigCompressPlugin } from "./plugins/compress";
 import { ConfigRestartPlugin } from "./plugins/restart";
 import { UnoCSSPlugin } from "./plugins/unocss";
-import { ElectronPlugin } from "./plugins/electron";
 import svgLoader from "vite-svg-loader";
 import Icons from "unplugin-icons/vite";
 
-export function createVitePlugins(env: ViteEnv, isBuild: boolean, isCS: boolean) {
+/**
+ * 组装 Vite plugins；压缩插件由 env.VITE_USE_COMPRESS 控制（Tauri CS 侧在 vite.config 强制关闭）
+ */
+export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
   const { VITE_USE_COMPRESS } = env;
 
-  const vitePlugins: (PluginOption | PluginOption[])[] = [
+  // any[]→PluginOption[]：monorepo 同时存在 uni(vite5) 与 admin(vite7)，插件返回类型会串版本导致 TS2352/TS2322
+  const vitePlugins: any[] = [
     // vue支持
     vue(),
     // JSX支持
@@ -40,15 +44,9 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean, isCS: boolean)
     })
   ];
 
-  if (isBuild) {
-    // 开启.gz压缩  rollup-plugin-gzip
-    VITE_USE_COMPRESS && vitePlugins.push(ConfigCompressPlugin());
+  if (isBuild && VITE_USE_COMPRESS) {
+    vitePlugins.push(ConfigCompressPlugin());
   }
 
-  if (isCS) {
-    // 支持electron
-    vitePlugins.push(ElectronPlugin(isBuild));
-  }
-
-  return vitePlugins;
+  return vitePlugins as PluginOption[];
 }

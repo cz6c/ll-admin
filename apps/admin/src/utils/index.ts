@@ -14,9 +14,14 @@ export function getValueByReference(target: any, refer: string | string[]): any 
 }
 
 /**
- * @description: 打开新窗口
+ * 打开外链 / 新窗口
+ * 职责：浏览器用 window.open；Tauri CS 下 http(s) 走系统浏览器
+ * 适用：业务侧需要 `_blank` 打开外站时（对齐原 Electron setWindowOpenHandler）
+ *
+ * @note Tauri 分支检测 `__TAURI_INTERNALS__`：CS 内嵌 WebView 开外站应走 opener，
+ *       避免在应用内再开一层 WebView；浏览器/非 http(s) 仍走原生 window.open
  */
-export function openWindow(
+export async function openWindow(
   url: string,
   opt?: {
     target?: TargetContext | string;
@@ -24,12 +29,17 @@ export function openWindow(
     noreferrer?: boolean;
   }
 ) {
+  // Tauri CS：外链走系统浏览器，对齐原 Electron setWindowOpenHandler
+  if ("__TAURI_INTERNALS__" in window && /^https?:/i.test(url)) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+
   const { target = "__blank", noopener = true, noreferrer = true } = opt || {};
   const feature: string[] = [];
-
   noopener && feature.push("noopener=yes");
   noreferrer && feature.push("noreferrer=yes");
-
   window.open(url, target, feature.join(","));
 }
 

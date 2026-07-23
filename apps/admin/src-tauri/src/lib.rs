@@ -1,3 +1,7 @@
+//! Tauri 桌面壳：单实例聚焦、系统菜单、外链 opener 能力注册
+//! 职责：挂载 single-instance / opener 插件与应用菜单；窗口由 tauri.conf.json 创建
+//! 适用：admin CS（Win x64）壳层行为，不承载业务页面逻辑
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tauri::{
@@ -26,7 +30,12 @@ pub fn run() {
   tauri::Builder::default()
     // single-instance MUST be first：二次启动时聚焦已有主窗，避免多开
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-      if let Some(w) = app.get_webview_window("main") {
+      // 优先 label=main（与 tauri.conf.json 对齐）；找不到时回退首个窗，避免静默无聚焦
+      let window = app
+        .get_webview_window("main")
+        .or_else(|| app.webview_windows().into_values().next());
+      if let Some(w) = window {
+        let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
       }

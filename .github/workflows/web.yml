@@ -45,8 +45,8 @@ jobs:
         env:
           # 私钥
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          # SCP参数
-          ARGS: "-avzr --delete"
+          # SCP参数；排除宝塔 .user.ini，避免 --delete 因无权 unlink 导致 rsync 23
+          ARGS: "-avzr --delete --exclude=.user.ini"
           # 源目录
           SOURCE: "apps/admin/dist/"
           # 服务器ip

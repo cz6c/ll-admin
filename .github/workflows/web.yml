@@ -34,7 +34,7 @@ jobs:
         run: |
           cd apps/admin
           pnpm install --config.minimum-release-age-exclude[]=@llcz/common
-          pnpm run build:prod
+          pnpm run bs:build
 
       # 拷贝文件到服务器指定目录
       - name: Deploy to server

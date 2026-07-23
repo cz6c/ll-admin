@@ -1,0 +1,5 @@
+{
+  "build": {
+    "beforeBuildCommand": "pnpm run cs:vite-build:staging"
+  }
+}

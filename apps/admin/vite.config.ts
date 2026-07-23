@@ -4,7 +4,6 @@ import { createVitePlugins } from "./build/vite";
 import { wrapperEnv } from "./build/utils";
 import { createProxy } from "./build/vite/proxy";
 import { optimizeDepsInclude } from "./build/vite/optimize";
-import { rmSync } from "node:fs";
 
 const pathResolve = (dir: string) => {
   return resolve(process.cwd(), ".", dir);
@@ -12,16 +11,20 @@ const pathResolve = (dir: string) => {
 
 // https://vitejs.dev/config/
 export default ({ command, mode }: ConfigEnv): UserConfigExport => {
-  const lifecycle = process.env.npm_lifecycle_event;
+  const lifecycle = process.env.npm_lifecycle_event ?? "";
+  // isCS: 非 bs:* 生命周期（dev / cs:* 等）；isTauri: Tauri CLI 注入或 cs:* 脚本
   const isCS = !lifecycle.includes("bs");
-  if (isCS) {
-    rmSync("dist-electron", { recursive: true, force: true });
-  }
+  const isTauri =
+    Boolean(process.env.TAURI_ENV_PLATFORM) || lifecycle.startsWith("cs");
   const isBuild = command === "build";
   const isProduction = mode === "production";
   const root = process.cwd();
   const env = loadEnv(mode, root);
   const viteEnv = wrapperEnv(env);
+
+  // isCS 保留供后续 CS 专用分支；当前插件列表仅用 isBuild + isTauri 压缩开关
+  void isCS;
+
   return {
     root,
     base: viteEnv.VITE_PUBLIC_PATH,
@@ -46,14 +49,28 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
         }
       }
     },
+    clearScreen: false,
     /*  https://cn.vitejs.dev/config/server-options.html#server-proxy */
     server: {
       host: true,
       hmr: true,
       port: viteEnv.VITE_PORT,
-      proxy: createProxy(viteEnv.VITE_PROXY)
+      strictPort: true,
+      proxy: createProxy(viteEnv.VITE_PROXY),
+      watch: {
+        // 忽略 Rust 侧变更，避免 Vite 重启与 cargo 争抢
+        ignored: ["**/src-tauri/**"]
+      }
     },
-    plugins: createVitePlugins(viteEnv, isBuild, isCS),
+    envPrefix: ["VITE_", "TAURI_ENV_*"],
+    plugins: createVitePlugins(
+      {
+        ...viteEnv,
+        // CS/Tauri 直接读 dist 文件；.gz 仅给 Nginx，避免误配压缩产物进壳
+        VITE_USE_COMPRESS: isTauri ? false : viteEnv.VITE_USE_COMPRESS
+      },
+      isBuild
+    ),
     build: {
       minify: "terser",
       terserOptions: {

@@ -1,31 +1,32 @@
-{
+﻿{
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ll-admin",
-  "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "version": "0.0.1",
+  "identifier": "com.ll.admin",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:9596",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm run bs:build"
+    "beforeBuildCommand": "pnpm run cs:vite-build"
   },
   "app": {
     "windows": [
       {
         "title": "ll-admin",
-        "width": 800,
-        "height": 600,
-        "resizable": true,
-        "fullscreen": false
+        "width": 1024,
+        "height": 768,
+        "minWidth": 1024,
+        "minHeight": 768,
+        "resizable": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://webapi.amap.com https://*.amap.com; style-src 'self' 'unsafe-inline' https://*.amap.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; frame-src 'self' https:;"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -33,8 +34,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     }
   }
 }

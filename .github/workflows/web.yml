@@ -30,11 +30,13 @@ jobs:
           node-version: "22.18.0"
           cache: "pnpm"
 
+      # common 的 main/module 指向 dist（已 gitignore），必须先 build 再编 admin
+      # --filter @apps/admin...：只装 admin 及其依赖（含 workspace @llcz/common），不装 uni/server/docs
       - name: Install And build
         run: |
-          cd apps/admin
-          pnpm install --config.minimum-release-age-exclude[]=@llcz/common
-          pnpm run bs:build
+          pnpm install --filter @apps/admin...
+          pnpm --filter @llcz/common build
+          pnpm --filter @apps/admin run bs:build
 
       # 拷贝文件到服务器指定目录
       - name: Deploy to server

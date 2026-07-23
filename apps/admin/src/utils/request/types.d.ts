@@ -1,10 +1,11 @@
-import type { Method, AxiosError, AxiosResponse, AxiosRequestConfig } from "axios";
+import type { AxiosError, AxiosResponse, AxiosRequestConfig } from "axios";
 
-export type resultType = {
-  accessToken?: string;
-};
-
-export type RequestMethods = Extract<Method, "get" | "post" | "put" | "delete" | "patch" | "option" | "head">;
+/** 后端统一响应壳；与 index.ts 拦截器成功分支返回的 res 一致 */
+export interface CzHttpApiResponse<R = any> {
+  code: number;
+  msg: string;
+  data: R;
+}
 
 export interface CzHttpError extends AxiosError {
   isCancelRequest?: boolean;
@@ -20,6 +21,7 @@ export interface CzHttpRequestConfig extends AxiosRequestConfig {
   beforeResponseCallback?: (response: CzHttpResponse) => void;
 }
 
+/** 与 index.ts 运行时 CzHttp 一致：仅暴露 request(config, axiosConfig?) */
 export default class CzHttp {
-  request<T>(method: RequestMethods, url: string, param?: AxiosRequestConfig, axiosConfig?: CzHttpRequestConfig): Promise<T>;
+  request<Q extends Record<string, any>, R>(config: AxiosRequestConfig<Q>, axiosConfig?: CzHttpRequestConfig): Promise<CzHttpApiResponse<R>>;
 }

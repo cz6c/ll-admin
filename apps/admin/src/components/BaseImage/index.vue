@@ -64,7 +64,7 @@ const handlePictureCardPreview = () => {
 </script>
 
 <template>
-  <el-image :src="props.src" :lazy="props.lazy" :fit="props.fit" :style="style" @click="handlePictureCardPreview">
+  <el-image :src="props.src" :lazy="props.lazy" :fit="props.fit as any" :style="style" @click="handlePictureCardPreview">
     <template #placeholder>
       <img :style="style" :loading="props.lazy ? 'lazy' : 'eager'" src="@/assets/images/imgLoading.png" />
     </template>

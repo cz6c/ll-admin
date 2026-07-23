@@ -39,7 +39,7 @@ function setupPermissionGuard(router: Router) {
             hash: to.hash,
             replace: true
           });
-        } catch (error) {
+        } catch {
           // 登录过期或登录无效，前端登出
           useAuthStore().webLogout();
           return false;

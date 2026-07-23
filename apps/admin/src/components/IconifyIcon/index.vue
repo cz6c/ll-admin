@@ -12,11 +12,16 @@ const props = defineProps<IconProps>();
 </script>
 
 <template>
+  <!-- style 放在 ...props 之后：合并默认样式且不 mutate props.style（eslint vue/no-mutating-props） -->
   <Icon
     v-bind="{
+      ...props,
       'aria-hidden': false,
-      style: props?.style ? Object.assign(props.style, { outline: 'none', 'vertical-align': 'middle' }) : { outline: 'none', 'vertical-align': 'middle' },
-      ...props
+      style: {
+        outline: 'none',
+        'vertical-align': 'middle',
+        ...(typeof props.style === 'object' && props.style ? props.style : {})
+      }
     }"
   />
 </template>

@@ -262,7 +262,7 @@ function handleUpdate(row) {
 <template>
   <div class="app-page cz-card">
     <!--表格数据-->
-    <vxe-grid ref="gridRef" v-bind="gridOptions" v-on="gridEvents">
+    <vxe-grid ref="gridRef" v-bind="gridOptions as any" v-on="gridEvents">
       <template #form>
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>

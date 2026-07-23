@@ -98,7 +98,7 @@ export function mergeRecursive(source, target) {
       } else {
         source[p] = target[p];
       }
-    } catch (error) {
+    } catch {
       source[p] = target[p];
     }
   }

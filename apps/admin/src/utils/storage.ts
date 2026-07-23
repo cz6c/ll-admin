@@ -16,7 +16,7 @@ export class WebStorage<T = any> {
     const value = window[this.storageType].getItem(newKey);
     try {
       return value && value !== "null" && value !== "undefined" ? (JSON.parse(value) as T) : null;
-    } catch (error) {
+    } catch {
       return value && value !== "null" && value !== "undefined" ? (value as unknown as T) : null;
     }
   }

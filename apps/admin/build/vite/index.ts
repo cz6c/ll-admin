@@ -21,7 +21,8 @@ import Icons from "unplugin-icons/vite";
 export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
   const { VITE_USE_COMPRESS } = env;
 
-  const vitePlugins: (PluginOption | PluginOption[])[] = [
+  // any[]→PluginOption[]：monorepo 同时存在 uni(vite5) 与 admin(vite7)，插件返回类型会串版本导致 TS2352/TS2322
+  const vitePlugins: any[] = [
     // vue支持
     vue(),
     // JSX支持
@@ -47,5 +48,5 @@ export function createVitePlugins(env: ViteEnv, isBuild: boolean) {
     vitePlugins.push(ConfigCompressPlugin());
   }
 
-  return vitePlugins;
+  return vitePlugins as PluginOption[];
 }

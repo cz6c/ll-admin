@@ -1,5 +1,7 @@
 import type { ElMessageBoxOptions, MessageOptions } from "element-plus";
-import type { LoadingInstance } from "element-plus/es/components/loading/src/loading.d.ts";
+
+/** ElLoading.service 返回实例；避免依赖 element-plus 内部 .d.ts 深路径（升级后易断） */
+type LoadingInstance = ReturnType<typeof ElLoading.service>;
 
 let loadingInstance: LoadingInstance;
 

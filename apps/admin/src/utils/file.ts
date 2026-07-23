@@ -24,11 +24,18 @@ export default {
   async download(url: string, data: any = {}, filename: string, config: any = {}): Promise<void> {
     $feedback.loading("正在下载数据，请稍候");
     try {
-      const res = await service.post(url, data, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        responseType: "blob",
-        ...config
-      });
+      // CzHttp 仅暴露 request；与运行时一致，避免类型声明里虚构的 post
+      const res = await service.request(
+        {
+          url,
+          method: "post",
+          data,
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          responseType: "blob",
+          ...config
+        },
+        config
+      );
       const isBlob = this.blobValidate(res);
       if (isBlob) {
         const blob = new Blob([res as unknown as BlobPart]);

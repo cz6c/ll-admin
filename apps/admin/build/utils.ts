@@ -9,7 +9,9 @@ export function wrapperEnv(envConf: Recordable): ViteEnv {
     if (envName === "VITE_PROXY") {
       try {
         realName = JSON.parse(realName);
-      } catch (error) {}
+      } catch {
+        /* JSON.parse 失败则保留原始字符串 */
+      }
     }
     ret[envName] = realName;
   }

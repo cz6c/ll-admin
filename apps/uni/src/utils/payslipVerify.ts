@@ -3,7 +3,7 @@
  * 职责：从 store 记录拼 priorMonths / missingPriorMonths，再调 salaryCalculator 核对
  * 适用：历史列表摘要、核对详情页明细
  */
-import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
+import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import type {
   PayslipMonthSnapshot,
   PayslipVerifyBreakdownResult,

@@ -6,7 +6,6 @@ import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
-import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
 import { formatPayPeriodLabel } from '@/utils/payPeriod'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
@@ -35,15 +34,13 @@ const FILTERS: { value: HistoryFilter, label: string, icon: string }[] = [
 const WORKBENCH_KEY = '1111'
 
 const salaryHistoryStore = useSalaryHistoryStore()
-const verifyHistoryStore = useSalaryVerifyHistoryStore()
-const { items: calcList } = storeToRefs(salaryHistoryStore)
-const { items: verifyList } = storeToRefs(verifyHistoryStore)
+const { items } = storeToRefs(salaryHistoryStore)
 
 const activeFilter = ref<HistoryFilter>('all')
 const searchInput = ref('')
 const searchKeyword = ref('')
 
-const unifiedList = computed(() => mergeSalaryHistoryEntries(calcList.value, verifyList.value))
+const unifiedList = computed(() => mergeSalaryHistoryEntries(items.value))
 
 const filteredList = computed(() => {
   const byType = activeFilter.value === 'all'
@@ -60,12 +57,9 @@ const filteredList = computed(() => {
   })
 })
 
-/** 拉全量后在本地按摘要/类型名过滤，避免功能名被服务端 keyword 误伤 */
+/** 一次拉全量后在本地按摘要/类型名过滤，避免功能名被服务端 keyword 误伤 */
 async function refreshHistory() {
-  await Promise.all([
-    salaryHistoryStore.fetchHistory(),
-    verifyHistoryStore.fetchHistory(),
-  ])
+  await salaryHistoryStore.fetchHistory()
 }
 
 onLoad((options?: Record<string, string>) => {
@@ -114,10 +108,9 @@ function confirmDelete(item: SalaryHistoryEntry) {
       if (!res.confirm)
         return
       try {
-        if (item.kind === 'calc')
-          await salaryHistoryStore.removeById(item.id)
-        else
-          await verifyHistoryStore.removeById(item.id)
+        await salaryHistoryStore.removeById(item.id)
+        // 删接口不改 items：列表页自行再拉
+        await refreshHistory()
         uni.showToast({ title: '已删除', icon: 'success' })
       }
       catch (err) {

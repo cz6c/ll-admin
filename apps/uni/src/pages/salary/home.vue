@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * 薪算工具箱首页
- * 主流程：未同意协议则 redirect 门禁页 → 展示测算/核对入口 → onShow 同步两类历史 → 最近记录进详情
+ * 主流程：未同意协议则 redirect 门禁页 → 展示测算/核对入口 → onShow 一次同步历史 → 最近记录进详情
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onShow } from '@dcloudio/uni-app'
@@ -11,7 +11,6 @@ import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
-import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
 defineOptions({ name: 'SalaryHome' })
@@ -66,32 +65,31 @@ const features: HomeFeature[] = [
 ]
 
 const salaryHistoryStore = useSalaryHistoryStore()
-const verifyHistoryStore = useSalaryVerifyHistoryStore()
 const hasLoaded = ref(false)
 
 const latestCalcUpdateMs = computed(() => {
-  return salaryHistoryStore.items.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
+  return salaryHistoryStore.calcItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
 })
 
 const latestVerifyUpdateMs = computed(() => {
-  return verifyHistoryStore.items.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
+  return salaryHistoryStore.verifyItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
 })
 
 const featureStats = computed(() => {
   return {
     calc: {
       latestDate: latestCalcUpdateMs.value ? dayjs(latestCalcUpdateMs.value).format('YYYY-MM-DD') : '',
-      count: salaryHistoryStore.items.length,
+      count: salaryHistoryStore.calcItems.length,
     },
     verify: {
       latestDate: latestVerifyUpdateMs.value ? dayjs(latestVerifyUpdateMs.value).format('YYYY-MM-DD') : '',
-      count: verifyHistoryStore.items.length,
+      count: salaryHistoryStore.verifyItems.length,
     },
   }
 })
 
 const recentEntries = computed(() => {
-  return mergeSalaryHistoryEntries(salaryHistoryStore.items, verifyHistoryStore.items).slice(0, 3)
+  return mergeSalaryHistoryEntries(salaryHistoryStore.items).slice(0, 3)
 })
 
 function featureHint(featureKey: string) {
@@ -108,10 +106,7 @@ onShow(async () => {
     return
   }
   try {
-    await Promise.all([
-      salaryHistoryStore.fetchHistory(),
-      verifyHistoryStore.fetchHistory(),
-    ])
+    await salaryHistoryStore.fetchHistory()
   }
   catch {
     // 首页只做展示，不因历史同步失败中断入口操作

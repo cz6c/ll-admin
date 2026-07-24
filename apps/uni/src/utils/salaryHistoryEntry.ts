@@ -1,10 +1,10 @@
 /**
  * 首页「最近记录」与历史列表共用的展示模型与标题拼装
- * 职责：把测算/核对 store 记录映射为统一列表行，保证两端文案与跳转一致
+ * 职责：把统一历史记录映射为列表行，保证两端文案与跳转一致
  * 适用：home.vue 最近记录、history.vue 合并列表
  */
-import type { SalaryHistoryItem } from '@/store/salaryHistory'
-import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
+import type { PayslipVerifyRecord, SalaryHistoryRecord } from '@/store/salaryHistory'
+import { toCalcInput, toVerifyRecord } from '@/store/salaryHistory'
 import dayjs from 'dayjs'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { parsePayPeriod } from '@/utils/payPeriod'
@@ -43,9 +43,9 @@ export interface SalaryHistoryEntry {
 }
 
 /** 测算历史主标题：月薪 → 测算年薪 */
-export function buildCalcHistoryTitle(item: SalaryHistoryItem) {
-  const annual = calcSalary(item.input).annualTakeHome
-  return `月薪 ¥${formatSalaryAmount(item.input.preTaxMonthly)} → 税后年薪 ¥${formatSalaryAmount(annual)}`
+export function buildCalcHistoryTitle(item: SalaryHistoryRecord) {
+  const annual = calcSalary(toCalcInput(item)).annualTakeHome
+  return `月薪 ¥${formatSalaryAmount(item.preTaxMonthly)} → 税后年薪 ¥${formatSalaryAmount(annual)}`
 }
 
 /**
@@ -68,8 +68,8 @@ function buildSubtitle(kind: SalaryHistoryEntryKind, updateTime: string) {
   return `${typeLabel} · ${dayjs(updateTime).format('MM-DD')}`
 }
 
-/** 测算 store 记录 → 统一展示行 */
-export function mapCalcHistoryEntry(item: SalaryHistoryItem): SalaryHistoryEntry {
+/** 测算记录 → 统一展示行 */
+export function mapCalcHistoryEntry(item: SalaryHistoryRecord): SalaryHistoryEntry {
   return {
     key: `calc-${item.id}`,
     kind: 'calc',
@@ -84,8 +84,8 @@ export function mapCalcHistoryEntry(item: SalaryHistoryItem): SalaryHistoryEntry
 }
 
 /**
- * 核对 store 记录 → 统一展示行
- * @param allVerifyRecords 传入全量列表以正确计算累计预扣差异
+ * 核对记录 → 统一展示行
+ * @param allVerifyRecords 传入全量核对列表以正确计算累计预扣差异
  */
 export function mapVerifyHistoryEntry(
   item: PayslipVerifyRecord,
@@ -106,14 +106,14 @@ export function mapVerifyHistoryEntry(
 }
 
 /**
- * 合并测算与核对历史并按更新时间降序
- * @note 核对项映射时传入完整 verify 列表，保证差异摘要与详情页一致
+ * 统一历史列表并按更新时间降序
+ * @note 核对项映射时用全部 verify 子集，保证差异摘要与详情页一致
  */
-export function mergeSalaryHistoryEntries(
-  calcItems: SalaryHistoryItem[],
-  verifyItems: PayslipVerifyRecord[],
-): SalaryHistoryEntry[] {
-  const calcEntries = calcItems.map(mapCalcHistoryEntry)
+export function mergeSalaryHistoryEntries(items: SalaryHistoryRecord[]): SalaryHistoryEntry[] {
+  const verifyItems = items
+    .map(toVerifyRecord)
+    .filter((r): r is PayslipVerifyRecord => r != null)
+  const calcEntries = items.filter(i => i.historyType === 'calc').map(mapCalcHistoryEntry)
   const verifyEntries = verifyItems.map(item => mapVerifyHistoryEntry(item, verifyItems))
   return [...calcEntries, ...verifyEntries].sort((a, b) => b.time - a.time)
 }

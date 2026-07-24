@@ -1,13 +1,15 @@
 <script lang="ts" setup>
 /**
  * 年度测算明细页
- * 主流程：历史 id / 当前 store → calcSalary → 蓝卡汇总 + 月度柱状图 + 折叠计算明细
+ * 主流程：有 id → 详情接口拉单条本地展示；无 id → 当前测算 store
  * 图表：qiun-data-charts（uCharts）；角标等无 wd-icon 时用 UnoCSS carbon 字体图标
  */
+import type { SalaryHistoryRecord } from '@/store/salaryHistory'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { useSalaryCalcStore } from '@/store/salaryCalc'
-import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { toCalcInput, toHistoryRecord } from '@/store/salaryHistory'
 import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
 import { calcSalary } from '@/utils/salaryCalculator'
 
@@ -20,10 +22,11 @@ definePage({
 })
 
 const store = useSalaryCalcStore()
-const salaryHistoryStore = useSalaryHistoryStore()
 
-/** 从「历史记录」进入时携带 id，展示该条快照；从「查看明细」进入无 id，用当前 store */
+/** 从「历史记录」进入时携带 id；从「查看明细」进入无 id，用当前 store */
 const historyId = ref('')
+/** 详情接口返回的测算行（不进列表 store） */
+const historyItem = ref<SalaryHistoryRecord | null>(null)
 /** 计算明细默认展开，与设计稿一致 */
 const showBreakdown = ref(true)
 
@@ -31,25 +34,24 @@ onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
 })
 
-onShow(() => {
-  if (!historyId.value)
+onShow(async () => {
+  if (!historyId.value) {
+    historyItem.value = null
     return
-  if (salaryHistoryStore.findById(historyId.value))
-    return
-  salaryHistoryStore.fetchHistory().catch(() => {
+  }
+  try {
+    const detail = await getSalaryHistoryDetail(Number(historyId.value))
+    historyItem.value = toHistoryRecord(detail.item)
+  }
+  catch {
+    historyItem.value = null
     uni.showToast({ title: '历史记录加载失败', icon: 'none' })
-  })
-})
-
-const historyItem = computed(() => {
-  if (!historyId.value)
-    return null
-  return salaryHistoryStore.findById(historyId.value) ?? null
+  }
 })
 
 const detailInput = computed(() => {
   if (historyItem.value)
-    return historyItem.value.input
+    return toCalcInput(historyItem.value)
   return store.input
 })
 

@@ -10,7 +10,7 @@ import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFie
 import dayjs from 'dayjs'
 import { computed, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
-import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
+import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import {
   formatPayPeriod,
@@ -32,7 +32,7 @@ definePage({
 
 const showDialog = ref(false)
 const popupZIndex = 1100
-const verifyHistoryStore = useSalaryVerifyHistoryStore()
+const salaryHistoryStore = useSalaryHistoryStore()
 const { loading, previewPath, lineItems, chooseImage, recognize } = useSalarySlipRecognize()
 
 const calendarMinDate = dayjs('2020-01-01').valueOf()
@@ -150,7 +150,7 @@ async function submitVerify() {
   }
 
   try {
-    const record = await verifyHistoryStore.upsertByPayPeriod({
+    const record = await salaryHistoryStore.upsertByPayPeriod({
       payPeriod: payPeriod.value,
       preTaxMonthly: form.value.preTaxMonthly,
       ssPersonalAmount: form.value.ssPersonalAmount,
@@ -159,7 +159,12 @@ async function submitVerify() {
       personalIncomeTax: form.value.personalIncomeTax,
       postTaxMonthly: form.value.postTaxMonthly,
     })
-    verifyResult.value = computeVerifyForRecord(record, verifyHistoryStore.items)
+    // 写接口不更新 items：用返回行 + 列表缓存（若有）做当页结果，不写 store
+    const related = [
+      record,
+      ...salaryHistoryStore.verifyItems.filter(r => r.id !== record.id),
+    ]
+    verifyResult.value = computeVerifyForRecord(record, related)
   }
   catch (err) {
     const msg = err instanceof Error ? err.message : '核对记录保存失败'

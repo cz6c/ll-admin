@@ -7,7 +7,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ApiResult, GetRequestUser, RequestUserPayload } from "@/common/decorator";
 import { SalarySlipResultDto, SalarySlipUploadDto } from "./dto/salary-slip-result.dto";
-import { ListSalaryVerifyHistoryDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
+import { ListSalaryVerifyHistoryDto, SalaryHistoryDetailDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipService } from "./salary-slip.service";
 
 @ApiTags("salary-slip")
@@ -39,6 +39,13 @@ export class SalarySlipController {
   @Get("history/list")
   listHistory(@Query() query: ListSalaryVerifyHistoryDto, @GetRequestUser("user") user: RequestUserPayload["user"]) {
     return this.salarySlipService.listHistory(user.userId, query.keyword, query.historyType);
+  }
+
+  @ApiOperation({ summary: "薪资历史-详情（verify 附带同年核对列表供累计预扣）" })
+  @ApiResult(SalaryHistoryDetailDto)
+  @Get("history/detail/:id")
+  getHistoryDetail(@Param("id") id: string, @GetRequestUser("user") user: RequestUserPayload["user"]) {
+    return this.salarySlipService.getHistoryDetail(user.userId, Number(id));
   }
 
   @ApiOperation({ summary: "月薪核对历史-删除" })

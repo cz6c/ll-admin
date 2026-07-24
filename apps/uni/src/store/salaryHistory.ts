@@ -1,68 +1,122 @@
 /**
- * 年薪测算历史 Store
- * 职责：服务端 calc 历史的拉取/写入/删除；页面仅缓存 items
+ * 薪资历史列表 Store
+ * 职责：仅缓存列表 items（由首页/历史页 fetchHistory 写入）；create/upsert/delete 只打接口不改 items
+ * 适用：home / history 列表；录入页调写接口；详情页不走本 Store 拉数
  */
+import type { SalaryHistoryType, SalaryVerifyHistoryItem, YearEndTaxMode } from '@/api/salary-verify'
 import type { SalaryCalcInput } from '@/utils/salaryCalculator'
 import { defineStore } from 'pinia'
-import { deleteSalaryVerifyHistory, getSalaryVerifyHistoryList, upsertSalaryVerifyHistory } from '@/api/salary-verify'
+import {
+  deleteSalaryVerifyHistory,
+  getSalaryVerifyHistoryList,
+  upsertSalaryVerifyHistory,
+} from '@/api/salary-verify'
 
-/** 年薪测算历史列表中的一条（前端展示态） */
-export interface SalaryHistoryItem {
-  /** 服务端数字 id 的字符串形式，便于路由 query */
+/**
+ * Store 内统一历史行（与接口字段对齐 + id 字符串化）
+ */
+export interface SalaryHistoryRecord {
   id: string
-  updateTime: string
-  /** 测算表单快照，用于重算年薪与进详情 */
-  input: SalaryCalcInput
-}
-
-/** 接口 DTO → 页面态；id 转 string，金额 Number 化，缺省年终奖模式为 none */
-function toHistoryItem(data: {
-  id: number
+  historyType: SalaryHistoryType
+  payPeriod: string | null
   preTaxMonthly: number
   ssPersonalAmount: number
   hfPersonalAmount: number
   specialDeductionMonthly: number
-  yearEndTaxMode: 'none' | 'separate' | 'merge' | null
+  personalIncomeTax: number
+  yearEndTaxMode: YearEndTaxMode | null
   yearEndBonus: number
+  postTaxMonthly: number
   updateTime: string
-}): SalaryHistoryItem {
+}
+
+/**
+ * 核对记录视图（列表摘要 / 录入页本地累计预扣）
+ * @note payPeriod 保证非空字符串
+ */
+export type PayslipVerifyRecord = Omit<SalaryHistoryRecord, 'historyType' | 'payPeriod' | 'yearEndTaxMode' | 'yearEndBonus'> & {
+  payPeriod: string
+}
+
+/** 接口缺 updateTime 时用当前时刻，避免排序得到 NaN */
+function mapUpdateTime(updateTime?: string): string {
+  return updateTime || new Date().toISOString()
+}
+
+/** 接口 DTO → Store / 页面行 */
+export function toHistoryRecord(data: SalaryVerifyHistoryItem): SalaryHistoryRecord {
   return {
     id: String(data.id),
-    updateTime: data.updateTime || new Date().toISOString(),
-    input: {
-      preTaxMonthly: Number(data.preTaxMonthly ?? 0),
-      ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
-      hfPersonalAmount: Number(data.hfPersonalAmount ?? 0),
-      specialDeductionMonthly: Number(data.specialDeductionMonthly ?? 0),
-      yearEndTaxMode: data.yearEndTaxMode ?? 'none',
-      yearEndBonus: Number(data.yearEndBonus ?? 0),
-    },
+    historyType: data.historyType,
+    payPeriod: data.payPeriod,
+    preTaxMonthly: Number(data.preTaxMonthly ?? 0),
+    ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
+    hfPersonalAmount: Number(data.hfPersonalAmount ?? 0),
+    specialDeductionMonthly: Number(data.specialDeductionMonthly ?? 0),
+    personalIncomeTax: Number(data.personalIncomeTax ?? 0),
+    yearEndTaxMode: data.yearEndTaxMode,
+    yearEndBonus: Number(data.yearEndBonus ?? 0),
+    postTaxMonthly: Number(data.postTaxMonthly ?? 0),
+    updateTime: mapUpdateTime(data.updateTime),
   }
 }
 
-/** 薪资测算历史：服务端为主，Store 仅作页面态缓存。 */
+/** 测算行 → calcSalary 入参 */
+export function toCalcInput(record: SalaryHistoryRecord): SalaryCalcInput {
+  return {
+    preTaxMonthly: record.preTaxMonthly,
+    ssPersonalAmount: record.ssPersonalAmount,
+    hfPersonalAmount: record.hfPersonalAmount,
+    specialDeductionMonthly: record.specialDeductionMonthly,
+    yearEndTaxMode: record.yearEndTaxMode ?? 'none',
+    yearEndBonus: record.yearEndBonus,
+  }
+}
+
+/** 核对行视图；非 verify 或无 payPeriod 时返回 null */
+export function toVerifyRecord(record: SalaryHistoryRecord): PayslipVerifyRecord | null {
+  if (record.historyType !== 'verify' || !record.payPeriod)
+    return null
+  return {
+    id: record.id,
+    payPeriod: record.payPeriod,
+    preTaxMonthly: record.preTaxMonthly,
+    ssPersonalAmount: record.ssPersonalAmount,
+    hfPersonalAmount: record.hfPersonalAmount,
+    specialDeductionMonthly: record.specialDeductionMonthly,
+    personalIncomeTax: record.personalIncomeTax,
+    postTaxMonthly: record.postTaxMonthly,
+    updateTime: record.updateTime,
+  }
+}
+
+/**
+ * 列表缓存专用：items 只由 fetchHistory 全量替换；写操作不碰 items
+ */
 export const useSalaryHistoryStore = defineStore('salaryHistory', {
   state: () => ({
-    items: [] as SalaryHistoryItem[],
+    items: [] as SalaryHistoryRecord[],
   }),
 
+  getters: {
+    calcItems(): SalaryHistoryRecord[] {
+      return this.items.filter(i => i.historyType === 'calc')
+    },
+    verifyItems(): PayslipVerifyRecord[] {
+      return this.items
+        .map(toVerifyRecord)
+        .filter((r): r is PayslipVerifyRecord => r != null)
+    },
+  },
+
   actions: {
-    /** 拉取测算历史；keyword 透传列表接口 */
-    async fetchHistory(keyword?: string) {
-      const list = await getSalaryVerifyHistoryList({ keyword, historyType: 'calc' })
-      this.items = list.map(item => toHistoryItem({
-        id: item.id,
-        preTaxMonthly: item.preTaxMonthly,
-        ssPersonalAmount: item.ssPersonalAmount,
-        hfPersonalAmount: item.hfPersonalAmount,
-        specialDeductionMonthly: item.specialDeductionMonthly,
-        yearEndTaxMode: item.yearEndTaxMode,
-        yearEndBonus: item.yearEndBonus,
-        updateTime: item.updateTime,
-      }))
+    /** 全量拉取并替换 items（仅首页 / 历史列表页调用） */
+    async fetchHistory() {
+      const list = await getSalaryVerifyHistoryList()
+      this.items = list.map(toHistoryRecord)
     },
 
-    /** 保存一条测算快照并插入列表头部 */
+    /** 保存测算快照；不更新 items，返回行供跳转详情 */
     async createHistory(input: SalaryCalcInput) {
       const data = await upsertSalaryVerifyHistory({
         historyType: 'calc',
@@ -73,32 +127,33 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
         yearEndTaxMode: input.yearEndTaxMode,
         yearEndBonus: input.yearEndBonus,
       })
-      const row = toHistoryItem({
-        id: data.id,
-        preTaxMonthly: data.preTaxMonthly,
-        ssPersonalAmount: data.ssPersonalAmount,
-        hfPersonalAmount: data.hfPersonalAmount,
-        specialDeductionMonthly: data.specialDeductionMonthly,
-        yearEndTaxMode: data.yearEndTaxMode,
-        yearEndBonus: data.yearEndBonus,
-        updateTime: data.updateTime,
+      return toHistoryRecord(data)
+    },
+
+    /** 按月 upsert 核对；不更新 items，返回核对视图供当页展示结果 */
+    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime'>) {
+      const data = await upsertSalaryVerifyHistory({
+        historyType: 'verify',
+        payPeriod: entry.payPeriod,
+        preTaxMonthly: entry.preTaxMonthly,
+        ssPersonalAmount: entry.ssPersonalAmount,
+        hfPersonalAmount: entry.hfPersonalAmount,
+        specialDeductionMonthly: entry.specialDeductionMonthly,
+        personalIncomeTax: entry.personalIncomeTax,
+        postTaxMonthly: entry.postTaxMonthly,
       })
-      this.items = [row, ...this.items.filter(i => i.id !== row.id)]
+      const row = toVerifyRecord(toHistoryRecord(data))
+      if (!row)
+        throw new Error('核对记录保存结果异常')
       return row
     },
 
-    /** 软删服务端记录并同步本地缓存；非法 id 直接抛错 */
+    /** 软删；不更新 items（列表页删后自行 fetchHistory） */
     async removeById(id: string) {
       const numericId = Number(id)
       if (!Number.isInteger(numericId) || numericId <= 0)
         throw new Error('历史记录ID不合法')
       await deleteSalaryVerifyHistory(numericId)
-      this.items = this.items.filter(i => i.id !== id)
-    },
-
-    /** 按 id 查缓存；详情页用，未命中需先 fetchHistory */
-    findById(id: string): SalaryHistoryItem | undefined {
-      return this.items.find(i => i.id === id)
     },
   },
 })

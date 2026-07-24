@@ -3,7 +3,7 @@
  * 职责：YYYY-MM 解析/展示、当前/上月、累计预扣所需的缺月判定
  * 适用：核对表单、历史列表、verifyPayslipTax 的 history/ideal 分支
  */
-import type { PayslipVerifyRecord } from '@/store/salaryVerifyHistory'
+import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import dayjs from 'dayjs'
 
 /** 由时间戳格式化为 YYYY-MM（取本地年月） */

@@ -134,6 +134,18 @@ export class DeleteSalaryVerifyHistoryDto {
   id: number;
 }
 
+/** 历史详情：单条；核对时附带同年核对列表（供累计预扣） */
+export class SalaryHistoryDetailDto {
+  @ApiProperty({ description: "当前历史记录", type: SalaryVerifyHistoryItemDto })
+  item: SalaryVerifyHistoryItemDto;
+
+  @ApiPropertyOptional({
+    description: "仅 verify 返回：同年全部核对记录（含当前）；calc 不返回此字段",
+    type: [SalaryVerifyHistoryItemDto]
+  })
+  relatedVerifyList?: SalaryVerifyHistoryItemDto[];
+}
+
 /** 历史列表查询：可选 keyword / historyType */
 export class ListSalaryVerifyHistoryDto {
   @ApiPropertyOptional({ description: "搜索关键词（支持年月、税前工资）", example: "2026-06" })

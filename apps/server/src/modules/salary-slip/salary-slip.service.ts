@@ -40,7 +40,7 @@ const SHANGHAI_TIMEZONE = "Asia/Shanghai";
 /**
  * 工资条识别与薪资历史
  * 识别主流程：1. 限流校验 2. 图片预处理 3. OCR 4. 列对齐 5. 规则出 line_items
- * 历史：verify/calc 共表 upsert / 列表 / 软删
+ * 历史：verify/calc 共表 upsert / 列表 / 详情 / 软删
  */
 @Injectable()
 export class SalarySlipService {
@@ -367,6 +367,54 @@ export class SalarySlipService {
     queryBuilder.orderBy("history.payPeriod", "DESC").addOrderBy("history.updateTime", "DESC");
     const list = await queryBuilder.getMany();
     return ResultData.ok(list.map(item => this.toHistoryItemDto(item)));
+  }
+
+  /**
+   * 历史详情：按 id 取本人未删记录。
+   * 仅 verify 附带 relatedVerifyList（同年核对，供累计预扣）；calc 只返回 item。
+   */
+  async getHistoryDetail(userId: number, id: number) {
+    if (!userId) {
+      return ResultData.fail(400, "缺少用户信息");
+    }
+    if (!Number.isInteger(id) || id <= 0) {
+      return ResultData.fail(400, "历史记录ID不合法");
+    }
+    const history = await this.salaryVerifyHistoryRep.findOne({
+      where: {
+        id,
+        userId,
+        delFlag: DelFlagEnum.NORMAL
+      }
+    });
+    if (!history) {
+      return ResultData.fail(404, "未找到历史记录");
+    }
+
+    const item = this.toHistoryItemDto(history);
+
+    if (history.historyType !== SalaryHistoryTypeEnum.VERIFY || !history.payPeriod) {
+      return ResultData.ok({ item });
+    }
+
+    const year = String(history.payPeriod).slice(0, 4);
+    if (!/^\d{4}$/.test(year)) {
+      return ResultData.ok({ item, relatedVerifyList: [item] });
+    }
+
+    const related = await this.salaryVerifyHistoryRep
+      .createQueryBuilder("history")
+      .where("history.userId = :userId", { userId })
+      .andWhere("history.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL })
+      .andWhere("history.historyType = :historyType", { historyType: SalaryHistoryTypeEnum.VERIFY })
+      .andWhere("history.payPeriod LIKE :yearPrefix", { yearPrefix: `${year}-%` })
+      .orderBy("history.payPeriod", "ASC")
+      .getMany();
+
+    return ResultData.ok({
+      item,
+      relatedVerifyList: related.map(row => this.toHistoryItemDto(row))
+    });
   }
 
   /** 软删单条历史（delFlag）；仅能删本人记录 */

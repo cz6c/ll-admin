@@ -1,13 +1,14 @@
 <script lang="ts" setup>
 /**
  * 月薪核对历史详情：顶部结论卡 → 项目对比 → 计算过程 → 工资条原始数据。
- * 数据来自历史列表本地重算，不拉详情接口。
+ * 主流程：详情接口 → 页面本地 item + relatedVerifyList → 累计预扣重算（不写列表 store）
  */
+import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
+import { getSalaryHistoryDetail } from '@/api/salary-verify'
+import { toHistoryRecord, toVerifyRecord } from '@/store/salaryHistory'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { parsePayPeriod } from '@/utils/payPeriod'
 import {
@@ -23,11 +24,12 @@ definePage({
   },
 })
 
-const verifyHistoryStore = useSalaryVerifyHistoryStore()
-const { items: verifyList } = storeToRefs(verifyHistoryStore)
-
 const historyId = ref('')
 const loadFailed = ref(false)
+/** 当前核对记录（页面态） */
+const record = ref<PayslipVerifyRecord | null>(null)
+/** 同年核对列表，仅供本页累计预扣，不进 store.items */
+const relatedVerifyList = ref<PayslipVerifyRecord[]>([])
 
 const fieldKeys: PayslipFieldKey[] = [
   'preTaxMonthly',
@@ -45,31 +47,32 @@ onLoad((options?: Record<string, string>) => {
 onShow(async () => {
   if (!historyId.value)
     return
-  if (verifyHistoryStore.findById(historyId.value))
-    return
+  loadFailed.value = false
   try {
-    await verifyHistoryStore.fetchHistory()
+    const detail = await getSalaryHistoryDetail(Number(historyId.value))
+    const main = toVerifyRecord(toHistoryRecord(detail.item))
+    if (!main) {
+      loadFailed.value = true
+      uni.showToast({ title: '记录类型不正确', icon: 'none' })
+      return
+    }
+    record.value = main
+    relatedVerifyList.value = (detail.relatedVerifyList ?? [])
+      .map(row => toVerifyRecord(toHistoryRecord(row)))
+      .filter((r): r is PayslipVerifyRecord => r != null)
   }
   catch {
     loadFailed.value = true
+    record.value = null
+    relatedVerifyList.value = []
     uni.showToast({ title: '历史记录加载失败', icon: 'none' })
   }
-  if (!verifyHistoryStore.findById(historyId.value)) {
-    loadFailed.value = true
-    uni.showToast({ title: '记录不存在', icon: 'none' })
-  }
-})
-
-const record = computed(() => {
-  if (!historyId.value)
-    return null
-  return verifyHistoryStore.findById(historyId.value) ?? null
 })
 
 const detail = computed(() => {
   if (!record.value)
     return null
-  return computeVerifyBreakdown(record.value, verifyList.value)
+  return computeVerifyBreakdown(record.value, relatedVerifyList.value)
 })
 
 const verify = computed(() => detail.value?.verify ?? null)

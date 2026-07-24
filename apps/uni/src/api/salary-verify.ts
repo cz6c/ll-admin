@@ -15,7 +15,7 @@ export type SalaryHistoryType = 'verify' | 'calc'
  */
 export type YearEndTaxMode = 'none' | 'separate' | 'merge'
 
-/** 历史列表/写入接口返回的单条记录 */
+/** 历史列表/写入/详情接口返回的单条记录 */
 export interface SalaryVerifyHistoryItem {
   id: number
   historyType: SalaryHistoryType
@@ -33,6 +33,13 @@ export interface SalaryVerifyHistoryItem {
   /** verify 必有；calc 侧一般为 0 */
   postTaxMonthly: number
   updateTime: string
+}
+
+/** 详情：单条；仅核对时带 relatedVerifyList */
+export interface SalaryHistoryDetail {
+  item: SalaryVerifyHistoryItem
+  /** 仅 verify：同年核对记录（含当前） */
+  relatedVerifyList?: SalaryVerifyHistoryItem[]
 }
 
 /** 新增或按业务键更新历史；字段随 historyType 校验 */
@@ -70,7 +77,15 @@ export function getSalaryVerifyHistoryList(params?: { keyword?: string, historyT
   return http.get<SalaryVerifyHistoryItem[]>(`${HISTORY_BASE}/list`, params)
 }
 
-/** 软删单条历史（delFlag） */
+/**
+ * 历史详情；仅 verify 带 relatedVerifyList（同年核对记录）
+ * @param id 服务端数字 id
+ */
+export function getSalaryHistoryDetail(id: number) {
+  return http.get<SalaryHistoryDetail>(`${HISTORY_BASE}/detail/${id}`)
+}
+
+/** 软删单条历史（delFlag）；路径参数与 Nest `history/delete/:id` 对齐 */
 export function deleteSalaryVerifyHistory(id: number) {
-  return http.post(`${HISTORY_BASE}/delete`, { id })
+  return http.post(`${HISTORY_BASE}/delete/${id}`)
 }

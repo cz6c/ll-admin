@@ -19,7 +19,6 @@
     "dev:uni:mp": "pnpm --filter @apps/uni dev:mp-weixin",
     "dev:uni:mp:test": "pnpm --filter @apps/uni dev:mp:test",
     "build:mp": "pnpm --filter @apps/uni build:mp",
-    "build:uni:h5": "pnpm --filter @apps/uni build:h5",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "preinstall": "npx only-allow pnpm"

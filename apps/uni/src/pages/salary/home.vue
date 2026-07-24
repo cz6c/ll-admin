@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * 薪算工具箱首页
- * 主流程：展示测算/核对入口 → onShow 同步两类历史 → 最近记录（最多 3 条）进详情
+ * 主流程：未同意协议则 redirect 门禁页 → 展示测算/核对入口 → onShow 同步两类历史 → 最近记录进详情
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onShow } from '@dcloudio/uni-app'
@@ -9,6 +9,7 @@ import dayjs from 'dayjs'
 import { computed, ref } from 'vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
+import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { useSalaryVerifyHistoryStore } from '@/store/salaryVerifyHistory'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
@@ -101,6 +102,11 @@ function featureHint(featureKey: string) {
 }
 
 onShow(async () => {
+  // 未同意协议：redirect 到空白门禁页（页内弹窗），避免全局弹窗盖住协议正文
+  if (!hasPrivacyAgreed()) {
+    uni.redirectTo({ url: PRIVACY_GATE_PATH })
+    return
+  }
   try {
     await Promise.all([
       salaryHistoryStore.fetchHistory(),

@@ -8,6 +8,7 @@
     "dev": "vite",
     "bs:dev": "vite",
     "bs:build": "rimraf dist && vite build --mode production",
+    "bs:build:staging": "rimraf dist && vite build --mode staging",
     "cs:dev": "tauri dev",
     "cs:vite-build": "rimraf dist && vite build --mode production",
     "cs:vite-build:staging": "rimraf dist && vite build --mode staging",

@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import PrivacyAgreementPopup from '@/components/PrivacyAgreementPopup.vue'
 import FgTabbar from '@/tabbar/index.vue'
 import { isPageTabbar } from './tabbar/store'
 import { currRoute } from './utils'
 
-const privacyRef = ref<InstanceType<typeof PrivacyAgreementPopup>>()
 const isCurrentPageTabbar = ref(true)
 onMounted(() => {
   console.log('App.ku.vue onMounted')
-  privacyRef.value?.checkPrivacy()
 })
 onShow(() => {
   const { path } = currRoute()
@@ -40,8 +37,6 @@ defineExpose({
     </view>
 
     <KuRootView />
-
-    <PrivacyAgreementPopup ref="privacyRef" />
 
     <FgTabbar v-if="isCurrentPageTabbar" />
   </view>

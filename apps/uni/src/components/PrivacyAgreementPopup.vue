@@ -1,16 +1,23 @@
 <script lang="ts" setup>
-import { PRIVACY_AGREED_KEY, PRIVACY_CONTENT } from '@/constants/privacy'
+/**
+ * 隐私协议门禁弹窗（仅挂在 privacy-gate 空白页）
+ * 主流程：常显弹窗 → 点协议 navigateTo（本页入栈下方，返回自动回来）→ 同意后 reLaunch 首页
+ */
+import {
+  APP_HOME_PATH,
+  PRIVACY_AGREED_KEY,
+  PRIVACY_POLICY_PATH,
+  PRIVACY_POPUP_INTRO,
+  USER_AGREEMENT_PATH,
+} from '@/constants/privacy'
 
-const showPrivacy = ref(false)
-
-function checkPrivacy() {
-  if (!uni.getStorageSync(PRIVACY_AGREED_KEY))
-    showPrivacy.value = true
-}
+/** 门禁页常显；进协议页靠页面栈盖住，无需手动关闭 */
+const showPrivacy = ref(true)
 
 function agreePrivacy() {
   uni.setStorageSync(PRIVACY_AGREED_KEY, true)
   showPrivacy.value = false
+  uni.reLaunch({ url: APP_HOME_PATH })
 }
 
 function rejectPrivacy() {
@@ -21,7 +28,13 @@ function rejectPrivacy() {
   })
 }
 
-defineExpose({ checkPrivacy })
+function openUserAgreement() {
+  uni.navigateTo({ url: USER_AGREEMENT_PATH })
+}
+
+function openPrivacyPolicy() {
+  uni.navigateTo({ url: PRIVACY_POLICY_PATH })
+}
 </script>
 
 <template>
@@ -30,9 +43,20 @@ defineExpose({ checkPrivacy })
       <view class="mb-24rpx text-center text-34rpx text-#333 font-600">
         用户协议与隐私政策
       </view>
-      <scroll-view scroll-y class="max-h-560rpx">
-        <text class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">{{ PRIVACY_CONTENT }}</text>
-      </scroll-view>
+      <view  >
+        <text class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">{{ PRIVACY_POPUP_INTRO }}</text>
+        <view class="mt-8rpx text-26rpx leading-relaxed">
+          <text class="text-primary underline" @click="openUserAgreement">
+            《用户协议》
+          </text>
+          <text class="text-#666">
+            和
+          </text>
+          <text class="text-primary underline" @click="openPrivacyPolicy">
+            《隐私政策》
+          </text>
+        </view>
+      </view>
       <view class="mt-32rpx flex gap-24rpx">
         <wd-button variant="plain" custom-class="flex-1" @click="rejectPrivacy">
           不同意

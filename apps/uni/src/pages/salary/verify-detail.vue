@@ -97,11 +97,15 @@ const verdictSummary = computed(() => {
     return ''
   if (v.overallMatch)
     return '个税和税后均与累计预扣法计算结果一致'
-  if (v.taxMatch && !v.postTaxMatch)
-    return '税后计算存在差异，请检查工资条各扣款项是否正确'
-  if (!v.taxMatch && v.postTaxMatch)
-    return '个税计算存在差异，请检查税前是否和申报的一致'
-  return '个税与税后均存在差异，请逐项核对工资条'
+  if (v.taxMatch && !v.postTaxMatch) {
+    const sign = v.postTaxDiff > 0 ? '多扣' : '少扣'
+    return `税后可能${sign}${formatSalaryAmount(Math.abs(v.postTaxDiff))}，请检查工资条各扣款项`
+  }
+  if (!v.taxMatch && v.postTaxMatch) {
+    const sign = v.taxDiff > 0 ? '多扣' : '少扣'
+    return `个税可能${sign}${formatSalaryAmount(Math.abs(v.taxDiff))}，请检查个税申报数据`
+  }
+  return '个税与税后均存在差异，请检查个税申报数据与工资条'
 })
 
 /** 顶部卡：一致 / 存在差异（优先展示实发差异，否则个税差异） */
@@ -218,7 +222,7 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- 顶部结论卡：一致或差异状态 -->
-      <view class="summary-card card-rounded mb-32rpx p-32rpx">
+      <view class="summary-card mb-32rpx card-rounded p-32rpx">
         <view class="summary-card__head">
           <view
             class="summary-card__icon"

@@ -137,7 +137,7 @@ function delay(ms: number) {
 }
 
 /** 先落库测算历史再进明细，保证详情可按 id 回看 */
-async function goDetail() {
+async function submitCalc() {
   if (submitting.value)
     return
   submitting.value = true
@@ -259,7 +259,7 @@ function goHistory() {
         </wd-cell-group>
       </wd-form>
 
-      <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="goDetail">
+      <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="submitCalc">
         开始测算
       </wd-button>
       <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">

@@ -91,13 +91,6 @@ export function formatVerifyAbnormalSummary(result: PayslipVerifyResult): string
   if (!result.taxMatch) {
     const sign = result.taxDiff > 0 ? '+' : ''
     parts.push(`个税差异 ${sign}${formatSalaryAmount(result.taxDiff)}`)
-    // // 正数：工资条个税高于重算值（可能多扣）
-    // const abs = Math.abs(result.taxDiff)
-    // if (abs > 0.01) {
-    //   parts.push(result.taxDiff > 0
-    //     ? `公司可能多扣了 ${formatSalaryAmount(abs)}`
-    //     : `公司可能少扣了 ${formatSalaryAmount(abs)}`)
-    // }
   }
   if (!result.postTaxMatch) {
     const sign = result.postTaxDiff > 0 ? '+' : ''

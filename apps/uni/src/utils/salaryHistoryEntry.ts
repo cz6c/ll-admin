@@ -4,12 +4,11 @@
  * 适用：home.vue 最近记录、history.vue 合并列表
  */
 import type { PayslipVerifyRecord, SalaryHistoryRecord } from '@/store/salaryHistory'
-import { toCalcInput, toVerifyRecord } from '@/store/salaryHistory'
 import dayjs from 'dayjs'
+import { toVerifyRecord } from '@/store/salaryHistory'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { parsePayPeriod } from '@/utils/payPeriod'
 import { computeVerifyForRecord, formatVerifyAbnormalSummary } from '@/utils/payslipVerify'
-import { calcSalary } from '@/utils/salaryCalculator'
 
 export { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 
@@ -44,8 +43,7 @@ export interface SalaryHistoryEntry {
 
 /** 测算历史主标题：月薪 → 测算年薪 */
 export function buildCalcHistoryTitle(item: SalaryHistoryRecord) {
-  const annual = calcSalary(toCalcInput(item)).annualTakeHome
-  return `月薪 ¥${formatSalaryAmount(item.preTaxMonthly)} → 税后年薪 ¥${formatSalaryAmount(annual)}`
+  return `月薪基数 ¥${formatSalaryAmount(item.preTaxMonthly)}`
 }
 
 /**
@@ -58,7 +56,7 @@ export function buildVerifyHistoryTitle(
 ) {
   const { month } = parsePayPeriod(item.payPeriod)
   const verify = computeVerifyForRecord(item, allVerifyRecords)
-  const verifyText = verify.overallMatch ? '核对无误' : formatVerifyAbnormalSummary(verify)
+  const verifyText = verify.overallMatch ? '核对无误' : '存在差异'
   return `${month} 月工资条 · ${verifyText}`
 }
 

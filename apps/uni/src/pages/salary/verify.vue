@@ -307,7 +307,7 @@ function goVerifyHistory() {
       </view>
 
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
-        注：提交后进入详情查看个税与税后核对结果；补全历史月份可提高浮动月薪的个税精度。
+        注：计算结果仅供参考，补全历史月份可提高浮动月薪的个税精度。
       </view>
     </view>
 

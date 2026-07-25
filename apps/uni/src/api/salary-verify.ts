@@ -42,8 +42,10 @@ export interface SalaryHistoryDetail {
   relatedVerifyList?: SalaryVerifyHistoryItem[]
 }
 
-/** 新增或按业务键更新历史；字段随 historyType 校验 */
+/** 新增或按业务键/id 更新历史；字段随 historyType 校验 */
 export interface UpsertSalaryVerifyHistoryPayload {
+  /** 传入则按 id 更新（重新测算 / 重新核对） */
+  id?: number
   /** 默认 verify */
   historyType?: SalaryHistoryType
   /** verify 必填 YYYY-MM */
@@ -63,7 +65,9 @@ export interface UpsertSalaryVerifyHistoryPayload {
 
 const HISTORY_BASE = '/salary-slip/history'
 
-/** 按业务键 upsert：verify 按 user+payPeriod；calc 每次新增一条测算快照 */
+/**
+ * 写入历史：无 id 时 verify 按月 upsert、calc 新增；有 id 时按 id 更新
+ */
 export function upsertSalaryVerifyHistory(data: UpsertSalaryVerifyHistoryPayload) {
   return http.post<SalaryVerifyHistoryItem>(`${HISTORY_BASE}/upsert`, data)
 }

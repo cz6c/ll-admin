@@ -15,6 +15,7 @@ import {
   computeVerifyBreakdown,
 } from '@/utils/payslipVerify'
 import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
+import { buildVerifyReentryQuery } from '@/utils/verifyReentry'
 
 defineOptions({ name: 'SalaryVerifyDetail' })
 
@@ -134,6 +135,18 @@ const summarySubtitle = computed(() => {
   return `${year} 年 ${month} 月 工资条`
 })
 
+/** 差异态：跳转核对页并短字段带回全量数据，锁定所属月 */
+function goReVerify() {
+  const row = record.value
+  if (!row?.payPeriod) {
+    uni.showToast({ title: '缺少所属月', icon: 'none' })
+    return
+  }
+  uni.navigateTo({
+    url: `/pages/salary/verify?${buildVerifyReentryQuery(row)}`,
+  })
+}
+
 interface AmountRow { label: string, value: string }
 
 const activeDeductionItems = computed((): AmountRow[] => {
@@ -205,7 +218,7 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- 顶部结论卡：一致或差异状态 -->
-      <view class="summary-card mb-32rpx">
+      <view class="summary-card card-rounded mb-32rpx p-32rpx">
         <view class="summary-card__head">
           <view
             class="summary-card__icon"
@@ -228,6 +241,12 @@ function fmtDiff(diff: number) {
             </text>
           </view>
         </view>
+        <wd-text
+          v-if="!summaryMatch"
+          type="primary"
+          text="重新核对"
+          @click="goReVerify"
+        />
       </view>
 
       <!-- 第一层：结论 + 列表对照 -->
@@ -457,17 +476,15 @@ function fmtDiff(diff: number) {
 
 <style scoped lang="scss">
 .summary-card {
-  border-radius: 24rpx;
-  background: #fff;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .summary-card__head {
   display: flex;
   align-items: center;
   gap: 20rpx;
-  padding: 28rpx 32rpx;
 }
 
 .summary-card__icon {

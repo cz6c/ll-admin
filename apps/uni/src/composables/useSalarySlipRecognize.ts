@@ -42,6 +42,7 @@ export function useSalarySlipRecognize() {
           try {
             filePath = await compressImage(filePath)
             previewPath.value = filePath
+            await recognize()
           }
           catch {
             uni.showToast({ title: '图片压缩失败', icon: 'none' })
@@ -80,6 +81,5 @@ export function useSalarySlipRecognize() {
     previewPath,
     lineItems,
     chooseImage,
-    recognize,
   }
 }

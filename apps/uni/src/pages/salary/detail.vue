@@ -1,15 +1,17 @@
 <script lang="ts" setup>
 /**
  * 年度测算明细页
- * 主流程：有 id → 详情接口拉单条本地展示；无 id → 当前测算 store
- * 图表：qiun-data-charts（uCharts）；角标等无 wd-icon 时用 UnoCSS carbon 字体图标
+ * 主流程：必须带 id → 详情接口拉单条本地展示（无 store 兜底）
+ * 底部「重新测算」：短字段 query 跳测算页回填
+ * 图表：接口就绪后再挂载 qiun-data-charts，并短延时避开转场量尺寸错位
  */
 import type { SalaryHistoryRecord } from '@/store/salaryHistory'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import type { SalaryCalcInput, SalaryCalcResult } from '@/utils/salaryCalculator'
+import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
-import { useSalaryCalcStore } from '@/store/salaryCalc'
 import { toCalcInput, toHistoryRecord } from '@/store/salaryHistory'
+import { buildCalcReentryQuery } from '@/utils/calcReentry'
 import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
 import { calcSalary } from '@/utils/salaryCalculator'
 
@@ -21,27 +23,64 @@ definePage({
   },
 })
 
-const store = useSalaryCalcStore()
-
-/** 从「历史记录」进入时携带 id；从「查看明细」进入无 id，用当前 store */
+/** 入口必带；测算 / 历史列表跳转均带 id */
 const historyId = ref('')
 /** 详情接口返回的测算行（不进列表 store） */
 const historyItem = ref<SalaryHistoryRecord | null>(null)
 /** 计算明细默认展开，与设计稿一致 */
 const showBreakdown = ref(true)
+/**
+ * 图表是否可挂载：须等业务数据就绪，且短延时后再 true
+ * why：navigate 转场中 getBoundingClientRect 偶发不准，canvas2d 按错误高度初始化会错位
+ */
+const chartReady = ref(false)
+/** 每次就绪递增，强制重建图表，避免仅改 chart-data 时重绘异常 */
+const chartMountKey = ref(0)
+/** 转场结束后再量尺寸；过短仍偶发错位，过长体感卡顿 */
+const CHART_MOUNT_DELAY_MS = 80
+let chartMountTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearChartMountTimer() {
+  if (chartMountTimer == null)
+    return
+  clearTimeout(chartMountTimer)
+  chartMountTimer = null
+}
+
+/** 先卸图表，再延时挂载，保证用最终数据 + 稳定布局初始化 */
+function scheduleChartMount() {
+  chartReady.value = false
+  clearChartMountTimer()
+  chartMountTimer = setTimeout(() => {
+    chartMountTimer = null
+    chartMountKey.value += 1
+    chartReady.value = true
+  }, CHART_MOUNT_DELAY_MS)
+}
 
 onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
+  if (!historyId.value) {
+    uni.showToast({ title: '缺少记录', icon: 'none' })
+    setTimeout(() => uni.navigateBack(), 500)
+  }
 })
 
 onShow(async () => {
-  if (!historyId.value) {
-    historyItem.value = null
+  chartReady.value = false
+  if (!historyId.value)
     return
-  }
   try {
     const detail = await getSalaryHistoryDetail(Number(historyId.value))
-    historyItem.value = toHistoryRecord(detail.item)
+    const row = toHistoryRecord(detail.item)
+    // 本页只展示测算；误入核对 id 时不挂图、不展示假数据
+    if (row.historyType !== 'calc') {
+      historyItem.value = null
+      uni.showToast({ title: '记录类型不正确', icon: 'none' })
+      return
+    }
+    historyItem.value = row
+    scheduleChartMount()
   }
   catch {
     historyItem.value = null
@@ -49,19 +88,30 @@ onShow(async () => {
   }
 })
 
-const detailInput = computed(() => {
-  if (historyItem.value)
-    return toCalcInput(historyItem.value)
-  return store.input
+onHide(() => {
+  clearChartMountTimer()
+  chartReady.value = false
 })
 
-const r = computed(() => {
-  if (historyItem.value)
-    return calcSalary(detailInput.value)
-  return store.result
+onUnload(() => {
+  clearChartMountTimer()
+})
+
+const detailInput = computed((): SalaryCalcInput | null => {
+  if (!historyItem.value)
+    return null
+  return toCalcInput(historyItem.value)
+})
+
+const r = computed((): SalaryCalcResult | null => {
+  if (!detailInput.value)
+    return null
+  return calcSalary(detailInput.value)
 })
 
 const taxRateLabel = computed(() => {
+  if (!r.value)
+    return ''
   const pct = Math.round(r.value.applicableTaxRate * 10000) / 100
   return Number.isInteger(pct) ? `${pct}%` : `${pct}%`
 })
@@ -76,6 +126,8 @@ interface BreakdownRow {
 const breakdownRows = computed((): BreakdownRow[] => {
   const input = detailInput.value
   const result = r.value
+  if (!input || !result)
+    return []
   return [
     { label: '应发总额（税前）', value: result.annualPreTaxTotal },
     { label: '社保（个人）', value: result.ssPersonalMonthly * 12, deduct: true },
@@ -86,15 +138,24 @@ const breakdownRows = computed((): BreakdownRow[] => {
   ]
 })
 
-const chartData = computed(() => ({
-  categories: r.value.monthlyRows.map(row => `${row.month}月`),
-  series: [
-    {
-      name: '税后',
-      data: r.value.monthlyRows.map(row => row.postTax),
-    },
-  ],
-}))
+const chartData = computed(() => {
+  const result = r.value
+  if (!result) {
+    return {
+      categories: [] as string[],
+      series: [{ name: '税后', data: [] as number[] }],
+    }
+  }
+  return {
+    categories: result.monthlyRows.map(row => `${row.month}月`),
+    series: [
+      {
+        name: '税后',
+        data: result.monthlyRows.map(row => row.postTax),
+      },
+    ],
+  }
+})
 
 /** 柱状图：主色柱、弱化坐标，贴近稿面留白 */
 const chartOpts = {
@@ -137,11 +198,24 @@ function fmtBreakdownValue(row: BreakdownRow) {
   }
   return fmtYen(row.value)
 }
+
+/**
+ * 带 id 的短字段 query 跳测算页（编辑回填），提交时按 id 更新
+ */
+function goReCalc() {
+  const input = detailInput.value
+  const id = historyItem.value?.id
+  if (!input || !id)
+    return
+  uni.navigateTo({
+    url: `/pages/salary/calc?${buildCalcReentryQuery(input, id)}`,
+  })
+}
 </script>
 
 <template>
   <view class="page-shell pb-safe">
-    <view class="p-24rpx">
+    <view v-if="historyItem && detailInput && r" class="p-24rpx">
       <!-- 蓝色汇总卡 -->
       <view class="hero-card">
         <view class="hero-card__top">
@@ -210,6 +284,8 @@ function fmtBreakdownValue(row: BreakdownRow) {
         </view>
         <view class="charts-box">
           <qiun-data-charts
+            v-if="chartReady"
+            :key="chartMountKey"
             type="column"
             :opts="chartOpts"
             :chart-data="chartData"
@@ -259,6 +335,12 @@ function fmtBreakdownValue(row: BreakdownRow) {
             </text>
           </view>
         </view>
+      </view>
+
+      <view class="mt-32rpx px-8rpx pb-16rpx">
+        <wd-button type="primary" block :round="true" size="large" @click="goReCalc">
+          重新测算
+        </wd-button>
       </view>
     </view>
   </view>

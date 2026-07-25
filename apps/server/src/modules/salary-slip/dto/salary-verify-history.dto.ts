@@ -9,10 +9,21 @@ export type YearEndTaxMode = YearEndTaxModeEnum;
 
 /**
  * 新增或更新薪资历史
- * - verify：payPeriod + 个税/税后必填；按 user+type+period upsert
- * - calc：yearEndTaxMode/yearEndBonus 必填；每次新增测算快照（payPeriod 为空）
+ * - 传 id：按 id 更新本人未删记录（重新测算 / 重新核对编辑）
+ * - 不传 id：verify 按 user+type+period upsert；calc 新增测算快照
  */
 export class UpsertSalaryVerifyHistoryDto {
+  @ApiPropertyOptional({
+    description: "已有记录 id；传入则按 id 更新（编辑），须与 historyType 一致",
+    example: 1
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  id?: number;
+
   @ApiPropertyOptional({
     description: "历史类型：verify 月薪核对，calc 年薪测算。为空时默认 verify",
     enum: SalaryHistoryTypeEnum,

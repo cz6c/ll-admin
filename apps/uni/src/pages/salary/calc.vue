@@ -1,18 +1,15 @@
 <script lang="ts" setup>
 /**
  * 年薪测算页
- * 主流程：编辑表单 → 实时看 result → 保存历史后进明细
+ * 主流程：编辑本地表单 → 保存历史后进明细；「重新测算」经 query 带 id 回填并更新
  * 注意：月薪变更时若选了「N 倍月薪」奖金倍数，会同步重算 yearEndBonus
  */
-import type { YearEndTaxMode } from '@/utils/salaryCalculator'
-import { storeToRefs } from 'pinia'
+import type { SalaryCalcInput, YearEndTaxMode } from '@/utils/salaryCalculator'
+import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
-import {
-  salaryOptionLabel,
-  YEAR_END_TAX_OPTIONS,
-} from '@/constants/salaryFormOptions'
-import { useSalaryCalcStore } from '@/store/salaryCalc'
+import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { parseCalcReentryQuery } from '@/utils/calcReentry'
 
 defineOptions({ name: 'SalaryCalc' })
 
@@ -24,22 +21,59 @@ definePage({
 
 /** 须高于自定义 TabBar（src/tabbar/index.vue 内 z-index:1000），否则弹出层会被挡住 */
 const popupZIndex = 1100
-const store = useSalaryCalcStore()
 const salaryHistoryStore = useSalaryHistoryStore()
+
+/**
+ * 默认表单：月薪 10000、单独计税、年终奖 0
+ * 单独计税为常见默认，避免用户未选模式时年终奖被并入综合所得
+ */
+function defaultForm(): SalaryCalcInput {
+  return {
+    preTaxMonthly: 10000,
+    yearEndTaxMode: 'separate',
+    yearEndBonus: 0,
+    ssPersonalAmount: 0,
+    hfPersonalAmount: 0,
+    specialDeductionMonthly: 0,
+  }
+}
+
 /** 勿命名为 input：小程序编译会与原生 <input> 混淆，生成错误变量名 */
-const { input: salaryForm } = storeToRefs(store)
+const salaryForm = ref<SalaryCalcInput>(defaultForm())
+/** 重新测算带入的历史 id；有值则提交按 id 更新 */
+const editingId = ref('')
 
 const showYearEndModePicker = ref(false)
 /** 七项专项附加扣除标准说明 */
 const showSpecialDeductionTip = ref(false)
+/** 防连点：提交落库 + 最少 loading 展示期间 */
+const submitting = ref(false)
 
-const yearEndModeLabel = computed(() =>
-  salaryOptionLabel(YEAR_END_TAX_OPTIONS, salaryForm.value.yearEndTaxMode),
-)
+const yearEndModeLabel = computed(() => salaryOptionLabel(YEAR_END_TAX_OPTIONS, salaryForm.value.yearEndTaxMode))
 
 const bonusMultipliers = [1, 2, 3, 4, 6, 8, 10] as const
 /** 当前选中的「N 倍月薪」；手动改年终奖金额后置 null，表示脱离倍数联动 */
 const selectedBonusMul = ref<number | null>(1)
+
+/** 回填后若年终奖恰为某倍数×月薪，恢复倍数标签选中态 */
+function syncBonusMulFromForm() {
+  const { preTaxMonthly, yearEndBonus } = salaryForm.value
+  if (!(preTaxMonthly > 0) || yearEndBonus <= 0) {
+    selectedBonusMul.value = yearEndBonus === 0 ? 1 : null
+    return
+  }
+  const hit = bonusMultipliers.find(m => Math.round(preTaxMonthly * m) === yearEndBonus)
+  selectedBonusMul.value = hit ?? null
+}
+
+onLoad((options?: Record<string, string>) => {
+  const payload = parseCalcReentryQuery(options)
+  if (!payload)
+    return
+  salaryForm.value = { ...payload.form }
+  editingId.value = payload.id ?? ''
+  syncBonusMulFromForm()
+})
 
 // 月薪变化时：若年终奖已是「倍数×月薪」则保持选中态；年终奖为 0 时恢复默认 1 倍选中
 watch(
@@ -53,10 +87,14 @@ watch(
   },
 )
 
+function patchForm(p: Partial<SalaryCalcInput>) {
+  salaryForm.value = { ...salaryForm.value, ...p }
+}
+
 /** 快捷设置年终奖 = 月薪 × 倍数 */
 function applyBonusMul(m: number) {
   selectedBonusMul.value = m
-  store.patchInput({ yearEndBonus: Math.round(salaryForm.value.preTaxMonthly * m) })
+  patchForm({ yearEndBonus: Math.round(salaryForm.value.preTaxMonthly * m) })
 }
 
 function parseNum(val: string | number, intOnly = false) {
@@ -67,39 +105,60 @@ function parseNum(val: string | number, intOnly = false) {
 }
 
 function onPreTaxInput(val: string | number) {
-  store.patchInput({ preTaxMonthly: parseNum(val) })
+  patchForm({ preTaxMonthly: parseNum(val) })
 }
 
 function onBonusInput(val: string | number) {
   selectedBonusMul.value = null
-  store.patchInput({ yearEndBonus: parseNum(val) })
+  patchForm({ yearEndBonus: parseNum(val) })
 }
 
 function onSsPersonalAmountInput(val: string | number) {
-  store.patchInput({ ssPersonalAmount: parseNum(val) })
+  patchForm({ ssPersonalAmount: parseNum(val) })
 }
 
 function onSpecialInput(val: string | number) {
-  store.patchInput({ specialDeductionMonthly: parseNum(val) })
+  patchForm({ specialDeductionMonthly: parseNum(val) })
 }
 
 function onHfPersonalAmountInput(val: string | number) {
-  store.patchInput({ hfPersonalAmount: parseNum(val) })
+  patchForm({ hfPersonalAmount: parseNum(val) })
 }
 
 function onYearEndModeConfirm({ value }: { value: (string | number)[] }) {
-  store.patchInput({ yearEndTaxMode: value[0] as YearEndTaxMode })
+  patchForm({ yearEndTaxMode: value[0] as YearEndTaxMode })
+}
+
+/** 成功态 loading 最少展示时长，给用户「正在计算」的体感 */
+const SUBMIT_LOADING_MIN_MS = 2000
+
+function delay(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms))
 }
 
 /** 先落库测算历史再进明细，保证详情可按 id 回看 */
 async function goDetail() {
+  if (submitting.value)
+    return
+  submitting.value = true
+  uni.showLoading({ title: '系统正在测算中，请稍后…', mask: true })
   try {
-    const row = await salaryHistoryStore.createHistory({ ...salaryForm.value })
-    uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(row.id)}` })
+    // 接口与最少展示时间并行：慢网跟接口，快网也至少转满 SUBMIT_LOADING_MIN_MS
+    const [row] = await Promise.all([salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined), delay(SUBMIT_LOADING_MIN_MS)])
+    if (editingId.value) {
+      uni.navigateBack()
+    }
+    else {
+      uni.navigateTo({ url: `/pages/salary/detail?id=${encodeURIComponent(row.id)}` })
+    }
   }
   catch (err) {
-    const msg = err instanceof Error ? err.message : '历史记录保存失败'
+    const msg = err instanceof Error ? err.message : '测算失败'
     uni.showToast({ title: msg, icon: 'none' })
+  }
+  finally {
+    uni.hideLoading()
+    submitting.value = false
   }
 }
 
@@ -155,7 +214,7 @@ function goHistory() {
               round
               @click="applyBonusMul(m)"
             >
-              {{ m === 1 ? '月薪×1' : `×${m}` }}
+              {{ m === 1 ? "月薪×1" : `×${m}` }}
             </wd-tag>
           </view>
         </scroll-view>
@@ -185,12 +244,7 @@ function goHistory() {
             <template #title>
               <view class="flex items-center">
                 <text>专项附加扣除（月）</text>
-                <wd-icon
-                  name="question-circle"
-                  size="32rpx"
-                  class="text-primary"
-                  @click.stop="showSpecialDeductionTip = true"
-                />
+                <wd-icon name="question-circle" size="32rpx" class="text-primary" @click.stop="showSpecialDeductionTip = true" />
               </view>
             </template>
             <wd-input
@@ -205,17 +259,10 @@ function goHistory() {
         </wd-cell-group>
       </wd-form>
 
-      <wd-button :block="true" :round="true" size="large" type="primary" @click="goDetail">
-        查看明细
+      <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="goDetail">
+        开始测算
       </wd-button>
-      <wd-button
-        :block="true"
-        :round="true"
-        size="large"
-        variant="plain"
-        custom-class="mt-24rpx"
-        @click="goHistory"
-      >
+      <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
         历史记录
       </wd-button>
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
@@ -232,15 +279,7 @@ function goHistory() {
       :z-index="popupZIndex"
       @confirm="onYearEndModeConfirm"
     />
-    <wd-popup
-      v-model="showSpecialDeductionTip"
-      position="bottom"
-      :z-index="popupZIndex"
-      root-portal
-      :safe-area-inset-bottom="true"
-      closable
-      lock-scroll
-    >
+    <wd-popup v-model="showSpecialDeductionTip" position="bottom" :z-index="popupZIndex" root-portal :safe-area-inset-bottom="true" closable lock-scroll>
       <view class="special-deduction-sheet max-h-75vh flex flex-col rounded-t-24rpx bg-white">
         <view class="shrink-0 border-b border-#edf0f6 p-32rpx text-center text-32rpx text-#333 font-600">
           七项扣除具体金额标准
@@ -258,7 +297,9 @@ function goHistory() {
             <view class="special-deduction-item mb-28rpx last:mb-0">
               <text class="special-deduction-item__title">3. 赡养老人</text>
               <text class="special-deduction-item__text">独生子女：每月3000元。</text>
-              <text class="special-deduction-item__text special-deduction-item__text--sub">非独生子女：与兄弟姐妹分摊每月3000元额度，每人每月不超过1500元。</text>
+              <text class="special-deduction-item__text special-deduction-item__text--sub">
+                非独生子女：与兄弟姐妹分摊每月3000元额度，每人每月不超过1500元。
+              </text>
             </view>
             <view class="special-deduction-item mb-28rpx last:mb-0">
               <text class="special-deduction-item__title">4. 住房贷款利息</text>

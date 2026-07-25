@@ -292,7 +292,9 @@ export class SalarySlipService {
   }
 
   /**
-   * 新增或更新薪资历史；verify 按 period upsert（含软删复活），calc 新增快照
+   * 新增或更新薪资历史
+   * - 有 id：按 id 更新本人未删记录（编辑）
+   * - 无 id：verify 按 period upsert（含软删复活）；calc 新增快照
    */
   async upsertHistory(userId: number, dto: UpsertSalaryVerifyHistoryDto) {
     if (!userId) {
@@ -317,6 +319,10 @@ export class SalarySlipService {
       yearEndBonus: String(dto.yearEndBonus ?? 0),
       postTaxMonthly: String(dto.postTaxMonthly ?? 0)
     };
+
+    if (dto.id != null) {
+      return this.updateHistoryById(userId, dto.id, historyType, payload, dto.payPeriod);
+    }
 
     if (historyType === SalaryHistoryTypeEnum.VERIFY) {
       const existed = await this.findVerifyHistory(userId, dto.payPeriod);
@@ -345,6 +351,41 @@ export class SalarySlipService {
     const createdEntity = this.salaryVerifyHistoryRep.create(payload);
     const created = await this.salaryVerifyHistoryRep.save(createdEntity);
     return ResultData.ok(this.toHistoryItemDto(created));
+  }
+
+  /**
+   * 按 id 编辑更新；校验归属、类型；verify 改月份时不可撞到他行唯一键
+   */
+  private async updateHistoryById(
+    userId: number,
+    id: number,
+    historyType: SalaryHistoryType,
+    payload: Partial<SalaryVerifyHistoryEntity>,
+    payPeriod?: string
+  ) {
+    if (!Number.isInteger(id) || id <= 0) {
+      return ResultData.fail(400, "历史记录ID不合法");
+    }
+    const existed = await this.salaryVerifyHistoryRep.findOne({
+      where: {
+        id,
+        userId,
+        delFlag: DelFlagEnum.NORMAL
+      }
+    });
+    if (!existed) {
+      return ResultData.fail(404, "历史记录不存在");
+    }
+    if ((existed.historyType ?? SalaryHistoryTypeEnum.VERIFY) !== historyType) {
+      return ResultData.fail(400, "记录类型不匹配");
+    }
+    if (historyType === SalaryHistoryTypeEnum.VERIFY && payPeriod) {
+      const conflict = await this.findVerifyHistory(userId, payPeriod);
+      if (conflict && conflict.id !== existed.id) {
+        return ResultData.fail(400, "该月份已有核对记录");
+      }
+    }
+    return this.saveVerifyHistoryUpdate(existed, payload);
   }
 
   /** 当前用户历史列表；keyword 模糊匹配 payPeriod / 税前月薪 */

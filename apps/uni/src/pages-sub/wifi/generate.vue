@@ -152,7 +152,7 @@ function handleShare() {
       error-type="toast"
       :title-width="100"
       value-align="right"
-      custom-class="card-rounded generate-form"
+      custom-class="card-rounded"
     >
       <wd-form-item title="WiFi名称" prop="ssid">
         <wd-input

@@ -116,9 +116,16 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
       this.items = list.map(toHistoryRecord)
     },
 
-    /** 保存测算快照；不更新 items，返回行供跳转详情 */
-    async createHistory(input: SalaryCalcInput) {
+    /**
+     * 保存测算：无 id 新增快照；有 id 按 id 更新（重新测算）
+     * @param editingId 编辑态历史 id；不传则新建
+     */
+    async createHistory(input: SalaryCalcInput, editingId?: string) {
+      const numericId = editingId ? Number(editingId) : undefined
+      if (editingId && (!Number.isInteger(numericId) || (numericId as number) <= 0))
+        throw new Error('历史记录ID不合法')
       const data = await upsertSalaryVerifyHistory({
+        ...(numericId ? { id: numericId } : {}),
         historyType: 'calc',
         preTaxMonthly: input.preTaxMonthly,
         ssPersonalAmount: input.ssPersonalAmount,
@@ -130,9 +137,16 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
       return toHistoryRecord(data)
     },
 
-    /** 按月 upsert 核对；不更新 items，返回核对视图供当页展示结果 */
-    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime'>) {
+    /**
+     * 保存核对：无 id 按月 upsert；有 id 按 id 更新（重新核对）
+     * @note 不更新 items，返回核对视图供跳转详情
+     */
+    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime'> & { id?: string }) {
+      const editingId = entry.id ? Number(entry.id) : undefined
+      if (entry.id && (!Number.isInteger(editingId) || (editingId as number) <= 0))
+        throw new Error('历史记录ID不合法')
       const data = await upsertSalaryVerifyHistory({
+        ...(editingId ? { id: editingId } : {}),
         historyType: 'verify',
         payPeriod: entry.payPeriod,
         preTaxMonthly: entry.preTaxMonthly,

@@ -1,8 +1,9 @@
 /**
  * 隐私协议与用户协议文案
- * 职责：同意标记、路由常量、弹窗简介与协议全文
- * 适用：privacy-gate 空白页弹窗、legal 协议页、首页未同意跳转
+ * 职责：同意标记、路由常量、弹窗简介与协议全文、同意后回跳白名单
+ * 适用：privacy-gate 空白页弹窗、legal 协议页、首页/核对深链未同意跳转
  */
+import { buildFromQuery, getChannelFrom } from '@/utils/channelFrom'
 
 /** 本地存储：用户是否已同意协议 */
 export const PRIVACY_AGREED_KEY = 'privacy_agreed'
@@ -19,9 +20,45 @@ export const USER_AGREEMENT_PATH = '/pages/legal/user-agreement'
 /** 隐私保护指引页 */
 export const PRIVACY_POLICY_PATH = '/pages/legal/privacy-policy'
 
+/**
+ * 同意协议后回跳 path（仅白名单）；分享直达核对页时写入，避免同意后丢落地
+ */
+export const PRIVACY_RETURN_PATH_KEY = 'privacy_return_path'
+
+/** 允许同意后 reLaunch 的业务 path（禁止任意 URL） */
+const PRIVACY_RETURN_PATH_WHITELIST = new Set([
+  '/pages/salary/verify',
+])
+
 /** 是否已同意用户协议与隐私政策 */
 export function hasPrivacyAgreed() {
   return !!uni.getStorageSync(PRIVACY_AGREED_KEY)
+}
+
+/**
+ * 写入同意后回跳 path；非白名单忽略
+ * @param path 以 / 开头的应用内 path，不含 query
+ */
+export function setPrivacyReturnPath(path: string): void {
+  const normalized = String(path ?? '').trim().split('?')[0]
+  if (!PRIVACY_RETURN_PATH_WHITELIST.has(normalized))
+    return
+  uni.setStorageSync(PRIVACY_RETURN_PATH_KEY, normalized)
+}
+
+/**
+ * 取出并清除回跳 url；非法或无则回首页。
+ * 有已存渠道时在 path 后附带 from，保证门禁后仍可归因。
+ */
+export function consumePrivacyReturnUrl(): string {
+  const raw = String(uni.getStorageSync(PRIVACY_RETURN_PATH_KEY) ?? '').trim().split('?')[0]
+  uni.removeStorageSync(PRIVACY_RETURN_PATH_KEY)
+  if (!PRIVACY_RETURN_PATH_WHITELIST.has(raw))
+    return APP_HOME_PATH
+  // 仅在有渠道时拼 query，避免无意义的 from=share 污染深链
+  if (getChannelFrom())
+    return `${raw}?${buildFromQuery()}`
+  return raw
 }
 
 /**

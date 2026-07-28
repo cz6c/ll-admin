@@ -4,13 +4,14 @@
  * 主流程：未同意协议则 redirect 门禁页 → 展示测算/核对入口 → onShow 一次同步历史 → 最近记录进详情
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
-import { onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { computed, ref } from 'vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { captureChannelFromQuery } from '@/utils/channelFrom'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
 defineOptions({ name: 'SalaryHome' })
@@ -98,6 +99,10 @@ function featureHint(featureKey: string) {
     return '首次使用 · 共 0 条记录'
   return `最近使用 · ${stats.latestDate} · 共 ${stats.count} 条记录`
 }
+
+onLoad((options?: Record<string, string>) => {
+  captureChannelFromQuery(options)
+})
 
 onShow(async () => {
   // 未同意协议：redirect 到空白门禁页（页内弹窗），避免全局弹窗盖住协议正文

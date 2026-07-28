@@ -3,14 +3,17 @@
  * 月薪核对页
  * 主流程：选图识别 → 映射 6 字段 → 选所属月 → 写入/按 id 更新 → 跳转核对详情
  * 「重新核对」经 query 带 id 回填；必填税前、个税、税后
+ * 拉新：捕获 from；未同意协议则门禁，同意后回本页
  */
 import type { LineItem } from '@/types/salary-slip'
 import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFieldMap'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { computed, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
+import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
+import { captureChannelFromQuery } from '@/utils/channelFrom'
 import { formatPayPeriod, formatPayPeriodLabel, payPeriodToTimestamp, previousPayPeriod } from '@/utils/payPeriod'
 import { mapLineItemsToPayslipFields, PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 import { parseVerifyReentryQuery } from '@/utils/verifyReentry'
@@ -54,6 +57,8 @@ const form = ref<PayslipMappedFields>({
 })
 
 onLoad((options?: Record<string, string>) => {
+  // 运营码/分享直达：与 reentry 短字段并存，from 不进表单
+  captureChannelFromQuery(options)
   const payload = parseVerifyReentryQuery(options)
   if (!payload)
     return
@@ -62,6 +67,14 @@ onLoad((options?: Record<string, string>) => {
   form.value = { ...payload.form }
   payPeriodLocked.value = payload.lockPayPeriod
   editingId.value = payload.id ?? ''
+})
+
+onShow(() => {
+  // 分享落地绕过首页时仍须过协议；同意后回本页（见 privacy return path）
+  if (!hasPrivacyAgreed()) {
+    setPrivacyReturnPath('/pages/salary/verify')
+    uni.redirectTo({ url: PRIVACY_GATE_PATH })
+  }
 })
 
 const unmappedItems = ref<LineItem[]>([])

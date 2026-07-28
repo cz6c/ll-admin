@@ -2,12 +2,16 @@
 import { onHide, onLaunch, onShow } from '@dcloudio/uni-app'
 import { navigateToInterceptor } from '@/router/interceptor'
 import { useTokenStore } from '@/store'
+import { captureChannelFromQuery } from '@/utils/channelFrom'
 
 onLaunch((options) => {
   console.log('App.vue onLaunch', options)
+  // 扫码/分享冷启动：尽早落 from，避免先进门禁丢渠道
+  captureChannelFromQuery(options?.query as Record<string, unknown> | undefined)
 })
 onShow((options) => {
   console.log('App.vue onShow', options)
+  captureChannelFromQuery(options?.query as Record<string, unknown> | undefined)
   const tokenStore = useTokenStore()
   tokenStore.ensureSession({ silent: true }).catch((error) => {
     console.error('App.vue 静默登录失败:', error)

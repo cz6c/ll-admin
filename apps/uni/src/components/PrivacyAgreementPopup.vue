@@ -4,7 +4,7 @@
  * 主流程：常显弹窗 → 点协议 navigateTo（本页入栈下方，返回自动回来）→ 同意后 reLaunch 首页
  */
 import {
-  APP_HOME_PATH,
+  consumePrivacyReturnUrl,
   PRIVACY_AGREED_KEY,
   PRIVACY_POLICY_PATH,
   PRIVACY_POPUP_INTRO,
@@ -17,7 +17,8 @@ const showPrivacy = ref(true)
 function agreePrivacy() {
   uni.setStorageSync(PRIVACY_AGREED_KEY, true)
   showPrivacy.value = false
-  uni.reLaunch({ url: APP_HOME_PATH })
+  // 分享/深链直达核对页时回跳白名单 path，否则首页
+  uni.reLaunch({ url: consumePrivacyReturnUrl() })
 }
 
 function rejectPrivacy() {
@@ -43,7 +44,7 @@ function openPrivacyPolicy() {
       <view class="mb-24rpx text-center text-34rpx text-#333 font-600">
         用户协议与隐私政策
       </view>
-      <view  >
+      <view>
         <text class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">{{ PRIVACY_POPUP_INTRO }}</text>
         <view class="mt-8rpx text-26rpx leading-relaxed">
           <text class="text-primary underline" @click="openUserAgreement">

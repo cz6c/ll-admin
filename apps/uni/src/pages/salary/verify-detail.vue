@@ -2,13 +2,15 @@
 /**
  * 月薪核对历史详情：顶部结论卡 → 项目对比 → 计算过程 → 工资条原始数据。
  * 主流程：详情接口 → 页面本地 item + relatedVerifyList → 累计预扣重算（不写列表 store）
+ * 拉新：微信转发落到核对页（带 from），标题仅结论不带金额
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toHistoryRecord, toVerifyRecord } from '@/store/salaryHistory'
+import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { parsePayPeriod } from '@/utils/payPeriod'
 import {
@@ -43,6 +45,9 @@ const fieldKeys: PayslipFieldKey[] = [
 
 onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
+  // #ifdef MP-WEIXIN
+  uni.showShareMenu({ withShareTicket: true })
+  // #endif
 })
 
 onShow(async () => {
@@ -78,6 +83,23 @@ const detail = computed(() => {
 
 const verify = computed(() => detail.value?.verify ?? null)
 const breakdown = computed(() => detail.value?.breakdown ?? null)
+
+/**
+ * 拉新转发：标题只写结论不带金额；落地核对页 + from，不带详情 id
+ */
+onShareAppMessage(() => {
+  const v = verify.value
+  let title = '发薪了？30 秒核对工资条扣款对不对'
+  if (v) {
+    title = v.overallMatch
+      ? '我刚核对了工资条：核对一致'
+      : '我刚核对了工资条：存在差异'
+  }
+  return {
+    title,
+    path: `/pages/salary/verify?${buildFromQuery(DEFAULT_SHARE_FROM)}`,
+  }
+})
 
 const calcModeHint = computed(() => {
   const v = verify.value
@@ -245,12 +267,19 @@ function fmtDiff(diff: number) {
             </text>
           </view>
         </view>
-        <wd-text
-          v-if="!summaryMatch"
-          type="primary"
-          text="重新核对"
-          @click="goReVerify"
-        />
+        <view class="summary-card__actions">
+          <!-- #ifdef MP-WEIXIN -->
+          <button class="share-link" open-type="share" hover-class="none">
+            分享给好友
+          </button>
+          <!-- #endif -->
+          <wd-text
+            v-if="!summaryMatch"
+            type="primary"
+            text="重新核对"
+            @click="goReVerify"
+          />
+        </view>
       </view>
 
       <!-- 第一层：结论 + 列表对照 -->
@@ -483,6 +512,30 @@ function fmtDiff(diff: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16rpx;
+}
+
+.summary-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+/* 原生 button 去默认壳，视觉贴近 wd-text 链接 */
+.share-link {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  line-height: 1.4;
+  font-size: 28rpx;
+  color: var(--wot-primary-6);
+}
+
+.share-link::after {
+  border: none;
 }
 
 .summary-card__head {

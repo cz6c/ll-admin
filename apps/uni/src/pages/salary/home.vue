@@ -20,7 +20,7 @@ definePage({
   type: 'home',
   style: {
     'navigationStyle': 'custom',
-    'navigationBarTitleText': '工具工作台',
+    'navigationBarTitleText': '智能个税测算与工资条识别',
     'mp-alipay': {
       defaultTitle: ' ',
       transparentTitle: 'always',

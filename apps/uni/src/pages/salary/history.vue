@@ -16,7 +16,7 @@ const { closeOutside } = useQueue()
 
 definePage({
   style: {
-    navigationBarTitleText: '历史记录',
+    navigationBarTitleText: '个税测算与工资条核对历史',
   },
 })
 

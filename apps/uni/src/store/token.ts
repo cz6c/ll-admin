@@ -12,6 +12,7 @@ import {
   getWxCode,
 } from '@/api/login'
 import { isSingleTokenRes } from '@/api/types/login'
+import { getChannelFrom } from '@/utils/channelFrom'
 import { useUserStore } from './user'
 
 interface AuthActionOptions {
@@ -130,7 +131,11 @@ export const useTokenStore = defineStore(
         if (!wxCode) {
           throw new Error('获取微信登录凭证失败')
         }
-        const res = await _wxLogin({ code: wxCode })
+        const res = await _wxLogin({
+          code: wxCode,
+          // 本地已捕获的渠道；服务端仅在新建或 source 为空时落库
+          source: getChannelFrom() || undefined,
+        })
         await _postLogin(res, options)
         return res
       }

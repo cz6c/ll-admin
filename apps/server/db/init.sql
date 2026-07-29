@@ -4728,6 +4728,7 @@ CREATE TABLE
     `login_ip` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT '最后登录IP',
     `login_date` timestamp NOT NULL COMMENT '最后登录时间',
     `remark` varchar(500) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '备注',
+    `source` varchar(32) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '拉新渠道来源（微信首次归因）',
     PRIMARY KEY (`user_id`),
     UNIQUE KEY `UQ_sys_user_openid` (`openid`),
     KEY `idx_sys_user_dept_id` (`dept_id`)
@@ -4767,7 +4768,8 @@ VALUES
     '$2b$10$d4Z9Iq.v9J4pjX55I9mzRuPHsOMKLupOqxlb/UfbD9oYsYxd5ezeS',
     '127.0.0.1',
     '2024-12-12 09:09:17',
-    '管理员'
+    '管理员',
+    NULL
   ),
   (
     '0',
@@ -4791,7 +4793,8 @@ VALUES
     '$2b$10$xR4VuFRGxlN0IRJjaeQeLeAIF/ZmHCDPOCfoFMmnJ8LHbmaPReh4K',
     '127.0.0.1',
     '2024-12-11 03:24:00',
-    '测试员'
+    '测试员',
+    NULL
   );
 
 /*!40000 ALTER TABLE `sys_user` ENABLE KEYS */;

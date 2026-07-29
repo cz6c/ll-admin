@@ -56,7 +56,7 @@ export class MainController {
       browser: browser,
       os: os
     };
-    return this.mainService.wxLogin(dto.code, clientInfo);
+    return this.mainService.wxLogin(dto.code, clientInfo, dto.source);
   }
 
   @ApiOperation({ summary: "用户注册" })

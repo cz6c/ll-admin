@@ -13,6 +13,7 @@ import { DataScopeEnum, DelFlagEnum, StatusEnum } from "@/common/enum/dict";
 import { LOGIN_TOKEN_EXPIRESIN } from "@/common/constant/index";
 import { ResultData } from "@/common/utils/result";
 import { CreateUserDto, UpdateUserDto, ListUserDto, UserChangeStatusDto, ResetPwdDto, UpdateProfileDto, UpdatePwdDto } from "./dto/index";
+import { normalizeRegisterSource } from "@/common/utils/register-source";
 import { RegisterDto, LoginDto } from "../../main/dto/index";
 
 import { UserEntity } from "./entities/user.entity";
@@ -175,6 +176,10 @@ export class UserService {
       entity.andWhere("user.status = :status", { status: query.status });
     }
 
+    if (query.source) {
+      entity.andWhere("user.source = :source", { source: query.source });
+    }
+
     if (query?.beginTime && query?.endTime) {
       entity.andWhere("user.createTime BETWEEN :start AND :end", {
         start: query.beginTime,
@@ -322,10 +327,11 @@ export class UserService {
     );
   }
 
-  async loginByWechatOpenid(openid: string, clientInfo: ClientInfoDto) {
+  async loginByWechatOpenid(openid: string, clientInfo: ClientInfoDto, sourceRaw?: string) {
     if (!openid) {
       return ResultData.fail(400, "缺少微信 openid");
     }
+    const source = normalizeRegisterSource(sourceRaw);
     const userName = `wx_${openid}`;
     let data = await this.userRepo.findOne({
       where: {
@@ -353,19 +359,24 @@ export class UserService {
         userType: UserTypeEnum.CUSTOM,
         loginType: "weixin",
         openid,
+        // 仅新建时写入；非法/空则 null
+        source: source ?? null,
         remark: "微信小程序用户"
       });
-    } else if (data.openid !== openid || data.loginType !== "weixin") {
-      await this.userRepo.update(
-        { userId: data.userId },
-        {
-          openid,
-          loginType: "weixin",
-          updateBy: data.userId
-        }
-      );
-      data.openid = openid;
-      data.loginType = "weixin";
+    } else {
+      const patch: Partial<UserEntity> = {};
+      if (data.openid !== openid || data.loginType !== "weixin") {
+        patch.openid = openid;
+        patch.loginType = "weixin";
+      }
+      // 已有用户且 source 为空时补写一次，有值不覆盖
+      if (!data.source && source) {
+        patch.source = source;
+      }
+      if (Object.keys(patch).length > 0) {
+        await this.userRepo.update({ userId: data.userId }, { ...patch, updateBy: data.userId });
+        Object.assign(data, patch);
+      }
     }
     if (data.delFlag === DelFlagEnum.DELETE) {
       return ResultData.fail(500, "当前微信用户已禁用");
@@ -726,6 +737,7 @@ export class UserService {
         { title: "账号状态", dataIndex: "status" },
         { title: "最后登录IP", dataIndex: "loginIp" },
         { title: "最后登录时间", dataIndex: "loginDate", width: 20 },
+        { title: "拉新来源", dataIndex: "source" },
         { title: "部门", dataIndex: "dept.deptName" },
         { title: "部门负责人", dataIndex: "dept.leader" }
       ]

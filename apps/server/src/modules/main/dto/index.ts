@@ -41,6 +41,13 @@ export class WxLoginDto {
   @IsString()
   @Length(1, 128)
   code: string;
+
+  /** 拉新渠道 from；仅新用户创建或 source 为空时落库 */
+  @ApiProperty({ required: false, description: "拉新渠道来源（与小程序 from 一致）" })
+  @IsOptional()
+  @IsString()
+  @Length(0, 32)
+  source?: string;
 }
 
 export class WxLoginVo extends TokenVo {

@@ -137,6 +137,13 @@ export class ListUserDto extends PagingDto {
   @IsOptional()
   @IsEnum(StatusEnum)
   status?: StatusEnum;
+
+  /** 拉新渠道来源精确匹配（如 group_a / share） */
+  @ApiProperty({ required: false, description: "拉新渠道来源" })
+  @IsOptional()
+  @IsString()
+  @Length(0, 32)
+  source?: string;
 }
 
 export class UserVo extends BaseVO {
@@ -189,6 +196,9 @@ export class UserVo extends BaseVO {
     example: "2023-10-05T14:48:00.000Z"
   })
   public loginDate: Date;
+
+  @ApiProperty({ description: "拉新渠道来源", example: "group_a", required: false })
+  public source?: string | null;
 
   @ApiProperty({ description: "备注", example: "这是张三的备注信息" })
   public remark: string;

@@ -19,7 +19,7 @@ defineOptions({ name: 'SalaryDetail' })
 
 definePage({
   style: {
-    navigationBarTitleText: '个税计算器·测算明细',
+    navigationBarTitleText: '年薪税后测算·明细',
   },
 })
 

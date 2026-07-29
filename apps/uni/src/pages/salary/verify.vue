@@ -22,7 +22,7 @@ defineOptions({ name: 'SalaryVerify' })
 
 definePage({
   style: {
-    navigationBarTitleText: '工资条识别·月薪核对',
+    navigationBarTitleText: '工资条识别核对',
   },
 })
 

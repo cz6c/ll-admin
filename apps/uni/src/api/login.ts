@@ -97,9 +97,8 @@ export function getWxCode() {
 
 /**
  * 微信登录
- * @param params 微信登录参数，包含code
- * @returns Promise 包含登录结果
+ * @param data code + 可选拉新来源 source（本地 channel from）
  */
-export function wxLogin(data: { code: string }) {
+export function wxLogin(data: { code: string, source?: string }) {
   return http.post<IAuthLoginRes>('/auth/wxLogin', data)
 }

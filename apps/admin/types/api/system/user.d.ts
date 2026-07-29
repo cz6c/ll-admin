@@ -45,6 +45,8 @@ export type SysUserListParams = ListParams & {
   userName?: string;
   phonenumber?: string;
   status?: string;
+  /** 拉新渠道来源精确匹配 */
+  source?: string;
 };
 
 export type UserVo = BaseResponse & {
@@ -60,6 +62,8 @@ export type UserVo = BaseResponse & {
   avatar: string;
   loginIp: string;
   loginDate: Date;
+  /** 拉新渠道来源 */
+  source?: string | null;
   remark: string;
 };
 

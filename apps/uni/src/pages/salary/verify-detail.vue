@@ -23,7 +23,7 @@ defineOptions({ name: 'SalaryVerifyDetail' })
 
 definePage({
   style: {
-    navigationBarTitleText: '工资条识别·核对详情',
+    navigationBarTitleText: '工资条识别核对·明细',
   },
 })
 
@@ -268,11 +268,6 @@ function fmtDiff(diff: number) {
           </view>
         </view>
         <view class="summary-card__actions">
-          <!-- #ifdef MP-WEIXIN -->
-          <button class="share-link" open-type="share" hover-class="none">
-            分享给好友
-          </button>
-          <!-- #endif -->
           <wd-text
             v-if="!summaryMatch"
             type="primary"
@@ -499,6 +494,12 @@ function fmtDiff(diff: number) {
           </text>
         </view>
       </view>
+
+      <!-- #ifdef MP-WEIXIN -->
+      <wd-button type="primary" variant="plain" block :round="true" open-type="share">
+        分享给好友
+      </wd-button>
+      <!-- #endif -->
     </view>
 
     <view v-else-if="loadFailed" class="px-32rpx pt-80rpx">
@@ -521,21 +522,6 @@ function fmtDiff(diff: number) {
   align-items: flex-end;
   gap: 12rpx;
   flex-shrink: 0;
-}
-
-/* 原生 button 去默认壳，视觉贴近 wd-text 链接 */
-.share-link {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  line-height: 1.4;
-  font-size: 28rpx;
-  color: var(--wot-primary-6);
-}
-
-.share-link::after {
-  border: none;
 }
 
 .summary-card__head {

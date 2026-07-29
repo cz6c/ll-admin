@@ -62,10 +62,10 @@ export class MainService {
     return await this.userService.refreshToken(refreshToken, clientInfo);
   }
 
-  async wxLogin(code: string, clientInfo: ClientInfoDto) {
+  async wxLogin(code: string, clientInfo: ClientInfoDto, source?: string) {
     try {
       const { openid } = await this.wechatService.code2Session(code);
-      return await this.userService.loginByWechatOpenid(openid, clientInfo);
+      return await this.userService.loginByWechatOpenid(openid, clientInfo, source);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "wechat_login_failed";
       if (msg === "wechat_config_missing") {

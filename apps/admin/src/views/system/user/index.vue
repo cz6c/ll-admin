@@ -36,6 +36,14 @@ const searchList = reactive<SearchFormItem[]>([
     label: "手机号码"
   },
   {
+    type: "input",
+    prop: "source",
+    label: "拉新来源",
+    props: {
+      placeholder: "如 group_a / share"
+    }
+  },
+  {
     type: "select",
     prop: "status",
     label: "用户状态",
@@ -64,6 +72,7 @@ const apiQuery = reactive<SysUserListParams>({
   order: null,
   userName: undefined,
   phonenumber: undefined,
+  source: undefined,
   status: undefined,
   deptId: undefined
 });
@@ -158,6 +167,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
     { field: "nickName", title: "用户昵称" },
     { field: "dept.deptName", title: "部门" },
     { field: "phonenumber", title: "手机号码" },
+    { field: "source", title: "拉新来源", minWidth: 120 },
     {
       field: "sex",
       title: "性别",

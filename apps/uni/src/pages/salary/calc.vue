@@ -15,7 +15,7 @@ defineOptions({ name: 'SalaryCalc' })
 
 definePage({
   style: {
-    navigationBarTitleText: '个税计算器·年薪测算',
+    navigationBarTitleText: '年薪税后测算',
   },
 })
 

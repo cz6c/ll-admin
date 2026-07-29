@@ -66,6 +66,19 @@ export class UserEntity extends BaseEntity {
   })
   public recognizeCount: number;
 
+  /**
+   * 拉新渠道来源：微信静默登录首次创建时写入；已存在且为空时可补写一次，有值后不覆盖
+   */
+  @Column({
+    type: "varchar",
+    name: "source",
+    length: 32,
+    nullable: true,
+    default: null,
+    comment: "拉新渠道来源（微信首次归因）"
+  })
+  public source: string | null;
+
   @Column({
     type: "varchar",
     name: "email",

@@ -49,6 +49,8 @@ jobs:
             cp /www/wwwroot/ll_api/prod.yml /www/wwwroot/ll_api/server/src/config/prod.yml
             pnpm install
             pnpm run build
+            # TypeORM 只执行 pending 迁移；无新迁移时空跑退出
+            pnpm run migration:run:prod
             if pm2 list | grep -q "ll_api"; then
               pm2 delete ll_api
             fi

@@ -243,7 +243,10 @@ server {
 3. 在服务器复制 `prod.yml`
 4. 安装依赖
 5. 构建后端
-6. 通过 `PM2` 重启 `ll_api`
+6. 执行 `pnpm run migration:run:prod`（仅跑 pending 迁移；无新迁移时空跑）
+7. 通过 `PM2` 重启 `ll_api`
+
+说明：必须先 `build` 再跑迁移，因为生产 DataSource 读取的是 `dist/migrations/*.js`。迁移失败会阻断后续 PM2 重启。
 
 ## 10. 建议的上线顺序
 

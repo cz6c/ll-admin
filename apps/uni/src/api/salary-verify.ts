@@ -93,3 +93,17 @@ export function getSalaryHistoryDetail(id: number) {
 export function deleteSalaryVerifyHistory(id: number) {
   return http.post(`${HISTORY_BASE}/delete/${id}`)
 }
+
+/** 首页信任条：微信用户数 + 核对次数 + 测算次数 */
+export interface SalaryTrustStats {
+  wechatUsers: number
+  verifyTimes: number
+  calcTimes: number
+}
+
+/**
+ * 拉取首页信任条统计（需登录态；失败时由页面降级隐藏）
+ */
+export function getSalaryTrustStats() {
+  return http.get<SalaryTrustStats>('/salary-slip/trust-stats')
+}

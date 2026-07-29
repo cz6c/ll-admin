@@ -162,9 +162,9 @@ async function submitCalc() {
   }
 }
 
-function goHistory() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
-}
+// function goHistory() {
+//   uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
+// }
 </script>
 
 <template>
@@ -262,9 +262,9 @@ function goHistory() {
       <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="submitCalc">
         开始测算
       </wd-button>
-      <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
+      <!-- <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
         历史记录
-      </wd-button>
+      </wd-button> -->
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考
       </view>

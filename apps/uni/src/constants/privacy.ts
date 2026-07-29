@@ -64,7 +64,7 @@ export function consumePrivacyReturnUrl(): string {
 /**
  * 首次进入弹窗正文（协议链接由弹窗组件单独渲染，便于点击跳转）
  */
-export const PRIVACY_POPUP_INTRO = `欢迎使用「薪算工具箱」！
+export const PRIVACY_POPUP_INTRO = `欢迎使用「聚鑫助手」！
 
 【安全与使用说明】
 1. 计算结果仅供参考，不构成税务或法律建议。
@@ -81,7 +81,7 @@ export const PRIVACY_POLICY_TITLE = '隐私保护指引'
 
 /** 《用户服务协议》全文 */
 export const USER_AGREEMENT_CONTENT = `1. 前言
-欢迎您使用「薪算工具箱」小程序。本协议是您与「薪算工具箱」开发者之间关于使用本服务所订立的协议。请您在开始使用前仔细阅读本协议，特别是免除或者限制责任的条款（见第 3 条）。
+欢迎您使用「聚鑫助手」小程序。本协议是您与「聚鑫助手」开发者之间关于使用本服务所订立的协议。请您在开始使用前仔细阅读本协议，特别是免除或者限制责任的条款（见第 3 条）。
 
 2. 服务内容
 本小程序主要提供以下工具服务：

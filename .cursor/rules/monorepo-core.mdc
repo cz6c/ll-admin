@@ -17,7 +17,7 @@ alwaysApply: true
 |-----|------|------|
 | admin | `@apps/admin` | Vue3 管理后台（Element Plus + VXE Table） |
 | server | `@apps/server` | NestJS API + TypeORM |
-| uni | `@apps/uni` | uni-app 移动端（薪算工具箱） |
+| uni | `@apps/uni` | uni-app 移动端（聚鑫助手） |
 | docs | — | VitePress 开发文档 |
 | common | `@llcz/common` | 跨端纯 TS 工具库 |
 

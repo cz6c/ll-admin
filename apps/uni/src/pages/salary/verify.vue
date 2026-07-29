@@ -225,9 +225,9 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
   })
 }
 
-function goVerifyHistory() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
-}
+// function goVerifyHistory() {
+//   uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
+// }
 </script>
 
 <template>
@@ -310,9 +310,9 @@ function goVerifyHistory() {
         </wd-form>
 
         <view class="mt-12rpx flex gap-24rpx px-24rpx">
-          <wd-button type="primary" variant="plain" block :round="true" @click="goVerifyHistory">
+          <!-- <wd-button type="primary" variant="plain" block :round="true" @click="goVerifyHistory">
             核对历史
-          </wd-button>
+          </wd-button> -->
           <wd-button type="primary" block :round="true" :loading="submitting" :disabled="submitting" @click="submitVerify">
             开始核对
           </wd-button>

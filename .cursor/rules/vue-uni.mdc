@@ -1,5 +1,5 @@
 ---
-description: uni-app 薪算工具箱（@apps/uni）页面、API、样式与 wot-ui
+description: uni-app 聚鑫助手（@apps/uni）页面、API、样式与 wot-ui
 globs: apps/uni/**/*
 alwaysApply: false
 ---

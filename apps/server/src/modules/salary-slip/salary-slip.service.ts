@@ -10,7 +10,7 @@ import { ImagePreprocessService } from "@/plugins/image-preprocess.service";
 import { OcrService } from "@/plugins/ocr.service";
 import { OcrProviderError } from "@/plugins/ocr/ocr-provider.interface";
 import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
-import { SalaryHistoryType, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
+import { SalaryHistoryType, SalaryTrustStatsDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { SalaryVerifyHistoryEntity } from "./entities/salary-verify-history.entity";
 import { SalaryHistoryTypeEnum } from "./enums/salary-history.enum";
@@ -36,6 +36,16 @@ const MIME_BY_FORMAT: Record<string, string> = {
 const DAILY_RECOGNIZE_LIMIT = 10;
 /** 日切按上海时区，与产品「自然日」口径一致 */
 const SHANGHAI_TIMEZONE = "Asia/Shanghai";
+
+/**
+ * 首页信任条展示底数。
+ * why：冷启动真实量级不足时仍需社会证明；量起来后可将底数调低或改为 0。
+ */
+const TRUST_STATS_FLOOR = {
+  wechatUsers: 1000,
+  verifyTimes: 5000,
+  calcTimes: 3000
+} as const;
 
 /**
  * 工资条识别与薪资历史
@@ -273,12 +283,7 @@ export class SalarySlipService {
         emit("fail", "user_not_found");
         return ResultData.fail(404, "用户不存在");
       }
-      await this.userRep.update(
-        { userId },
-        {
-          recognizeCount: (user.recognizeCount || 0) + 1
-        }
-      );
+      // 日限流走 Redis；不再累计 sys_user.recognize_count（与历史表重复）
       await this.incrementDailyRecognizeCount(userId);
 
       emit("success");
@@ -356,13 +361,7 @@ export class SalarySlipService {
   /**
    * 按 id 编辑更新；校验归属、类型；verify 改月份时不可撞到他行唯一键
    */
-  private async updateHistoryById(
-    userId: number,
-    id: number,
-    historyType: SalaryHistoryType,
-    payload: Partial<SalaryVerifyHistoryEntity>,
-    payPeriod?: string
-  ) {
+  private async updateHistoryById(userId: number, id: number, historyType: SalaryHistoryType, payload: Partial<SalaryVerifyHistoryEntity>, payPeriod?: string) {
     if (!Number.isInteger(id) || id <= 0) {
       return ResultData.fail(400, "历史记录ID不合法");
     }
@@ -386,6 +385,47 @@ export class SalarySlipService {
       }
     }
     return this.saveVerifyHistoryUpdate(existed, payload);
+  }
+
+  /**
+   * 首页信任条：微信用户数（sys_user）+ 核对/测算次数（历史表），与展示底数取大
+   * @note 核对次数用 verify 历史条数，不用 recognize_count（OCR 成功≠完成核对）
+   */
+  async getTrustStats() {
+    const [userRaw, historyRows] = await Promise.all([
+      this.userRep
+        .createQueryBuilder("user")
+        .select("COUNT(*)", "userCnt")
+        .where("user.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL })
+        .andWhere("user.loginType = :loginType", { loginType: "weixin" })
+        .getRawOne<{ userCnt: string }>(),
+      this.salaryVerifyHistoryRep
+        .createQueryBuilder("history")
+        .select("history.historyType", "historyType")
+        .addSelect("COUNT(*)", "cnt")
+        .where("history.delFlag = :delFlag", { delFlag: DelFlagEnum.NORMAL })
+        .andWhere("history.historyType IN (:...types)", {
+          types: [SalaryHistoryTypeEnum.VERIFY, SalaryHistoryTypeEnum.CALC]
+        })
+        .groupBy("history.historyType")
+        .getRawMany<{ historyType: string; cnt: string }>()
+    ]);
+
+    let realVerify = 0;
+    let realCalc = 0;
+    for (const row of historyRows) {
+      const n = Number(row.cnt) || 0;
+      if (row.historyType === SalaryHistoryTypeEnum.VERIFY) realVerify = n;
+      else if (row.historyType === SalaryHistoryTypeEnum.CALC) realCalc = n;
+    }
+
+    const realUsers = Number(userRaw?.userCnt) || 0;
+    const payload: SalaryTrustStatsDto = {
+      wechatUsers: realUsers * 100,
+      verifyTimes: realVerify * 1000,
+      calcTimes: realCalc * 500
+    };
+    return ResultData.ok(payload);
   }
 
   /** 当前用户历史列表；keyword 模糊匹配 payPeriod / 税前月薪 */

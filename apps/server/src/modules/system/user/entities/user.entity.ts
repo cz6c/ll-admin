@@ -58,14 +58,6 @@ export class UserEntity extends BaseEntity {
   })
   public openid: string | null;
 
-  @Column({
-    type: "int",
-    name: "recognize_count",
-    default: 0,
-    comment: "识别成功次数"
-  })
-  public recognizeCount: number;
-
   /**
    * 拉新渠道来源：微信静默登录首次创建时写入；已存在且为空时可补写一次，有值后不覆盖
    */

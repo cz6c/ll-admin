@@ -173,3 +173,18 @@ export class ListSalaryVerifyHistoryDto {
   @IsEnum(SalaryHistoryTypeEnum)
   historyType?: SalaryHistoryType;
 }
+
+/**
+ * 首页信任条：微信用户数 + 核对次数 + 测算次数
+ * 展示值取 max(真实值, 底数)
+ */
+export class SalaryTrustStatsDto {
+  @ApiProperty({ description: "展示用：累计服务的微信用户数", example: 10000 })
+  wechatUsers: number;
+
+  @ApiProperty({ description: "展示用：累计完成核对次数（历史 verify 条数）", example: 50000 })
+  verifyTimes: number;
+
+  @ApiProperty({ description: "展示用：累计年薪测算次数（历史 calc 条数）", example: 30000 })
+  calcTimes: number;
+}

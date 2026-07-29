@@ -7,7 +7,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ApiResult, GetRequestUser, RequestUserPayload } from "@/common/decorator";
 import { SalarySlipResultDto, SalarySlipUploadDto } from "./dto/salary-slip-result.dto";
-import { ListSalaryVerifyHistoryDto, SalaryHistoryDetailDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
+import { ListSalaryVerifyHistoryDto, SalaryHistoryDetailDto, SalaryTrustStatsDto, SalaryVerifyHistoryItemDto, UpsertSalaryVerifyHistoryDto } from "./dto/salary-verify-history.dto";
 import { SalarySlipService } from "./salary-slip.service";
 
 @ApiTags("salary-slip")
@@ -24,6 +24,13 @@ export class SalarySlipController {
   @UseInterceptors(FileInterceptor("file"))
   recognize(@UploadedFile() file: Express.Multer.File, @GetRequestUser("user") user: RequestUserPayload["user"]) {
     return this.salarySlipService.recognize(file, user.userId);
+  }
+
+  @ApiOperation({ summary: "首页信任条统计（微信用户 + 核对次数 + 测算次数）" })
+  @ApiResult(SalaryTrustStatsDto)
+  @Get("trust-stats")
+  getTrustStats() {
+    return this.salarySlipService.getTrustStats();
   }
 
   @ApiOperation({ summary: "月薪核对历史-新增或更新" })

@@ -5,11 +5,13 @@
  * 注意：月薪变更时若选了「N 倍月薪」奖金倍数，会同步重算 yearEndBonus
  */
 import type { SalaryCalcInput, YearEndTaxMode } from '@/utils/salaryCalculator'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
+import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { parseCalcReentryQuery } from '@/utils/calcReentry'
+import { captureChannelFromQuery, normalizeChannelFrom } from '@/utils/channelFrom'
 
 defineOptions({ name: 'SalaryCalc' })
 
@@ -46,8 +48,10 @@ const editingId = ref('')
 const showYearEndModePicker = ref(false)
 /** 七项专项附加扣除标准说明 */
 const showSpecialDeductionTip = ref(false)
-/** 防连点：提交落库 + 最少 loading 展示期间 */
+/** 防连点：提交落库期间 */
 const submitting = ref(false)
+/** 分享落地页顶轻提示（可关闭） */
+const showShareLandingTip = ref(false)
 
 const yearEndModeLabel = computed(() => salaryOptionLabel(YEAR_END_TAX_OPTIONS, salaryForm.value.yearEndTaxMode))
 
@@ -67,12 +71,22 @@ function syncBonusMulFromForm() {
 }
 
 onLoad((options?: Record<string, string>) => {
+  captureChannelFromQuery(options)
+  if (normalizeChannelFrom(options?.from))
+    showShareLandingTip.value = true
   const payload = parseCalcReentryQuery(options)
   if (!payload)
     return
   salaryForm.value = { ...payload.form }
   editingId.value = payload.id ?? ''
   syncBonusMulFromForm()
+})
+
+onShow(() => {
+  if (!hasPrivacyAgreed()) {
+    setPrivacyReturnPath('/pages/salary/calc')
+    uni.redirectTo({ url: PRIVACY_GATE_PATH })
+  }
 })
 
 // 月薪变化时：若年终奖已是「倍数×月薪」则保持选中态；年终奖为 0 时恢复默认 1 倍选中
@@ -129,22 +143,17 @@ function onYearEndModeConfirm({ value }: { value: (string | number)[] }) {
   patchForm({ yearEndTaxMode: value[0] as YearEndTaxMode })
 }
 
-/** 成功态 loading 最少展示时长，给用户「正在计算」的体感 */
-const SUBMIT_LOADING_MIN_MS = 2000
-
-function delay(ms: number) {
-  return new Promise<void>(resolve => setTimeout(resolve, ms))
-}
-
-/** 先落库测算历史再进明细，保证详情可按 id 回看 */
+/**
+ * 先落库测算历史再进明细，保证详情可按 id 回看
+ * @note 提交只跟真实接口，不做最少 loading 时长
+ */
 async function submitCalc() {
   if (submitting.value)
     return
   submitting.value = true
   uni.showLoading({ title: '系统正在测算中，请稍后…', mask: true })
   try {
-    // 接口与最少展示时间并行：慢网跟接口，快网也至少转满 SUBMIT_LOADING_MIN_MS
-    const [row] = await Promise.all([salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined), delay(SUBMIT_LOADING_MIN_MS)])
+    const row = await salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined)
     if (editingId.value) {
       uni.navigateBack()
     }
@@ -162,15 +171,31 @@ async function submitCalc() {
   }
 }
 
-// function goHistory() {
-//   uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
-// }
+function goHistory() {
+  uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
+}
+
+function dismissShareLandingTip() {
+  showShareLandingTip.value = false
+}
 </script>
 
 <template>
   <page-meta :page-style="`overflow:${showSpecialDeductionTip ? 'hidden' : 'visible'};`" />
   <view class="page-shell">
     <view class="px-24rpx pb-24rpx pt-24rpx">
+      <view
+        v-if="showShareLandingTip"
+        class="share-landing-tip m-[-24rpx] mb-24rpx"
+      >
+        <text class="share-landing-tip__text">
+          好友在测算全年到手，输入月薪即可估算
+        </text>
+        <view class="share-landing-tip__close" @click="dismissShareLandingTip">
+          <wd-icon name="close" size="28rpx" color="#c0c4cc" />
+        </view>
+      </view>
+
       <wd-form :model="salaryForm" center value-align="right" :title-width="100" custom-class="salary-form">
         <wd-cell-group center custom-class="card-rounded mb-24rpx" border>
           <wd-form-item title="税前月薪" prop="preTaxMonthly">
@@ -262,9 +287,9 @@ async function submitCalc() {
       <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="submitCalc">
         开始测算
       </wd-button>
-      <!-- <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
+      <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
         历史记录
-      </wd-button> -->
+      </wd-button>
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考
       </view>
@@ -326,6 +351,26 @@ async function submitCalc() {
 </template>
 
 <style scoped lang="scss">
+.share-landing-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: var(--wot-primary-1);
+}
+
+.share-landing-tip__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: var(--wot-primary-6);
+}
+
+.share-landing-tip__close {
+  flex-shrink: 0;
+}
+
 :deep(.salary-cell-input) {
   flex: 1;
   min-width: 0;

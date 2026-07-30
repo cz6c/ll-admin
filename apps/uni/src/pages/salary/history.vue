@@ -5,6 +5,7 @@ import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
+import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { formatPayPeriodLabel } from '@/utils/payPeriod'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
@@ -68,6 +69,11 @@ onLoad((options?: Record<string, string>) => {
 })
 
 onShow(async () => {
+  if (!hasPrivacyAgreed()) {
+    setPrivacyReturnPath('/pages/salary/history')
+    uni.redirectTo({ url: PRIVACY_GATE_PATH })
+    return
+  }
   try {
     await refreshHistory()
   }

@@ -1,6 +1,6 @@
 /**
  * 工资条拍照识别 Composable
- * 流程：选图 → 超 2MB 压缩 → 上传 recognize → 写入 lineItems
+ * 流程：选图 → 超 2MB 压缩 → 一律上传 recognize → 写入 lineItems
  * 副作用：loading toast、失败 toast；依赖 @/api/salary-slip
  */
 import type { LineItem } from '@/types/salary-slip'
@@ -26,7 +26,11 @@ export function useSalarySlipRecognize() {
   const previewPath = ref('')
   const lineItems = ref<LineItem[]>([])
 
-  /** 相册/相机选一张；超阈值则压缩并更新 previewPath */
+  /**
+   * 相册/相机选一张后一律识别。
+   * 为何不按体积跳过 recognize：常见照片不足 2MB 时，旧逻辑只出预览不填表，打断「拍工资条」主路径。
+   * 压缩失败仍用原图识别，避免「压失败 = 永不识别」。
+   */
   function chooseImage() {
     uni.chooseImage({
       count: 1,
@@ -42,12 +46,13 @@ export function useSalarySlipRecognize() {
           try {
             filePath = await compressImage(filePath)
             previewPath.value = filePath
-            await recognize()
           }
           catch {
-            uni.showToast({ title: '图片压缩失败', icon: 'none' })
+            uni.showToast({ title: '图片压缩失败，将用原图识别', icon: 'none' })
           }
         }
+
+        await recognize()
       },
     })
   }

@@ -12,7 +12,7 @@ import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toHistoryRecord, toVerifyRecord } from '@/store/salaryHistory'
 import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
-import { parsePayPeriod } from '@/utils/payPeriod'
+import { buildPayPeriod, parsePayPeriod } from '@/utils/payPeriod'
 import {
   computeVerifyBreakdown,
 } from '@/utils/payslipVerify'
@@ -113,6 +113,24 @@ const calcModeHint = computed(() => {
   return '暂无完整历史，按本月工资估算累计个税，结果仅供参考'
 })
 
+/** 首个缺月 YYYY-MM；仅引导一个月，避免一次塞多月 */
+const firstMissingPayPeriod = computed(() => {
+  const missing = verify.value?.missingPriorMonths
+  if (!missing?.length || !record.value)
+    return ''
+  const { year } = parsePayPeriod(record.value.payPeriod)
+  if (!year)
+    return ''
+  return buildPayPeriod(year, missing[0])
+})
+
+const firstMissingMonthLabel = computed(() => {
+  if (!firstMissingPayPeriod.value)
+    return ''
+  const { month } = parsePayPeriod(firstMissingPayPeriod.value)
+  return `${month}月`
+})
+
 const verdictSummary = computed(() => {
   const v = verify.value
   if (!v)
@@ -172,6 +190,19 @@ function goReVerify() {
     url: `/pages/salary/verify?${buildVerifyReentryQuery(row)}`,
   })
 }
+
+/** 缺月补全：仅预填首个缺月，不带回当前月金额 */
+function goFillMissingMonth() {
+  if (!firstMissingPayPeriod.value)
+    return
+  uni.navigateTo({
+    url: `/pages/salary/verify?payPeriod=${encodeURIComponent(firstMissingPayPeriod.value)}`,
+  })
+}
+
+/** 结论页降噪：计算过程与原始明细默认折叠 */
+const showTaxCalc = ref(false)
+const showRawFields = ref(false)
 
 interface AmountRow { label: string, value: string }
 
@@ -239,12 +270,21 @@ function fmtDiff(diff: number) {
 <template>
   <view class="page-shell pb-safe">
     <view v-if="record && verify && breakdown" class="p-24rpx">
-      <view v-if="calcModeHint" class="compare-hint mb-16rpx">
-        {{ calcModeHint }}
+      <view v-if="calcModeHint" class="compare-hint">
+        <text class="compare-hint__text">
+          {{ calcModeHint }}
+        </text>
+        <view
+          v-if="firstMissingPayPeriod"
+          class="compare-hint__cta mt-16rpx"
+          @click="goFillMissingMonth"
+        >
+          去补 {{ firstMissingMonthLabel }} 核对
+        </view>
       </view>
 
       <!-- 顶部结论卡：一致或差异状态 -->
-      <view class="summary-card mb-32rpx card-rounded p-32rpx">
+      <view class="summary-card mt-16rpx card-rounded p-32rpx">
         <view class="summary-card__head">
           <view
             class="summary-card__icon"
@@ -278,14 +318,14 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- 第一层：结论 + 列表对照 -->
-      <view class="mb-16rpx flex items-center gap-16rpx">
+      <view class="mt-32rpx flex items-center gap-16rpx">
         <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text class="text-30rpx text-#333 font-600">
           项目对比
         </text>
         <text class="text-24rpx text-#999">系统vs工资条</text>
       </view>
-      <view class="mb-32rpx card-rounded p-32rpx">
+      <view class="mt-16rpx card-rounded p-32rpx">
         <view class="mb-16rpx text-26rpx">
           {{ verdictSummary }}
         </view>
@@ -342,15 +382,19 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 第二层：计算过程 -->
-      <view class="mb-16rpx flex items-center gap-16rpx">
+      <!-- 第二层：计算过程（默认折叠，优先结论与对比） -->
+      <view
+        class="mt-32rpx flex items-center gap-16rpx"
+        @click="showTaxCalc = !showTaxCalc"
+      >
         <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text class="text-30rpx text-#333 font-600">
           个税计算
         </text>
-        <text class="text-24rpx text-#999">本期个税怎么算出来的</text>
+        <text class="min-w-0 flex-1 text-24rpx text-#999">本期个税怎么算出来的</text>
+        <wd-icon :name="showTaxCalc ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
       </view>
-      <view class="mb-32rpx card-rounded px-32rpx py-16rpx">
+      <view v-if="showTaxCalc" class="mt-16rpx card-rounded px-32rpx py-16rpx">
         <view class="calc-step">
           <text class="calc-step__no">
             ①
@@ -472,15 +516,19 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 工资条原始数据（折叠） -->
-      <view class="mb-16rpx flex items-center gap-16rpx">
+      <!-- 工资条原始数据（默认折叠） -->
+      <view
+        class="mt-32rpx flex items-center gap-16rpx"
+        @click="showRawFields = !showRawFields"
+      >
         <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
         <text class="text-30rpx text-#333 font-600">
           工资条明细
         </text>
-        <text class="text-24rpx text-#999">原始数据</text>
+        <text class="min-w-0 flex-1 text-24rpx text-#999">原始数据</text>
+        <wd-icon :name="showRawFields ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
       </view>
-      <view class="mb-32rpx card-rounded px-32rpx py-16rpx">
+      <view v-if="showRawFields" class="mt-16rpx card-rounded px-32rpx py-16rpx">
         <view
           v-for="key in fieldKeys"
           :key="key"
@@ -496,9 +544,14 @@ function fmtDiff(diff: number) {
       </view>
 
       <!-- #ifdef MP-WEIXIN -->
-      <wd-button type="primary" variant="plain" block :round="true" open-type="share">
-        分享给好友
-      </wd-button>
+      <view class="mt-32rpx">
+        <wd-button type="primary" variant="plain" block :round="true" open-type="share">
+          分享给好友
+        </wd-button>
+        <view class="mt-16rpx text-center text-22rpx text-#c0c4cc">
+          分享工具入口，不含你的金额
+        </view>
+      </view>
       <!-- #endif -->
     </view>
 
@@ -634,6 +687,18 @@ function fmtDiff(diff: number) {
   font-size: 24rpx;
   color: var(--wot-warning-main);
   line-height: 1.5;
+}
+
+.compare-hint__text {
+  display: block;
+}
+
+.compare-hint__cta {
+  display: inline-flex;
+  align-items: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--wot-primary-6);
 }
 
 .calc-step {

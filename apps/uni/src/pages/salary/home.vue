@@ -1,13 +1,12 @@
 <script lang="ts" setup>
 /**
- * 聚鑫助手首页
- * 主流程：未同意协议则 redirect 门禁页 → 展示测算/核对入口 → 信任条 → onShow 同步历史
+ * 聚薪助手首页
+ * 主流程：未同意协议则 redirect 门禁页 → 工具入口 → 最近记录
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { computed, ref } from 'vue'
-import { getSalaryTrustStats } from '@/api/salary-verify'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
@@ -43,6 +42,8 @@ interface HomeFeature {
   url: string
   theme: 'blue' | 'green'
   icon: string
+  /** 拉新主路径：视觉加重 */
+  primary?: boolean
 }
 
 const features: HomeFeature[] = [
@@ -54,6 +55,7 @@ const features: HomeFeature[] = [
     url: '/pages/salary/verify',
     theme: 'green',
     icon: 'check-square',
+    primary: true,
   },
   {
     key: 'calc',
@@ -68,14 +70,6 @@ const features: HomeFeature[] = [
 
 const salaryHistoryStore = useSalaryHistoryStore()
 const hasLoaded = ref(false)
-/** 信任条是否有可展示数据 */
-const trustVisible = ref(false)
-/** 信任条目标值；挂载 wd-count-to 后自动滚动 */
-const trustUsers = ref(0)
-const trustVerify = ref(0)
-const trustCalc = ref(0)
-/** 本页生命周期内只赋一次目标值，避免 onShow 反复触发 count-to */
-let trustLoaded = false
 
 const latestCalcUpdateMs = computed(() => {
   return salaryHistoryStore.calcItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
@@ -102,36 +96,15 @@ const recentEntries = computed(() => {
   return mergeSalaryHistoryEntries(salaryHistoryStore.items).slice(0, 3)
 })
 
+/**
+ * 功能卡底部提示：有记录才展示；空态改短引导，避免与「最近记录」空态重复
+ */
 function featureHint(featureKey: string) {
   const stats = featureStats.value[featureKey as keyof typeof featureStats.value]
-  if (!stats || stats.count <= 0 || !stats.latestDate)
-    return '首次使用 · 共 0 条记录'
-  return `最近使用 · ${stats.latestDate} · 共 ${stats.count} 条记录`
-}
-
-async function loadTrustStats() {
-  try {
-    const stats = await getSalaryTrustStats()
-    const users = Number(stats?.wechatUsers) || 0
-    const verify = Number(stats?.verifyTimes) || 0
-    const calc = Number(stats?.calcTimes) || 0
-    if (users <= 0 && verify <= 0 && calc <= 0) {
-      trustVisible.value = false
-      return
-    }
-    if (!trustLoaded) {
-      trustLoaded = true
-      trustUsers.value = users
-      trustVerify.value = verify
-      trustCalc.value = calc
-      // 先定值再显示，保证 wd-count-to 挂载时 endVal 已就绪
-      trustVisible.value = true
-    }
+  if (!stats || stats.count <= 0 || !stats.latestDate) {
+    return featureKey === 'verify' ? '拍工资条，30 秒看扣款对不对' : '谈薪前先算清全年到手'
   }
-  catch {
-    // 信任条非主流程，失败则隐藏，不打断入口
-    trustVisible.value = false
-  }
+  return `最近 · ${stats.latestDate} · ${stats.count} 条`
 }
 
 onLoad((options?: Record<string, string>) => {
@@ -145,10 +118,7 @@ onShow(async () => {
     return
   }
   try {
-    await Promise.all([
-      salaryHistoryStore.fetchHistory(),
-      loadTrustStats(),
-    ])
+    await salaryHistoryStore.fetchHistory()
   }
   catch {
     // 首页只做展示，不因历史同步失败中断入口操作
@@ -170,85 +140,108 @@ function enterRecent(entry: SalaryHistoryEntry) {
 function openAllHistory() {
   uni.navigateTo({ url: '/pages/salary/history' })
 }
+
+function goVerify() {
+  enterFeature(features[0])
+}
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-card flex items-center justify-between gap-16rpx px-32rpx pb-32rpx" :style="{ paddingTop: `${tabBarHeight}px` }">
-      <view class="min-w-0 flex-1">
-        <view class="text-52rpx font-600">
-          聚鑫助手
+  <view class="page-home page-shell pb-safe">
+    <!-- Hero：渐变 + 底部圆角，托住下方内容区 -->
+    <view
+      class="hero-card flex items-end justify-between gap-16rpx px-32rpx pb-56rpx"
+      :style="{ paddingTop: `${tabBarHeight + 12}px` }"
+    >
+      <view class="min-w-0 flex-1 pb-8rpx">
+        <view class="text-52rpx text-white font-600 tracking-2rpx">
+          聚薪助手
         </view>
-        <view class="mt-24rpx text-32rpx">
+        <view class="hero-card__slogan mt-16rpx text-28rpx">
           算得清楚，对得明白
         </view>
       </view>
       <view class="i-carbon-calculator hero-card__icon" />
     </view>
 
-    <view class="mt-32rpx px-32rpx">
-      <view class="flex items-center gap-8rpx text-28rpx text-#999">
-        <wd-icon name="common" size="28rpx" />
-        常用工具
-      </view>
-
-      <view class="mt-24rpx flex flex-col gap-24rpx">
+    <!-- 上叠内容：工具卡 → 最近；信任数据沉底（私密工具忌强社会证明） -->
+    <view class="content-panel px-24rpx pb-32rpx">
+      <!-- 首卡上叠 hero；标题放卡上方会压在蓝底上发虚，故去掉「工具」字 -->
+      <view class="feature-stack flex flex-col gap-20rpx">
         <view
           v-for="feature in features"
           :key="feature.key"
-          class="card-rounded p-32rpx"
+          class="feature-card card-rounded p-32rpx"
+          :class="feature.primary ? 'feature-card--primary' : 'feature-card--secondary'"
+          hover-class="feature-card--pressed"
+          :hover-stay-time="80"
+          @click="enterFeature(feature)"
         >
-          <view class="flex items-center gap-16rpx">
+          <view class="flex items-center gap-20rpx">
             <view
-              class="h-88rpx w-88rpx flex items-center justify-center rounded-24rpx"
-              :class="feature.theme === 'green' ? 'bg-#d1fae5' : 'bg-[var(--wot-primary-1)]'"
+              class="feature-card__icon shrink-0"
+              :class="feature.theme === 'green' ? 'feature-card__icon--green' : 'feature-card__icon--blue'"
             >
-              <wd-icon :name="feature.icon" size="24px" :color="feature.theme === 'green' ? 'var(--wot-success-main)' : 'var(--wot-primary-6)'" />
+              <wd-icon
+                :name="feature.icon"
+                size="24px"
+                :color="feature.theme === 'green' ? 'var(--wot-success-main)' : 'var(--wot-primary-6)'"
+              />
             </view>
             <view class="min-w-0 flex-1">
-              <view class="text-32rpx font-600">
-                {{ feature.title }}
+              <view class="flex items-center gap-12rpx">
+                <text class="text-32rpx text-#1f2329 font-600">
+                  {{ feature.title }}
+                </text>
+                <text
+                  v-if="feature.primary"
+                  class="feature-card__badge"
+                >
+                  推荐
+                </text>
               </view>
-              <view class="mt-8rpx text-28rpx text-#666">
+              <view class="mt-8rpx text-26rpx text-#666 leading-snug">
                 {{ feature.desc }}
               </view>
             </view>
+            <wd-icon name="right" size="32rpx" color="#c0c4cc" />
           </view>
 
-          <view class="mt-32rpx flex items-center justify-between gap-24rpx">
+          <view class="feature-card__footer mt-28rpx flex items-center justify-between gap-24rpx">
             <view class="min-w-0 flex-1 truncate text-24rpx text-#999">
               {{ featureHint(feature.key) }}
             </view>
-            <wd-button
-              size="small"
-              :type="feature.theme === 'green' ? 'success' : 'primary'"
-              @click="enterFeature(feature)"
+            <view
+              class="feature-card__cta"
+              :class="feature.theme === 'green' ? 'feature-card__cta--green' : 'feature-card__cta--blue'"
             >
               {{ feature.cta }}
-            </wd-button>
+            </view>
           </view>
         </view>
       </view>
-    </view>
 
-    <view class="mt-32rpx px-32rpx">
-      <view class="flex items-center justify-between">
-        <view class="mt-0 flex items-center gap-8rpx text-28rpx text-#999">
-          <wd-icon name="history" size="28rpx" />
+      <view class="mt-36rpx flex items-center justify-between">
+        <view class="flex items-center gap-8rpx text-24rpx text-#999">
+          <view class="i-carbon-time h-24rpx w-24rpx" />
           最近记录
         </view>
-        <view class="text-24rpx text-primary" @click="openAllHistory">
-          查看全部
+        <view
+          class="text-24rpx text-primary"
+          @click.stop="openAllHistory"
+        >
+          全部
         </view>
       </view>
 
-      <view v-if="recentEntries.length > 0" class="mt-24rpx card-rounded overflow-hidden">
+      <view v-if="recentEntries.length > 0" class="home-list-card mt-20rpx card-rounded overflow-hidden">
         <SalaryHistoryEntryRow
           v-for="(entry, idx) in recentEntries"
           :key="entry.key"
           :title="entry.title"
           :subtitle="entry.subtitle"
           :theme="entry.theme"
+          :icon="entry.theme === 'green' ? 'check-square' : 'file'"
           :bordered="idx < recentEntries.length - 1"
           @click="enterRecent(entry)"
         />
@@ -256,136 +249,154 @@ function openAllHistory() {
 
       <view
         v-else
-        class="recent-empty-wrap mt-24rpx"
+        class="recent-empty-wrap mt-20rpx"
       >
-        <wd-icon name="empty" size="72rpx" color="#999" />
-        <view class="mt-20rpx text-28rpx text-#999 font-500">
-          还没有使用记录
+        <view class="text-28rpx text-#666 font-500">
+          还没有记录
         </view>
-        <view class="mt-12rpx text-24rpx text-#999">
-          完成第一次测算或核对后，这里会显示历史记录
+        <view class="mt-8rpx text-24rpx text-#999">
+          完成一次核对后会出现在这里
         </view>
-      </view>
-    </view>
-
-    <!-- 信任条：社会证明，失败/无数据时隐藏 -->
-    <view v-if="trustVisible" class="trust-bar my-32rpx px-32rpx">
-      <view class="trust-bar__item">
-        <wd-count-to
-          custom-class="trust-bar__num"
-          type="primary"
-          color="var(--wot-primary-6)"
-          :start-val="0"
-          :end-val="trustUsers"
-          :duration="1100"
-          separator=","
-          suffix="+"
-        />
-        <text class="trust-bar__label">
-          累计服务用户
-        </text>
-      </view>
-      <view class="trust-bar__divider" />
-      <view class="trust-bar__item">
-        <wd-count-to
-          custom-class="trust-bar__num"
-          type="primary"
-          color="var(--wot-primary-6)"
-          :start-val="0"
-          :end-val="trustVerify"
-          :duration="1100"
-          separator=","
-          suffix="+"
-        />
-        <text class="trust-bar__label">
-          累计完成核对
-        </text>
-      </view>
-      <view class="trust-bar__divider" />
-      <view class="trust-bar__item">
-        <wd-count-to
-          custom-class="trust-bar__num"
-          type="primary"
-          color="var(--wot-primary-6)"
-          :start-val="0"
-          :end-val="trustCalc"
-          :duration="1100"
-          separator=","
-          suffix="+"
-        />
-        <text class="trust-bar__label">
-          累计完成测算
-        </text>
+        <view class="recent-empty-wrap__cta mt-24rpx" @click="goVerify">
+          去核对工资条
+        </view>
       </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
+.page-home {
+  min-height: 100vh;
+  background: #f5f6f8;
+}
+
 .hero-card {
-  background: var(--wot-primary-6);
+  /* 贴 logo：上亮下沉的品牌蓝；起点不用过浅，保证白字对比 */
+  background: linear-gradient(
+    168deg,
+    var(--wot-primary-4) 0%,
+    var(--wot-primary-6) 42%,
+    var(--wot-primary-7) 78%,
+    var(--wot-primary-8) 100%
+  );
+  border-radius: 0 0 40rpx 40rpx;
   color: #fff;
+}
+
+.hero-card__slogan {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 400;
 }
 
 .hero-card__icon {
   flex-shrink: 0;
-  width: 168rpx;
-  height: 168rpx;
-  color: rgba(255, 255, 255, 0.22);
+  width: 120rpx;
+  height: 120rpx;
+  margin-bottom: 4rpx;
+  color: rgba(255, 255, 255, 0.28);
 }
 
-.trust-bar {
-  display: flex;
-  align-items: stretch;
+.content-panel {
+  margin-top: -36rpx;
+  position: relative;
+  z-index: 1;
 }
 
-.trust-bar__item {
-  flex: 1;
+.feature-card {
+  background: #fff;
+  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.04);
+  transition: transform 0.12s ease;
+}
+
+.feature-card--primary {
+  border: 2rpx solid var(--wot-success-particular, rgba(16, 185, 129, 0.28));
+  background: linear-gradient(180deg, #fff 60%, var(--wot-success-surface, #ecfdf5) 100%);
+}
+
+.feature-card--secondary {
+  border: 2rpx solid transparent;
+}
+
+.feature-card--pressed {
+  transform: scale(0.985);
+  opacity: 0.96;
+}
+
+.feature-card__icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  min-width: 0;
-  padding: 0 12rpx;
 }
 
-.trust-bar__num {
-  font-size: 32rpx;
+.feature-card__icon--green {
+  background: var(--wot-success-surface, #ecfdf5);
+}
+
+.feature-card__icon--blue {
+  background: var(--wot-primary-1);
+}
+
+.feature-card__badge {
+  font-size: 20rpx;
+  line-height: 1;
+  padding: 6rpx 10rpx;
+  border-radius: 8rpx;
+  color: var(--wot-success-main);
+  background: var(--wot-success-surface, #ecfdf5);
+  font-weight: 500;
+}
+
+.feature-card__footer {
+  padding-top: 24rpx;
+  border-top: 1rpx solid #f0f2f5;
+}
+
+.feature-card__cta {
+  flex-shrink: 0;
+  font-size: 24rpx;
   font-weight: 600;
-  line-height: 1.2;
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
 }
 
-:deep(.trust-bar__num .wd-count-to__main-text),
-:deep(.trust-bar__num .wd-count-to__separator-text) {
-  font-size: 32rpx !important;
-  font-weight: 600;
-  line-height: 1.2;
+.feature-card__cta--green {
+  color: var(--wot-success-main);
+  background: var(--wot-success-surface, #ecfdf5);
 }
 
-.trust-bar__label {
-  font-size: 22rpx;
-  color: #999;
-  text-align: center;
-  line-height: 1.3;
+.feature-card__cta--blue {
+  color: var(--wot-primary-6);
+  background: var(--wot-primary-1);
 }
 
-.trust-bar__divider {
-  width: 1rpx;
-  align-self: stretch;
-  margin: 8rpx 0;
-  background: #e8ecf2;
+.home-list-card {
+  background: #fff;
+  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.04);
 }
 
 .recent-empty-wrap {
-  min-height: 280rpx;
-  background-color: #fbfcfd;
-  border: 1rpx dashed #edf0f6;
+  min-height: 220rpx;
+  background-color: #fff;
+  border: 1rpx dashed #e4e7ed;
   border-radius: 24rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40rpx 24rpx;
+  padding: 36rpx 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.03);
+}
+
+.recent-empty-wrap__cta {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--wot-success-main);
+  padding: 12rpx 28rpx;
+  border-radius: 999rpx;
+  background: var(--wot-success-surface, #ecfdf5);
 }
 </style>

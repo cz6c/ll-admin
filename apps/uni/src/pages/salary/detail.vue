@@ -2,16 +2,18 @@
 /**
  * 年度测算明细页
  * 主流程：必须带 id → 详情接口拉单条本地展示（无 store 兜底）
- * 底部「重新测算」：短字段 query 跳测算页回填
+ * 底部「重新测算」：短字段 query 跳测算页回填；可桥接到月薪核对
+ * 拉新：微信转发落到测算页（带 from），标题不含金额
  * 图表：接口就绪后再挂载 qiun-data-charts，并短延时避开转场量尺寸错位
  */
 import type { SalaryHistoryRecord } from '@/store/salaryHistory'
 import type { SalaryCalcInput, SalaryCalcResult } from '@/utils/salaryCalculator'
-import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { onHide, onLoad, onShareAppMessage, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toCalcInput, toHistoryRecord } from '@/store/salaryHistory'
 import { buildCalcReentryQuery } from '@/utils/calcReentry'
+import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
 import { calcSalary } from '@/utils/salaryCalculator'
 
@@ -63,6 +65,19 @@ onLoad((options?: Record<string, string>) => {
   if (!historyId.value) {
     uni.showToast({ title: '缺少记录', icon: 'none' })
     setTimeout(() => uni.navigateBack(), 500)
+  }
+  // #ifdef MP-WEIXIN
+  uni.showShareMenu({ withShareTicket: true })
+  // #endif
+})
+
+/**
+ * 拉新转发：标题不带金额；落地测算页 + from
+ */
+onShareAppMessage(() => {
+  return {
+    title: '算了一下全年到手，输入月薪即可估算',
+    path: `/pages/salary/calc?${buildFromQuery(DEFAULT_SHARE_FROM)}`,
   }
 })
 
@@ -211,6 +226,11 @@ function goReCalc() {
     url: `/pages/salary/calc?${buildCalcReentryQuery(input, id)}`,
   })
 }
+
+/** 测算 → 核对桥：工具向，不做推荐角标 */
+function goVerify() {
+  uni.navigateTo({ url: '/pages/salary/verify' })
+}
 </script>
 
 <template>
@@ -341,6 +361,17 @@ function goReCalc() {
         <wd-button type="primary" block :round="true" size="large" @click="goReCalc">
           重新测算
         </wd-button>
+        <wd-button type="primary" variant="plain" block :round="true" size="large" custom-class="mt-24rpx" @click="goVerify">
+          已有工资条？核对本月实发
+        </wd-button>
+        <!-- #ifdef MP-WEIXIN -->
+        <wd-button type="primary" variant="text" block :round="true" size="large" custom-class="mt-16rpx" open-type="share">
+          分享给好友
+        </wd-button>
+        <view class="mt-12rpx text-center text-22rpx text-#c0c4cc">
+          分享工具入口，不含你的金额
+        </view>
+        <!-- #endif -->
       </view>
     </view>
   </view>

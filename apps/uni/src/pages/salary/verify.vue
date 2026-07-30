@@ -2,18 +2,20 @@
 /**
  * 月薪核对页
  * 主流程：选图识别 → 映射 6 字段 → 选所属月 → 写入/按 id 更新 → 跳转核对详情
- * 「重新核对」经 query 带 id 回填；必填税前、个税、税后
- * 拉新：捕获 from；未同意协议则门禁，同意后回本页
+ * 「重新核对」经 query 带 id 回填；必填税前、个税、税后（wd-form schema 校验 >0）
+ * 拉新：捕获 from；未同意协议则门禁，同意后回本页；分享落地轻提示
  */
+import type { FormSchema } from '@wot-ui/ui'
+import type { FormExpose } from '@wot-ui/ui/components/wd-form/types'
 import type { LineItem } from '@/types/salary-slip'
 import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFieldMap'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
-import { captureChannelFromQuery } from '@/utils/channelFrom'
+import { captureChannelFromQuery, normalizeChannelFrom } from '@/utils/channelFrom'
 import { formatPayPeriod, formatPayPeriodLabel, payPeriodToTimestamp, previousPayPeriod } from '@/utils/payPeriod'
 import { mapLineItemsToPayslipFields, PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 import { parseVerifyReentryQuery } from '@/utils/verifyReentry'
@@ -26,10 +28,20 @@ definePage({
   },
 })
 
+/** 所属月 YYYY-MM（缺月补全深链 payPeriod=） */
+const PAY_PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+
+/** 提交必填金额项：须 >0，与累计预扣核对输入一致 */
+const REQUIRED_AMOUNT_KEYS: PayslipFieldKey[] = [
+  'preTaxMonthly',
+  'personalIncomeTax',
+  'postTaxMonthly',
+]
+
 const showDialog = ref(false)
 const popupZIndex = 1100
 const salaryHistoryStore = useSalaryHistoryStore()
-const { previewPath, lineItems, chooseImage } = useSalarySlipRecognize()
+const { previewPath, lineItems, loading: recognizing, chooseImage } = useSalarySlipRecognize()
 
 const calendarMinDate = dayjs('2020-01-01').valueOf()
 const calendarMaxDate = dayjs().add(1, 'year').endOf('year').valueOf()
@@ -37,17 +49,21 @@ const calendarMaxDate = dayjs().add(1, 'year').endOf('year').valueOf()
 const showPayPeriodCalendar = ref(false)
 const showFieldAssignPicker = ref(false)
 const showUnmapped = ref(false)
+/** 分享/渠道落地：页顶可关闭语境条，避免好友看到空表无上下文 */
+const showShareLandingTip = ref(false)
 const payPeriod = ref(previousPayPeriod())
 const payPeriodTs = ref(payPeriodToTimestamp(previousPayPeriod()))
 /** 从详情「重新核对」进入时锁定所属月 */
 const payPeriodLocked = ref(false)
 /** 重新核对带入的历史 id；有值则提交按 id 更新 */
 const editingId = ref('')
-/** 防连点：提交落库 + 最少 loading 展示期间 */
+/** 防连点：提交落库期间 */
 const submitting = ref(false)
 const pendingAssignItem = ref<LineItem | null>(null)
+const formRef = ref<FormExpose>()
 
-const form = ref<PayslipMappedFields>({
+/** 用 reactive：与 wot-ui 示例一致，避免 ref 模型在 schema.validate 时读不到字段 */
+const form = reactive<PayslipMappedFields>({
   preTaxMonthly: 0,
   ssPersonalAmount: 0,
   hfPersonalAmount: 0,
@@ -56,17 +72,45 @@ const form = ref<PayslipMappedFields>({
   postTaxMonthly: 0,
 })
 
+/**
+ * 三项金额必填且须大于 0（0/空展示为 placeholder，不能当有效输入）
+ */
+const formSchema: FormSchema = {
+  validate(model) {
+    return REQUIRED_AMOUNT_KEYS
+      .filter(key => !(Number(model[key]) > 0))
+      .map(key => ({
+        path: [key],
+        message: `请填写${PAYSLIP_FIELD_LABELS[key]}`,
+      }))
+  },
+  isRequired(path) {
+    return (REQUIRED_AMOUNT_KEYS as string[]).includes(path)
+  },
+}
+
 onLoad((options?: Record<string, string>) => {
   // 运营码/分享直达：与 reentry 短字段并存，from 不进表单
   captureChannelFromQuery(options)
+  if (normalizeChannelFrom(options?.from))
+    showShareLandingTip.value = true
+
   const payload = parseVerifyReentryQuery(options)
-  if (!payload)
+  if (payload) {
+    payPeriod.value = payload.payPeriod
+    payPeriodTs.value = payPeriodToTimestamp(payload.payPeriod)
+    Object.assign(form, payload.form)
+    payPeriodLocked.value = payload.lockPayPeriod
+    editingId.value = payload.id ?? ''
     return
-  payPeriod.value = payload.payPeriod
-  payPeriodTs.value = payPeriodToTimestamp(payload.payPeriod)
-  form.value = { ...payload.form }
-  payPeriodLocked.value = payload.lockPayPeriod
-  editingId.value = payload.id ?? ''
+  }
+
+  // 缺月补全：仅预填所属月，不锁月、不带回金额
+  const pp = String(options?.payPeriod || '').trim()
+  if (PAY_PERIOD_RE.test(pp)) {
+    payPeriod.value = pp
+    payPeriodTs.value = payPeriodToTimestamp(pp)
+  }
 })
 
 onShow(() => {
@@ -104,11 +148,20 @@ const fieldAssignTitle = computed(() => {
   return `${label}：${val} 引用到`
 })
 
+/**
+ * OCR 空明细或三项必填未齐时提示手填，降低识别失败弃用率
+ */
+const showManualHint = computed(() => {
+  const incomplete = REQUIRED_AMOUNT_KEYS.some(key => !(form[key] > 0))
+  const ocrEmpty = !!previewPath.value && !recognizing.value && lineItems.value.length === 0
+  return ocrEmpty || incomplete
+})
+
 watch(lineItems, (items) => {
   if (!items.length)
     return
   const mapped = mapLineItemsToPayslipFields(items)
-  form.value = { ...mapped.fields }
+  Object.assign(form, mapped.fields)
   unmappedItems.value = mapped.unmappedItems
 })
 
@@ -119,11 +172,11 @@ function parseNum(val: string | number) {
 }
 
 function onFieldInput(key: PayslipFieldKey, val: string | number) {
-  form.value[key] = parseNum(val)
+  form[key] = parseNum(val)
 }
 
 function fieldDisplayValue(key: PayslipFieldKey): string {
-  const v = form.value[key]
+  const v = form[key]
   return v > 0 ? String(v) : ''
 }
 
@@ -141,44 +194,38 @@ function openPayPeriodCalendar() {
   showPayPeriodCalendar.value = true
 }
 
-/** 成功态 loading 最少展示时长，给用户「正在计算」的体感 */
-const SUBMIT_LOADING_MIN_MS = 2000
-
-function delay(ms: number) {
-  return new Promise<void>(resolve => setTimeout(resolve, ms))
-}
-
 /**
  * 保存核对记录后直进详情页（结果在详情展示，本页不再渲染核对结果）
- * @note redirectTo 替换当前页，避免「详情→重新核对→详情」栈过深
+ * @note 提交只跟真实接口，不做最少 loading 时长
+ * @note schema 为拦截准绳：MP 下 form-item 可能未注册进 form，仅靠 validate().valid 会误放行
  */
 async function submitVerify() {
   if (submitting.value)
     return
-  const required: PayslipFieldKey[] = ['preTaxMonthly', 'personalIncomeTax', 'postTaxMonthly']
-  const missing = required.filter(key => !(form.value[key] > 0))
-  if (missing.length) {
-    const labels = missing.map(key => PAYSLIP_FIELD_LABELS[key]).join('、')
-    uni.showToast({ title: `请填写${labels}`, icon: 'none' })
+
+  const issues = await Promise.resolve(formSchema.validate(form))
+  if (issues.length > 0) {
+    // 尽量触发表单项红字；子项未挂载时 valid 仍可能为 true，需 toast 兜底
+    const result = await formRef.value?.validate()
+    if (!result || result.valid) {
+      uni.showToast({ title: issues[0]!.message, icon: 'none' })
+    }
     return
   }
+
   submitting.value = true
   uni.showLoading({ title: '系统正在核对中，请稍后…', mask: true })
   try {
-    // 接口与最少展示时间并行：慢网跟接口，快网也至少转满 SUBMIT_LOADING_MIN_MS
-    const [record] = await Promise.all([
-      salaryHistoryStore.upsertByPayPeriod({
-        ...(editingId.value ? { id: editingId.value } : {}),
-        payPeriod: payPeriod.value,
-        preTaxMonthly: form.value.preTaxMonthly,
-        ssPersonalAmount: form.value.ssPersonalAmount,
-        hfPersonalAmount: form.value.hfPersonalAmount,
-        specialDeductionMonthly: form.value.specialDeductionMonthly,
-        personalIncomeTax: form.value.personalIncomeTax,
-        postTaxMonthly: form.value.postTaxMonthly,
-      }),
-      delay(SUBMIT_LOADING_MIN_MS),
-    ])
+    const record = await salaryHistoryStore.upsertByPayPeriod({
+      ...(editingId.value ? { id: editingId.value } : {}),
+      payPeriod: payPeriod.value,
+      preTaxMonthly: form.preTaxMonthly,
+      ssPersonalAmount: form.ssPersonalAmount,
+      hfPersonalAmount: form.hfPersonalAmount,
+      specialDeductionMonthly: form.specialDeductionMonthly,
+      personalIncomeTax: form.personalIncomeTax,
+      postTaxMonthly: form.postTaxMonthly,
+    })
     if (editingId.value) {
       uni.navigateBack()
     }
@@ -217,7 +264,7 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
   const key = value[0] as PayslipFieldKey
   if (!item || !key)
     return
-  form.value[key] = parseNum(item.value)
+  form[key] = parseNum(item.value)
   pendingAssignItem.value = null
   uni.showToast({
     title: `已填入${PAYSLIP_FIELD_LABELS[key]}`,
@@ -225,14 +272,30 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
   })
 }
 
-// function goVerifyHistory() {
-//   uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
-// }
+function goVerifyHistory() {
+  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
+}
+
+function dismissShareLandingTip() {
+  showShareLandingTip.value = false
+}
 </script>
 
 <template>
   <view class="page-shell pb-safe">
     <view class="p-24rpx">
+      <view
+        v-if="showShareLandingTip"
+        class="share-landing-tip m-[-24rpx] mb-24rpx"
+      >
+        <text class="share-landing-tip__text">
+          好友在用累计预扣法核对工资条，上传或手动填写即可
+        </text>
+        <view class="share-landing-tip__close" @click="dismissShareLandingTip">
+          <wd-icon name="close" size="28rpx" color="#c0c4cc" />
+        </view>
+      </view>
+
       <!-- 识别区 -->
       <view class="card-rounded p-24rpx">
         <view class="flex items-center gap-8rpx">
@@ -241,11 +304,12 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
           </text>
           <wd-icon name="question-circle" size="28rpx" class="text-primary" @click="showDialog = true" />
           <wd-popup v-model="showDialog" custom-class="rounded-24rpx" :close-on-click-modal="false">
-            <view class="w-520rpx rounded-24rpx bg-white p-40rpx">
+            <view class="w-600rpx rounded-24rpx bg-white p-40rpx">
               <scroll-view scroll-y class="max-h-520rpx">
                 <view class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">
-                  <view>1.请确保文字清晰，角度正常，系统将自动识别工资条全部金额明细。</view>
-                  <view>2.识别后会自动填入核对表单中，您可修改确认无误后再提交核对。</view>
+                  <view>1.请确保图片角度正常，文字清晰。</view>
+                  <view>2.系统将自动识别工资条明细填入核对表单。</view>
+                  <view>3.识别完成后系统会立即删除图片，不留存。</view>
                 </view>
               </scroll-view>
               <view class="mt-32rpx flex gap-24rpx">
@@ -265,6 +329,9 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
               点击拍照/选择图片
             </view>
           </view>
+        </view>
+        <view class="mt-16rpx text-center text-22rpx text-#c0c4cc">
+          识别完即删，不留图
         </view>
 
         <!-- 识别明细 -->
@@ -299,20 +366,44 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
       <view class="mt-24rpx card-rounded py-24rpx">
         <view class="flex items-center gap-8rpx px-24rpx">
           <text class="text-30rpx text-#333 font-600">
-            核对信息（可编辑）
+            核对表单
           </text>
         </view>
-        <wd-form :model="form" center border value-align="right" :title-width="120" custom-class="mt-12rpx">
+        <view v-if="showManualHint" class="manual-hint mx-24rpx mt-12rpx">
+          识别不准？直接填写税前、个税、税后三项进行核对
+        </view>
+        <wd-form
+          ref="formRef"
+          :model="form"
+          :schema="formSchema"
+          error-type="message"
+          center
+          border
+          value-align="right"
+          :title-width="120"
+          custom-class="mt-12rpx"
+        >
           <wd-form-item title="工资月份" :is-link="!payPeriodLocked" :value="payPeriodLabel" @click="openPayPeriodCalendar" />
-          <wd-form-item v-for="key in fieldKeys" :key="key" :title="PAYSLIP_FIELD_LABELS[key]" :prop="key">
-            <wd-input type="digit" align-right :model-value="fieldDisplayValue(key)" placeholder="0" @update:model-value="onFieldInput(key, $event)" />
+          <wd-form-item
+            v-for="key in fieldKeys"
+            :key="key"
+            :title="PAYSLIP_FIELD_LABELS[key]"
+            :prop="key"
+          >
+            <wd-input
+              type="digit"
+              align-right
+              :model-value="fieldDisplayValue(key)"
+              placeholder="0"
+              @update:model-value="onFieldInput(key, $event)"
+            />
           </wd-form-item>
         </wd-form>
 
         <view class="mt-12rpx flex gap-24rpx px-24rpx">
-          <!-- <wd-button type="primary" variant="plain" block :round="true" @click="goVerifyHistory">
+          <wd-button type="primary" variant="plain" block :round="true" @click="goVerifyHistory">
             核对历史
-          </wd-button> -->
+          </wd-button>
           <wd-button type="primary" block :round="true" :loading="submitting" :disabled="submitting" @click="submitVerify">
             开始核对
           </wd-button>
@@ -350,5 +441,34 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
 <style scoped lang="scss">
 .unmapped-row + .unmapped-row {
   border-top: 2rpx solid #edf0f6;
+}
+
+.share-landing-tip {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: var(--wot-primary-1);
+}
+
+.share-landing-tip__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: var(--wot-primary-6);
+}
+
+.share-landing-tip__close {
+  flex-shrink: 0;
+}
+
+.manual-hint {
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #8a8f99;
+  background: #f7f8fa;
 }
 </style>

@@ -10,6 +10,12 @@ export const CHANNEL_FROM_KEY = 'salary_channel_from'
 /** 无既有渠道时，分享落地默认 from */
 export const DEFAULT_SHARE_FROM = 'share'
 
+/**
+ * 分享卡片封面：固定品牌海报，避免微信默认截取详情页把金额带进缩略图
+ * @note 路径相对小程序根目录；图内不含薪资金额
+ */
+export const SHARE_POSTER_URL = '/static/share/salary-share-poster.png'
+
 /** 1–32 位字母数字下划线短横线，防止任意字符串污染归因 */
 const FROM_RE = /^[\w-]{1,32}$/
 

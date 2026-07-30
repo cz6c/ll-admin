@@ -10,12 +10,10 @@ import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toHistoryRecord, toVerifyRecord } from '@/store/salaryHistory'
-import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
+import { buildFromQuery, DEFAULT_SHARE_FROM, SHARE_POSTER_URL } from '@/utils/channelFrom'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { buildPayPeriod, parsePayPeriod } from '@/utils/payPeriod'
-import {
-  computeVerifyBreakdown,
-} from '@/utils/payslipVerify'
+import { computeVerifyBreakdown } from '@/utils/payslipVerify'
 import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
 import { buildVerifyReentryQuery } from '@/utils/verifyReentry'
 
@@ -85,19 +83,18 @@ const verify = computed(() => detail.value?.verify ?? null)
 const breakdown = computed(() => detail.value?.breakdown ?? null)
 
 /**
- * 拉新转发：标题只写结论不带金额；落地核对页 + from，不带详情 id
+ * 拉新转发：标题只写结论不带金额；封面用固定海报，避免截屏泄密；落地核对页 + from
  */
 onShareAppMessage(() => {
   const v = verify.value
   let title = '发薪了？30 秒核对工资条扣款对不对'
   if (v) {
-    title = v.overallMatch
-      ? '我刚核对了工资条：核对一致'
-      : '我刚核对了工资条：存在差异'
+    title = v.overallMatch ? '我刚核对了工资条：核对一致' : '我刚核对了工资条：存在差异'
   }
   return {
     title,
     path: `/pages/salary/verify?${buildFromQuery(DEFAULT_SHARE_FROM)}`,
+    imageUrl: SHARE_POSTER_URL,
   }
 })
 
@@ -204,7 +201,10 @@ function goFillMissingMonth() {
 const showTaxCalc = ref(false)
 const showRawFields = ref(false)
 
-interface AmountRow { label: string, value: string }
+interface AmountRow {
+  label: string
+  value: string
+}
 
 const activeDeductionItems = computed((): AmountRow[] => {
   const b = breakdown.value
@@ -270,36 +270,23 @@ function fmtDiff(diff: number) {
 <template>
   <view class="page-shell pb-safe">
     <view v-if="record && verify && breakdown" class="p-24rpx">
-      <view v-if="calcModeHint" class="compare-hint">
+      <view v-if="calcModeHint" class="compare-hint mb-24rpx">
         <text class="compare-hint__text">
           {{ calcModeHint }}
         </text>
-        <view
-          v-if="firstMissingPayPeriod"
-          class="compare-hint__cta mt-16rpx"
-          @click="goFillMissingMonth"
-        >
+        <view v-if="firstMissingPayPeriod" class="compare-hint__cta mt-16rpx" @click="goFillMissingMonth">
           去补 {{ firstMissingMonthLabel }} 核对
         </view>
       </view>
 
       <!-- 顶部结论卡：一致或差异状态 -->
-      <view class="summary-card mt-16rpx card-rounded p-32rpx">
+      <view class="summary-card card-rounded p-32rpx">
         <view class="summary-card__head">
-          <view
-            class="summary-card__icon"
-            :class="summaryMatch ? 'is-ok' : 'is-warn'"
-          >
-            <view
-              class="h-36rpx w-36rpx"
-              :class="summaryMatch ? 'i-carbon-checkmark-filled' : 'i-carbon-warning-filled'"
-            />
+          <view class="summary-card__icon" :class="summaryMatch ? 'is-ok' : 'is-warn'">
+            <view class="h-36rpx w-36rpx" :class="summaryMatch ? 'i-carbon-checkmark-filled' : 'i-carbon-warning-filled'" />
           </view>
           <view class="summary-card__titles">
-            <text
-              class="summary-card__title"
-              :class="summaryMatch ? 'is-ok' : 'is-warn'"
-            >
+            <text class="summary-card__title" :class="summaryMatch ? 'is-ok' : 'is-warn'">
               {{ summaryTitle }}
             </text>
             <text class="summary-card__sub">
@@ -308,250 +295,173 @@ function fmtDiff(diff: number) {
           </view>
         </view>
         <view class="summary-card__actions">
-          <wd-text
-            v-if="!summaryMatch"
-            type="primary"
-            text="重新核对"
-            @click="goReVerify"
-          />
+          <wd-text v-if="!summaryMatch" type="primary" text="重新核对" @click="goReVerify" />
         </view>
       </view>
 
       <!-- 第一层：结论 + 列表对照 -->
-      <view class="mt-32rpx flex items-center gap-16rpx">
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text class="text-30rpx text-#333 font-600">
-          项目对比
-        </text>
-        <text class="text-24rpx text-#999">系统vs工资条</text>
-      </view>
-      <view class="mt-16rpx card-rounded p-32rpx">
+      <view class="mt-24rpx card-rounded px-32rpx">
+        <view class="flex items-center gap-16rpx py-24rpx">
+          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+          <text class="text-30rpx text-#333 font-600"> 项目对比 </text>
+          <text class="text-24rpx text-#999">系统vs工资条</text>
+        </view>
+
         <view class="mb-16rpx text-26rpx">
           {{ verdictSummary }}
         </view>
 
-        <view class="compare-table">
+        <view class="compare-table mb-24rpx">
           <view class="compare-table__head">
-            <text class="compare-table__cell compare-table__cell--item">
-              核对项
-            </text>
-            <text class="compare-table__cell">
-              系统计算
-            </text>
-            <text class="compare-table__cell">
-              工资条
-            </text>
-            <text class="compare-table__cell">
-              差异
-            </text>
+            <text class="compare-table__cell compare-table__cell--item"> 核对项 </text>
+            <text class="compare-table__cell"> 系统计算 </text>
+            <text class="compare-table__cell"> 工资条 </text>
+            <text class="compare-table__cell"> 差异 </text>
           </view>
           <view class="compare-table__row">
-            <text class="compare-table__cell compare-table__cell--item">
-              个税
-            </text>
+            <text class="compare-table__cell compare-table__cell--item"> 个税 </text>
             <text class="compare-table__cell tabular-nums">
               {{ fmt(verify.expectedTax) }}
             </text>
             <text class="compare-table__cell tabular-nums">
               {{ fmt(record.personalIncomeTax) }}
             </text>
-            <text
-              class="compare-table__cell compare-table__cell--diff tabular-nums"
-              :class="verify.taxMatch ? 'is-ok' : 'is-warn'"
-            >
-              {{ verify.taxMatch ? '一致' : fmtDiff(verify.taxDiff) }}
+            <text class="compare-table__cell compare-table__cell--diff tabular-nums" :class="verify.taxMatch ? 'is-ok' : 'is-warn'">
+              {{ verify.taxMatch ? "一致" : fmtDiff(verify.taxDiff) }}
             </text>
           </view>
           <view class="compare-table__row">
-            <text class="compare-table__cell compare-table__cell--item">
-              税后月薪
-            </text>
+            <text class="compare-table__cell compare-table__cell--item"> 税后月薪 </text>
             <text class="compare-table__cell tabular-nums">
               {{ fmt(verify.expectedPostTax) }}
             </text>
             <text class="compare-table__cell tabular-nums">
               {{ fmt(record.postTaxMonthly) }}
             </text>
-            <text
-              class="compare-table__cell compare-table__cell--diff tabular-nums"
-              :class="verify.postTaxMatch ? 'is-ok' : 'is-warn'"
-            >
-              {{ verify.postTaxMatch ? '一致' : fmtDiff(verify.postTaxDiff) }}
+            <text class="compare-table__cell compare-table__cell--diff tabular-nums" :class="verify.postTaxMatch ? 'is-ok' : 'is-warn'">
+              {{ verify.postTaxMatch ? "一致" : fmtDiff(verify.postTaxDiff) }}
             </text>
           </view>
         </view>
       </view>
 
       <!-- 第二层：计算过程（默认折叠，优先结论与对比） -->
-      <view
-        class="mt-32rpx flex items-center gap-16rpx"
-        @click="showTaxCalc = !showTaxCalc"
-      >
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text class="text-30rpx text-#333 font-600">
-          个税计算
-        </text>
-        <text class="min-w-0 flex-1 text-24rpx text-#999">本期个税怎么算出来的</text>
-        <wd-icon :name="showTaxCalc ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
-      </view>
-      <view v-if="showTaxCalc" class="mt-16rpx card-rounded px-32rpx py-16rpx">
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ①
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row">
-              <text class="calc-step__label">
-                累计收入
-              </text>
-              <text class="calc-step__val tabular-nums">
-                {{ fmt(breakdown.cumulativeIncome) }}
-              </text>
-            </view>
-          </view>
+      <view class="mt-24rpx card-rounded px-32rpx">
+        <view class="flex items-center gap-16rpx py-24rpx" @click="showTaxCalc = !showTaxCalc">
+          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+          <text class="text-30rpx text-#333 font-600"> 个税计算 </text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999">本期个税怎么算出来的</text>
+          <wd-icon :name="showTaxCalc ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
         </view>
 
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ②
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row">
-              <text class="calc-step__label">
-                减去各项扣除
-              </text>
-              <text class="calc-step__val calc-step__val--minus tabular-nums">
-                -{{ fmt(totalDeductions) }}
-              </text>
-            </view>
-            <view
-              v-for="item in activeDeductionItems"
-              :key="item.label"
-              class="calc-step__sub"
-            >
-              <text class="calc-step__sub-label">
-                · {{ item.label }}
-              </text>
-              <text class="calc-step__sub-val tabular-nums">
-                {{ item.value }}
-              </text>
+        <view v-if="showTaxCalc" class="mb-24rpx">
+          <view class="calc-step">
+            <text class="calc-step__no"> ① </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 累计收入 </text>
+                <text class="calc-step__val tabular-nums">
+                  {{ fmt(breakdown.cumulativeIncome) }}
+                </text>
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ③
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row calc-step__row--em">
-              <text class="calc-step__label">
-                累计应纳税所得额
-              </text>
-              <text class="calc-step__val tabular-nums">
-                {{ fmt(breakdown.cumulativeTaxableIncome) }}
-              </text>
+          <view class="calc-step">
+            <text class="calc-step__no"> ② </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 减去各项扣除 </text>
+                <text class="calc-step__val calc-step__val--minus tabular-nums"> -{{ fmt(totalDeductions) }} </text>
+              </view>
+              <view v-for="item in activeDeductionItems" :key="item.label" class="calc-step__sub">
+                <text class="calc-step__sub-label"> · {{ item.label }} </text>
+                <text class="calc-step__sub-val tabular-nums">
+                  {{ item.value }}
+                </text>
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ④
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row">
-              <text class="calc-step__label">
-                累计应纳税额
-              </text>
-              <text class="calc-step__val tabular-nums">
-                {{ fmt(breakdown.cumulativeTaxPayable) }}
-              </text>
-            </view>
-            <view
-              v-for="item in taxPayableCalcItems"
-              :key="item.label"
-              class="calc-step__sub"
-            >
-              <text class="calc-step__sub-label">
-                · {{ item.label }}
-              </text>
-              <text class="calc-step__sub-val tabular-nums">
-                {{ item.value }}
-              </text>
+          <view class="calc-step">
+            <text class="calc-step__no"> ③ </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 累计应纳税所得额 </text>
+                <text class="calc-step__val tabular-nums">
+                  {{ fmt(breakdown.cumulativeTaxableIncome) }}
+                </text>
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ⑤
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row">
-              <text class="calc-step__label">
-                减去已缴税额
-              </text>
-              <text class="calc-step__val calc-step__val--minus tabular-nums">
-                -{{ fmt(breakdown.cumulativeTaxPaid) }}
-              </text>
+          <view class="calc-step">
+            <text class="calc-step__no"> ④ </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 累计应纳税额 </text>
+                <text class="calc-step__val tabular-nums">
+                  {{ fmt(breakdown.cumulativeTaxPayable) }}
+                </text>
+              </view>
+              <view v-for="item in taxPayableCalcItems" :key="item.label" class="calc-step__sub">
+                <text class="calc-step__sub-label"> · {{ item.label }} </text>
+                <text class="calc-step__sub-val tabular-nums">
+                  {{ item.value }}
+                </text>
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="calc-step">
-          <text class="calc-step__no">
-            ⑥
-          </text>
-          <view class="calc-step__body">
-            <view class="calc-step__row calc-step__row--em">
-              <text class="calc-step__label">
-                本期应扣个税
-              </text>
-              <text class="calc-step__val calc-step__val--primary tabular-nums">
-                {{ fmt(breakdown.currentPeriodTax) }}
-              </text>
+          <view class="calc-step">
+            <text class="calc-step__no"> ⑤ </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 减去已缴税额 </text>
+                <text class="calc-step__val calc-step__val--minus tabular-nums"> -{{ fmt(breakdown.cumulativeTaxPaid) }} </text>
+              </view>
+            </view>
+          </view>
+
+          <view class="calc-step">
+            <text class="calc-step__no"> ⑥ </text>
+            <view class="calc-step__body">
+              <view class="calc-step__row">
+                <text class="calc-step__label"> 本期应扣个税 </text>
+                <text class="calc-step__val font-600 tabular-nums">
+                  {{ fmt(breakdown.currentPeriodTax) }}
+                </text>
+              </view>
             </view>
           </view>
         </view>
       </view>
 
       <!-- 工资条原始数据（默认折叠） -->
-      <view
-        class="mt-32rpx flex items-center gap-16rpx"
-        @click="showRawFields = !showRawFields"
-      >
-        <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-        <text class="text-30rpx text-#333 font-600">
-          工资条明细
-        </text>
-        <text class="min-w-0 flex-1 text-24rpx text-#999">原始数据</text>
-        <wd-icon :name="showRawFields ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
-      </view>
-      <view v-if="showRawFields" class="mt-16rpx card-rounded px-32rpx py-16rpx">
-        <view
-          v-for="key in fieldKeys"
-          :key="key"
-          class="detail-row"
-        >
-          <text class="detail-label">
-            {{ PAYSLIP_FIELD_LABELS[key] }}
-          </text>
-          <text class="detail-val tabular-nums">
-            {{ fmt(record[key]) }}
-          </text>
+      <view class="mt-24rpx card-rounded px-32rpx">
+        <view class="flex items-center gap-16rpx py-24rpx" @click="showRawFields = !showRawFields">
+          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
+          <text class="text-30rpx text-#333 font-600"> 工资条明细 </text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999">原始数据</text>
+          <wd-icon :name="showRawFields ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
+        </view>
+
+        <view v-if="showRawFields" class="mb-24rpx">
+          <view v-for="key in fieldKeys" :key="key" class="detail-row">
+            <text class="detail-label">
+              {{ PAYSLIP_FIELD_LABELS[key] }}
+            </text>
+            <text class="detail-val tabular-nums">
+              {{ fmt(record[key]) }}
+            </text>
+          </view>
         </view>
       </view>
 
       <!-- #ifdef MP-WEIXIN -->
-      <view class="mt-32rpx">
-        <wd-button type="primary" variant="plain" block :round="true" open-type="share">
-          分享给好友
-        </wd-button>
-        <view class="mt-16rpx text-center text-22rpx text-#c0c4cc">
-          分享工具入口，不含你的金额
-        </view>
-      </view>
+      <wd-button variant="text" block size="mini" custom-class="mt-16rpx !text-22rpx !text-#999" open-type="share">
+        如果觉得这个工具不错，分享给好友吧
+      </wd-button>
       <!-- #endif -->
     </view>
 
@@ -727,12 +637,6 @@ function fmtDiff(diff: number) {
   gap: 16rpx;
 }
 
-.calc-step__row--em .calc-step__label,
-.calc-step__row--em .calc-step__val {
-  font-weight: 500;
-  color: #333;
-}
-
 .calc-step__label {
   font-size: 28rpx;
   color: #666;
@@ -745,11 +649,7 @@ function fmtDiff(diff: number) {
 }
 
 .calc-step__val--minus {
-  color: var(--wot-warning-main);
-}
-
-.calc-step__val--primary {
-  color: var(--wot-primary-6);
+  color: var(--wot-danger-main);
 }
 
 .calc-step__sub {

@@ -13,7 +13,7 @@ import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toCalcInput, toHistoryRecord } from '@/store/salaryHistory'
 import { buildCalcReentryQuery } from '@/utils/calcReentry'
-import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
+import { buildFromQuery, DEFAULT_SHARE_FROM, SHARE_POSTER_URL } from '@/utils/channelFrom'
 import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
 import { calcSalary } from '@/utils/salaryCalculator'
 
@@ -29,8 +29,8 @@ definePage({
 const historyId = ref('')
 /** 详情接口返回的测算行（不进列表 store） */
 const historyItem = ref<SalaryHistoryRecord | null>(null)
-/** 计算明细默认展开，与设计稿一致 */
-const showBreakdown = ref(true)
+/** 计算明细默认折叠 */
+const showBreakdown = ref(false)
 /**
  * 图表是否可挂载：须等业务数据就绪，且短延时后再 true
  * why：navigate 转场中 getBoundingClientRect 偶发不准，canvas2d 按错误高度初始化会错位
@@ -72,12 +72,13 @@ onLoad((options?: Record<string, string>) => {
 })
 
 /**
- * 拉新转发：标题不带金额；落地测算页 + from
+ * 拉新转发：标题不带金额；封面用固定海报，避免截屏泄密；落地测算页 + from
  */
 onShareAppMessage(() => {
   return {
     title: '算了一下全年到手，输入月薪即可估算',
     path: `/pages/salary/calc?${buildFromQuery(DEFAULT_SHARE_FROM)}`,
+    imageUrl: SHARE_POSTER_URL,
   }
 })
 
@@ -175,7 +176,7 @@ const chartData = computed(() => {
 /** 柱状图：主色柱、弱化坐标，贴近稿面留白 */
 const chartOpts = {
   color: ['#1688ff'],
-  padding: [16, 8, 0, 8],
+  padding: [0, 0, 0, 0],
   legend: { show: false },
   dataLabel: false,
   enableScroll: false,
@@ -293,8 +294,8 @@ function goVerify() {
       </view>
 
       <!-- 月度税后柱状图 -->
-      <view class="mt-24rpx card-rounded p-28rpx">
-        <view class="mb-8rpx flex items-center justify-between">
+      <view class="mt-24rpx card-rounded px-32rpx">
+        <view class="flex items-center justify-between py-24rpx">
           <text class="text-30rpx text-#333 font-600">
             月度税后收入
           </text>
@@ -302,7 +303,7 @@ function goVerify() {
             单位：元
           </text>
         </view>
-        <view class="charts-box">
+        <view class="charts-box mb-24rpx">
           <qiun-data-charts
             v-if="chartReady"
             :key="chartMountKey"
@@ -316,20 +317,13 @@ function goVerify() {
       </view>
 
       <!-- 计算明细折叠 -->
-      <view class="mt-24rpx card-rounded">
-        <view
-          class="breakdown-head"
-          @click="showBreakdown = !showBreakdown"
-        >
-          <text class="text-30rpx text-#333 font-600">
-            计算明细
-          </text>
-          <view
-            class="h-32rpx w-32rpx text-#c0c4cc"
-            :class="showBreakdown ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'"
-          />
+      <view class="mt-24rpx card-rounded px-32rpx">
+        <view class="flex items-center gap-16rpx py-24rpx" @click="showBreakdown = !showBreakdown">
+          <text class="text-30rpx text-#333 font-600">计算明细</text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999" />
+          <wd-icon :name="showBreakdown ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
         </view>
-        <view v-if="showBreakdown" class="breakdown-body">
+        <view v-if="showBreakdown" class="mb-24rpx">
           <view
             v-for="row in breakdownRows"
             :key="row.label"
@@ -357,22 +351,20 @@ function goVerify() {
         </view>
       </view>
 
-      <view class="mt-32rpx px-8rpx pb-16rpx">
+      <view class="mt-24rpx px-8rpx">
         <wd-button type="primary" block :round="true" size="large" @click="goReCalc">
           重新测算
         </wd-button>
         <wd-button type="primary" variant="plain" block :round="true" size="large" custom-class="mt-24rpx" @click="goVerify">
           已有工资条？核对本月实发
         </wd-button>
-        <!-- #ifdef MP-WEIXIN -->
-        <wd-button type="primary" variant="text" block :round="true" size="large" custom-class="mt-16rpx" open-type="share">
-          分享给好友
-        </wd-button>
-        <view class="mt-12rpx text-center text-22rpx text-#c0c4cc">
-          分享工具入口，不含你的金额
-        </view>
-        <!-- #endif -->
       </view>
+
+      <!-- #ifdef MP-WEIXIN -->
+      <wd-button variant="text" block size="mini" custom-class="mt-16rpx !text-22rpx !text-#999" open-type="share">
+        如果觉得这个工具不错，分享给好友吧
+      </wd-button>
+      <!-- #endif -->
     </view>
   </view>
 </template>
@@ -480,18 +472,6 @@ function goVerify() {
 .charts-box {
   width: 100%;
   height: 360rpx;
-}
-
-.breakdown-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 32rpx;
-}
-
-.breakdown-body {
-  padding: 0 32rpx 28rpx;
-  border-top: 2rpx solid #f0f0f0;
 }
 
 .breakdown-row {

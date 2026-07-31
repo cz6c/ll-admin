@@ -47,8 +47,7 @@ withDefaults(
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(245, 246, 248, 0.72);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(6px);
 }
 
 .abacus-loading__panel {
@@ -59,13 +58,13 @@ withDefaults(
 }
 
 .abacus-loading__lion {
-  width: 240rpx;
-  height: 240rpx;
+  width: 168rpx;
+  height: 168rpx;
   animation: lion-pulse 2s ease-in-out infinite;
 }
 
 .abacus-loading__hint {
-  font-size: 26rpx;
+  font-size: 28rpx;
   color: var(--wot-primary-6);
   letter-spacing: 1rpx;
 }

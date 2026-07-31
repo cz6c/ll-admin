@@ -63,6 +63,14 @@ const submitting = ref(false)
 const pendingAssignItem = ref<LineItem | null>(null)
 const formRef = ref<FormExpose>()
 
+/** 识别中或提交中均展示品牌加载层 */
+const showLionLoading = computed(() => recognizing.value || submitting.value)
+const lionLoadingTip = computed(() => {
+  if (recognizing.value)
+    return '薪算狮正在识别…'
+  return '薪算狮努力核对中…'
+})
+
 /** 用 reactive：与 wot-ui 示例一致，避免 ref 模型在 schema.validate 时读不到字段 */
 const form = reactive<PayslipMappedFields>({
   preTaxMonthly: 0,
@@ -197,7 +205,7 @@ function openPayPeriodCalendar() {
 
 /**
  * 保存核对记录后直进详情页（结果在详情展示，本页不再渲染核对结果）
- * @note 提交只跟真实接口，不做最少 loading 时长
+ * @note 品牌 loading 至少展示 1s，避免接口过快一闪而过
  * @note schema 为拦截准绳：MP 下 form-item 可能未注册进 form，仅靠 validate().valid 会误放行
  */
 async function submitVerify() {
@@ -216,16 +224,19 @@ async function submitVerify() {
 
   submitting.value = true
   try {
-    const record = await salaryHistoryStore.upsertByPayPeriod({
-      ...(editingId.value ? { id: editingId.value } : {}),
-      payPeriod: payPeriod.value,
-      preTaxMonthly: form.preTaxMonthly,
-      ssPersonalAmount: form.ssPersonalAmount,
-      hfPersonalAmount: form.hfPersonalAmount,
-      specialDeductionMonthly: form.specialDeductionMonthly,
-      personalIncomeTax: form.personalIncomeTax,
-      postTaxMonthly: form.postTaxMonthly,
-    })
+    const [record] = await Promise.all([
+      salaryHistoryStore.upsertByPayPeriod({
+        ...(editingId.value ? { id: editingId.value } : {}),
+        payPeriod: payPeriod.value,
+        preTaxMonthly: form.preTaxMonthly,
+        ssPersonalAmount: form.ssPersonalAmount,
+        hfPersonalAmount: form.hfPersonalAmount,
+        specialDeductionMonthly: form.specialDeductionMonthly,
+        personalIncomeTax: form.personalIncomeTax,
+        postTaxMonthly: form.postTaxMonthly,
+      }),
+      new Promise<void>(resolve => setTimeout(resolve, 1000)),
+    ])
     if (editingId.value) {
       uni.navigateBack()
     }
@@ -282,7 +293,7 @@ function dismissShareLandingTip() {
 
 <template>
   <view class="page-shell pb-safe">
-    <SalaryAbacusLoading :visible="submitting" tip="薪算狮正在核对…" />
+    <SalaryAbacusLoading :visible="showLionLoading" :tip="lionLoadingTip" />
     <view class="p-24rpx">
       <view
         v-if="showShareLandingTip"

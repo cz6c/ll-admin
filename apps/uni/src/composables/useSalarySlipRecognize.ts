@@ -1,7 +1,7 @@
 /**
  * 工资条拍照识别 Composable
  * 流程：选图 → 超 2MB 压缩 → 一律上传 recognize → 写入 lineItems
- * 副作用：loading toast、失败 toast；依赖 @/api/salary-slip
+ * 副作用：失败 toast；loading 态由页面 SalaryAbacusLoading 消费；依赖 @/api/salary-slip
  */
 import type { LineItem } from '@/types/salary-slip'
 import { ref } from 'vue'
@@ -63,7 +63,6 @@ export function useSalarySlipRecognize() {
       return
     loading.value = true
     lineItems.value = []
-    uni.showLoading({ title: '正在识别工资条…', mask: true })
     try {
       const result = await recognizeSalarySlip(previewPath.value)
       lineItems.value = (result.line_items ?? []).map(item => ({ ...item }))
@@ -77,7 +76,6 @@ export function useSalarySlipRecognize() {
     }
     finally {
       loading.value = false
-      uni.hideLoading()
     }
   }
 

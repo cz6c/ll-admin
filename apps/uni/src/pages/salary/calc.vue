@@ -146,14 +146,17 @@ function onYearEndModeConfirm({ value }: { value: (string | number)[] }) {
 
 /**
  * 先落库测算历史再进明细，保证详情可按 id 回看
- * @note 提交只跟真实接口，不做最少 loading 时长
+ * @note 品牌 loading 至少展示 1s，避免接口过快一闪而过
  */
 async function submitCalc() {
   if (submitting.value)
     return
   submitting.value = true
   try {
-    const row = await salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined)
+    const [row] = await Promise.all([
+      salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined),
+      new Promise<void>(resolve => setTimeout(resolve, 1000)),
+    ])
     if (editingId.value) {
       uni.navigateBack()
     }
@@ -182,7 +185,7 @@ function dismissShareLandingTip() {
 <template>
   <page-meta :page-style="`overflow:${showSpecialDeductionTip ? 'hidden' : 'visible'};`" />
   <view class="page-shell">
-    <SalaryAbacusLoading :visible="submitting" tip="薪算狮正在测算…" />
+    <SalaryAbacusLoading :visible="submitting" tip="薪算狮努力测算中…" />
     <view class="px-24rpx pb-24rpx pt-24rpx">
       <view
         v-if="showShareLandingTip"

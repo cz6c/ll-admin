@@ -61,53 +61,36 @@ function goVerify() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 80rpx 32rpx 48rpx;
+  padding: 80rpx 0;
+  color: #999999;
 }
 
 .lion-empty__mascot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 28rpx;
+  margin-bottom: 24rpx;
 }
 
 .lion-empty__lion {
-  width: 260rpx;
-  height: 260rpx;
-  animation: lion-nod 2.4s ease-in-out infinite;
+  width: 134rpx;
+  height: 134rpx;
+  opacity: 0.8;
 }
 
 .lion-empty__title {
   font-size: 32rpx;
-  font-weight: 600;
-  color: #1f2329;
 }
 
 .lion-empty__desc {
   margin-top: 12rpx;
-  font-size: 26rpx;
-  color: #909399;
+  font-size: 24rpx;
   text-align: center;
 }
 
 .lion-empty__btn {
-  margin-top: 40rpx;
-  padding: 18rpx 48rpx;
-  border-radius: 999rpx;
+  margin-top: 34rpx;
   font-size: 28rpx;
-  font-weight: 600;
-  color: #fff;
-  background: var(--wot-primary-6);
-}
-
-@keyframes lion-nod {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(4rpx);
-  }
+  color: var(--wot-primary-6);
 }
 </style>

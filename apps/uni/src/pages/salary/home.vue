@@ -144,17 +144,17 @@ function goVerify() {
 </script>
 
 <template>
-  <view class="page-home page-shell pb-safe">
+  <view class="page-shell pb-safe">
     <!-- Hero：渐变 + 底部圆角，托住下方内容区 -->
     <view
-      class="hero-card flex items-center justify-between gap-16rpx px-32rpx pb-80rpx"
-      :style="{ paddingTop: `${tabBarHeight + 20}px` }"
+      class="hero-card flex items-center gap-16rpx px-32rpx pb-64rpx"
+      :style="{ paddingTop: `${tabBarHeight}px` }"
     >
       <view class="min-w-0 flex-1">
-        <view class="text-52rpx text-white font-600 tracking-2rpx">
+        <view class="text-48rpx text-white font-500 tracking-4rpx">
           薪算狮
         </view>
-        <view class="hero-card__slogan mt-16rpx text-28rpx">
+        <view class="hero-card__slogan mt-8rpx text-28rpx">
           算得清楚，对得明白
         </view>
       </view>
@@ -267,11 +267,6 @@ function goVerify() {
 </template>
 
 <style scoped lang="scss">
-.page-home {
-  min-height: 100vh;
-  background: #f5f6f8;
-}
-
 .hero-card {
   /* 贴 logo：上亮下沉的品牌蓝；起点不用过浅，保证白字对比 */
   background: linear-gradient(
@@ -292,8 +287,9 @@ function goVerify() {
 
 .hero-card__mascot {
   flex-shrink: 0;
-  width: 160rpx;
-  height: 160rpx;
+  width: 136rpx;
+  height: 136rpx;
+  opacity: 0.26;
 }
 
 .content-panel {
@@ -380,7 +376,6 @@ function goVerify() {
 .recent-empty-wrap {
   min-height: 220rpx;
   background-color: #fff;
-  border: 1rpx dashed #e4e7ed;
   border-radius: 24rpx;
   display: flex;
   flex-direction: column;

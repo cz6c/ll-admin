@@ -12,6 +12,7 @@ import type { PayslipFieldKey, PayslipMappedFields } from '@/utils/salarySlipFie
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { computed, reactive, ref, watch } from 'vue'
+import SalaryAbacusLoading from '@/components/salary/SalaryAbacusLoading.vue'
 import { useSalarySlipRecognize } from '@/composables/useSalarySlipRecognize'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
@@ -29,7 +30,7 @@ definePage({
 })
 
 /** 所属月 YYYY-MM（缺月补全深链 payPeriod=） */
-const PAY_PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const PAY_PERIOD_RE = /^\d{4}-(?:0[1-9]|1[0-2])$/
 
 /** 提交必填金额项：须 >0，与累计预扣核对输入一致 */
 const REQUIRED_AMOUNT_KEYS: PayslipFieldKey[] = [
@@ -214,7 +215,6 @@ async function submitVerify() {
   }
 
   submitting.value = true
-  uni.showLoading({ title: '系统正在核对中，请稍后…', mask: true })
   try {
     const record = await salaryHistoryStore.upsertByPayPeriod({
       ...(editingId.value ? { id: editingId.value } : {}),
@@ -240,7 +240,6 @@ async function submitVerify() {
     uni.showToast({ title: msg, icon: 'none' })
   }
   finally {
-    uni.hideLoading()
     submitting.value = false
   }
 }
@@ -283,6 +282,7 @@ function dismissShareLandingTip() {
 
 <template>
   <view class="page-shell pb-safe">
+    <SalaryAbacusLoading :visible="submitting" tip="薪算狮正在核对…" />
     <view class="p-24rpx">
       <view
         v-if="showShareLandingTip"

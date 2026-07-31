@@ -7,6 +7,7 @@
 import type { SalaryCalcInput, YearEndTaxMode } from '@/utils/salaryCalculator'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref, watch } from 'vue'
+import SalaryAbacusLoading from '@/components/salary/SalaryAbacusLoading.vue'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { salaryOptionLabel, YEAR_END_TAX_OPTIONS } from '@/constants/salaryFormOptions'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
@@ -151,7 +152,6 @@ async function submitCalc() {
   if (submitting.value)
     return
   submitting.value = true
-  uni.showLoading({ title: '系统正在测算中，请稍后…', mask: true })
   try {
     const row = await salaryHistoryStore.createHistory({ ...salaryForm.value }, editingId.value || undefined)
     if (editingId.value) {
@@ -166,7 +166,6 @@ async function submitCalc() {
     uni.showToast({ title: msg, icon: 'none' })
   }
   finally {
-    uni.hideLoading()
     submitting.value = false
   }
 }
@@ -183,6 +182,7 @@ function dismissShareLandingTip() {
 <template>
   <page-meta :page-style="`overflow:${showSpecialDeductionTip ? 'hidden' : 'visible'};`" />
   <view class="page-shell">
+    <SalaryAbacusLoading :visible="submitting" tip="薪算狮正在测算…" />
     <view class="px-24rpx pb-24rpx pt-24rpx">
       <view
         v-if="showShareLandingTip"

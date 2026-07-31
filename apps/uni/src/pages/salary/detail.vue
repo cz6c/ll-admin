@@ -13,8 +13,9 @@ import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
 import { toCalcInput, toHistoryRecord } from '@/store/salaryHistory'
 import { buildCalcReentryQuery } from '@/utils/calcReentry'
-import { buildFromQuery, DEFAULT_SHARE_FROM, SHARE_POSTER_URL } from '@/utils/channelFrom'
+import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount, formatSalaryWan } from '@/utils/formatSalaryAmount'
+import { SHARE_POSTER_URL } from '@/utils/lionAssets'
 import { calcSalary } from '@/utils/salaryCalculator'
 
 defineOptions({ name: 'SalaryDetail' })

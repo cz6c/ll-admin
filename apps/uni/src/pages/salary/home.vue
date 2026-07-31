@@ -1,17 +1,18 @@
 <script lang="ts" setup>
 /**
- * 聚薪助手首页
+ * 薪算狮首页
  * 主流程：未同意协议则 redirect 门禁页 → 工具入口 → 最近记录
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { captureChannelFromQuery } from '@/utils/channelFrom'
+import { LION_URL } from '@/utils/lionAssets'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
 defineOptions({ name: 'SalaryHome' })
@@ -69,7 +70,6 @@ const features: HomeFeature[] = [
 ]
 
 const salaryHistoryStore = useSalaryHistoryStore()
-const hasLoaded = ref(false)
 
 const latestCalcUpdateMs = computed(() => {
   return salaryHistoryStore.calcItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
@@ -123,9 +123,6 @@ onShow(async () => {
   catch {
     // 首页只做展示，不因历史同步失败中断入口操作
   }
-  finally {
-    hasLoaded.value = true
-  }
 })
 
 function enterFeature(feature: HomeFeature) {
@@ -150,18 +147,22 @@ function goVerify() {
   <view class="page-home page-shell pb-safe">
     <!-- Hero：渐变 + 底部圆角，托住下方内容区 -->
     <view
-      class="hero-card flex items-end justify-between gap-16rpx px-32rpx pb-56rpx"
-      :style="{ paddingTop: `${tabBarHeight + 12}px` }"
+      class="hero-card flex items-center justify-between gap-16rpx px-32rpx pb-80rpx"
+      :style="{ paddingTop: `${tabBarHeight + 20}px` }"
     >
-      <view class="min-w-0 flex-1 pb-8rpx">
+      <view class="min-w-0 flex-1">
         <view class="text-52rpx text-white font-600 tracking-2rpx">
-          聚薪助手
+          薪算狮
         </view>
         <view class="hero-card__slogan mt-16rpx text-28rpx">
           算得清楚，对得明白
         </view>
       </view>
-      <view class="i-carbon-calculator hero-card__icon" />
+      <image
+        class="hero-card__mascot"
+        :src="LION_URL"
+        mode="aspectFit"
+      />
     </view>
 
     <!-- 上叠内容：工具卡 → 最近；信任数据沉底（私密工具忌强社会证明） -->
@@ -289,12 +290,10 @@ function goVerify() {
   font-weight: 400;
 }
 
-.hero-card__icon {
+.hero-card__mascot {
   flex-shrink: 0;
-  width: 120rpx;
-  height: 120rpx;
-  margin-bottom: 4rpx;
-  color: rgba(255, 255, 255, 0.28);
+  width: 160rpx;
+  height: 160rpx;
 }
 
 .content-panel {

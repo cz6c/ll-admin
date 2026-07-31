@@ -1,9 +1,14 @@
 <script lang="ts" setup>
+/**
+ * 测算与核对历史列表
+ * 主流程：拉全量 → 本地筛选/搜索 → 滑动删除；真空仓用睡着空态，下拉摇尾刷新
+ */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import SalaryLionEmpty from '@/components/salary/SalaryLionEmpty.vue'
 import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
@@ -18,6 +23,8 @@ const { closeOutside } = useQueue()
 definePage({
   style: {
     navigationBarTitleText: '测算与核对记录',
+    // 禁止页面级滚动，只允许下方 scroll-view 滚动（避免 header 跟着跑）
+    disableScroll: true,
   },
 })
 
@@ -41,6 +48,9 @@ const activeFilter = ref<HistoryFilter>('all')
 const searchInput = ref('')
 const searchKeyword = ref('')
 
+/** 系统默认下拉刷新触发态（无自定义狮彩蛋） */
+const refresherTriggered = ref(false)
+
 const unifiedList = computed(() => mergeSalaryHistoryEntries(items.value))
 
 const filteredList = computed(() => {
@@ -56,6 +66,30 @@ const filteredList = computed(() => {
     return item.title.toLowerCase().includes(q)
       || item.subtitle.toLowerCase().includes(q)
   })
+})
+
+/** 真空仓：无任何记录 */
+const isWarehouseEmpty = computed(() => unifiedList.value.length === 0)
+
+/** 列表空态文案：真空仓引导核对；筛选/搜索无结果换文案且不展示 CTA */
+const listEmpty = computed(() => {
+  if (isWarehouseEmpty.value) {
+    return {
+      show: true,
+      title: '还没有记录',
+      desc: '发工资条了？我在这儿帮你算清楚',
+      showAction: true,
+    }
+  }
+  if (filteredList.value.length === 0) {
+    return {
+      show: true,
+      title: '没有找到相关记录',
+      desc: '换个关键词，或试试别的筛选条件',
+      showAction: false,
+    }
+  }
+  return { show: false, title: '', desc: '', showAction: false }
 })
 
 /** 一次拉全量后在本地按摘要/类型名过滤，避免功能名被服务端 keyword 误伤 */
@@ -126,11 +160,29 @@ function confirmDelete(item: SalaryHistoryEntry) {
     },
   })
 }
+
+async function onRefresherRefresh() {
+  refresherTriggered.value = true
+  try {
+    await refreshHistory()
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '历史记录加载失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
+  finally {
+    refresherTriggered.value = false
+  }
+}
 </script>
 
 <template>
-  <view class="page-shell pb-safe" @click="closeOutside">
-    <view class="p-24rpx">
+  <!-- page-meta：双保险禁掉页面滚动（部分端 disableScroll 不生效） -->
+  <page-meta page-style="overflow: hidden;" />
+
+  <view class="history-page page-shell" @click="closeOutside">
+    <!-- 顶栏在 scroll-view 外，flex-shrink:0，固定不滚 -->
+    <view class="history-page__header">
       <wd-search
         v-model="searchInput"
         placeholder="关键词"
@@ -141,7 +193,7 @@ function confirmDelete(item: SalaryHistoryEntry) {
         @clear="onSearchClear"
       />
 
-      <view class="mb-24rpx flex flex-wrap gap-16rpx">
+      <view class="history-page__chips">
         <view
           v-for="chip in FILTERS"
           :key="chip.value"
@@ -157,45 +209,100 @@ function confirmDelete(item: SalaryHistoryEntry) {
           <text>{{ chip.label }}</text>
         </view>
       </view>
-
-      <wd-empty
-        v-if="filteredList.length === 0"
-        :tip="!searchKeyword && activeFilter === 'all' ? '暂无历史记录' : '未找到匹配的历史记录'"
-      />
-
-      <view v-else class="card-rounded overflow-hidden">
-        <wd-swipe-action
-          v-for="(item, idx) in filteredList"
-          :key="item.key"
-        >
-          <SalaryHistoryEntryRow
-            :title="item.title"
-            :subtitle="item.subtitle"
-            :theme="item.theme"
-            :icon="item.icon"
-            :bordered="idx < filteredList.length - 1"
-            @click="openItem(item)"
-          />
-
-          <template #right>
-            <view class="h-full flex">
-              <view
-                class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
-                @click.stop="confirmDelete(item)"
-              >
-                <text class="text-28rpx text-white">
-                  删除
-                </text>
-              </view>
-            </view>
-          </template>
-        </wd-swipe-action>
-      </view>
     </view>
+
+    <!--
+      flex:1 + height:0：占满剩余高度，小程序 scroll-view 必须有确定高度才能内部滚动；
+      不再用 windowHeight − 实测 header，避免初始 0 导致整页溢出、header 跟着滚。
+    -->
+    <scroll-view
+      class="history-page__scroll"
+      scroll-y
+      refresher-enabled
+      :refresher-triggered="refresherTriggered"
+      @refresherrefresh="onRefresherRefresh"
+    >
+      <view class="history-page__list">
+        <SalaryLionEmpty
+          v-if="listEmpty.show"
+          :title="listEmpty.title"
+          :desc="listEmpty.desc"
+          :show-action="listEmpty.showAction"
+        />
+
+        <view v-else class="card-rounded overflow-hidden">
+          <wd-swipe-action
+            v-for="(item, idx) in filteredList"
+            :key="item.key"
+          >
+            <SalaryHistoryEntryRow
+              :title="item.title"
+              :subtitle="item.subtitle"
+              :theme="item.theme"
+              :icon="item.icon"
+              :bordered="idx < filteredList.length - 1"
+              @click="openItem(item)"
+            />
+
+            <template #right>
+              <view class="h-full flex">
+                <view
+                  class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
+                  @click.stop="confirmDelete(item)"
+                >
+                  <text class="text-28rpx text-white">
+                    删除
+                  </text>
+                </view>
+              </view>
+            </template>
+          </wd-swipe-action>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <style scoped lang="scss">
+/* 定高锁死页面内容区：header 不参与滚动，只有下方 scroll-view 滚。
+ * 用 absolute 而非 fixed：微信 fixed 相对屏幕，会盖住原生导航栏。 */
+.history-page {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.history-page__header {
+  flex-shrink: 0;
+  padding: 24rpx 24rpx 0;
+  background: #f5f6f8;
+  z-index: 2;
+}
+
+.history-page__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.history-page__scroll {
+  flex: 1;
+  height: 0;
+  width: 100%;
+  min-height: 0;
+}
+
+.history-page__list {
+  padding: 0 24rpx calc(24rpx + env(safe-area-inset-bottom));
+}
+
 :deep(.search) {
   padding: 0 !important;
   background: none !important;

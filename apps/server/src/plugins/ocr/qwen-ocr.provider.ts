@@ -12,7 +12,7 @@ const MIN_PIXELS = 32 * 32 * 3;
 const MAX_PIXELS = 32 * 32 * 8192;
 const RESPONSE_PREVIEW_MAX = 1200;
 
-/** DashScope 原生 multimodal-generation + ocr_options */
+/** DashScope 原生 multimodal-generation + ocr_options；配置见 aliyun.ocr.* */
 @Injectable()
 export class QwenOcrProvider implements OcrProvider {
   readonly name = "qwen" as const;
@@ -23,17 +23,16 @@ export class QwenOcrProvider implements OcrProvider {
   ) {}
 
   async recognize(buffer: Buffer, mimeType = "image/jpeg"): Promise<OcrProviderRecognizeResult> {
-    const apiKey = this.config.get<string>("ocr.qwen.apiKey") || this.config.get<string>("aliyun.apiKey");
+    const apiKey = this.config.get<string>("aliyun.ocr.apiKey") || this.config.get<string>("aliyun.apiKey");
     if (!apiKey) {
       throw new OcrProviderError("ocr_not_configured");
     }
 
     const baseUrl = this.resolveNativeBaseUrl();
-    const model = this.config.get<string>("ocr.qwen.model") || DEFAULT_MODEL;
-    const task = this.config.get<string>("ocr.qwen.task") || DEFAULT_TASK;
-    const enableRotate = this.config.get<boolean>("ocr.qwen.enableRotate") ?? true;
-    const timeout =
-      this.config.get<number>("ocr.qwen.timeout") ?? this.config.get<number>("ocr.timeout") ?? this.config.get<number>("aliyun.timeout") ?? 120000;
+    const model = this.config.get<string>("aliyun.ocr.model") || DEFAULT_MODEL;
+    const task = this.config.get<string>("aliyun.ocr.task") || DEFAULT_TASK;
+    const enableRotate = this.config.get<boolean>("aliyun.ocr.enableRotate") ?? true;
+    const timeout = this.config.get<number>("aliyun.ocr.timeout") ?? this.config.get<number>("aliyun.timeout") ?? 120000;
     const imageDataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
 
     const requestMeta: OcrProviderMeta = { model, task, baseUrl, timeoutMs: timeout, enableRotate };
@@ -149,9 +148,9 @@ export class QwenOcrProvider implements OcrProvider {
     return response.data;
   }
 
-  /** 优先 ocr.qwen.baseUrl，否则从 aliyun.baseUrl 推导 workspace api/v1 */
+  /** 优先 aliyun.ocr.baseUrl，否则从 aliyun.baseUrl 推导 workspace api/v1 */
   private resolveNativeBaseUrl(): string {
-    const explicit = this.config.get<string>("ocr.qwen.baseUrl");
+    const explicit = this.config.get<string>("aliyun.ocr.baseUrl");
     if (explicit) {
       return explicit.replace(/\/$/, "");
     }

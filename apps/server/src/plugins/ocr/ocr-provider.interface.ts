@@ -1,6 +1,11 @@
+/**
+ * OCR 引擎抽象
+ * 与 VLM 分离：只产出带坐标 cells，不做业务编排
+ */
 import type { OcrCell } from "../utils/ocr-layout";
 
-export type OcrProviderName = "qwen" | "local";
+/** OCR 引擎名；当前仅云端 Qwen */
+export type OcrProviderName = "qwen";
 
 /** 引擎调用参数与诊断信息（写入 salary_slip_recognize.ocr 日志） */
 export interface OcrProviderMeta {
@@ -15,9 +20,9 @@ export interface OcrProviderMeta {
   remoteMessage?: string;
 }
 
-/** 降级前一次引擎尝试的快照 */
+/** 降级前一次引擎尝试的快照（跨模态编排日志复用） */
 export interface OcrPriorAttempt {
-  provider: OcrProviderName;
+  provider: string;
   reason: string;
   meta?: OcrProviderMeta;
 }
@@ -39,7 +44,7 @@ export class OcrProviderError extends Error {
   }
 }
 
-/** OCR 引擎抽象，由 OcrService 门面按配置选择 */
+/** OCR 引擎抽象，由 OcrService 门面调用 */
 export interface OcrProvider {
   readonly name: OcrProviderName;
   recognize(buffer: Buffer, mimeType?: string): Promise<OcrProviderRecognizeResult>;

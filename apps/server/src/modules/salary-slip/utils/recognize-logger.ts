@@ -47,6 +47,8 @@ export interface RecognizeTiming {
   ocr: number;
   align: number;
   rules: number;
+  /** VLM 策略耗时；未走 VLM 时为 0 */
+  vlm: number;
 }
 
 /**

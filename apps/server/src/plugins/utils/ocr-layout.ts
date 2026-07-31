@@ -444,7 +444,7 @@ export function pairWideTableColumns(cells: OcrCell[], ctx?: LayoutContext): Ali
   return pairWideTableColumnsByRows(cells, ctx ?? buildLayoutContext(cells));
 }
 
-/** 解析 RapidOCR-json 返回的 box 结构为带坐标的单元格列表 */
+/** 解析 OCR 返回的 box 结构为带坐标的单元格列表 */
 export function parseOcrCells(data: unknown): OcrCell[] {
   if (!Array.isArray(data)) {
     return [];

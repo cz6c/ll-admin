@@ -354,9 +354,6 @@ importers:
       qiniu:
         specifier: ^7.14.0
         version: 7.15.2
-      rapidocrjson:
-        specifier: ^0.1.1
-        version: 0.1.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -11447,9 +11444,6 @@ packages:
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
-
-  rapidocrjson@0.1.1:
-    resolution: {integrity: sha512-5T7TnJ8mXbZnXSKxzFLojlBGtZ8zdaGTdMLSbIFUp7iQ7AjV4Ci62RMWBE3NNpwhHkykiw37IohfFZi1MPJRUA==}
 
   rate-limiter-flexible@5.0.5:
     resolution: {integrity: sha512-+/dSQfo+3FYwYygUs/V2BBdwGa9nFtakDwKt4l0bnvNB53TNT++QSFewwHX9qXrZJuMe9j+TUaU21lm5ARgqdQ==}
@@ -26992,8 +26986,6 @@ snapshots:
       safe-buffer: 5.2.1
 
   range-parser@1.2.1: {}
-
-  rapidocrjson@0.1.1: {}
 
   rate-limiter-flexible@5.0.5: {}
 

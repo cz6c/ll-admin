@@ -62,33 +62,33 @@ mail:
   secure: true
   auth: { user: 'your@email.com', pass: 'your_mail_password' }
 
-zhipu:
-  apiKey: 'your_zhipu_api_key'
-  baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
-  model: 'glm-4.7-flash'
-  timeout: 180000
-
 aliyun:
   apiKey: 'your_dashscope_api_key'
+  # 兼容模式（chat / VLM）；OCR 原生接口可从该地址推导 api/v1，也可在 ocr.baseUrl 单独指定
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-  model: 'qwen3.7-plus'
+  model: 'qwen3.7-plus'   # 通用 LLM（非 OCR/VLM）
   timeout: 180000
-
-# OCR 配置
-ocr:
-  provider: qwen           # qwen | local
-  timeout: 180000        # native Qwen OCR 常需 60-120s，可与 aliyun.timeout 对齐
-  fallbackToLocal: true
-  qwen:
-    # 未配置时复用 aliyun.apiKey / aliyun.baseUrl
+  # 工资条 OCR（Qwen advanced_recognition，走原生 multimodal-generation）
+  ocr:
     model: qwen3.5-ocr
     task: advanced_recognition
-    # baseUrl 未配置时从 aliyun.baseUrl 推导 workspace api/v1
     enableRotate: true
-  executable: 'resources/RapidOCR-json/RapidOCR-json.exe'
-  options:
-    maxSideLen: 2048
-    padding: 50
+    # timeout: 180000          # 未配则用 aliyun.timeout
+    # baseUrl: ''              # 可选；未配时从 aliyun.baseUrl 推导 workspace api/v1
+  # 工资条 VLM 结构化抽取（兼容模式 chat/completions + 图片）
+  vlm:
+    model: qwen3-vl-plus
+    # timeout: 120000
+    # baseUrl: ''              # 可选；未配则用 aliyun.baseUrl
+
+# 工资条识别编排：主/备路径只在此配置，能力模块互不感知
+salarySlip:
+  recognize:
+    primary: ocr          # vlm | ocr
+    fallback: none        # vlm | ocr | none；例：primary: vlm + fallback: ocr
+    # fallbackOn:         # 可选，覆盖默认硬失败错误码列表
+    #   - vlm_timeout
+    #   - ocr_timeout
 
 nowapi:
   host: 'https://sapi.k780.com'

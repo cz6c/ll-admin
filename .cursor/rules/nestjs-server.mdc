@@ -11,8 +11,8 @@ alwaysApply: false
 - 业务按 **Nest 模块** 划分：`src/modules/<domain>/`（controller、service、dto、entities 等）。
 - 模块域：`system/*`（用户/角色/菜单/部门等）、`monitor/*`（日志/缓存/服务器）、`upload`、`tasks`、`area` 等；新功能按域建 module。
 - 全局能力在 `src/common/`（守卫、过滤器、装饰器、工具）、`src/plugins/`、`src/config/`。
-- **通用能力放 `src/plugins/`**：OCR（`OcrService`）、LLM（`OpenAIService`）、HTTP/MQTT/邮件等；通过 `PluginsModule` 导出，业务模块 `imports: [PluginsModule]` 注入使用。
-- **业务模块只保留领域逻辑**：prompt、DTO/校验、编排流程、错误码到用户文案的映射；不要把 RapidOCR 初始化、chat/completions 请求等通用实现写进 `modules/`。
+- **通用能力放 `src/plugins/`**：OCR（`OcrModule`）、VLM（`VlmModule`）、HTTP/MQTT/邮件等；通过 `PluginsModule` 导出，业务模块 `imports: [PluginsModule]` 注入使用。
+- **业务模块只保留领域逻辑**：prompt、DTO/校验、编排流程、错误码到用户文案的映射；不要把 OCR/VLM 厂商 SDK、chat/completions 请求等通用实现写进 `modules/`。
 - 数据库：**TypeORM**；迁移在 `src/migrations/`，通过 `migration:*` 脚本执行；空库初始化脚本为 `db/init.sql`。
 - **Entity 关联约定（逻辑外键）**：表之间关联在 Entity / 库表上只存 `xxxId` 列（如 `userId`），**不使用** `@ManyToOne` / `@OneToMany` / `@JoinColumn`，也**不建库级 FOREIGN KEY / ON DELETE CASCADE**。完整性由应用层保证（写入时用登录态 `userId`、查询带归属过滤、软删不硬删父行）。需要联表时在 Service 用 `leftJoinAndMapOne` / QueryBuilder。与现有 `sys_user.dept_id`、`sys_user_role` 等风格一致。
 - 配置：`src/config/dev.yml` / `prod.yml` + `typeorm.config.ts`。

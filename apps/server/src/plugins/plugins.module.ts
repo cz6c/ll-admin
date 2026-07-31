@@ -4,14 +4,16 @@ import { AxiosService } from "./axios.service";
 import { ImagePreprocessService } from "./image-preprocess.service";
 import { MqttService } from "./mqtt.service";
 import { NodemailerService } from "./nodemailer.service";
-import { OcrService } from "./ocr.service";
-import { QwenOcrProvider } from "./ocr/qwen-ocr.provider";
-import { RapidOcrProvider } from "./ocr/rapid-ocr.provider";
+import { OcrModule } from "./ocr/ocr.module";
+import { VlmModule } from "./vlm/vlm.module";
 import { WechatService } from "./wechat.service";
 
+/**
+ * 通用插件聚合：OCR / VLM 为独立子模块，业务按需注入能力门面
+ */
 @Module({
-  imports: [HttpModule],
-  providers: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, QwenOcrProvider, RapidOcrProvider, OcrService, WechatService],
-  exports: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, OcrService, WechatService]
+  imports: [HttpModule, OcrModule, VlmModule],
+  providers: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, WechatService],
+  exports: [AxiosService, ImagePreprocessService, MqttService, NodemailerService, WechatService, OcrModule, VlmModule]
 })
 export class PluginsModule {}

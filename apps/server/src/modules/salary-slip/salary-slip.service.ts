@@ -100,11 +100,15 @@ export class SalarySlipService {
       preTaxMonthly: Number(row.preTaxMonthly),
       ssPersonalAmount: Number(row.ssPersonalAmount),
       hfPersonalAmount: Number(row.hfPersonalAmount),
+      otherDeductionAmount: Number(row.otherDeductionAmount ?? 0),
       specialDeductionMonthly: Number(row.specialDeductionMonthly),
       personalIncomeTax: Number(row.personalIncomeTax),
       yearEndTaxMode: row.yearEndTaxMode,
       yearEndBonus: Number(row.yearEndBonus ?? 0),
       postTaxMonthly: Number(row.postTaxMonthly),
+      inferredPreTax: row.inferredPreTax == null ? null : Number(row.inferredPreTax),
+      reportBias: row.reportBias ?? null,
+      useInferredForCumulative: Boolean(row.useInferredForCumulative),
       updateTime: row.updateTime
     };
   }
@@ -224,12 +228,30 @@ export class SalarySlipService {
       preTaxMonthly: String(dto.preTaxMonthly),
       ssPersonalAmount: String(dto.ssPersonalAmount ?? 0),
       hfPersonalAmount: String(dto.hfPersonalAmount ?? 0),
+      otherDeductionAmount: String(dto.otherDeductionAmount ?? 0),
       specialDeductionMonthly: String(dto.specialDeductionMonthly ?? 0),
       personalIncomeTax: String(dto.personalIncomeTax ?? 0),
       yearEndTaxMode: dto.yearEndTaxMode ?? null,
       yearEndBonus: String(dto.yearEndBonus ?? 0),
       postTaxMonthly: String(dto.postTaxMonthly ?? 0)
     };
+
+    // 反推三字段：仅 DTO 显式传入时写入，避免普通保存误清、也避免 calc 带脏数据
+    if (historyType === SalaryHistoryTypeEnum.VERIFY) {
+      if (dto.inferredPreTax !== undefined) {
+        payload.inferredPreTax = dto.inferredPreTax == null ? null : String(dto.inferredPreTax);
+      }
+      if (dto.reportBias !== undefined) {
+        payload.reportBias = dto.reportBias ?? null;
+      }
+      if (dto.useInferredForCumulative !== undefined) {
+        payload.useInferredForCumulative = Boolean(dto.useInferredForCumulative);
+      }
+    } else {
+      payload.inferredPreTax = null;
+      payload.reportBias = null;
+      payload.useInferredForCumulative = false;
+    }
 
     if (dto.id != null) {
       return this.updateHistoryById(userId, dto.id, historyType, payload, dto.payPeriod);

@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 /**
- * 月薪核对历史详情：顶部结论卡 → 项目对比 → 计算过程 → 工资条原始数据。
+ * 月薪核对历史详情：顶部结论卡（含操作轨）→ 项目对比 → 计算过程 → 工资条原始数据。
  * 主流程：详情接口 → 页面本地 item + relatedVerifyList → 累计预扣重算（不写列表 store）
+ * 差异态：按申报继续先弹确认框（默认可改系统反推应发）再落库；修改工资条重核
  * 拉新：微信转发落到核对页（带 from），标题仅结论不带金额
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
@@ -9,7 +10,7 @@ import type { PayslipFieldKey } from '@/utils/salarySlipFieldMap'
 import { onLoad, onShareAppMessage, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getSalaryHistoryDetail } from '@/api/salary-verify'
-import { toHistoryRecord, toVerifyRecord } from '@/store/salaryHistory'
+import { toHistoryRecord, toVerifyRecord, useSalaryHistoryStore } from '@/store/salaryHistory'
 import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { SHARE_POSTER_URL } from '@/utils/lionAssets'
@@ -30,15 +31,19 @@ const historyId = ref('')
 const loadFailed = ref(false)
 /** 首屏拉取中：有数据前不闪空态 */
 const loading = ref(true)
+/** 确认/改回申报口径写入中 */
+const inferredSaving = ref(false)
 /** 当前核对记录（页面态） */
 const record = ref<PayslipVerifyRecord | null>(null)
 /** 同年核对列表，仅供本页累计预扣，不进 store.items */
 const relatedVerifyList = ref<PayslipVerifyRecord[]>([])
+const salaryHistoryStore = useSalaryHistoryStore()
 
 const fieldKeys: PayslipFieldKey[] = [
   'preTaxMonthly',
   'ssPersonalAmount',
   'hfPersonalAmount',
+  'otherDeductionAmount',
   'specialDeductionMonthly',
   'personalIncomeTax',
   'postTaxMonthly',
@@ -53,8 +58,9 @@ onLoad((options?: Record<string, string>) => {
 
 /**
  * 拉取详情；失败只走可恢复空态（返回/重试），不再 toast 叠一层
+ * @param options.silent 已有内容时不切全页 loading（确认申报口径后的原地刷新）
  */
-async function fetchDetail() {
+async function fetchDetail(options?: { silent?: boolean }) {
   if (!historyId.value) {
     loadFailed.value = true
     record.value = null
@@ -62,7 +68,9 @@ async function fetchDetail() {
     loading.value = false
     return
   }
-  loading.value = true
+  const silent = Boolean(options?.silent) && record.value != null
+  if (!silent)
+    loading.value = true
   loadFailed.value = false
   try {
     const detail = await getSalaryHistoryDetail(Number(historyId.value))
@@ -133,9 +141,9 @@ const calcModeHint = computed(() => {
   const missing = v.missingPriorMonths
   if (missing?.length) {
     const months = missing.map(m => `${m}月`).join('、')
-    return `缺少 ${months} 核对记录，暂按本月工资推算前序月份，结果仅供参考；补全后更准确`
+    return `缺 ${months}，暂按本月估算`
   }
-  return '暂无完整历史，按本月工资估算累计个税，结果仅供参考'
+  return '暂无完整历史，结果仅供参考'
 })
 
 /** 首个缺月 YYYY-MM；仅引导一个月，避免一次塞多月 */
@@ -156,22 +164,209 @@ const firstMissingMonthLabel = computed(() => {
   return `${month}月`
 })
 
+/**
+ * 对比区一句结论：短、弱视觉；金额细节留给操作轨副文案
+ */
 const verdictSummary = computed(() => {
   const v = verify.value
+  const row = record.value
   if (!v)
     return ''
   if (v.overallMatch)
-    return '个税和税后均与累计预扣法计算结果一致'
+    return '个税与税后均一致'
+  if (row?.useInferredForCumulative)
+    return '本月相对工资条仍可能有差'
+  if (v.reportBias === 'under')
+    return '疑似申报少报，个税偏低'
+  if (v.reportBias === 'over')
+    return '疑似申报多报，个税偏高'
+  if (!v.taxMatch && v.inferredPreTax == null && v.calcMode === 'history')
+    return '未能反推应发，请核对扣除项'
   if (v.taxMatch && !v.postTaxMatch) {
-    const sign = v.postTaxDiff > 0 ? '多扣' : '少扣'
-    return `税后可能${sign}${formatSalaryAmount(Math.abs(v.postTaxDiff))}，请检查工资条各扣款项`
+    const sign = v.postTaxDiff > 0 ? '多' : '少'
+    return `税后可能${sign}了 ¥${formatSalaryAmount(Math.abs(v.postTaxDiff))}`
   }
   if (!v.taxMatch && v.postTaxMatch) {
-    const sign = v.taxDiff > 0 ? '多扣' : '少扣'
-    return `个税可能${sign}${formatSalaryAmount(Math.abs(v.taxDiff))}，请检查个税申报数据`
+    const sign = v.taxDiff > 0 ? '多' : '少'
+    return `个税可能${sign}扣 ¥${formatSalaryAmount(Math.abs(v.taxDiff))}`
   }
-  return '个税与税后均存在差异，请检查个税申报数据与工资条'
+  return '个税与税后均有差异'
 })
+
+/** 可展示「按申报口径继续核对」：反推成功且尚未确认沿用 */
+const canConfirmInferred = computed(() => {
+  const v = verify.value
+  const row = record.value
+  if (!v || !row || row.useInferredForCumulative)
+    return false
+  return !v.taxMatch && v.inferredPreTax != null && v.reportBias != null
+})
+
+/** 已确认沿用：可改回工资条累计 */
+const canRevertInferred = computed(() => Boolean(record.value?.useInferredForCumulative))
+
+/** 结论卡底部操作轨：差异或已沿用申报时展示 */
+const showActionRail = computed(() => {
+  if (!verify.value)
+    return false
+  return !verify.value.overallMatch || canRevertInferred.value
+})
+
+/** 按申报副文案：只留金额，不讲长原因 */
+const confirmActionSub = computed(() => {
+  const v = verify.value
+  if (!v?.inferredPreTax)
+    return '后续按申报收入累计'
+  return `反推实际申报收入约 ¥${formatSalaryAmount(v.inferredPreTax)}`
+})
+
+/** 确认按申报：二次确认弹层（默认可改系统反推应发） */
+const showInferredConfirm = ref(false)
+/** 弹层内申报应发输入（字符串便于 digit 输入） */
+const inferredEditText = ref('')
+/** 打开弹层后聚焦输入，强化「可改」感知 */
+const inferredInputFocus = ref(false)
+const popupZIndex = 1100
+
+const reverifyActionSub = computed(() => '改金额后重新计算')
+
+/** 弹层对照：工资条应发（只读上下文） */
+const inferredConfirmSlipText = computed(() => {
+  const slip = record.value?.preTaxMonthly
+  if (slip == null)
+    return '—'
+  return formatSalaryAmount(slip)
+})
+
+/**
+ * 弹层对照：相对工资条的差额文案
+ * 正数 = 少报，负数 = 多报；与工资条几乎相同则不展示
+ */
+const inferredConfirmDeltaHint = computed(() => {
+  const slip = record.value?.preTaxMonthly
+  const amount = Number(inferredEditText.value)
+  if (slip == null || !Number.isFinite(amount))
+    return ''
+  const delta = Math.round((slip - amount) * 100) / 100
+  if (Math.abs(delta) <= 0.01)
+    return ''
+  if (delta > 0)
+    return `相对工资条少报约 ¥${formatSalaryAmount(delta)}`
+  return `相对工资条多报约 ¥${formatSalaryAmount(Math.abs(delta))}`
+})
+
+/** 打开确认框，带入系统反推值 */
+function openInferredConfirm() {
+  const v = verify.value
+  if (!v?.inferredPreTax || !v.reportBias || inferredSaving.value)
+    return
+  inferredEditText.value = String(v.inferredPreTax)
+  inferredInputFocus.value = false
+  showInferredConfirm.value = true
+  // 弹层入场后再 focus，避免小程序弹层未挂载时 focus 无效
+  setTimeout(() => {
+    if (showInferredConfirm.value)
+      inferredInputFocus.value = true
+  }, 280)
+}
+
+function closeInferredConfirm() {
+  if (inferredSaving.value)
+    return
+  inferredInputFocus.value = false
+  showInferredConfirm.value = false
+}
+
+/** digit 输入统一成字符串，避免小程序事件值类型漂移 */
+function onInferredEditInput(e: { detail?: { value?: string } }) {
+  inferredEditText.value = String(e.detail?.value ?? '')
+}
+
+/**
+ * 用户确认后把（可改的）申报应发写入后端，供后续月 prior 使用
+ * @note 分位平台无法唯一反推，故以用户确认为准
+ */
+async function submitConfirmedInferred() {
+  const row = record.value
+  const v = verify.value
+  if (!row || !v?.reportBias || inferredSaving.value)
+    return
+  const amount = Math.round(Number(inferredEditText.value) * 100) / 100
+  if (!Number.isFinite(amount) || amount < 0) {
+    uni.showToast({ title: '请输入有效申报应发', icon: 'none' })
+    return
+  }
+  if (Math.abs(amount - row.preTaxMonthly) <= 0.01) {
+    uni.showToast({ title: '与工资条应发相同，无需按申报继续', icon: 'none' })
+    return
+  }
+  const reportBias = amount < row.preTaxMonthly - 0.01 ? 'under' : 'over'
+  inferredSaving.value = true
+  try {
+    const updated = await salaryHistoryStore.upsertByPayPeriod({
+      id: row.id,
+      payPeriod: row.payPeriod,
+      preTaxMonthly: row.preTaxMonthly,
+      ssPersonalAmount: row.ssPersonalAmount,
+      hfPersonalAmount: row.hfPersonalAmount,
+      otherDeductionAmount: row.otherDeductionAmount,
+      specialDeductionMonthly: row.specialDeductionMonthly,
+      personalIncomeTax: row.personalIncomeTax,
+      postTaxMonthly: row.postTaxMonthly,
+      inferredPreTax: amount,
+      reportBias,
+      useInferredForCumulative: true,
+      persistInferred: true,
+    })
+    showInferredConfirm.value = false
+    inferredInputFocus.value = false
+    // 以详情接口为准重拉 item + relatedVerifyList，避免仅信 upsert 回包漏字段
+    historyId.value = updated.id
+    await fetchDetail({ silent: true })
+    uni.showToast({ title: '已按申报口径', icon: 'success' })
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '保存失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
+  finally {
+    inferredSaving.value = false
+  }
+}
+
+/** 改回按工资条应发累计；保留反推值便于再次确认 */
+async function revertUseInferred() {
+  const row = record.value
+  if (!row || inferredSaving.value)
+    return
+  inferredSaving.value = true
+  try {
+    await salaryHistoryStore.upsertByPayPeriod({
+      id: row.id,
+      payPeriod: row.payPeriod,
+      preTaxMonthly: row.preTaxMonthly,
+      ssPersonalAmount: row.ssPersonalAmount,
+      hfPersonalAmount: row.hfPersonalAmount,
+      otherDeductionAmount: row.otherDeductionAmount,
+      specialDeductionMonthly: row.specialDeductionMonthly,
+      personalIncomeTax: row.personalIncomeTax,
+      postTaxMonthly: row.postTaxMonthly,
+      inferredPreTax: row.inferredPreTax,
+      reportBias: row.reportBias,
+      useInferredForCumulative: false,
+      persistInferred: true,
+    })
+    await fetchDetail({ silent: true })
+    uni.showToast({ title: '已改回工资条口径', icon: 'none' })
+  }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : '保存失败'
+    uni.showToast({ title: msg, icon: 'none' })
+  }
+  finally {
+    inferredSaving.value = false
+  }
+}
 
 /** 顶部卡：一致 / 存在差异（优先展示实发差异，否则个税差异） */
 const summaryMatch = computed(() => verify.value?.overallMatch ?? false)
@@ -329,16 +524,71 @@ function fmtDiff(diff: number) {
           </view>
         </view>
 
-        <wd-button
-          v-if="!summaryMatch"
-          type="primary"
-          block
-          :round="true"
-          custom-class="mt-28rpx"
-          @click="goReVerify"
-        >
-          重新核对
-        </wd-button>
+        <!--
+          操作轨：Agency — 两个并列选择，主路径在上；
+          按压缩放走全局 pressable，避免等 click 才有反馈
+        -->
+        <view v-if="showActionRail" class="action-rail mt-28rpx">
+          <view v-if="canRevertInferred" class="action-rail__status">
+            <view class="action-rail__status-main">
+              <view class="action-rail__status-icon i-carbon-checkmark-filled" />
+              <view class="action-rail__status-copy">
+                <text class="action-rail__status-title">
+                  已按申报累计
+                </text>
+                <text v-if="record.inferredPreTax != null" class="action-rail__status-sub">
+                  ¥{{ fmt(record.inferredPreTax) }}
+                </text>
+              </view>
+            </view>
+            <view
+              class="action-rail__status-revert pressable"
+              hover-class="pressable-fade--pressed"
+              :hover-stay-time="60"
+              :class="{ 'is-disabled': inferredSaving }"
+              @click="revertUseInferred"
+            >
+              改回
+            </view>
+          </view>
+
+          <view
+            v-if="canConfirmInferred"
+            class="action-choice action-choice--primary pressable"
+            hover-class="pressable--pressed"
+            :hover-stay-time="70"
+            :class="{ 'is-disabled': inferredSaving }"
+            @click="openInferredConfirm"
+          >
+            <view class="action-choice__body">
+              <text class="action-choice__title">
+                按申报继续
+              </text>
+              <text class="action-choice__sub">
+                {{ confirmActionSub }}
+              </text>
+            </view>
+            <view class="action-choice__chevron i-carbon-chevron-right" />
+          </view>
+
+          <view
+            class="action-choice pressable"
+            :class="canConfirmInferred || canRevertInferred ? 'action-choice--secondary' : 'action-choice--solo'"
+            hover-class="pressable--pressed"
+            :hover-stay-time="70"
+            @click="goReVerify"
+          >
+            <view class="action-choice__body">
+              <text class="action-choice__title">
+                修改工资条
+              </text>
+              <text class="action-choice__sub">
+                {{ reverifyActionSub }}
+              </text>
+            </view>
+            <view class="action-choice__chevron i-carbon-chevron-right" />
+          </view>
+        </view>
       </view>
 
       <!-- 第一层：结论 + 列表对照（软卡片行，去掉硬边表格） -->
@@ -352,7 +602,7 @@ function fmtDiff(diff: number) {
           </text>
         </view>
 
-        <view class="mb-16rpx text-26rpx text-#666">
+        <view class="verdict-line mb-16rpx">
           {{ verdictSummary }}
         </view>
 
@@ -552,6 +802,100 @@ function fmtDiff(diff: number) {
         返回全部记录
       </view>
     </view>
+
+    <!--
+      按申报继续：二次确认（Apple alert + 可编辑金额）
+      职责：对照工资条 / 申报应发，主路径明确提交，取消易达且可点遮罩关闭
+    -->
+    <wd-popup
+      v-model="showInferredConfirm"
+      custom-class="rounded-28rpx"
+      :close-on-click-modal="!inferredSaving"
+      :z-index="popupZIndex"
+      root-portal
+      lock-scroll
+    >
+      <view class="inferred-alert" :class="{ 'is-saving': inferredSaving }">
+        <text class="inferred-alert__title">
+          确认申报应发
+        </text>
+        <text class="inferred-alert__message">
+          可按个税 App「收入」改准；确认后后续月份按此累计
+        </text>
+
+        <view class="inferred-alert__card">
+          <view class="inferred-alert__row">
+            <text class="inferred-alert__row-label">
+              工资条应发
+            </text>
+            <text class="inferred-alert__row-value">
+              ¥{{ inferredConfirmSlipText }}
+            </text>
+          </view>
+
+          <!-- 独立白底输入槽：与只读行对比，明确可改 -->
+          <view class="inferred-alert__field" :class="{ 'is-disabled': inferredSaving }">
+            <view class="inferred-alert__field-head">
+              <text class="inferred-alert__field-label">
+                申报应发
+              </text>
+              <view class="inferred-alert__field-hint">
+                <view class="inferred-alert__field-hint-icon i-carbon-edit" />
+                <text class="inferred-alert__field-hint-text">
+                  点按修改
+                </text>
+              </view>
+            </view>
+            <view class="inferred-alert__field-body">
+              <text class="inferred-alert__currency">
+                ¥
+              </text>
+              <input
+                class="inferred-alert__input"
+                type="digit"
+                :value="inferredEditText"
+                :disabled="inferredSaving"
+                :focus="inferredInputFocus"
+                :adjust-position="true"
+                :cursor-spacing="24"
+                placeholder="输入申报应发"
+                placeholder-class="inferred-alert__placeholder"
+                @input="onInferredEditInput"
+                @blur="inferredInputFocus = false"
+              >
+            </view>
+          </view>
+          <text v-if="inferredConfirmDeltaHint" class="inferred-alert__delta">
+            {{ inferredConfirmDeltaHint }}
+          </text>
+        </view>
+
+        <view
+          class="inferred-alert__primary pressable"
+          :class="{ 'is-disabled': inferredSaving }"
+          hover-class="pressable--pressed"
+          :hover-start-time="0"
+          :hover-stay-time="80"
+          @click="submitConfirmedInferred"
+        >
+          <text class="inferred-alert__primary-text">
+            {{ inferredSaving ? '保存中…' : '按申报继续' }}
+          </text>
+        </view>
+        <view
+          class="inferred-alert__cancel pressable"
+          :class="{ 'is-disabled': inferredSaving }"
+          hover-class="pressable-fade--pressed"
+          :hover-start-time="0"
+          :hover-stay-time="80"
+          @click="closeInferredConfirm"
+        >
+          <text class="inferred-alert__cancel-text">
+            取消
+          </text>
+        </view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -627,24 +971,371 @@ function fmtDiff(diff: number) {
 }
 
 .summary-card__hint {
-  padding: 16rpx 20rpx;
+  padding: 12rpx 16rpx;
   border-radius: 12rpx;
-  background: var(--wot-warning-surface);
+  background: #f5f6f8;
 }
 
 .summary-card__hint-text {
   display: block;
-  font-size: 24rpx;
-  color: var(--wot-warning-main);
-  line-height: 1.5;
+  font-size: 22rpx;
+  color: #8a9199;
+  line-height: 1.45;
 }
 
 .summary-card__hint-cta {
   display: inline-flex;
   align-items: center;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 600;
   color: var(--wot-primary-6);
+}
+
+.verdict-line {
+  font-size: 24rpx;
+  color: #8a9199;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* 结论卡操作轨：双路径选择，主次分层，按压走全局 pressable */
+.action-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.action-rail__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 16rpx;
+  background: var(--wot-success-surface);
+}
+
+.action-rail__status-main {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-width: 0;
+  flex: 1;
+}
+
+.action-rail__status-icon {
+  flex-shrink: 0;
+  width: 32rpx;
+  height: 32rpx;
+  color: var(--wot-success-main);
+}
+
+.action-rail__status-copy {
+  min-width: 0;
+}
+
+.action-rail__status-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--wot-success-main);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.action-rail__status-sub {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #5c6670;
+  line-height: 1.35;
+}
+
+.action-rail__status-revert {
+  flex-shrink: 0;
+  padding: 8rpx 4rpx 8rpx 12rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: var(--wot-primary-6);
+}
+
+.action-choice {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f5f6f8;
+}
+
+.action-choice--primary {
+  background: var(--wot-primary-1);
+  border: 1rpx solid var(--wot-primary-2);
+}
+
+.action-choice--secondary {
+  background: #f5f6f8;
+}
+
+.action-choice--solo {
+  background: var(--wot-primary-1);
+  border: 1rpx solid var(--wot-primary-2);
+}
+
+.action-choice__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-choice__title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
+.action-choice--primary .action-choice__title,
+.action-choice--solo .action-choice__title {
+  color: var(--wot-primary-6);
+}
+
+.action-choice__sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #8a9199;
+  line-height: 1.4;
+}
+
+.action-choice__chevron {
+  flex-shrink: 0;
+  width: 28rpx;
+  height: 28rpx;
+  color: #c0c4cc;
+}
+
+.action-choice--primary .action-choice__chevron,
+.action-choice--solo .action-choice__chevron {
+  color: var(--wot-primary-6);
+  opacity: 0.55;
+}
+
+.action-choice.is-disabled,
+.action-rail__status-revert.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/*
+ * 二次确认：iOS alert 结构 + 可编辑金额卡
+ * 主按钮实心底、取消纯文字；按压缩放走全局 pressable，按下即时反馈
+ */
+.inferred-alert {
+  width: 622rpx;
+  padding: 40rpx 36rpx 20rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow:
+    0 8rpx 40rpx rgba(15, 23, 42, 0.12),
+    0 1rpx 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.inferred-alert__title {
+  display: block;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #111;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.inferred-alert__message {
+  display: block;
+  margin-top: 12rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #8a9199;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+}
+
+.inferred-alert__card {
+  margin-top: 28rpx;
+  padding: 8rpx 16rpx 16rpx;
+  border-radius: 20rpx;
+  background: #f5f6f8;
+}
+
+.inferred-alert__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 72rpx;
+  padding: 0 12rpx;
+}
+
+.inferred-alert__row-label {
+  font-size: 24rpx;
+  color: #8a9199;
+  line-height: 1.3;
+}
+
+.inferred-alert__row-value {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: #333;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 白底描边输入槽：与上方只读行形成「可点可改」对比 */
+.inferred-alert__field {
+  margin-top: 8rpx;
+  padding: 18rpx 20rpx 16rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  border: 2rpx solid var(--wot-primary-4);
+  box-shadow: 0 0 0 6rpx var(--wot-primary-1);
+}
+
+.inferred-alert__field.is-disabled {
+  opacity: 0.55;
+  border-color: #d8dce2;
+  box-shadow: none;
+}
+
+.inferred-alert__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.inferred-alert__field-label {
+  font-size: 22rpx;
+  font-weight: 500;
+  color: var(--wot-primary-7);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.inferred-alert__field-hint {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.inferred-alert__field-hint-icon {
+  width: 24rpx;
+  height: 24rpx;
+  color: var(--wot-primary-6);
+}
+
+.inferred-alert__field-hint-text {
+  font-size: 22rpx;
+  color: var(--wot-primary-6);
+  line-height: 1.3;
+}
+
+.inferred-alert__field-body {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 10rpx;
+  min-height: 72rpx;
+  padding-bottom: 4rpx;
+  border-bottom: 2rpx solid rgba(22, 136, 255, 0.28);
+}
+
+.inferred-alert__currency {
+  flex-shrink: 0;
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #111;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.inferred-alert__input {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 44rpx;
+  font-weight: 600;
+  color: #111;
+  letter-spacing: -0.03em;
+  line-height: 72rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.inferred-alert__placeholder {
+  color: #c5c9ce;
+  font-weight: 500;
+}
+
+.inferred-alert__delta {
+  display: block;
+  margin-top: 12rpx;
+  padding: 0 12rpx;
+  text-align: left;
+  font-size: 22rpx;
+  color: var(--wot-warning-main);
+  line-height: 1.35;
+}
+
+.inferred-alert__primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 32rpx;
+  min-height: 88rpx;
+  border-radius: 20rpx;
+  background: var(--wot-primary-6);
+}
+
+.inferred-alert__primary-text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.inferred-alert__cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80rpx;
+  margin-top: 4rpx;
+}
+
+.inferred-alert__cancel-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--wot-primary-6);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.inferred-alert__primary.is-disabled,
+.inferred-alert__cancel.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.inferred-alert.is-saving .inferred-alert__input {
+  opacity: 0.55;
 }
 
 .compare-list__head,

@@ -15,3 +15,14 @@ export enum YearEndTaxModeEnum {
   /** 并入综合所得 */
   MERGE = "merge"
 }
+
+/**
+ * 核对反推：申报应发相对工资条应发的偏差方向（用户确认后落库）
+ * under：少报；over：多报
+ */
+export enum SalaryReportBiasEnum {
+  /** 公司申报应发低于工资条（少报） */
+  UNDER = "under",
+  /** 公司申报应发高于工资条（多报） */
+  OVER = "over"
+}

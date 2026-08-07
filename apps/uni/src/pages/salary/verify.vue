@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 /**
  * 月薪核对页
- * 主流程：选图识别 → 映射 6 字段 → 选所属月 → 写入/按 id 更新 → 跳转核对详情
+ * 主流程：选图识别 → 映射表单字段 → 选所属月 → 写入/按 id 更新 → 跳转核对详情
  * 「重新核对」经 query 带 id 回填；必填税前、个税、税后（wd-form schema 校验 >0）
- * 拉新：捕获 from；未同意协议则门禁，同意后回本页；分享落地轻提示
+ * 其他扣款（缺勤等）可选，不进个税累计；拉新捕获 from / 隐私门禁
  */
 import type { FormSchema } from '@wot-ui/ui'
 import type { FormExpose } from '@wot-ui/ui/components/wd-form/types'
@@ -18,7 +18,7 @@ import { hasPrivacyAgreed, PRIVACY_GATE_PATH, setPrivacyReturnPath } from '@/con
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { captureChannelFromQuery, normalizeChannelFrom } from '@/utils/channelFrom'
 import { formatPayPeriod, formatPayPeriodLabel, payPeriodToTimestamp, previousPayPeriod } from '@/utils/payPeriod'
-import { mapLineItemsToPayslipFields, PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
+import { mapLineItemsToPayslipFields, PAYSLIP_FIELD_LABELS, PAYSLIP_FIELD_PLACEHOLDERS } from '@/utils/salarySlipFieldMap'
 import { parseVerifyReentryQuery } from '@/utils/verifyReentry'
 
 defineOptions({ name: 'SalaryVerify' })
@@ -76,6 +76,7 @@ const form = reactive<PayslipMappedFields>({
   preTaxMonthly: 0,
   ssPersonalAmount: 0,
   hfPersonalAmount: 0,
+  otherDeductionAmount: 0,
   specialDeductionMonthly: 0,
   personalIncomeTax: 0,
   postTaxMonthly: 0,
@@ -138,6 +139,7 @@ const fieldKeys: PayslipFieldKey[] = [
   'preTaxMonthly',
   'ssPersonalAmount',
   'hfPersonalAmount',
+  'otherDeductionAmount',
   'specialDeductionMonthly',
   'personalIncomeTax',
   'postTaxMonthly',
@@ -244,6 +246,7 @@ async function submitVerify() {
         preTaxMonthly: form.preTaxMonthly,
         ssPersonalAmount: form.ssPersonalAmount,
         hfPersonalAmount: form.hfPersonalAmount,
+        otherDeductionAmount: form.otherDeductionAmount,
         specialDeductionMonthly: form.specialDeductionMonthly,
         personalIncomeTax: form.personalIncomeTax,
         postTaxMonthly: form.postTaxMonthly,
@@ -442,7 +445,7 @@ function dismissShareLandingTip() {
               type="digit"
               align-right
               :model-value="fieldDisplayValue(key)"
-              placeholder="0"
+              :placeholder="PAYSLIP_FIELD_PLACEHOLDERS[key]"
               @update:model-value="onFieldInput(key, $event)"
             />
           </wd-form-item>

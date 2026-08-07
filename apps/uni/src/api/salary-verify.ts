@@ -24,6 +24,10 @@ export interface SalaryVerifyHistoryItem {
   preTaxMonthly: number
   ssPersonalAmount: number
   hfPersonalAmount: number
+  /**
+   * 其他扣款（缺勤等）：只影响实发，不进累计预扣
+   */
+  otherDeductionAmount: number
   specialDeductionMonthly: number
   /** verify 必有；calc 侧一般为 0 */
   personalIncomeTax: number
@@ -32,6 +36,12 @@ export interface SalaryVerifyHistoryItem {
   yearEndBonus: number
   /** verify 必有；calc 侧一般为 0 */
   postTaxMonthly: number
+  /** 用户确认后的反推申报应发；未确认为 null */
+  inferredPreTax?: number | null
+  /** under 少报 / over 多报 */
+  reportBias?: 'under' | 'over' | null
+  /** 是否用反推应发参与后续累计 */
+  useInferredForCumulative?: boolean
   updateTime: string
 }
 
@@ -54,6 +64,8 @@ export interface UpsertSalaryVerifyHistoryPayload {
   ssPersonalAmount: number
   hfPersonalAmount: number
   specialDeductionMonthly: number
+  /** 其他扣款（缺勤等，可选，默认 0） */
+  otherDeductionAmount?: number
   /** verify 必填 */
   personalIncomeTax?: number
   /** calc 必填 */
@@ -61,6 +73,10 @@ export interface UpsertSalaryVerifyHistoryPayload {
   yearEndBonus?: number
   /** verify 必填 */
   postTaxMonthly?: number
+  /** 反推申报应发；传 null 清空；不传则服务端保留原值 */
+  inferredPreTax?: number | null
+  reportBias?: 'under' | 'over' | null
+  useInferredForCumulative?: boolean
 }
 
 const HISTORY_BASE = '/salary-slip/history'

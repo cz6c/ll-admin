@@ -1,6 +1,6 @@
 /**
  * 薪资测算与工资条累计预扣核对
- * 职责：年薪测算（calcSalary）、累计预扣明细、工资条个税/税后核对
+ * 职责：年薪测算（calcSalary）、累计预扣明细、工资条个税/税后核对、个税差异时反推申报应发
  * 适用：测算页、核对页、历史摘要与详情
  *
  * 流程概览：按用户填写的社保/公积金个缴额 → 算五险一金个人月缴额 → 按累计预扣法算 12 个月个税与税后
@@ -279,12 +279,17 @@ const VERIFY_TOLERANCE = 0.01
 
 /** 单月工资快照（用于累计预扣，不含工资条个税/税后） */
 export interface PayslipMonthSnapshot {
-  /** 税前应发月薪 */
+  /** 税前应发月薪（展示口径；计税收入见 otherDeductionAmount） */
   preTaxMonthly: number
   /** 个人社保合计 */
   ssPersonalAmount: number
   /** 个人公积金 */
   hfPersonalAmount: number
+  /**
+   * 其他扣款（缺勤等）：从累计收入中扣减，不计入专项扣除
+   * @note 已确认的申报应发快照应置 0（申报收入已是计税口径）
+   */
+  otherDeductionAmount?: number
   /** 专项附加扣除（月） */
   specialDeductionMonthly: number
 }
@@ -344,7 +349,7 @@ const EMPTY_BREAKDOWN: WithholdingBreakdown = {
 
 /**
  * 按可变月薪逐月累计预扣，返回最后一月的完整明细。
- * 公式与 calcSalary / 税法累计预扣一致；免税收入、其他扣除、养老金、捐赠、减免税额按 0。
+ * 累计收入 = Σ(应发 − 其他扣款)；其他扣款不进专项扣除（与公积金/社保分开）。
  */
 export function calcWithholdingBreakdownForMonths(months: PayslipMonthSnapshot[]): WithholdingBreakdown {
   if (!months.length)
@@ -361,7 +366,9 @@ export function calcWithholdingBreakdownForMonths(months: PayslipMonthSnapshot[]
     const fiveInsFundPersonal = round2(
       Math.max(0, m.ssPersonalAmount || 0) + Math.max(0, m.hfPersonalAmount || 0),
     )
-    cumulativeIncome += m.preTaxMonthly
+    const otherDeduction = Math.max(0, m.otherDeductionAmount || 0)
+    // 缺勤等：减计税收入，不是专项附加/公积金类抵扣
+    cumulativeIncome += Math.max(0, m.preTaxMonthly - otherDeduction)
     cumulativeStandardDeduction += 5000
     cumulativeSpecialDeduction += fiveInsFundPersonal
     cumulativeSpecialAdditionalDeduction += m.specialDeductionMonthly || 0
@@ -432,7 +439,12 @@ export function calcCumulativeTaxForMonth(months: PayslipMonthSnapshot[]): {
   )
   return {
     tax: breakdown.currentPeriodTax,
-    postTax: round2(last.preTaxMonthly - fiveInsFundPersonal - breakdown.currentPeriodTax),
+    postTax: round2(
+      last.preTaxMonthly
+      - fiveInsFundPersonal
+      - Math.max(0, last.otherDeductionAmount || 0)
+      - breakdown.currentPeriodTax,
+    ),
     fiveInsFundPersonal,
   }
 }
@@ -447,13 +459,21 @@ export interface PayslipVerifyInput {
   ssPersonalAmount: number
   /** 个人公积金 */
   hfPersonalAmount: number
+  /**
+   * 其他扣款（缺勤等）：从累计收入中扣减，不进专项扣除；实发自洽时一并扣减
+   * @note 勿填进公积金，否则会当专项扣除扭曲个税
+   */
+  otherDeductionAmount: number
   /** 专项附加扣除（月） */
   specialDeductionMonthly: number
   /** 工资条上的个人所得税（与重算值比对） */
   personalIncomeTax: number
-  /** 工资条上的税后工资（与「税前−社保公积金−个税」自洽值比对） */
+  /** 工资条上的税后工资（与「税前−社保公积金−其他扣款−个税」自洽值比对） */
   postTaxMonthly: number
 }
+
+/** 申报应发相对工资条：under 少报 / over 多报 */
+export type SalaryReportBias = 'under' | 'over'
 
 /**
  * 工资条核对结果
@@ -462,7 +482,7 @@ export interface PayslipVerifyInput {
 export interface PayslipVerifyResult {
   /** 按累计预扣法重算的本期个税 */
   expectedTax: number
-  /** 由工资条字段自洽推出的税后应发：税前 − 社保 − 公积金 − 个税 */
+  /** 由工资条字段自洽推出的税后应发：税前 − 社保 − 公积金 − 其他扣款 − 个税 */
   expectedPostTax: number
   /** 个税差异 = 工资条个税 − expectedTax */
   taxDiff: number
@@ -481,43 +501,196 @@ export interface PayslipVerifyResult {
   calcMode: 'history' | 'ideal'
   /** ideal 模式下缺失的前序月份（1..M-1） */
   missingPriorMonths?: number[]
+  /**
+   * 个税不一致且 history 模式下反推的申报口径应发；失败或未反推为 null
+   * @note 仅供 UI；落库须用户确认 useInferredForCumulative
+   */
+  inferredPreTax: number | null
+  /** 相对工资条应发的少报/多报；无反推为 null */
+  reportBias: SalaryReportBias | null
+  /** 工资条应发 − 反推应发；正数表示条上更高（少报额度） */
+  inferredDelta: number | null
 }
 
 /** 核对输入 → 累计预扣用的月份快照（去掉工资条个税/税后） */
-function toMonthSnapshot(input: Pick<PayslipVerifyInput, 'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'specialDeductionMonthly'>): PayslipMonthSnapshot {
+function toMonthSnapshot(input: Pick<
+  PayslipVerifyInput,
+  'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'otherDeductionAmount' | 'specialDeductionMonthly'
+>): PayslipMonthSnapshot {
   return {
     preTaxMonthly: input.preTaxMonthly,
     ssPersonalAmount: input.ssPersonalAmount,
     hfPersonalAmount: input.hfPersonalAmount,
+    otherDeductionAmount: input.otherDeductionAmount,
     specialDeductionMonthly: input.specialDeductionMonthly,
   }
 }
 
-/** 税后应发：税前 − 个人社保 − 个人公积金 − 个人所得税（工资条自洽） */
+/** 税后应发：税前 − 社保 − 公积金 − 其他扣款 − 个税 */
 function expectedPostTaxFromSlip(input: PayslipVerifyInput): number {
   return round2(
     input.preTaxMonthly
     - input.ssPersonalAmount
     - input.hfPersonalAmount
+    - Math.max(0, input.otherDeductionAmount || 0)
     - input.personalIncomeTax,
   )
 }
 
 /**
+ * 在固定 prior 与本月扣除项下，求使本期应扣 ≈ targetTax 的本月税前应发（申报计税收入口径）。
+ * 税率平台多解时取与 slipPreTax 最接近者；与工资条几乎相等则视为非应发口径问题，返回 null。
+ *
+ * @note 反推搜索的是计税收入本身，当月 otherDeduction 不参与（由调用方在 prior 快照中扣减）。
+ *       缺勤等填「其他扣款」会从累计收入扣减，勿填进公积金专项。
+ */
+export function inferPreTaxFromTax(params: {
+  priorMonths: PayslipMonthSnapshot[]
+  currentDeductions: Omit<PayslipMonthSnapshot, 'preTaxMonthly'>
+  targetTax: number
+  slipPreTax: number
+}): { inferredPreTax: number, reportBias: SalaryReportBias } | null {
+  const { priorMonths, currentDeductions, targetTax, slipPreTax } = params
+  const tol = VERIFY_TOLERANCE
+
+  const taxAt = (preTax: number): number => {
+    const months: PayslipMonthSnapshot[] = [
+      ...priorMonths,
+      {
+        preTaxMonthly: preTax,
+        ssPersonalAmount: currentDeductions.ssPersonalAmount,
+        hfPersonalAmount: currentDeductions.hfPersonalAmount,
+        specialDeductionMonthly: currentDeductions.specialDeductionMonthly,
+      },
+    ]
+    return calcWithholdingBreakdownForMonths(months).currentPeriodTax
+  }
+
+  let hi = Math.max(Math.abs(slipPreTax) * 2, 10_000)
+  while (taxAt(hi) < targetTax - tol && hi < 5_000_000)
+    hi *= 2
+
+  if (taxAt(hi) < targetTax - tol)
+    return null
+
+  let left = 0
+  let right = hi
+  let found: number | null = null
+  for (let i = 0; i < 80; i++) {
+    const mid = (left + right) / 2
+    const t = taxAt(mid)
+    if (Math.abs(t - targetTax) <= tol) {
+      found = mid
+      break
+    }
+    if (t < targetTax)
+      left = mid
+    else
+      right = mid
+  }
+
+  if (found == null) {
+    for (const candidate of [0, hi, slipPreTax, left, right]) {
+      if (Math.abs(taxAt(candidate) - targetTax) <= tol) {
+        found = candidate
+        break
+      }
+    }
+  }
+  if (found == null)
+    return null
+
+  // 平台区间：向两侧扩到仍满足税额容差，再取距工资条应发最近的 round2 点
+  let pLo = found
+  let pHi = found
+  let loBound = 0
+  let hiBound = found
+  for (let i = 0; i < 40; i++) {
+    const mid = (loBound + hiBound) / 2
+    if (Math.abs(taxAt(mid) - targetTax) <= tol) {
+      pLo = mid
+      hiBound = mid
+    }
+    else {
+      loBound = mid
+    }
+  }
+  loBound = found
+  hiBound = hi
+  for (let i = 0; i < 40; i++) {
+    const mid = (loBound + hiBound) / 2
+    if (Math.abs(taxAt(mid) - targetTax) <= tol) {
+      pHi = mid
+      loBound = mid
+    }
+    else {
+      hiBound = mid
+    }
+  }
+
+  let best = round2(found)
+  let bestDist = Math.abs(best - slipPreTax)
+  for (let i = 0; i <= 50; i++) {
+    const x = round2(pLo + (pHi - pLo) * (i / 50))
+    if (Math.abs(taxAt(x) - targetTax) > tol)
+      continue
+    const d = Math.abs(x - slipPreTax)
+    if (d < bestDist) {
+      best = x
+      bestDist = d
+    }
+  }
+
+  if (Math.abs(best - slipPreTax) <= tol)
+    return null
+  if (Math.abs(taxAt(best) - targetTax) > tol)
+    return null
+
+  const reportBias: SalaryReportBias = best < slipPreTax - tol ? 'under' : 'over'
+  return { inferredPreTax: best, reportBias }
+}
+
+/**
  * 组装核对结果：用重算个税与工资条字段算差异，再按 VERIFY_TOLERANCE 判定是否匹配
  * @param expectedTax 累计预扣得到的本期个税
+ * @param priorMonths history 模式下的前序快照；用于个税差异时反推申报应发
  */
 function buildVerifyResult(
   input: PayslipVerifyInput,
   expectedTax: number,
   calcMode: 'history' | 'ideal',
   missingPriorMonths?: number[],
+  priorMonths: PayslipMonthSnapshot[] = [],
 ): PayslipVerifyResult {
   const expectedPostTax = expectedPostTaxFromSlip(input)
   const taxDiff = round2(input.personalIncomeTax - expectedTax)
   const postTaxDiff = round2(input.postTaxMonthly - expectedPostTax)
   const taxMatch = Math.abs(taxDiff) <= VERIFY_TOLERANCE
   const postTaxMatch = Math.abs(postTaxDiff) <= VERIFY_TOLERANCE
+
+  let inferredPreTax: number | null = null
+  let reportBias: SalaryReportBias | null = null
+  let inferredDelta: number | null = null
+
+  // 仅完整历史链反推：ideal/缺月时反推不可靠，避免误导用户确认
+  if (!taxMatch && calcMode === 'history') {
+    const inferred = inferPreTaxFromTax({
+      priorMonths,
+      currentDeductions: {
+        ssPersonalAmount: input.ssPersonalAmount,
+        hfPersonalAmount: input.hfPersonalAmount,
+        specialDeductionMonthly: input.specialDeductionMonthly,
+      },
+      targetTax: input.personalIncomeTax,
+      slipPreTax: input.preTaxMonthly,
+    })
+    if (inferred) {
+      inferredPreTax = inferred.inferredPreTax
+      reportBias = inferred.reportBias
+      inferredDelta = round2(input.preTaxMonthly - inferred.inferredPreTax)
+    }
+  }
+
   return {
     expectedTax,
     expectedPostTax,
@@ -528,6 +701,9 @@ function buildVerifyResult(
     overallMatch: taxMatch && postTaxMatch,
     calcMode,
     missingPriorMonths,
+    inferredPreTax,
+    reportBias,
+    inferredDelta,
   }
 }
 
@@ -591,11 +767,15 @@ export function verifyPayslipTax(
 ): PayslipVerifyResult {
   const resolved = resolveVerifyMode(input, options)
   const breakdown = calcWithholdingBreakdownForMonths(resolved.months)
+  const priorForInfer = resolved.calcMode === 'history'
+    ? (options?.priorMonths ?? [])
+    : []
   return buildVerifyResult(
     input,
     breakdown.currentPeriodTax,
     resolved.calcMode,
     resolved.missingPriorMonths,
+    priorForInfer,
   )
 }
 
@@ -611,12 +791,16 @@ export function verifyPayslipTaxBreakdown(
 ): PayslipVerifyBreakdownResult {
   const resolved = resolveVerifyMode(input, options)
   const breakdown = calcWithholdingBreakdownForMonths(resolved.months)
+  const priorForInfer = resolved.calcMode === 'history'
+    ? (options?.priorMonths ?? [])
+    : []
   return {
     verify: buildVerifyResult(
       input,
       breakdown.currentPeriodTax,
       resolved.calcMode,
       resolved.missingPriorMonths,
+      priorForInfer,
     ),
     breakdown,
   }

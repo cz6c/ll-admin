@@ -1,6 +1,6 @@
 import { BaseEntity } from "@/common/entities/base";
 import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
-import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
+import { SalaryHistoryTypeEnum, SalaryReportBiasEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
 /**
  * 薪资历史表实体（月薪核对 verify + 年薪测算 calc 共表）
@@ -67,6 +67,19 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
   })
   public hfPersonalAmount: string;
 
+  /**
+   * 其他扣款（缺勤等）：只影响实发自洽，不进累计预扣专项扣除
+   */
+  @Column({
+    type: "decimal",
+    name: "other_deduction_amount",
+    precision: 12,
+    scale: 2,
+    default: 0,
+    comment: "其他扣款（缺勤等，不含个税抵扣）"
+  })
+  public otherDeductionAmount: string;
+
   @Column({
     type: "decimal",
     name: "special_deduction_monthly",
@@ -116,4 +129,38 @@ export class SalaryVerifyHistoryEntity extends BaseEntity {
     comment: "税后工资"
   })
   public postTaxMonthly: string;
+
+  /**
+   * 用户确认「按申报口径继续核对」后写入的反推应发；未确认为 null
+   * @note 不覆盖 preTaxMonthly；仅参与后续月累计 prior
+   */
+  @Column({
+    type: "decimal",
+    name: "inferred_pre_tax",
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    default: null,
+    comment: "反推申报应发（用户确认后落库）"
+  })
+  public inferredPreTax: string | null;
+
+  @Column({
+    type: "enum",
+    enum: SalaryReportBiasEnum,
+    name: "report_bias",
+    nullable: true,
+    default: null,
+    comment: "申报偏差：under少报/over多报"
+  })
+  public reportBias: SalaryReportBiasEnum | null;
+
+  @Column({
+    type: "tinyint",
+    name: "use_inferred_for_cumulative",
+    width: 1,
+    default: 0,
+    comment: "是否用反推应发参与后续累计预扣"
+  })
+  public useInferredForCumulative: boolean;
 }

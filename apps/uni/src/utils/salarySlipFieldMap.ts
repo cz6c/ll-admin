@@ -1,5 +1,5 @@
 /**
- * OCR 明细 → 月薪核对表单 6 字段映射
+ * OCR 明细 → 月薪核对表单字段映射
  * 职责：按标签正则 + 同义词匹配合计类行，写入 PayslipMappedFields
  * 适用：verify 页识别完成后自动回填
  *
@@ -9,12 +9,20 @@
  * 3. 同字段多行后写覆盖先写（后出现的合计更贴近「最终应发」）
  * 4. 先 totalPatterns，再 synonymPatterns；不做编辑距离
  * 5. unmappedItems 返回全量 clone，供用户手动指派未命中项
+ * 6. 其他扣款（缺勤等）不映射进公积金；专项附加与个税行需排除
  */
 import type { LineItem } from '@/types/salary-slip'
 import { cloneDeep } from 'lodash-es'
 
-/** 核对表单 6 个金额字段 key */
-export type PayslipFieldKey = 'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'specialDeductionMonthly' | 'personalIncomeTax' | 'postTaxMonthly'
+/** 核对表单金额字段 key（含不进个税累计的其他扣款） */
+export type PayslipFieldKey
+  = | 'preTaxMonthly'
+    | 'ssPersonalAmount'
+    | 'hfPersonalAmount'
+    | 'otherDeductionAmount'
+    | 'specialDeductionMonthly'
+    | 'personalIncomeTax'
+    | 'postTaxMonthly'
 
 /** 映射后的金额字段（单位元，两位小数） */
 export interface PayslipMappedFields {
@@ -24,6 +32,11 @@ export interface PayslipMappedFields {
   ssPersonalAmount: number
   /** 个人公积金 */
   hfPersonalAmount: number
+  /**
+   * 其他扣款（缺勤等）：从累计收入扣减，不进专项扣除；实发自洽一并扣减
+   * @note 勿把该项填进公积金，否则会扭曲个税反推
+   */
+  otherDeductionAmount: number
   /** 专项附加扣除（月） */
   specialDeductionMonthly: number
   /** 个人所得税 */
@@ -67,6 +80,16 @@ const FIELD_RULES: FieldRule[] = [
       /(?:公积金|一金).*个人/,
     ],
     synonymPatterns: [/^(?!.*(?:公司|单位|企业|基数|补贴)).*公积金合计/, /个人公积金合计/],
+  },
+  {
+    key: 'otherDeductionAmount',
+    // 缺勤/假勤等非个税专项扣款；排除公积金与个税行
+    totalPatterns: [
+      /^(?!.*(?:公积金|一金|个税|所得税)).*(?:缺勤|事假|病假|旷工|考勤).*/,
+      /其他扣款/,
+      /应扣合计$/,
+    ],
+    synonymPatterns: [/缺勤扣款/, /事假扣款/, /病假扣款/, /考勤扣款/],
   },
   {
     key: 'specialDeductionMonthly',
@@ -117,6 +140,7 @@ function emptyFields(): PayslipMappedFields {
     preTaxMonthly: 0,
     ssPersonalAmount: 0,
     hfPersonalAmount: 0,
+    otherDeductionAmount: 0,
     specialDeductionMonthly: 0,
     personalIncomeTax: 0,
     postTaxMonthly: 0,
@@ -124,7 +148,7 @@ function emptyFields(): PayslipMappedFields {
 }
 
 /**
- * 将 OCR 识别明细映射到月薪核对 6 字段
+ * 将 OCR 识别明细映射到月薪核对表单字段
  * @returns fields 自动回填值；unmappedItems 始终为入参深拷贝，便于手动指派
  */
 export function mapLineItemsToPayslipFields(lineItems: LineItem[]): MapLineItemsResult {
@@ -155,7 +179,19 @@ export const PAYSLIP_FIELD_LABELS: Record<PayslipFieldKey, string> = {
   preTaxMonthly: '税前工资',
   ssPersonalAmount: '个人社保',
   hfPersonalAmount: '个人公积金',
+  otherDeductionAmount: '其他扣款',
   specialDeductionMonthly: '专项附加扣除',
   personalIncomeTax: '个人所得税',
   postTaxMonthly: '税后工资',
+}
+
+/** 表单输入框占位；其他扣款需说明不含个税抵扣，避免再误填进公积金 */
+export const PAYSLIP_FIELD_PLACEHOLDERS: Record<PayslipFieldKey, string> = {
+  preTaxMonthly: '0',
+  ssPersonalAmount: '选填',
+  hfPersonalAmount: '选填',
+  otherDeductionAmount: '非专项抵扣，如缺勤等',
+  specialDeductionMonthly: '选填',
+  personalIncomeTax: '0',
+  postTaxMonthly: '0',
 }

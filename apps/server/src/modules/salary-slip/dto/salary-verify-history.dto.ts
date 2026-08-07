@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from "class-validator";
-import { SalaryHistoryTypeEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
+import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateIf } from "class-validator";
+import { SalaryHistoryTypeEnum, SalaryReportBiasEnum, YearEndTaxModeEnum } from "../enums/salary-history.enum";
 
 /** 与枚举对齐的类型别名，便于 DTO/Service 引用 */
 export type SalaryHistoryType = SalaryHistoryTypeEnum;
 export type YearEndTaxMode = YearEndTaxModeEnum;
+export type SalaryReportBias = SalaryReportBiasEnum;
 
 /**
  * 新增或更新薪资历史
@@ -57,6 +58,15 @@ export class UpsertSalaryVerifyHistoryDto {
   @IsNumber()
   hfPersonalAmount?: number;
 
+  @ApiPropertyOptional({
+    description: "其他扣款（缺勤等，不含个税抵扣；不进累计预扣）",
+    example: 200
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsNumber()
+  otherDeductionAmount?: number;
+
   @ApiPropertyOptional({ description: "专项附加扣除", example: 2000 })
   @Type(() => Number)
   @IsOptional()
@@ -89,6 +99,33 @@ export class UpsertSalaryVerifyHistoryDto {
   @Type(() => Number)
   @IsNumber()
   yearEndBonus?: number;
+
+  /**
+   * 反推申报应发；传 null 清空。未传则更新时保留原值。
+   * @note 仅用户确认「按申报口径」后应由客户端写入
+   */
+  @ApiPropertyOptional({ description: "反推申报应发；null 清空", example: 12000, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsNumber()
+  inferredPreTax?: number | null;
+
+  @ApiPropertyOptional({
+    description: "申报偏差 under/over；null 清空",
+    enum: SalaryReportBiasEnum,
+    nullable: true
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsEnum(SalaryReportBiasEnum)
+  reportBias?: SalaryReportBias | null;
+
+  @ApiPropertyOptional({ description: "是否用反推应发参与后续累计；未传则更新时保留原值", example: false })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  useInferredForCumulative?: boolean;
 }
 
 /** 历史列表/写入接口返回的单条 */
@@ -111,6 +148,9 @@ export class SalaryVerifyHistoryItemDto {
   @ApiProperty({ description: "个人公积金", example: 1200 })
   hfPersonalAmount: number;
 
+  @ApiProperty({ description: "其他扣款（缺勤等，不含个税抵扣）", example: 200 })
+  otherDeductionAmount: number;
+
   @ApiProperty({ description: "专项附加扣除", example: 2000 })
   specialDeductionMonthly: number;
 
@@ -130,6 +170,19 @@ export class SalaryVerifyHistoryItemDto {
 
   @ApiProperty({ description: "税后工资", example: 12279.55 })
   postTaxMonthly: number;
+
+  @ApiPropertyOptional({ description: "反推申报应发（确认后有值）", example: 12000, nullable: true })
+  inferredPreTax: number | null;
+
+  @ApiPropertyOptional({
+    description: "申报偏差 under/over",
+    enum: SalaryReportBiasEnum,
+    nullable: true
+  })
+  reportBias: SalaryReportBias | null;
+
+  @ApiProperty({ description: "是否用反推应发参与后续累计", example: false })
+  useInferredForCumulative: boolean;
 
   @ApiProperty({ description: "更新时间", example: "2026-07-20T08:00:00.000Z" })
   updateTime: Date;

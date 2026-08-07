@@ -105,10 +105,26 @@ export function buildYearVerifyProgress(
   }
   else {
     const dueCell = months.find(cell => cell.month === lastDueMonth)
-    if (dueCell?.status === 'matched')
+    if (dueCell?.status === 'matched') {
       summary = `${lastDueMonth} 月已核 · 无误`
-    else if (dueCell?.status === 'mismatched')
-      summary = `${lastDueMonth} 月已核 · 有差异`
+    }
+    else if (dueCell?.status === 'mismatched') {
+      const dueRecord = byMonth.get(lastDueMonth)
+      if (dueRecord?.useInferredForCumulative) {
+        summary = `${lastDueMonth} 月已核 · 已按申报口径`
+      }
+      else {
+        const bias = dueRecord
+          ? (dueRecord.reportBias ?? computeVerifyForRecord(dueRecord, yearRecords).reportBias)
+          : null
+        if (bias === 'under')
+          summary = `${lastDueMonth} 月已核 · 申报偏低`
+        else if (bias === 'over')
+          summary = `${lastDueMonth} 月已核 · 申报偏高`
+        else
+          summary = `${lastDueMonth} 月已核 · 有差异`
+      }
+    }
     else
       summary = '今年已核齐'
     // 与顶栏「全部记录」区分：只进核对 tab

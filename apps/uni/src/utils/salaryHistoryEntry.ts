@@ -72,9 +72,16 @@ export function buildVerifyHistoryEmphasis(
   item: PayslipVerifyRecord,
   allVerifyRecords: PayslipVerifyRecord[],
 ): { text: string, tone: SalaryHistoryEmphasisTone } {
+  if (item.useInferredForCumulative && item.inferredPreTax != null) {
+    return { text: '已按申报口径', tone: 'success' }
+  }
   const verify = computeVerifyForRecord(item, allVerifyRecords)
   if (verify.overallMatch)
     return { text: '无误', tone: 'success' }
+  if (verify.reportBias === 'under')
+    return { text: '申报偏低', tone: 'warning' }
+  if (verify.reportBias === 'over')
+    return { text: '申报偏高', tone: 'warning' }
   return { text: '有差异', tone: 'warning' }
 }
 

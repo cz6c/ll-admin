@@ -1,6 +1,7 @@
 /**
  * 月薪核对：历史记录 → 累计预扣核对结果的适配层
- * 职责：从 store 记录拼 priorMonths / missingPriorMonths，再调 salaryCalculator 核对
+ * 职责：从 store 记录拼 priorMonths / missingPriorMonths，再调 salaryCalculator 核对；
+ *       已确认沿用反推的月份用申报有效应发进入累计链
  * 适用：历史列表摘要、核对详情页明细
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
@@ -15,14 +16,36 @@ import { listMissingPriorMonths, parsePayPeriod } from '@/utils/payPeriod'
 import { verifyPayslipTax, verifyPayslipTaxBreakdown } from '@/utils/salaryCalculator'
 
 /**
- * 历史记录截取为累计预扣所需的月份快照字段
- * @note 仅含计税输入项，不含工资条上的个税/税后实发
+ * 参与累计预扣的月度应发：用户确认沿用反推时用 inferredPreTax，否则用工资条应发
+ * @note 不得覆盖展示用 preTaxMonthly；仅改 prior 链口径
  */
-export function recordToSnapshot(r: Pick<PayslipVerifyRecord, 'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'specialDeductionMonthly'>): PayslipMonthSnapshot {
+export function effectivePreTaxForCumulative(
+  record: Pick<PayslipVerifyRecord, 'preTaxMonthly' | 'inferredPreTax' | 'useInferredForCumulative'>,
+): number {
+  if (
+    record.useInferredForCumulative
+    && record.inferredPreTax != null
+    && Number.isFinite(record.inferredPreTax)
+  ) {
+    return record.inferredPreTax
+  }
+  return record.preTaxMonthly
+}
+
+/**
+ * 历史记录截取为累计预扣所需的月份快照字段
+ * @note 应发走有效口径；未确认申报时其他扣款从累计收入扣减；已确认申报应发则 other=0（避免二次扣减）
+ */
+export function recordToSnapshot(r: Pick<
+  PayslipVerifyRecord,
+  'preTaxMonthly' | 'ssPersonalAmount' | 'hfPersonalAmount' | 'otherDeductionAmount' | 'specialDeductionMonthly' | 'inferredPreTax' | 'useInferredForCumulative'
+>): PayslipMonthSnapshot {
+  const useInferred = Boolean(r.useInferredForCumulative)
   return {
-    preTaxMonthly: r.preTaxMonthly,
+    preTaxMonthly: effectivePreTaxForCumulative(r),
     ssPersonalAmount: r.ssPersonalAmount,
     hfPersonalAmount: r.hfPersonalAmount,
+    otherDeductionAmount: useInferred ? 0 : (r.otherDeductionAmount || 0),
     specialDeductionMonthly: r.specialDeductionMonthly,
   }
 }
@@ -48,6 +71,7 @@ function recordToVerifyInput(record: PayslipVerifyRecord): PayslipVerifyInput {
     preTaxMonthly: record.preTaxMonthly,
     ssPersonalAmount: record.ssPersonalAmount,
     hfPersonalAmount: record.hfPersonalAmount,
+    otherDeductionAmount: record.otherDeductionAmount,
     specialDeductionMonthly: record.specialDeductionMonthly,
     personalIncomeTax: record.personalIncomeTax,
     postTaxMonthly: record.postTaxMonthly,
@@ -85,8 +109,14 @@ export function computeVerifyBreakdown(
   })
 }
 
-/** 列表/详情用异常摘要：个税/税后差异 + 多扣少扣口语提示 */
+/** 列表/详情用异常摘要：优先申报口径提示，否则个税/税后差异 */
 export function formatVerifyAbnormalSummary(result: PayslipVerifyResult): string {
+  if (result.reportBias === 'under' && result.inferredPreTax != null) {
+    return `申报偏低（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
+  }
+  if (result.reportBias === 'over' && result.inferredPreTax != null) {
+    return `申报偏高（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
+  }
   const parts: string[] = []
   if (!result.taxMatch) {
     const sign = result.taxDiff > 0 ? '+' : ''

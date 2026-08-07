@@ -12,6 +12,9 @@ import {
   upsertSalaryVerifyHistory,
 } from '@/api/salary-verify'
 
+/** 申报偏差：少报 / 多报（与后端 enum 对齐） */
+export type SalaryReportBias = 'under' | 'over'
+
 /**
  * Store 内统一历史行（与接口字段对齐 + id 字符串化）
  */
@@ -22,11 +25,17 @@ export interface SalaryHistoryRecord {
   preTaxMonthly: number
   ssPersonalAmount: number
   hfPersonalAmount: number
+  /** 其他扣款（缺勤等）：只影响实发自洽，不进累计预扣 */
+  otherDeductionAmount: number
   specialDeductionMonthly: number
   personalIncomeTax: number
   yearEndTaxMode: YearEndTaxMode | null
   yearEndBonus: number
   postTaxMonthly: number
+  /** 用户确认后的反推申报应发 */
+  inferredPreTax: number | null
+  reportBias: SalaryReportBias | null
+  useInferredForCumulative: boolean
   updateTime: string
 }
 
@@ -52,11 +61,15 @@ export function toHistoryRecord(data: SalaryVerifyHistoryItem): SalaryHistoryRec
     preTaxMonthly: Number(data.preTaxMonthly ?? 0),
     ssPersonalAmount: Number(data.ssPersonalAmount ?? 0),
     hfPersonalAmount: Number(data.hfPersonalAmount ?? 0),
+    otherDeductionAmount: Number(data.otherDeductionAmount ?? 0),
     specialDeductionMonthly: Number(data.specialDeductionMonthly ?? 0),
     personalIncomeTax: Number(data.personalIncomeTax ?? 0),
     yearEndTaxMode: data.yearEndTaxMode,
     yearEndBonus: Number(data.yearEndBonus ?? 0),
     postTaxMonthly: Number(data.postTaxMonthly ?? 0),
+    inferredPreTax: data.inferredPreTax == null ? null : Number(data.inferredPreTax),
+    reportBias: data.reportBias ?? null,
+    useInferredForCumulative: Boolean(data.useInferredForCumulative),
     updateTime: mapUpdateTime(data.updateTime),
   }
 }
@@ -83,9 +96,13 @@ export function toVerifyRecord(record: SalaryHistoryRecord): PayslipVerifyRecord
     preTaxMonthly: record.preTaxMonthly,
     ssPersonalAmount: record.ssPersonalAmount,
     hfPersonalAmount: record.hfPersonalAmount,
+    otherDeductionAmount: record.otherDeductionAmount,
     specialDeductionMonthly: record.specialDeductionMonthly,
     personalIncomeTax: record.personalIncomeTax,
     postTaxMonthly: record.postTaxMonthly,
+    inferredPreTax: record.inferredPreTax,
+    reportBias: record.reportBias,
+    useInferredForCumulative: record.useInferredForCumulative,
     updateTime: record.updateTime,
   }
 }
@@ -139,12 +156,23 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
 
     /**
      * 保存核对：无 id 按月 upsert；有 id 按 id 更新（重新核对）
+     * @note 默认清空反推三字段（重新录入视为需再次确认）；确认沿用时由详情显式传入
      * @note 不更新 items，返回核对视图供跳转详情
      */
-    async upsertByPayPeriod(entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime'> & { id?: string }) {
+    async upsertByPayPeriod(
+      entry: Omit<PayslipVerifyRecord, 'id' | 'updateTime' | 'inferredPreTax' | 'reportBias' | 'useInferredForCumulative'> & {
+        id?: string
+        inferredPreTax?: number | null
+        reportBias?: SalaryReportBias | null
+        useInferredForCumulative?: boolean
+        /** 为 true 时按 entry 写入反推字段；默认 false 表示重新核对并清空沿用 */
+        persistInferred?: boolean
+      },
+    ) {
       const editingId = entry.id ? Number(entry.id) : undefined
       if (entry.id && (!Number.isInteger(editingId) || (editingId as number) <= 0))
         throw new Error('历史记录ID不合法')
+      const persistInferred = Boolean(entry.persistInferred)
       const data = await upsertSalaryVerifyHistory({
         ...(editingId ? { id: editingId } : {}),
         historyType: 'verify',
@@ -152,9 +180,14 @@ export const useSalaryHistoryStore = defineStore('salaryHistory', {
         preTaxMonthly: entry.preTaxMonthly,
         ssPersonalAmount: entry.ssPersonalAmount,
         hfPersonalAmount: entry.hfPersonalAmount,
+        otherDeductionAmount: entry.otherDeductionAmount ?? 0,
         specialDeductionMonthly: entry.specialDeductionMonthly,
         personalIncomeTax: entry.personalIncomeTax,
         postTaxMonthly: entry.postTaxMonthly,
+        // 重新核对：显式清空，避免未确认反推污染后续累计
+        inferredPreTax: persistInferred ? (entry.inferredPreTax ?? null) : null,
+        reportBias: persistInferred ? (entry.reportBias ?? null) : null,
+        useInferredForCumulative: persistInferred ? Boolean(entry.useInferredForCumulative) : false,
       })
       const row = toVerifyRecord(toHistoryRecord(data))
       if (!row)

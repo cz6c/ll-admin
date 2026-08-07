@@ -1,18 +1,18 @@
 <script lang="ts" setup>
 /**
  * 薪算狮首页
- * 主流程：未同意协议则 redirect 门禁页 → 工具入口 → 最近记录
+ * 主流程：未同意协议则 redirect 门禁页 → 主次工具入口 → 本年核对进度
  */
-import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
+import type { YearMonthCell } from '@/utils/salaryVerifyYearProgress'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { computed } from 'vue'
-import SalaryHistoryEntryRow from '@/components/SalaryHistoryEntryRow.vue'
+import SalaryVerifyYearProgress from '@/components/salary/SalaryVerifyYearProgress.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { captureChannelFromQuery } from '@/utils/channelFrom'
-import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
+import { buildYearVerifyProgress } from '@/utils/salaryVerifyYearProgress'
 
 defineOptions({ name: 'SalaryHome' })
 
@@ -38,7 +38,6 @@ interface HomeFeature {
   key: string
   title: string
   desc: string
-  cta: string
   url: string
   theme: 'blue' | 'green'
   icon: string
@@ -51,7 +50,6 @@ const features: HomeFeature[] = [
     key: 'verify',
     title: '月薪核对',
     desc: '识别工资条，自动核对应发与扣款',
-    cta: '开始核对',
     url: '/pages/salary/verify',
     theme: 'green',
     icon: 'check-square',
@@ -61,7 +59,6 @@ const features: HomeFeature[] = [
     key: 'calc',
     title: '年薪测算',
     desc: '输入月薪，一键算出全年税后收入',
-    cta: '开始测算',
     url: '/pages/salary/calc',
     theme: 'blue',
     icon: 'file',
@@ -91,19 +88,21 @@ const featureStats = computed(() => {
   }
 })
 
-const recentEntries = computed(() => {
-  return mergeSalaryHistoryEntries(salaryHistoryStore.items).slice(0, 3)
-})
+/** 本年 1–12 月核对进度（截止上月，与核对页默认所属月一致） */
+const yearProgress = computed(() => buildYearVerifyProgress(salaryHistoryStore.verifyItems))
 
 /**
- * 功能卡底部提示：有记录才展示；空态改短引导，避免与「最近记录」空态重复
+ * 功能卡底部一行状态：整卡唯一入口，不再放第二套 CTA
+ * 核对有记录时只指下方进度，避免与进度摘要重复说「最近」
  */
 function featureHint(featureKey: string) {
   const stats = featureStats.value[featureKey as keyof typeof featureStats.value]
   if (!stats || stats.count <= 0 || !stats.latestDate) {
     return featureKey === 'verify' ? '拍工资条，30 秒看扣款对不对' : '谈薪前先算清全年到手'
   }
-  return `最近 · ${stats.latestDate} · ${stats.count} 条`
+  if (featureKey === 'verify')
+    return '见下方进度'
+  return `${stats.count} 次测算 · ${stats.latestDate}`
 }
 
 onLoad((options?: Record<string, string>) => {
@@ -129,16 +128,43 @@ function enterFeature(feature: HomeFeature) {
   uni.navigateTo({ url: feature.url })
 }
 
-function enterRecent(entry: SalaryHistoryEntry) {
-  uni.navigateTo({ url: entry.url })
-}
-
 function openAllHistory() {
   uni.navigateTo({ url: '/pages/salary/history' })
 }
 
-function goVerify() {
-  enterFeature(features[0])
+function openVerifyHistory() {
+  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
+}
+
+function goVerifyWithPeriod(payPeriod?: string) {
+  uni.setStorageSync(LAST_ENTRY_KEY, 'verify')
+  const query = payPeriod ? `?payPeriod=${encodeURIComponent(payPeriod)}` : ''
+  uni.navigateTo({ url: `/pages/salary/verify${query}` })
+}
+
+function onProgressCta() {
+  const progress = yearProgress.value
+  if (progress.ctaMode === 'history') {
+    openVerifyHistory()
+    return
+  }
+  goVerifyWithPeriod(progress.ctaPayPeriod)
+}
+
+/**
+ * 月格点击：已核进详情；缺月进核对并带所属月
+ * 未来月由子组件拦截，不进入此回调
+ */
+function onMonthClick(cell: YearMonthCell) {
+  if (cell.status === 'future')
+    return
+  if ((cell.status === 'matched' || cell.status === 'mismatched') && cell.recordId) {
+    uni.navigateTo({
+      url: `/pages/salary/verify-detail?id=${encodeURIComponent(cell.recordId)}`,
+    })
+    return
+  }
+  goVerifyWithPeriod(cell.payPeriod)
 }
 </script>
 
@@ -150,42 +176,44 @@ function goVerify() {
       :style="{ paddingTop: `${tabBarHeight}px` }"
     >
       <view class="min-w-0 flex-1">
-        <view class="text-48rpx text-white font-500 tracking-4rpx">
+        <view class="hero-card__brand">
           薪算狮
         </view>
-        <view class="hero-card__slogan mt-8rpx text-28rpx">
+        <view class="hero-card__slogan">
           算得清楚，对得明白
         </view>
       </view>
     </view>
 
-    <!-- 上叠内容：工具卡 → 最近；信任数据沉底（私密工具忌强社会证明） -->
+    <!-- 上叠内容：主次工具卡 → 本年核对进度（轻材质状态面板） -->
     <view class="content-panel px-24rpx pb-32rpx">
-      <!-- 首卡上叠 hero；标题放卡上方会压在蓝底上发虚，故去掉「工具」字 -->
-      <view class="feature-stack flex flex-col gap-20rpx">
+      <view class="feature-stack flex flex-col gap-16rpx">
         <view
           v-for="feature in features"
           :key="feature.key"
-          class="feature-card card-rounded p-32rpx"
+          class="feature-card card-rounded"
           :class="feature.primary ? 'feature-card--primary' : 'feature-card--secondary'"
           hover-class="feature-card--pressed"
-          :hover-stay-time="80"
+          :hover-stay-time="70"
           @click="enterFeature(feature)"
         >
-          <view class="flex items-center gap-20rpx">
+          <view class="feature-card__main flex items-center gap-20rpx">
             <view
               class="feature-card__icon shrink-0"
               :class="feature.theme === 'green' ? 'feature-card__icon--green' : 'feature-card__icon--blue'"
             >
               <wd-icon
                 :name="feature.icon"
-                size="24px"
+                :size="feature.primary ? '26px' : '22px'"
                 :color="feature.theme === 'green' ? 'var(--wot-success-main)' : 'var(--wot-primary-6)'"
               />
             </view>
             <view class="min-w-0 flex-1">
               <view class="flex items-center gap-12rpx">
-                <text class="text-32rpx text-#1f2329 font-600">
+                <text
+                  class="feature-card__title"
+                  :class="feature.primary ? 'feature-card__title--primary' : 'feature-card__title--secondary'"
+                >
                   {{ feature.title }}
                 </text>
                 <text
@@ -195,74 +223,28 @@ function goVerify() {
                   推荐
                 </text>
               </view>
-              <view class="mt-8rpx text-26rpx text-#666 leading-snug">
+              <view
+                class="feature-card__desc"
+                :class="feature.primary ? 'feature-card__desc--primary' : 'feature-card__desc--secondary'"
+              >
                 {{ feature.desc }}
               </view>
             </view>
-            <wd-icon name="right" size="32rpx" color="#c0c4cc" />
           </view>
 
-          <view class="feature-card__footer mt-28rpx flex items-center justify-between gap-24rpx">
-            <view class="min-w-0 flex-1 truncate text-24rpx text-#999">
-              {{ featureHint(feature.key) }}
-            </view>
-            <view
-              class="feature-card__cta"
-              :class="feature.theme === 'green' ? 'feature-card__cta--green' : 'feature-card__cta--blue'"
-            >
-              {{ feature.cta }}
-            </view>
+          <!-- 仅状态文案：整卡单击进入，不再放箭头/胶囊第二入口 -->
+          <view class="feature-card__hint">
+            {{ featureHint(feature.key) }}
           </view>
         </view>
       </view>
 
-      <view class="mt-36rpx flex items-center justify-between">
-        <view class="flex items-center gap-8rpx text-24rpx text-#999">
-          <view class="i-carbon-time h-24rpx w-24rpx" />
-          最近记录
-        </view>
-        <view
-          class="pressable text-24rpx text-primary"
-          hover-class="pressable--pressed"
-          :hover-stay-time="60"
-          @click.stop="openAllHistory"
-        >
-          全部
-        </view>
-      </view>
-
-      <view v-if="recentEntries.length > 0" class="home-list-card mt-20rpx card-rounded overflow-hidden">
-        <SalaryHistoryEntryRow
-          v-for="(entry, idx) in recentEntries"
-          :key="entry.key"
-          :title="entry.title"
-          :subtitle="entry.subtitle"
-          :theme="entry.theme"
-          :icon="entry.theme === 'green' ? 'check-square' : 'file'"
-          :bordered="idx < recentEntries.length - 1"
-          @click="enterRecent(entry)"
-        />
-      </view>
-
-      <view
-        v-else
-        class="recent-empty-wrap mt-20rpx"
-      >
-        <view class="text-28rpx text-#666 font-500">
-          还没有记录
-        </view>
-        <view class="mt-8rpx text-24rpx text-#999">
-          完成一次核对后会出现在这里
-        </view>
-        <view
-          class="recent-empty-wrap__cta mt-24rpx"
-          hover-class="recent-empty-wrap__cta--pressed"
-          :hover-stay-time="70"
-          @click="goVerify"
-        >
-          去核对工资条
-        </view>
-      </view>
+      <SalaryVerifyYearProgress
+        :progress="yearProgress"
+        @open-history="openAllHistory"
+        @cta="onProgressCta"
+        @month-click="onMonthClick"
+      />
     </view>
   </view>
 </template>
@@ -281,9 +263,22 @@ function goVerify() {
   color: #fff;
 }
 
+/* 大号品牌字负 tracking；口号略松 leading，字距近 0（小字忌再收紧） */
+.hero-card__brand {
+  font-size: 48rpx;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: #fff;
+}
+
 .hero-card__slogan {
-  color: rgba(255, 255, 255, 0.78);
+  margin-top: 10rpx;
+  font-size: 28rpx;
   font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .content-panel {
@@ -293,21 +288,26 @@ function goVerify() {
 }
 
 .feature-card {
-  background: #fff;
-  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.04);
-  /* 按压反馈 120ms + 强 ease-out；松手同曲线可中断，避免弱 ease 发黏 */
+  /* 按压反馈 120ms + 强 ease-out；松手同曲线可中断 */
   transition:
     transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
     opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* 主路径：更大触控面 + 更重材质；用色边区分，不用卡内发丝分割线 */
 .feature-card--primary {
+  padding: 36rpx 32rpx 28rpx;
   border: 2rpx solid var(--wot-success-particular, rgba(16, 185, 129, 0.28));
-  background: linear-gradient(180deg, #fff 60%, var(--wot-success-surface, #ecfdf5) 100%);
+  background: linear-gradient(180deg, #fff 55%, var(--wot-success-surface, #ecfdf5) 100%);
+  box-shadow: 0 8rpx 32rpx rgba(16, 185, 129, 0.1);
 }
 
+/* 次路径：无描边，仅靠间距与字重分层，减少仪表盘感 */
 .feature-card--secondary {
-  border: 2rpx solid transparent;
+  padding: 24rpx 28rpx 20rpx;
+  border: none;
+  background: #fff;
+  box-shadow: 0 2rpx 12rpx rgba(31, 35, 41, 0.03);
 }
 
 .feature-card--pressed {
@@ -316,12 +316,21 @@ function goVerify() {
 }
 
 .feature-card__icon {
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 24rpx;
+}
+
+.feature-card--primary .feature-card__icon {
+  width: 96rpx;
+  height: 96rpx;
+}
+
+.feature-card--secondary .feature-card__icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
 }
 
 .feature-card__icon--green {
@@ -330,6 +339,22 @@ function goVerify() {
 
 .feature-card__icon--blue {
   background: var(--wot-primary-1);
+}
+
+.feature-card__title--primary {
+  font-size: 34rpx;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: #1f2329;
+}
+
+.feature-card__title--secondary {
+  font-size: 30rpx;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: #1f2329;
 }
 
 .feature-card__badge {
@@ -342,57 +367,31 @@ function goVerify() {
   font-weight: 500;
 }
 
-.feature-card__footer {
-  padding-top: 24rpx;
-  border-top: 1rpx solid #f0f2f5;
-}
-
-.feature-card__cta {
-  flex-shrink: 0;
-  font-size: 24rpx;
-  font-weight: 600;
-  padding: 10rpx 20rpx;
-  border-radius: 999rpx;
-}
-
-.feature-card__cta--green {
-  color: var(--wot-success-main);
-  background: var(--wot-success-surface, #ecfdf5);
-}
-
-.feature-card__cta--blue {
-  color: var(--wot-primary-6);
-  background: var(--wot-primary-1);
-}
-
-.home-list-card {
-  background: #fff;
-  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.04);
-}
-
-.recent-empty-wrap {
-  min-height: 220rpx;
-  background-color: #fff;
-  border-radius: 24rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 36rpx 24rpx;
-  box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.03);
-}
-
-.recent-empty-wrap__cta {
+.feature-card__desc--primary {
+  margin-top: 10rpx;
   font-size: 26rpx;
-  font-weight: 600;
-  color: var(--wot-success-main);
-  padding: 12rpx 28rpx;
-  border-radius: 999rpx;
-  background: var(--wot-success-surface, #ecfdf5);
-  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  color: #666;
+  line-height: 1.4;
 }
 
-.recent-empty-wrap__cta--pressed {
-  transform: scale(0.97);
+.feature-card__desc--secondary {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #8a9199;
+  line-height: 1.35;
+}
+
+/* 状态行：用字重/间距与正文分层，不用 border-top */
+.feature-card__hint {
+  margin-top: 22rpx;
+  font-size: 22rpx;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: #8a9199;
+  line-height: 1.35;
+}
+
+.feature-card--secondary .feature-card__hint {
+  margin-top: 16rpx;
 }
 </style>

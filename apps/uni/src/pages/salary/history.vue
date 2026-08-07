@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
- * 测算与核对历史列表
- * 主流程：拉全量 → 本地筛选/搜索 → 滑动删除；真空仓用睡着空态，下拉摇尾刷新
+ * 全部记录（测算 + 核对）
+ * 主流程：拉全量 → 本地筛选/搜索 → 卡片列表滑动删除；真空仓引导核对
  */
 import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
 import { onLoad, onShow } from '@dcloudio/uni-app'
@@ -22,7 +22,8 @@ const { closeOutside } = useQueue()
 
 definePage({
   style: {
-    navigationBarTitleText: '测算与核对记录',
+    // 与首页「全部记录」入口对齐，便于跨页 wayfinding
+    navigationBarTitleText: '全部记录',
     // 禁止页面级滚动，只允许下方 scroll-view 滚动（避免 header 跟着跑）
     disableScroll: true,
   },
@@ -31,11 +32,11 @@ definePage({
 /** 筛选胶囊：全部 / 测算 / 核对；与路由 ?tab= 对齐 */
 type HistoryFilter = 'all' | 'calc' | 'verify'
 
-/** 筛选胶囊配置；icon 为 wot-ui 图标名 */
-const FILTERS: { value: HistoryFilter, label: string, icon: string }[] = [
-  { value: 'all', label: '全部', icon: 'common' },
-  { value: 'calc', label: '年薪测算', icon: 'file' },
-  { value: 'verify', label: '月薪核对', icon: 'check-square' },
+/** 筛选文案缩短；行内已有类型胶囊，不再放图标减噪 */
+const FILTERS: { value: HistoryFilter, label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'calc', label: '测算' },
+  { value: 'verify', label: '核对' },
 ]
 
 /** 搜索彩蛋：输入后进入工作台 */
@@ -48,7 +49,7 @@ const activeFilter = ref<HistoryFilter>('all')
 const searchInput = ref('')
 const searchKeyword = ref('')
 
-/** 系统默认下拉刷新触发态（无自定义狮彩蛋） */
+/** 系统默认下拉刷新触发态 */
 const refresherTriggered = ref(false)
 
 const unifiedList = computed(() => mergeSalaryHistoryEntries(items.value))
@@ -63,15 +64,18 @@ const filteredList = computed(() => {
     return byType
 
   return byType.filter((item) => {
+    const kindLabel = item.kind === 'calc' ? '年薪测算' : '月薪核对'
     return item.title.toLowerCase().includes(q)
       || item.subtitle.toLowerCase().includes(q)
+      || item.emphasis.toLowerCase().includes(q)
+      || kindLabel.includes(q)
   })
 })
 
 /** 真空仓：无任何记录 */
 const isWarehouseEmpty = computed(() => unifiedList.value.length === 0)
 
-/** 列表空态文案：真空仓引导核对；筛选/搜索无结果换文案且不展示 CTA */
+/** 列表空态：真空仓引导核对；筛选/搜索无结果不展示 CTA */
 const listEmpty = computed(() => {
   if (isWarehouseEmpty.value) {
     return {
@@ -85,16 +89,23 @@ const listEmpty = computed(() => {
     return {
       show: true,
       title: '没有找到相关记录',
-      desc: '换个关键词，或试试别的筛选条件',
+      desc: '换个关键词，或试试别的筛选',
       showAction: false,
     }
   }
   return { show: false, title: '', desc: '', showAction: false }
 })
 
+/** 筛选切换时列表短淡入（≤150ms），高频切换不加重动画 */
+const listEnterKey = computed(() => `${activeFilter.value}|${searchKeyword.value}`)
+
 /** 一次拉全量后在本地按摘要/类型名过滤，避免功能名被服务端 keyword 误伤 */
 async function refreshHistory() {
   await salaryHistoryStore.fetchHistory()
+}
+
+function setFilter(value: HistoryFilter) {
+  activeFilter.value = value
 }
 
 onLoad((options?: Record<string, string>) => {
@@ -181,11 +192,11 @@ async function onRefresherRefresh() {
   <page-meta page-style="overflow: hidden;" />
 
   <view class="history-page page-shell" @click="closeOutside">
-    <!-- 顶栏在 scroll-view 外，flex-shrink:0，固定不滚 -->
+    <!-- 顶栏在 scroll-view 外，flex-shrink:0，固定不滚；与页底同灰，白卡只给内容 -->
     <view class="history-page__header">
       <wd-search
         v-model="searchInput"
-        placeholder="关键词"
+        placeholder="搜月份、金额或结果"
         hide-cancel
         variant="light"
         custom-class="search mb-16rpx"
@@ -201,13 +212,8 @@ async function onRefresherRefresh() {
           :class="activeFilter === chip.value ? 'history-chip--active' : ''"
           hover-class="history-chip--pressed"
           :hover-stay-time="60"
-          @click="activeFilter = chip.value"
+          @click="setFilter(chip.value)"
         >
-          <wd-icon
-            :name="chip.icon"
-            size="28rpx"
-            :color="activeFilter === chip.value ? '#fff' : '#6b7280'"
-          />
           <text>{{ chip.label }}</text>
         </view>
       </view>
@@ -232,33 +238,42 @@ async function onRefresherRefresh() {
           :show-action="listEmpty.showAction"
         />
 
-        <view v-else class="card-rounded overflow-hidden">
-          <wd-swipe-action
-            v-for="(item, idx) in filteredList"
+        <view
+          v-else
+          :key="listEnterKey"
+          class="history-page__cards"
+        >
+          <view
+            v-for="item in filteredList"
             :key="item.key"
+            class="history-page__swipe"
           >
-            <SalaryHistoryEntryRow
-              :title="item.title"
-              :subtitle="item.subtitle"
-              :theme="item.theme"
-              :icon="item.icon"
-              :bordered="idx < filteredList.length - 1"
-              @click="openItem(item)"
-            />
+            <wd-swipe-action>
+              <SalaryHistoryEntryRow
+                :title="item.title"
+                :subtitle="item.subtitle"
+                :kind="item.kind"
+                :emphasis="item.emphasis"
+                :emphasis-tone="item.emphasisTone"
+                @click="openItem(item)"
+              />
 
-            <template #right>
-              <view class="h-full flex">
-                <view
-                  class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
-                  @click.stop="confirmDelete(item)"
-                >
-                  <text class="text-28rpx text-white">
-                    删除
-                  </text>
+              <template #right>
+                <view class="h-full flex">
+                  <view
+                    class="history-swipe-del box-border h-full min-h-144rpx center px-40rpx"
+                    hover-class="history-swipe-del--pressed"
+                    :hover-stay-time="60"
+                    @click.stop="confirmDelete(item)"
+                  >
+                    <text class="text-28rpx text-white font-600">
+                      删除
+                    </text>
+                  </view>
                 </view>
-              </view>
-            </template>
-          </wd-swipe-action>
+              </template>
+            </wd-swipe-action>
+          </view>
         </view>
       </view>
     </scroll-view>
@@ -278,6 +293,7 @@ async function onRefresherRefresh() {
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+  background: #f5f6f8;
 }
 
 .history-page__header {
@@ -290,7 +306,7 @@ async function onRefresherRefresh() {
 .history-page__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 16rpx;
+  gap: 12rpx;
   margin-bottom: 16rpx;
 }
 
@@ -299,10 +315,24 @@ async function onRefresherRefresh() {
   height: 0;
   width: 100%;
   min-height: 0;
+  background: #f5f6f8;
 }
 
 .history-page__list {
-  padding: 0 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 8rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+}
+
+/* 筛选/搜索变更时短淡入，不拖慢手感 */
+.history-page__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  animation: history-list-in 140ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
+}
+
+.history-page__swipe {
+  border-radius: 20rpx;
+  overflow: hidden;
 }
 
 :deep(.search) {
@@ -310,24 +340,25 @@ async function onRefresherRefresh() {
   background: none !important;
 }
 
+/* 未选：浅底无描边；选中：主色实心 —— 靠填充区分，去掉硬描边 */
 .history-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
-  padding: 12rpx 24rpx;
+  justify-content: center;
+  padding: 12rpx 28rpx;
   border-radius: 999rpx;
   font-size: 26rpx;
+  letter-spacing: 0.01em;
   color: #6b7280;
-  background: #fff;
-  border: 2rpx solid #e5e7eb;
-  /* 筛选高频：只做按压缩放，不给颜色过渡拖慢切换手感 */
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
   transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .history-chip--active {
   color: #fff;
+  font-weight: 500;
   background: var(--wot-primary-6);
-  border-color: var(--wot-primary-6);
 }
 
 .history-chip--pressed {
@@ -336,5 +367,29 @@ async function onRefresherRefresh() {
 
 .history-swipe-del {
   background: var(--wot-danger-main);
+  transition:
+    transform 100ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 100ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.history-swipe-del--pressed {
+  transform: scale(0.97);
+  opacity: 0.88;
+}
+
+@keyframes history-list-in {
+  from {
+    opacity: 0.72;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-page__cards {
+    animation: none;
+  }
 }
 </style>

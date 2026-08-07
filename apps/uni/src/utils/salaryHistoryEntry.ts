@@ -1,22 +1,25 @@
 /**
  * 首页「最近记录」与历史列表共用的展示模型与标题拼装
- * 职责：把统一历史记录映射为列表行，保证两端文案与跳转一致
+ * 职责：把统一历史记录映射为扫读友好的列表行（类型 / 主文 / 右侧强调）
  * 适用：home.vue 最近记录、history.vue 合并列表
  */
 import type { PayslipVerifyRecord, SalaryHistoryRecord } from '@/store/salaryHistory'
 import dayjs from 'dayjs'
 import { toVerifyRecord } from '@/store/salaryHistory'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
-import { parsePayPeriod } from '@/utils/payPeriod'
-import { computeVerifyForRecord, formatVerifyAbnormalSummary } from '@/utils/payslipVerify'
+import { formatPayPeriodLabel } from '@/utils/payPeriod'
+import { computeVerifyForRecord } from '@/utils/payslipVerify'
 
 export { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 
-/** 行主题色：测算用主色，核对用成功色 */
+/** 行主题色：测算用主色，核对用成功色（类型胶囊） */
 export type SalaryHistoryEntryTheme = 'blue' | 'green'
 
 /** 历史业务类型，对应后端 historyType */
 export type SalaryHistoryEntryKind = 'calc' | 'verify'
+
+/** 右侧强调色调：测算金额 / 核对无误 / 核对有差异 */
+export type SalaryHistoryEmphasisTone = 'primary' | 'success' | 'warning'
 
 /** 首页最近记录 / 历史列表共用的展示行模型 */
 export interface SalaryHistoryEntry {
@@ -25,14 +28,16 @@ export interface SalaryHistoryEntry {
   kind: SalaryHistoryEntryKind
   /** 业务记录 id（不含 kind 前缀） */
   id: string
-  /** 主标题（含金额或差异摘要） */
+  /** 主标题（测算：月薪基数；核对：含年份的所属月工资条） */
   title: string
-  /** 副标题：类型名 · MM-DD */
+  /** 副标题：更新日期 MM-DD */
   subtitle: string
-  /** 行主题色，驱动图标底与色点 */
+  /** 行主题色，驱动类型胶囊 */
   theme: SalaryHistoryEntryTheme
-  /** wot-ui 图标名；空字符串时行组件不展示左侧图标区 */
-  icon: string
+  /** 右侧强调文案：金额或核对结果 */
+  emphasis: string
+  /** 右侧强调色调 */
+  emphasisTone: SalaryHistoryEmphasisTone
   /** 点击跳转详情页路径 */
   url: string
   /** 用于排序的更新时间毫秒戳 */
@@ -41,29 +46,41 @@ export interface SalaryHistoryEntry {
   payPeriod?: string
 }
 
-/** 测算历史主标题：月薪 → 测算年薪 */
-export function buildCalcHistoryTitle(item: SalaryHistoryRecord) {
-  return `月薪基数 ¥${formatSalaryAmount(item.preTaxMonthly)}`
+/** 测算历史主标题：金额拆到右侧 emphasis */
+export function buildCalcHistoryTitle(_item: SalaryHistoryRecord) {
+  return '月薪基数'
+}
+
+/** 测算右侧金额 */
+export function buildCalcHistoryEmphasis(item: SalaryHistoryRecord) {
+  return `¥${formatSalaryAmount(item.preTaxMonthly)}`
 }
 
 /**
- * 核对历史主标题：月份 + 无差异/差异金额
- * @param allVerifyRecords 同年累计预扣依赖的全量核对记录，缺月会影响差异计算
+ * 核对历史主标题：含年份的所属月 +「工资条」
+ * 为何带年：跨年列表仅写「3 月」会歧义；展示与 formatPayPeriodLabel 对齐
  */
-export function buildVerifyHistoryTitle(
-  item: PayslipVerifyRecord,
-  allVerifyRecords: PayslipVerifyRecord[],
-) {
-  const { month } = parsePayPeriod(item.payPeriod)
-  const verify = computeVerifyForRecord(item, allVerifyRecords)
-  const verifyText = verify.overallMatch ? '核对无误' : '存在差异'
-  return `${month} 月工资条 · ${verifyText}`
+export function buildVerifyHistoryTitle(item: PayslipVerifyRecord) {
+  return `${formatPayPeriodLabel(item.payPeriod)}工资条`
 }
 
-/** 副标题：业务类型 + 更新日期（不含年份，列表场景够用） */
-function buildSubtitle(kind: SalaryHistoryEntryKind, updateTime: string) {
-  const typeLabel = kind === 'calc' ? '年薪测算' : '月薪核对'
-  return `${typeLabel} · ${dayjs(updateTime).format('MM-DD')}`
+/**
+ * 核对右侧结果文案与色调
+ * @param allVerifyRecords 同年累计预扣依赖的全量核对记录，缺月会影响差异计算
+ */
+export function buildVerifyHistoryEmphasis(
+  item: PayslipVerifyRecord,
+  allVerifyRecords: PayslipVerifyRecord[],
+): { text: string, tone: SalaryHistoryEmphasisTone } {
+  const verify = computeVerifyForRecord(item, allVerifyRecords)
+  if (verify.overallMatch)
+    return { text: '无误', tone: 'success' }
+  return { text: '有差异', tone: 'warning' }
+}
+
+/** 副标题：仅更新日期（类型改由行内胶囊展示，避免与 title 重复） */
+function buildSubtitle(updateTime: string) {
+  return dayjs(updateTime).format('MM-DD')
 }
 
 /** 测算记录 → 统一展示行 */
@@ -73,11 +90,12 @@ export function mapCalcHistoryEntry(item: SalaryHistoryRecord): SalaryHistoryEnt
     kind: 'calc',
     id: item.id,
     title: buildCalcHistoryTitle(item),
-    subtitle: buildSubtitle('calc', item.updateTime),
+    subtitle: buildSubtitle(item.updateTime),
     theme: 'blue',
-    icon: 'file',
+    emphasis: buildCalcHistoryEmphasis(item),
+    emphasisTone: 'primary',
     url: `/pages/salary/detail?id=${encodeURIComponent(item.id)}`,
-    time: new Date(item.updateTime).getTime() || 0,
+    time: dayjs(item.updateTime).valueOf() || 0,
   }
 }
 
@@ -89,29 +107,40 @@ export function mapVerifyHistoryEntry(
   item: PayslipVerifyRecord,
   allVerifyRecords: PayslipVerifyRecord[],
 ): SalaryHistoryEntry {
+  const emphasis = buildVerifyHistoryEmphasis(item, allVerifyRecords)
   return {
     key: `verify-${item.id}`,
     kind: 'verify',
     id: item.id,
-    title: buildVerifyHistoryTitle(item, allVerifyRecords),
-    subtitle: buildSubtitle('verify', item.updateTime),
+    title: buildVerifyHistoryTitle(item),
+    subtitle: buildSubtitle(item.updateTime),
     theme: 'green',
-    icon: 'check-square',
+    emphasis: emphasis.text,
+    emphasisTone: emphasis.tone,
     url: `/pages/salary/verify-detail?id=${encodeURIComponent(item.id)}`,
-    time: new Date(item.updateTime).getTime() || 0,
+    time: dayjs(item.updateTime).valueOf() || 0,
     payPeriod: item.payPeriod,
   }
 }
 
 /**
- * 统一历史列表并按更新时间降序
- * @note 核对项映射时用全部 verify 子集，保证差异摘要与详情页一致
+ * 统一历史列表：按接口返回顺序映射展示行
+ * @note 排序在后端 listHistory（payPeriod DESC → updateTime DESC）；此处禁止再 sort，避免打乱契约
  */
 export function mergeSalaryHistoryEntries(items: SalaryHistoryRecord[]): SalaryHistoryEntry[] {
   const verifyItems = items
     .map(toVerifyRecord)
     .filter((r): r is PayslipVerifyRecord => r != null)
-  const calcEntries = items.filter(i => i.historyType === 'calc').map(mapCalcHistoryEntry)
-  const verifyEntries = verifyItems.map(item => mapVerifyHistoryEntry(item, verifyItems))
-  return [...calcEntries, ...verifyEntries].sort((a, b) => b.time - a.time)
+
+  const entries: SalaryHistoryEntry[] = []
+  for (const item of items) {
+    if (item.historyType === 'calc') {
+      entries.push(mapCalcHistoryEntry(item))
+      continue
+    }
+    const verify = toVerifyRecord(item)
+    if (verify)
+      entries.push(mapVerifyHistoryEntry(verify, verifyItems))
+  }
+  return entries
 }

@@ -30,6 +30,9 @@ definePage({
 const historyId = ref('')
 /** 详情接口返回的测算行（不进列表 store） */
 const historyItem = ref<SalaryHistoryRecord | null>(null)
+/** 首屏拉取失败：展示可恢复空态，不 toast 叠层 */
+const loadFailed = ref(false)
+const loading = ref(true)
 /** 计算明细默认折叠 */
 const showBreakdown = ref(false)
 /**
@@ -64,8 +67,8 @@ function scheduleChartMount() {
 onLoad((options?: Record<string, string>) => {
   historyId.value = options?.id ? decodeURIComponent(options.id) : ''
   if (!historyId.value) {
-    uni.showToast({ title: '缺少记录', icon: 'none' })
-    setTimeout(() => uni.navigateBack(), 500)
+    loadFailed.value = true
+    loading.value = false
   }
   // #ifdef MP-WEIXIN
   uni.showShareMenu({ withShareTicket: true })
@@ -83,17 +86,26 @@ onShareAppMessage(() => {
   }
 })
 
-onShow(async () => {
-  chartReady.value = false
-  if (!historyId.value)
+/**
+ * 拉取测算详情；类型不符或失败只走空态恢复，避免空白页
+ */
+async function fetchDetail() {
+  if (!historyId.value) {
+    loadFailed.value = true
+    historyItem.value = null
+    loading.value = false
     return
+  }
+  loading.value = true
+  loadFailed.value = false
+  chartReady.value = false
   try {
     const detail = await getSalaryHistoryDetail(Number(historyId.value))
     const row = toHistoryRecord(detail.item)
     // 本页只展示测算；误入核对 id 时不挂图、不展示假数据
     if (row.historyType !== 'calc') {
       historyItem.value = null
-      uni.showToast({ title: '记录类型不正确', icon: 'none' })
+      loadFailed.value = true
       return
     }
     historyItem.value = row
@@ -101,9 +113,24 @@ onShow(async () => {
   }
   catch {
     historyItem.value = null
-    uni.showToast({ title: '历史记录加载失败', icon: 'none' })
+    loadFailed.value = true
   }
+  finally {
+    loading.value = false
+  }
+}
+
+onShow(() => {
+  void fetchDetail()
 })
+
+function retryLoad() {
+  void fetchDetail()
+}
+
+function goAllRecords() {
+  uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
+}
 
 onHide(() => {
   clearChartMountTimer()
@@ -275,7 +302,7 @@ function goVerify() {
               ¥{{ formatSalaryAmount(detailInput.preTaxMonthly) }}
             </text>
           </view>
-          <view class="hero-stat hero-stat--mid">
+          <view class="hero-stat">
             <text class="hero-stat__lab">
               适用税率
             </text>
@@ -314,6 +341,9 @@ function goVerify() {
             :canvas2d="true"
             background="none"
           />
+          <view v-else class="charts-skeleton">
+            <view v-for="n in 6" :key="n" class="charts-skeleton__bar" :style="{ height: `${40 + (n % 3) * 18}%` }" />
+          </view>
         </view>
       </view>
 
@@ -325,8 +355,12 @@ function goVerify() {
           :hover-stay-time="60"
           @click="showBreakdown = !showBreakdown"
         >
-          <text class="text-30rpx text-#333 font-600">计算明细</text>
-          <text class="min-w-0 flex-1 text-24rpx text-#999" />
+          <text class="text-30rpx text-#333 font-600">
+            计算明细
+          </text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999">
+            怎么算到税后
+          </text>
           <wd-icon :name="showBreakdown ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
         </view>
         <view v-if="showBreakdown" class="mb-24rpx">
@@ -361,9 +395,15 @@ function goVerify() {
         <wd-button type="primary" block :round="true" size="large" @click="goReCalc">
           重新测算
         </wd-button>
-        <wd-button type="primary" variant="plain" block :round="true" size="large" custom-class="mt-24rpx" @click="goVerify">
+        <!-- 跨工具桥接降为文案链，不与主 CTA 同权 -->
+        <view
+          class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
+          hover-class="pressable--pressed"
+          :hover-stay-time="60"
+          @click="goVerify"
+        >
           已有工资条？核对本月实发
-        </wd-button>
+        </view>
       </view>
 
       <!-- #ifdef MP-WEIXIN -->
@@ -372,10 +412,42 @@ function goVerify() {
       </wd-button>
       <!-- #endif -->
     </view>
+
+    <view v-else-if="loading" class="detail-state">
+      <text class="detail-state__text">
+        加载中…
+      </text>
+    </view>
+
+    <view v-else class="detail-state">
+      <wd-empty tip="记录不存在或加载失败" />
+      <wd-button type="primary" block :round="true" custom-class="mt-32rpx" @click="retryLoad">
+        重试
+      </wd-button>
+      <view
+        class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
+        hover-class="pressable--pressed"
+        :hover-stay-time="60"
+        @click="goAllRecords"
+      >
+        返回全部记录
+      </view>
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
+.detail-state {
+  padding: 80rpx 48rpx 48rpx;
+}
+
+.detail-state__text {
+  display: block;
+  text-align: center;
+  font-size: 28rpx;
+  color: #8a9199;
+}
+
 .hero-card {
   position: relative;
   overflow: hidden;
@@ -447,7 +519,7 @@ function goVerify() {
 .hero-card__footer {
   display: flex;
   align-items: stretch;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.22);
+  gap: 8rpx;
   padding: 24rpx 0 28rpx;
 }
 
@@ -457,11 +529,6 @@ function goVerify() {
   flex-direction: column;
   align-items: center;
   gap: 8rpx;
-}
-
-.hero-stat--mid {
-  border-left: 1rpx solid rgba(255, 255, 255, 0.22);
-  border-right: 1rpx solid rgba(255, 255, 255, 0.22);
 }
 
 .hero-stat__lab {
@@ -478,6 +545,22 @@ function goVerify() {
 .charts-box {
   width: 100%;
   height: 360rpx;
+}
+
+.charts-skeleton {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12rpx;
+  height: 100%;
+  padding: 24rpx 8rpx 8rpx;
+}
+
+.charts-skeleton__bar {
+  flex: 1;
+  border-radius: 8rpx 8rpx 0 0;
+  background: #eef0f3;
+  min-height: 24%;
 }
 
 .breakdown-row {

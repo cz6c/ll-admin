@@ -54,27 +54,36 @@ function goVerify() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 80rpx 0;
-  color: #999999;
+  padding: 96rpx 32rpx 80rpx;
 }
 
+/* 标题更深、描述次级：层级靠对比而不只靠字号 */
 .lion-empty__title {
   font-size: 32rpx;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: #1f2329;
 }
 
 .lion-empty__desc {
   margin-top: 12rpx;
   font-size: 24rpx;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
   text-align: center;
+  color: #8a9199;
 }
 
 .lion-empty__btn {
-  margin-top: 34rpx;
+  margin-top: 36rpx;
   font-size: 28rpx;
-  color: var(--wot-primary-6);
-  padding: 12rpx 28rpx;
+  font-weight: 600;
+  color: var(--wot-success-main);
+  padding: 14rpx 32rpx;
   border-radius: 999rpx;
-  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  background: var(--wot-success-surface, #ecfdf5);
+  transition: transform 140ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .lion-empty__btn--pressed {

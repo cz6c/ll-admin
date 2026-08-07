@@ -1,9 +1,13 @@
 <script lang="ts" setup>
 /**
- * 薪资历史列表行：首页最近记录与历史页共用
- * 有 icon 时展示左侧色块图标；无 icon 时用色点区分类型（兼容旧用法）
+ * 薪资历史卡片行：历史列表单条扫读卡
+ * 布局：类型胶囊 + 主文/日期 + 右侧强调；整卡可点，无箭头第二入口
+ * 适用：salary/history 独立卡片列表
  */
-import type { SalaryHistoryEntryTheme } from '@/utils/salaryHistoryEntry'
+import type {
+  SalaryHistoryEmphasisTone,
+  SalaryHistoryEntryKind,
+} from '@/utils/salaryHistoryEntry'
 import { computed } from 'vue'
 
 defineOptions({ name: 'SalaryHistoryEntryRow' })
@@ -11,98 +15,152 @@ defineOptions({ name: 'SalaryHistoryEntryRow' })
 const props = withDefaults(defineProps<{
   /** 主标题 */
   title: string
-  /** 副标题（类型 · 日期） */
+  /** 副标题（更新日期） */
   subtitle: string
-  /** blue=测算主色，green=核对成功色 */
-  theme?: SalaryHistoryEntryTheme
-  /** wot-ui 图标名；不传或空串则不渲染左侧图标区，改用色点 */
-  icon?: string
-  /** 是否显示底部分割线（列表非末项） */
-  bordered?: boolean
+  /** 业务类型，驱动左侧胶囊 */
+  kind: SalaryHistoryEntryKind
+  /** 右侧强调文案 */
+  emphasis: string
+  /** 右侧强调色调 */
+  emphasisTone?: SalaryHistoryEmphasisTone
 }>(), {
-  theme: 'blue',
-  icon: '',
-  bordered: false,
+  emphasisTone: 'primary',
 })
 
 defineEmits<{
   click: []
 }>()
 
-const isGreen = computed(() => props.theme === 'green')
+const kindLabel = computed(() => (props.kind === 'verify' ? '核对' : '测算'))
 
-/** 未显式传 icon 时按主题给默认图标，避免调用方漏传 */
-const resolvedIcon = computed(() => {
-  if (props.icon)
-    return props.icon
-  return isGreen.value ? 'check-square' : 'file'
-})
+const isVerify = computed(() => props.kind === 'verify')
 
-const iconColor = computed(() => {
-  return isGreen.value ? 'var(--wot-success-main)' : 'var(--wot-primary-6)'
+const emphasisClass = computed(() => {
+  if (props.emphasisTone === 'success')
+    return 'history-entry-row__emphasis--success'
+  if (props.emphasisTone === 'warning')
+    return 'history-entry-row__emphasis--warning'
+  return 'history-entry-row__emphasis--primary'
 })
 </script>
 
 <template>
   <view
-    class="history-entry-row flex items-center gap-20rpx px-28rpx py-24rpx"
-    :class="{ 'border-b border-#edf0f6': bordered }"
+    class="history-entry-row"
     hover-class="history-entry-row--pressed"
     :hover-stay-time="70"
     @click="$emit('click')"
   >
     <view
-      v-if="icon"
-      class="entry-icon shrink-0"
-      :class="isGreen ? 'entry-icon--green' : 'entry-icon--blue'"
+      class="history-entry-row__badge"
+      :class="isVerify ? 'history-entry-row__badge--verify' : 'history-entry-row__badge--calc'"
     >
-      <wd-icon :name="resolvedIcon" size="36rpx" :color="iconColor" />
+      {{ kindLabel }}
     </view>
 
-    <view class="min-w-0 flex-1">
-      <view class="truncate text-30rpx font-medium">
+    <view class="history-entry-row__body">
+      <view class="history-entry-row__title">
         {{ title }}
       </view>
-      <view class="mt-10rpx flex items-center gap-10rpx">
-        <view
-          v-if="!icon"
-          class="h-12rpx w-12rpx rounded-full"
-          :class="isGreen ? 'bg-[var(--wot-success-main)]' : 'bg-primary'"
-        />
-        <view class="text-24rpx text-#666">
-          {{ subtitle }}
-        </view>
+      <view class="history-entry-row__subtitle">
+        {{ subtitle }}
       </view>
     </view>
 
-    <wd-icon name="right" size="28rpx" color="#999" />
+    <view
+      class="history-entry-row__emphasis"
+      :class="emphasisClass"
+    >
+      {{ emphasis }}
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
+/* 白卡内容区：分隔靠外层卡片间距，不用行内发丝线 */
 .history-entry-row {
-  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 28rpx 24rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 35, 41, 0.03);
+  transition: transform 120ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .history-entry-row--pressed {
   transform: scale(0.985);
-  opacity: 0.92;
+  opacity: 0.94;
 }
 
-.entry-icon {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.history-entry-row__badge {
+  flex-shrink: 0;
+  min-width: 64rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.01em;
 }
 
-.entry-icon--blue {
+.history-entry-row__badge--calc {
+  color: var(--wot-primary-6);
   background: var(--wot-primary-1);
 }
 
-.entry-icon--green {
+.history-entry-row__badge--verify {
+  color: var(--wot-success-main);
   background: var(--wot-success-surface);
+}
+
+.history-entry-row__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.history-entry-row__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 30rpx;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #1f2329;
+  line-height: 1.35;
+}
+
+.history-entry-row__subtitle {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  letter-spacing: 0.01em;
+  color: #8a9199;
+  line-height: 1.3;
+}
+
+.history-entry-row__emphasis {
+  flex-shrink: 0;
+  max-width: 220rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 28rpx;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.history-entry-row__emphasis--primary {
+  color: var(--wot-primary-6);
+}
+
+.history-entry-row__emphasis--success {
+  color: var(--wot-success-main);
+}
+
+.history-entry-row__emphasis--warning {
+  color: var(--wot-warning-main);
 }
 </style>

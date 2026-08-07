@@ -57,14 +57,14 @@ const showShareLandingTip = ref(false)
 const yearEndModeLabel = computed(() => salaryOptionLabel(YEAR_END_TAX_OPTIONS, salaryForm.value.yearEndTaxMode))
 
 const bonusMultipliers = [1, 2, 3, 4, 6, 8, 10] as const
-/** 当前选中的「N 倍月薪」；手动改年终奖金额后置 null，表示脱离倍数联动 */
-const selectedBonusMul = ref<number | null>(1)
+/** 当前选中的「N 倍月薪」；未设奖金或手动改金额后为 null，避免 ×1 假选中 */
+const selectedBonusMul = ref<number | null>(null)
 
 /** 回填后若年终奖恰为某倍数×月薪，恢复倍数标签选中态 */
 function syncBonusMulFromForm() {
   const { preTaxMonthly, yearEndBonus } = salaryForm.value
   if (!(preTaxMonthly > 0) || yearEndBonus <= 0) {
-    selectedBonusMul.value = yearEndBonus === 0 ? 1 : null
+    selectedBonusMul.value = null
     return
   }
   const hit = bonusMultipliers.find(m => Math.round(preTaxMonthly * m) === yearEndBonus)
@@ -90,15 +90,16 @@ onShow(() => {
   }
 })
 
-// 月薪变化时：若年终奖已是「倍数×月薪」则保持选中态；年终奖为 0 时恢复默认 1 倍选中
+// 月薪变化时：若年终奖已是「倍数×月薪」则保持选中态；奖金为 0 时清空倍数选中
 watch(
   () => salaryForm.value.preTaxMonthly,
   () => {
-    if (selectedBonusMul.value != null && salaryForm.value.yearEndBonus === Math.round(salaryForm.value.preTaxMonthly * selectedBonusMul.value)) {
+    if (selectedBonusMul.value != null) {
+      patchForm({ yearEndBonus: Math.round(salaryForm.value.preTaxMonthly * selectedBonusMul.value) })
       return
     }
     if (salaryForm.value.yearEndBonus === 0)
-      selectedBonusMul.value = 1
+      selectedBonusMul.value = null
   },
 )
 
@@ -173,7 +174,8 @@ async function submitCalc() {
   }
 }
 
-function goHistory() {
+/** 次级入口：与首页「全部记录」文案对齐，带测算 tab */
+function goAllRecords() {
   uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
 }
 
@@ -237,46 +239,52 @@ function dismissShareLandingTip() {
           </wd-form-item>
         </wd-cell-group>
 
-        <scroll-view scroll-x class="mb-24rpx whitespace-nowrap px-8rpx" :show-scrollbar="false">
-          <view class="inline-flex gap-16rpx py-8rpx">
-            <wd-tag
-              v-for="m in bonusMultipliers"
-              :key="m"
-              :type="selectedBonusMul === m ? 'primary' : 'default'"
-              variant="plain"
-              round
-              @click="applyBonusMul(m)"
-            >
-              {{ m === 1 ? "月薪×1" : `×${m}` }}
-            </wd-tag>
-          </view>
-        </scroll-view>
+        <!-- 贴在年终奖下方：快捷倍数，与字段映射一致 -->
+        <view class="bonus-mul mb-24rpx">
+          <text class="bonus-mul__lab">
+            快捷：月薪 × N
+          </text>
+          <scroll-view scroll-x class="whitespace-nowrap" :show-scrollbar="false">
+            <view class="inline-flex gap-16rpx py-8rpx">
+              <wd-tag
+                v-for="m in bonusMultipliers"
+                :key="m"
+                :type="selectedBonusMul === m ? 'primary' : 'default'"
+                variant="plain"
+                round
+                @click="applyBonusMul(m)"
+              >
+                {{ m === 1 ? '×1' : `×${m}` }}
+              </wd-tag>
+            </view>
+          </scroll-view>
+        </view>
 
         <wd-cell-group center custom-class="card-rounded mb-24rpx" border>
-          <wd-form-item title="社保个缴金额（月）" :title-width="140" prop="ssPersonalAmount">
+          <wd-form-item title="社保（月）" :title-width="120" prop="ssPersonalAmount">
             <wd-input
               type="digit"
               align-right
               :model-value="salaryForm.ssPersonalAmount ? String(salaryForm.ssPersonalAmount) : ''"
-              placeholder="五险个人部分合计"
+              placeholder="五险个人部分"
               custom-class="salary-cell-input"
               @update:model-value="onSsPersonalAmountInput"
             />
           </wd-form-item>
-          <wd-form-item title="公积金个缴金额（月）" :title-width="140" prop="hfPersonalAmount">
+          <wd-form-item title="公积金（月）" :title-width="120" prop="hfPersonalAmount">
             <wd-input
               type="digit"
               align-right
               :model-value="salaryForm.hfPersonalAmount ? String(salaryForm.hfPersonalAmount) : ''"
-              placeholder="个人月缴存额"
+              placeholder="个人月缴存"
               custom-class="salary-cell-input"
               @update:model-value="onHfPersonalAmountInput"
             />
           </wd-form-item>
-          <wd-form-item :title-width="160" prop="specialDeductionMonthly">
+          <wd-form-item :title-width="140" prop="specialDeductionMonthly">
             <template #title>
               <view class="flex items-center">
-                <text>专项附加扣除（月）</text>
+                <text>专项附加（月）</text>
                 <wd-icon name="question-circle" size="32rpx" class="text-primary" @click.stop="showSpecialDeductionTip = true" />
               </view>
             </template>
@@ -284,7 +292,7 @@ function dismissShareLandingTip() {
               type="digit"
               align-right
               :model-value="salaryForm.specialDeductionMonthly ? String(salaryForm.specialDeductionMonthly) : ''"
-              placeholder="请输入具体数额"
+              placeholder="七项合计"
               custom-class="salary-cell-input"
               @update:model-value="onSpecialInput"
             />
@@ -292,12 +300,18 @@ function dismissShareLandingTip() {
         </wd-cell-group>
       </wd-form>
 
+      <!-- 单主 CTA；历史降为文案链，避免双大按钮叠放 -->
       <wd-button :block="true" :round="true" size="large" type="primary" :loading="submitting" :disabled="submitting" @click="submitCalc">
         开始测算
       </wd-button>
-      <wd-button :block="true" :round="true" size="large" variant="plain" custom-class="mt-24rpx" @click="goHistory">
-        历史记录
-      </wd-button>
+      <view
+        class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
+        hover-class="pressable--pressed"
+        :hover-stay-time="60"
+        @click="goAllRecords"
+      >
+        全部记录
+      </view>
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考
       </view>
@@ -380,6 +394,18 @@ function dismissShareLandingTip() {
 .share-landing-tip__close {
   flex-shrink: 0;
   padding: 4rpx;
+}
+
+.bonus-mul {
+  padding: 0 8rpx;
+}
+
+.bonus-mul__lab {
+  display: block;
+  margin-bottom: 4rpx;
+  font-size: 22rpx;
+  color: #8a9199;
+  letter-spacing: 0.01em;
 }
 
 @keyframes tip-enter {

@@ -11,13 +11,7 @@ import { SalarySlipResultDto } from "./dto/salary-slip-result.dto";
 import { SalaryVerifyHistoryEntity } from "./entities/salary-verify-history.entity";
 import { SalaryHistoryTypeEnum } from "./enums/salary-history.enum";
 import { SalarySlipRecognizeOrchestrator } from "./recognize/salary-slip-recognize.orchestrator";
-import {
-  createTraceId,
-  logSalarySlipRecognize,
-  RecognizeTiming,
-  OcrLogSnapshot,
-  ResultLogSnapshot
-} from "./utils/recognize-logger";
+import { createTraceId, logSalarySlipRecognize, RecognizeTiming, OcrLogSnapshot, ResultLogSnapshot } from "./utils/recognize-logger";
 
 /** 单用户每日识别上限；超限返回 429 */
 const DAILY_RECOGNIZE_LIMIT = 10;
@@ -299,7 +293,12 @@ export class SalarySlipService {
     return this.saveVerifyHistoryUpdate(existed, payload);
   }
 
-  /** 当前用户历史列表；keyword 模糊匹配 payPeriod / 税前月薪 */
+  /**
+   * 当前用户历史列表；keyword 模糊匹配 payPeriod / 税前月薪
+   * 排序契约（前端须保持该顺序，勿再本地重排）：
+   * 1. payPeriod DESC（所属月新→旧，如 2026-06 → 2026-05 → 2026-04）
+   * 2. 同所属月再按 updateTime DESC；calc 的 payPeriod 为 NULL，MySQL DESC 下排在有所属月记录之后
+   */
   async listHistory(userId: number, keyword?: string, historyType?: SalaryHistoryType) {
     if (!userId) {
       return ResultData.fail(400, "缺少用户信息");

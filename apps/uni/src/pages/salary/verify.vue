@@ -166,6 +166,19 @@ const showManualHint = computed(() => {
   return ocrEmpty || incomplete
 })
 
+/**
+ * 横幅串行：识别提示 > 分享落地 > 手填引导，同时只展示一条
+ */
+const activeBanner = computed<'recognize' | 'share' | 'manual' | null>(() => {
+  if (recognizeHints.value.length)
+    return 'recognize'
+  if (showShareLandingTip.value)
+    return 'share'
+  if (showManualHint.value)
+    return 'manual'
+  return null
+})
+
 watch(lineItems, (items) => {
   if (!items.length)
     return
@@ -282,7 +295,8 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
   })
 }
 
-function goVerifyHistory() {
+/** 次级入口：与首页「全部记录」文案对齐，带核对 tab */
+function goAllRecords() {
   uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
 }
 
@@ -296,7 +310,7 @@ function dismissShareLandingTip() {
     <SalaryAbacusLoading :visible="showLionLoading" :tip="lionLoadingTip" />
     <view class="p-24rpx">
       <view
-        v-if="showShareLandingTip"
+        v-if="activeBanner === 'share'"
         class="share-landing-tip m-[-24rpx] mb-24rpx"
       >
         <text class="share-landing-tip__text">
@@ -312,11 +326,11 @@ function dismissShareLandingTip() {
         </view>
       </view>
 
-      <!-- 识别区 -->
+      <!-- 识别区：上传为主，说明收进 ? -->
       <view class="card-rounded p-24rpx">
         <view class="flex items-center gap-8rpx">
           <text class="mr-8rpx text-30rpx text-#333 font-600">
-            工资条识别
+            上传工资条
           </text>
           <wd-icon name="question-circle" size="28rpx" class="text-primary" @click="showDialog = true" />
           <wd-popup v-model="showDialog" custom-class="rounded-24rpx" :close-on-click-modal="false">
@@ -338,7 +352,7 @@ function dismissShareLandingTip() {
         </view>
 
         <view
-          v-if="recognizeHints.length"
+          v-if="activeBanner === 'recognize'"
           class="recognize-hints mt-16rpx"
         >
           <view
@@ -366,9 +380,6 @@ function dismissShareLandingTip() {
               点击拍照/选择图片
             </view>
           </view>
-        </view>
-        <view class="mt-16rpx text-center text-22rpx text-#c0c4cc">
-          识别完即删，不留图
         </view>
 
         <!-- 识别明细 -->
@@ -404,14 +415,9 @@ function dismissShareLandingTip() {
         </view>
       </view>
 
-      <!-- 核对表单 -->
+      <!-- 核对表单：六项金额同级展示（社保/公积金/专项与必填同等重要） -->
       <view class="mt-24rpx card-rounded py-24rpx">
-        <view class="flex items-center gap-8rpx px-24rpx">
-          <text class="text-30rpx text-#333 font-600">
-            核对表单
-          </text>
-        </view>
-        <view v-if="showManualHint" class="manual-hint mx-24rpx mt-12rpx">
+        <view v-if="activeBanner === 'manual'" class="manual-hint mx-24rpx">
           识别不准？直接填写税前、个税、税后三项进行核对
         </view>
         <wd-form
@@ -442,13 +448,19 @@ function dismissShareLandingTip() {
           </wd-form-item>
         </wd-form>
 
-        <view class="mt-12rpx flex gap-24rpx px-24rpx">
-          <wd-button type="primary" variant="plain" block :round="true" @click="goVerifyHistory">
-            核对历史
-          </wd-button>
+        <!-- 单主 CTA；历史降为文案链，避免双主按钮平分注意力 -->
+        <view class="mt-12rpx px-24rpx">
           <wd-button type="primary" block :round="true" :loading="submitting" :disabled="submitting" @click="submitVerify">
             开始核对
           </wd-button>
+          <view
+            class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
+            hover-class="pressable--pressed"
+            :hover-stay-time="60"
+            @click="goAllRecords"
+          >
+            全部记录
+          </view>
         </view>
       </view>
 

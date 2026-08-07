@@ -28,6 +28,8 @@ definePage({
 
 const historyId = ref('')
 const loadFailed = ref(false)
+/** 首屏拉取中：有数据前不闪空态 */
+const loading = ref(true)
 /** 当前核对记录（页面态） */
 const record = ref<PayslipVerifyRecord | null>(null)
 /** 同年核对列表，仅供本页累计预扣，不进 store.items */
@@ -49,16 +51,26 @@ onLoad((options?: Record<string, string>) => {
   // #endif
 })
 
-onShow(async () => {
-  if (!historyId.value)
+/**
+ * 拉取详情；失败只走可恢复空态（返回/重试），不再 toast 叠一层
+ */
+async function fetchDetail() {
+  if (!historyId.value) {
+    loadFailed.value = true
+    record.value = null
+    relatedVerifyList.value = []
+    loading.value = false
     return
+  }
+  loading.value = true
   loadFailed.value = false
   try {
     const detail = await getSalaryHistoryDetail(Number(historyId.value))
     const main = toVerifyRecord(toHistoryRecord(detail.item))
     if (!main) {
       loadFailed.value = true
-      uni.showToast({ title: '记录类型不正确', icon: 'none' })
+      record.value = null
+      relatedVerifyList.value = []
       return
     }
     record.value = main
@@ -70,9 +82,24 @@ onShow(async () => {
     loadFailed.value = true
     record.value = null
     relatedVerifyList.value = []
-    uni.showToast({ title: '历史记录加载失败', icon: 'none' })
   }
+  finally {
+    loading.value = false
+  }
+}
+
+onShow(() => {
+  void fetchDetail()
 })
+
+function retryLoad() {
+  void fetchDetail()
+}
+
+/** 失败恢复：回全部记录（核对 tab） */
+function goAllRecords() {
+  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
+}
 
 const detail = computed(() => {
   if (!record.value)
@@ -271,22 +298,7 @@ function fmtDiff(diff: number) {
 <template>
   <view class="page-shell pb-safe">
     <view v-if="record && verify && breakdown" class="p-24rpx">
-      <view v-if="calcModeHint" class="compare-hint mb-24rpx">
-        <text class="compare-hint__text">
-          {{ calcModeHint }}
-        </text>
-        <view
-          v-if="firstMissingPayPeriod"
-          class="compare-hint__cta pressable mt-16rpx"
-          hover-class="pressable--pressed"
-          :hover-stay-time="70"
-          @click="goFillMissingMonth"
-        >
-          去补 {{ firstMissingMonthLabel }} 核对
-        </view>
-      </view>
-
-      <!-- 顶部结论卡：一致或差异状态 -->
+      <!-- 顶部结论卡：一致或差异；缺月提示并入卡脚，避免双横幅 -->
       <view class="summary-card card-rounded p-32rpx">
         <view class="summary-card__head">
           <view class="summary-card__icon" :class="summaryMatch ? 'is-ok' : 'is-warn'">
@@ -301,52 +313,90 @@ function fmtDiff(diff: number) {
             </text>
           </view>
         </view>
-        <view class="summary-card__actions">
-          <wd-text v-if="!summaryMatch" type="primary" text="重新核对" @click="goReVerify" />
+
+        <view v-if="calcModeHint" class="summary-card__hint mt-20rpx">
+          <text class="summary-card__hint-text">
+            {{ calcModeHint }}
+          </text>
+          <view
+            v-if="firstMissingPayPeriod"
+            class="summary-card__hint-cta pressable mt-12rpx"
+            hover-class="pressable--pressed"
+            :hover-stay-time="70"
+            @click="goFillMissingMonth"
+          >
+            去补 {{ firstMissingMonthLabel }} 核对
+          </view>
         </view>
+
+        <wd-button
+          v-if="!summaryMatch"
+          type="primary"
+          block
+          :round="true"
+          custom-class="mt-28rpx"
+          @click="goReVerify"
+        >
+          重新核对
+        </wd-button>
       </view>
 
-      <!-- 第一层：结论 + 列表对照 -->
-      <view class="mt-24rpx card-rounded px-32rpx">
+      <!-- 第一层：结论 + 列表对照（软卡片行，去掉硬边表格） -->
+      <view class="mt-24rpx card-rounded px-32rpx pb-8rpx">
         <view class="flex items-center gap-16rpx py-24rpx">
-          <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-          <text class="text-30rpx text-#333 font-600"> 项目对比 </text>
-          <text class="text-24rpx text-#999">系统vs工资条</text>
+          <text class="text-30rpx text-#333 font-600">
+            项目对比
+          </text>
+          <text class="text-24rpx text-#999">
+            系统 vs 工资条
+          </text>
         </view>
 
-        <view class="mb-16rpx text-26rpx">
+        <view class="mb-16rpx text-26rpx text-#666">
           {{ verdictSummary }}
         </view>
 
-        <view class="compare-table mb-24rpx">
-          <view class="compare-table__head">
-            <text class="compare-table__cell compare-table__cell--item"> 核对项 </text>
-            <text class="compare-table__cell"> 系统计算 </text>
-            <text class="compare-table__cell"> 工资条 </text>
-            <text class="compare-table__cell"> 差异 </text>
+        <view class="compare-list mb-16rpx">
+          <view class="compare-list__head">
+            <text class="compare-list__cell compare-list__cell--item">
+              核对项
+            </text>
+            <text class="compare-list__cell">
+              系统
+            </text>
+            <text class="compare-list__cell">
+              工资条
+            </text>
+            <text class="compare-list__cell">
+              差异
+            </text>
           </view>
-          <view class="compare-table__row">
-            <text class="compare-table__cell compare-table__cell--item"> 个税 </text>
-            <text class="compare-table__cell tabular-nums">
+          <view class="compare-list__row">
+            <text class="compare-list__cell compare-list__cell--item">
+              个税
+            </text>
+            <text class="compare-list__cell tabular-nums">
               {{ fmt(verify.expectedTax) }}
             </text>
-            <text class="compare-table__cell tabular-nums">
+            <text class="compare-list__cell tabular-nums">
               {{ fmt(record.personalIncomeTax) }}
             </text>
-            <text class="compare-table__cell compare-table__cell--diff tabular-nums" :class="verify.taxMatch ? 'is-ok' : 'is-warn'">
-              {{ verify.taxMatch ? "一致" : fmtDiff(verify.taxDiff) }}
+            <text class="compare-list__cell compare-list__cell--diff tabular-nums" :class="verify.taxMatch ? 'is-ok' : 'is-warn'">
+              {{ verify.taxMatch ? '一致' : fmtDiff(verify.taxDiff) }}
             </text>
           </view>
-          <view class="compare-table__row">
-            <text class="compare-table__cell compare-table__cell--item"> 税后月薪 </text>
-            <text class="compare-table__cell tabular-nums">
+          <view class="compare-list__row">
+            <text class="compare-list__cell compare-list__cell--item">
+              税后月薪
+            </text>
+            <text class="compare-list__cell tabular-nums">
               {{ fmt(verify.expectedPostTax) }}
             </text>
-            <text class="compare-table__cell tabular-nums">
+            <text class="compare-list__cell tabular-nums">
               {{ fmt(record.postTaxMonthly) }}
             </text>
-            <text class="compare-table__cell compare-table__cell--diff tabular-nums" :class="verify.postTaxMatch ? 'is-ok' : 'is-warn'">
-              {{ verify.postTaxMatch ? "一致" : fmtDiff(verify.postTaxDiff) }}
+            <text class="compare-list__cell compare-list__cell--diff tabular-nums" :class="verify.postTaxMatch ? 'is-ok' : 'is-warn'">
+              {{ verify.postTaxMatch ? '一致' : fmtDiff(verify.postTaxDiff) }}
             </text>
           </view>
         </view>
@@ -482,26 +532,44 @@ function fmtDiff(diff: number) {
       <!-- #endif -->
     </view>
 
-    <view v-else-if="loadFailed" class="px-32rpx pt-80rpx">
+    <view v-else-if="loading" class="detail-state">
+      <text class="detail-state__text">
+        加载中…
+      </text>
+    </view>
+
+    <view v-else-if="loadFailed" class="detail-state">
       <wd-empty tip="记录不存在或加载失败" />
+      <wd-button type="primary" block :round="true" custom-class="mt-32rpx" @click="retryLoad">
+        重试
+      </wd-button>
+      <view
+        class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
+        hover-class="pressable--pressed"
+        :hover-stay-time="60"
+        @click="goAllRecords"
+      >
+        返回全部记录
+      </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.summary-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
+.detail-state {
+  padding: 80rpx 48rpx 48rpx;
 }
 
-.summary-card__actions {
+.detail-state__text {
+  display: block;
+  text-align: center;
+  font-size: 28rpx;
+  color: #8a9199;
+}
+
+.summary-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 12rpx;
-  flex-shrink: 0;
 }
 
 .summary-card__head {
@@ -526,8 +594,8 @@ function fmtDiff(diff: number) {
 }
 
 .summary-card__icon.is-warn {
-  color: var(--wot-danger-main);
-  background: var(--wot-danger-surface, #ffecec);
+  color: var(--wot-warning-main);
+  background: var(--wot-warning-surface);
 }
 
 .summary-card__titles {
@@ -547,7 +615,7 @@ function fmtDiff(diff: number) {
 }
 
 .summary-card__title.is-warn {
-  color: var(--wot-danger-main);
+  color: var(--wot-warning-main);
 }
 
 .summary-card__sub {
@@ -558,94 +626,63 @@ function fmtDiff(diff: number) {
   line-height: 1.4;
 }
 
-.compare-table {
-  border: 2rpx solid #f0f0f0;
+.summary-card__hint {
+  padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  overflow: hidden;
+  background: var(--wot-warning-surface);
 }
 
-.compare-table__head,
-.compare-table__row {
+.summary-card__hint-text {
+  display: block;
+  font-size: 24rpx;
+  color: var(--wot-warning-main);
+  line-height: 1.5;
+}
+
+.summary-card__hint-cta {
+  display: inline-flex;
+  align-items: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--wot-primary-6);
+}
+
+.compare-list__head,
+.compare-list__row {
   display: flex;
   align-items: center;
+  padding: 16rpx 0;
 }
 
-.compare-table__head {
-  background: #f7f8fa;
+.compare-list__row + .compare-list__row {
+  border-top: 1rpx solid #f0f2f5;
 }
 
-.compare-table__row + .compare-table__row {
-  border-top: 2rpx solid #f0f0f0;
-}
-
-.compare-table__cell {
+.compare-list__cell {
   flex: 1;
-  padding: 20rpx 12rpx;
   font-size: 24rpx;
   color: #333;
   text-align: right;
   line-height: 1.4;
 }
 
-.compare-table__cell--item {
-  flex: 0 0 140rpx;
+.compare-list__cell--item {
+  flex: 0 0 120rpx;
   color: #666;
   text-align: left;
-  padding-left: 20rpx;
 }
 
-.compare-table__head .compare-table__cell {
+.compare-list__head .compare-list__cell {
   font-size: 22rpx;
   color: #999;
 }
 
-.compare-table__cell--diff.is-ok {
+.compare-list__cell--diff.is-ok {
   color: var(--wot-success-main);
 }
 
-.compare-table__cell--diff.is-warn {
+.compare-list__cell--diff.is-warn {
   color: var(--wot-warning-main);
-}
-
-.compare-hint {
-  padding: 16rpx 20rpx;
-  border-radius: 12rpx;
-  background: var(--wot-warning-surface);
-  font-size: 24rpx;
-  color: var(--wot-warning-main);
-  line-height: 1.5;
-  animation: tip-enter 200ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
-}
-
-.compare-hint__text {
-  display: block;
-}
-
-.compare-hint__cta {
-  display: inline-flex;
-  align-items: center;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--wot-primary-6);
-  padding: 4rpx 0;
-}
-
-@keyframes tip-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8rpx) scale(0.97);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .compare-hint {
-    animation: none;
-  }
 }
 
 .calc-step {

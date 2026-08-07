@@ -17,12 +17,24 @@ export class LineItemDto {
   warning: string;
 }
 
+/** 整单级提示（倾斜、低置信度等），供前端常驻展示 */
+export class RecognizeHintDto {
+  @ApiProperty({ description: "提示码，如 table_skewed / low_confidence" })
+  code: string;
+
+  @ApiProperty({ description: "用户可读文案" })
+  message: string;
+}
+
 export class SalarySlipResultDto {
   @ApiProperty({ type: [LineItemDto], required: false, description: "识别明细项，供核对" })
   line_items?: LineItemDto[];
 
   @ApiProperty({ enum: ["high", "medium", "low"], required: false, description: "识别置信度" })
   confidence?: "high" | "medium" | "low";
+
+  @ApiProperty({ type: [RecognizeHintDto], required: false, description: "整单提示，须在 UI 展示" })
+  hints?: RecognizeHintDto[];
 }
 
 /** multipart 上传体；字段名必须为 file（与 FileInterceptor("file") 一致） */

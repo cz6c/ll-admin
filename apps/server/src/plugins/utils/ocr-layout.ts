@@ -13,6 +13,8 @@ export interface AlignedPair {
   value: string | null;
   columnIndex?: number;
   ambiguous?: boolean;
+  /** 业务提示，如多数据行取末行 */
+  warning?: string;
   /** 0~1，Label 与 Value 的 X 轴对齐置信度 */
   confidence: number;
 }
@@ -33,8 +35,45 @@ interface LayoutContext {
   colThreshold: number;
 }
 
-function isAmount(text: string): boolean {
-  return /^-?\d+([.,]\d+)?$/.test(text.replace(/,/g, ""));
+/**
+ * 规范化金额文本：去空白/货币符号/千分位，括号负数转负号
+ * @note 逗号一律当千分位去掉（国内工资条常见）
+ */
+export function normalizeAmountText(text: string): string {
+  let normalized = String(text || "")
+    .replace(/\s/g, "")
+    .replace(/[,，]/g, "")
+    .replace(/[¥￥元]/g, "")
+    .replace(/^−/, "-");
+
+  const paren = normalized.match(/^[（(](.+)[）)]$/);
+  if (paren) {
+    normalized = `-${paren[1]}`;
+  }
+
+  return normalized;
+}
+
+/** 是否为金额单元格（支持元、括号负、千分位） */
+export function isAmount(text: string): boolean {
+  const normalized = normalizeAmountText(text);
+  return /^-?\d+(\.\d+)?$/.test(normalized);
+}
+
+/** 解析金额为两位小数 number；非法返回 null */
+export function parseAmountNumber(text: string): number | null {
+  const normalized = normalizeAmountText(text);
+  if (!normalized || normalized === "-") {
+    return null;
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+  const num = Number(normalized);
+  if (!Number.isFinite(num)) {
+    return null;
+  }
+  return Math.round(num * 100) / 100;
 }
 
 function getCenter(box: BoxPoint[]): { cx: number; cy: number } {
@@ -130,7 +169,7 @@ function cleanLabelText(text: string): string {
   if (!normalized) {
     return "";
   }
-  const cleaned = normalized.replace(/[^\u4e00-\u9fa5a-zA-Z0-9()（）\-+]/g, "");
+  const cleaned = normalized.replace(/[^\u4e00-\u9fa5a-zA-Z0-9()（）\-+/]/g, "");
   if (cleaned.length === 1 && !/[\u4e00-\u9fa5]/.test(cleaned)) {
     return "";
   }
@@ -176,15 +215,11 @@ function formatAmountValue(value: string | null): string {
   if (value === null || value.trim() === "" || value.trim() === "-") {
     return "-";
   }
-  const normalized = value.replace(/,/g, "").trim();
-  if (!/^-?\d+([.,]\d+)?$/.test(normalized.replace(",", "."))) {
+  const amount = parseAmountNumber(value);
+  if (amount === null) {
     return value;
   }
-  const num = Number(normalized.replace(",", "."));
-  if (!Number.isFinite(num)) {
-    return value;
-  }
-  return (Math.round(num * 100) / 100).toFixed(2);
+  return amount.toFixed(2);
 }
 
 /** 统一金额格式，空值替换为 -，清洗 label 并稳定排序 */
@@ -247,18 +282,85 @@ function isTitleRow(row: OcrCell[]): boolean {
   return row.length === 1 && isTitleCell(row[0]);
 }
 
+function isAmountHeavyRow(row: OcrCell[]): boolean {
+  if (!row.length) {
+    return false;
+  }
+  const amountCount = row.filter(c => isAmount(c.text)).length;
+  return amountCount / row.length >= 0.5;
+}
+
 function findDataRowIndex(rows: OcrCell[][]): number {
   for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i];
-    if (!row.length) {
-      continue;
-    }
-    const amountCount = row.filter(c => isAmount(c.text)).length;
-    if (amountCount / row.length >= 0.5) {
+    if (isAmountHeavyRow(rows[i])) {
       return i;
     }
   }
   return -1;
+}
+
+/** 叶子表头下方连续金额行（用于多数据行覆盖） */
+function findDataRowIndicesAfterLeaf(rows: OcrCell[][], leafHeaderRowIdx: number): number[] {
+  const indices: number[] = [];
+  for (let i = leafHeaderRowIdx + 1; i < rows.length; i++) {
+    if (isAmountHeavyRow(rows[i])) {
+      indices.push(i);
+      continue;
+    }
+    if (indices.length) {
+      break;
+    }
+  }
+  return indices;
+}
+
+/**
+ * 叶子表头之上的父级表头：非 title、非金额行，且文本列明显少于叶子
+ */
+function findParentHeaderRowIdx(
+  rows: OcrCell[][],
+  leafHeaderRowIdx: number,
+  titleRowIndices: Set<number>
+): number {
+  const leafNonAmount = rows[leafHeaderRowIdx]?.filter(c => !isAmount(c.text)).length ?? 0;
+  if (leafNonAmount < 2) {
+    return -1;
+  }
+
+  for (let i = leafHeaderRowIdx - 1; i >= 0; i--) {
+    if (titleRowIndices.has(i)) {
+      continue;
+    }
+    const row = rows[i];
+    if (!row?.length || isAmountHeavyRow(row)) {
+      continue;
+    }
+    const nonAmount = row.filter(c => !isAmount(c.text));
+    if (!nonAmount.length) {
+      continue;
+    }
+    if (nonAmount.length <= Math.max(1, Math.floor(leafNonAmount * 0.7))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function mergeParentHeaderLabels(
+  leafByCol: Map<number, string>,
+  parentRow: OcrCell[],
+  boundaries: ColumnBoundary[]
+): void {
+  const parentByCol = new Map<number, string>();
+  assignLeafRowToColumns(parentRow, boundaries, parentByCol);
+
+  for (const [colIdx, leafLabel] of leafByCol) {
+    const parentLabel = parentByCol.get(colIdx);
+    if (!parentLabel || !leafLabel || parentLabel === leafLabel) {
+      continue;
+    }
+    leafByCol.set(colIdx, `${parentLabel}/${leafLabel}`);
+  }
 }
 
 /** 统计表头行各 Cell 正下方是否为金额，作为叶子表头核心加分项 */
@@ -374,26 +476,26 @@ function assignLeafRowToColumns(row: OcrCell[], boundaries: ColumnBoundary[], ma
   }
 }
 
-/** 行聚类路径：叶子表头 + 数据行按列配对（不拼接父级） */
+/** 行聚类路径：叶子表头 + 多数据行按列配对 + 可选父表头前缀 */
 function pairWideTableColumnsByRows(cells: OcrCell[], ctx: LayoutContext): AlignedPair[] {
   const { rows, colThreshold } = ctx;
   if (!rows.length) {
     return [];
   }
 
-  const dataRowIdx = findDataRowIndex(rows);
-  if (dataRowIdx < 1) {
+  const seedDataRowIdx = findDataRowIndex(rows);
+  if (seedDataRowIdx < 1) {
     return [];
   }
 
   const titleRowIndices = new Set<number>();
-  for (let i = 0; i < dataRowIdx; i++) {
+  for (let i = 0; i < seedDataRowIdx; i++) {
     if (isTitleRow(rows[i])) {
       titleRowIndices.add(i);
     }
   }
 
-  const leafHeaderRowIdx = findLeafHeaderRowIdx(rows, dataRowIdx, titleRowIndices, colThreshold);
+  const leafHeaderRowIdx = findLeafHeaderRowIdx(rows, seedDataRowIdx, titleRowIndices, colThreshold);
   const leafRow = rows[leafHeaderRowIdx].filter(c => !isAmount(c.text));
   const boundaries = buildColumnBoundariesFromLeafRow(leafRow.length ? leafRow : rows[leafHeaderRowIdx], colThreshold);
   if (!boundaries.length) {
@@ -403,24 +505,39 @@ function pairWideTableColumnsByRows(cells: OcrCell[], ctx: LayoutContext): Align
   const leafByCol = new Map<number, string>();
   assignLeafRowToColumns(rows[leafHeaderRowIdx], boundaries, leafByCol);
 
+  const parentIdx = findParentHeaderRowIdx(rows, leafHeaderRowIdx, titleRowIndices);
+  if (parentIdx >= 0) {
+    mergeParentHeaderLabels(leafByCol, rows[parentIdx], boundaries);
+  }
+
+  const dataRowIndices = findDataRowIndicesAfterLeaf(rows, leafHeaderRowIdx);
+  const effectiveDataRows = dataRowIndices.length ? dataRowIndices : [seedDataRowIdx];
+  const multiDataRow = effectiveDataRows.length > 1;
   const boundaryReliable = isColumnBoundaryReliable(boundaries);
-  const dataRow = rows[dataRowIdx];
-  const pairs: AlignedPair[] = [];
 
-  for (const cell of dataRow) {
-    if (!isAmount(cell.text)) {
-      continue;
+  // 后行覆盖先行：同列取最后一行金额
+  const valueByCol = new Map<number, { value: string; confidence: number }>();
+  for (const rowIdx of effectiveDataRows) {
+    for (const cell of rows[rowIdx]) {
+      if (!isAmount(cell.text)) {
+        continue;
+      }
+      const colIdx = columnIndexForCx(cell.cx, boundaries);
+      const confidence = columnConfidenceForCx(cell.cx, boundaries, boundaryReliable);
+      valueByCol.set(colIdx, { value: cell.text, confidence });
     }
-    const colIdx = columnIndexForCx(cell.cx, boundaries);
-    const label = leafByCol.get(colIdx) || "?";
-    const confidence = columnConfidenceForCx(cell.cx, boundaries, boundaryReliable);
+  }
 
+  const pairs: AlignedPair[] = [];
+  for (const [colIdx, amount] of valueByCol) {
+    const label = leafByCol.get(colIdx) || "?";
     pairs.push({
       label,
-      value: cell.text,
+      value: amount.value,
       columnIndex: colIdx,
       ambiguous: boundaryReliable ? undefined : true,
-      confidence
+      warning: multiDataRow ? "多数据行取末行，请核对" : undefined,
+      confidence: amount.confidence
     });
   }
 
@@ -433,6 +550,17 @@ function pairWideTableColumnsByRows(cells: OcrCell[], ctx: LayoutContext): Align
         ambiguous: boundaryReliable ? undefined : true,
         confidence: boundaryReliable ? 0.85 : 0.45
       });
+    }
+  }
+
+  if (multiDataRow) {
+    for (const pair of pairs) {
+      if (pair.value === null) {
+        continue;
+      }
+      pair.ambiguous = pair.ambiguous || undefined;
+      // 多数据行取末行：不改 key，warning 交给 lineItems 展示；置信度仅轻微下调。
+      pair.confidence = clampConfidence(pair.confidence * 0.95);
     }
   }
 
@@ -722,6 +850,8 @@ export interface TableSkewResult {
   skewed: boolean;
   slope?: number;
   cyRange?: number;
+  /** 金额点 cx 均值，供 deskew 使用 */
+  meanX?: number;
 }
 
 const TABLE_SKEW_SLOPE_THRESHOLD = 0.06;
@@ -764,6 +894,31 @@ export function detectTableSkew(cells: OcrCell[], layout?: OcrLayoutType): Table
   return {
     skewed,
     slope: Math.round(slope * 1000) / 1000,
-    cyRange: Math.round(cyRange)
+    cyRange: Math.round(cyRange),
+    meanX: Math.round(meanX * 10) / 10
   };
+}
+
+/**
+ * 按倾斜斜率校正 cell 的 cy，便于重跑行聚类对齐（不二次 OCR）
+ * cy' = cy - slope * (cx - meanX)
+ */
+export function deskewCells(cells: OcrCell[], skew: TableSkewResult): OcrCell[] {
+  if (!skew.skewed || skew.slope == null || !cells.length) {
+    return cells;
+  }
+
+  const meanX =
+    skew.meanX ??
+    (() => {
+      const amounts = cells.filter(c => isAmount(c.text));
+      const xs = (amounts.length >= 4 ? amounts : cells).map(c => c.cx);
+      return xs.reduce((sum, x) => sum + x, 0) / xs.length;
+    })();
+
+  const slope = skew.slope;
+  return cells.map(cell => ({
+    ...cell,
+    cy: cell.cy - slope * (cell.cx - meanX)
+  }));
 }

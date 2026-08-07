@@ -1,9 +1,9 @@
 /**
  * 工资条拍照识别 Composable
- * 流程：选图 → 超 2MB 压缩 → 一律上传 recognize → 写入 lineItems
- * 副作用：失败 toast；loading 态由页面 SalaryAbacusLoading 消费；依赖 @/api/salary-slip
+ * 流程：选图 → 超 2MB 压缩 → 一律上传 recognize → 写入 lineItems / hints
+ * 副作用：失败 / 无明细 toast；有 hints 时不 toast（页面常驻条承载）；loading 由页面 SalaryAbacusLoading 消费
  */
-import type { LineItem } from '@/types/salary-slip'
+import type { LineItem, RecognizeHint } from '@/types/salary-slip'
 import { ref } from 'vue'
 import { recognizeSalarySlip } from '@/api/salary-slip'
 
@@ -25,6 +25,8 @@ export function useSalarySlipRecognize() {
   const loading = ref(false)
   const previewPath = ref('')
   const lineItems = ref<LineItem[]>([])
+  /** 整单提示（倾斜、低置信度等），选图时清空 */
+  const recognizeHints = ref<RecognizeHint[]>([])
 
   /**
    * 相册/相机选一张后一律识别。
@@ -41,6 +43,7 @@ export function useSalarySlipRecognize() {
         const size = res.tempFiles?.[0]?.size ?? 0
         previewPath.value = filePath
         lineItems.value = []
+        recognizeHints.value = []
 
         if (size > COMPRESS_THRESHOLD) {
           try {
@@ -63,12 +66,16 @@ export function useSalarySlipRecognize() {
       return
     loading.value = true
     lineItems.value = []
+    recognizeHints.value = []
     try {
       const result = await recognizeSalarySlip(previewPath.value)
       lineItems.value = (result.line_items ?? []).map(item => ({ ...item }))
+      recognizeHints.value = (result.hints ?? []).map(hint => ({ ...hint }))
+
       if (lineItems.value.length === 0) {
         uni.showToast({ title: '未识别到金额明细', icon: 'none', duration: 2500 })
       }
+      // 有 hints 时不 toast：常驻提示条已承载详情，叠 toast 会拖慢核对节奏
     }
     catch (err) {
       const msg = err instanceof Error ? err.message : '识别失败，请稍后重试'
@@ -83,6 +90,7 @@ export function useSalarySlipRecognize() {
     loading,
     previewPath,
     lineItems,
+    recognizeHints,
     chooseImage,
   }
 }

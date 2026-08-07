@@ -1,13 +1,14 @@
 /**
  * OCR 明细 → 月薪核对表单 6 字段映射
- * 职责：按标签正则匹配合计类行，写入 PayslipMappedFields
+ * 职责：按标签正则 + 同义词匹配合计类行，写入 PayslipMappedFields
  * 适用：verify 页识别完成后自动回填
  *
  * 映射规则：
  * 1. 仅匹配「合计/个人」类标签，不把明细行误当社保公积金总额
  * 2. 社保/公积金用负向前瞻排除「公司|单位|企业|基数|补贴」，避免单位缴与补贴行
  * 3. 同字段多行后写覆盖先写（后出现的合计更贴近「最终应发」）
- * 4. unmappedItems 返回全量 clone，供用户手动指派未命中项
+ * 4. 先 totalPatterns，再 synonymPatterns；不做编辑距离
+ * 5. unmappedItems 返回全量 clone，供用户手动指派未命中项
  */
 import type { LineItem } from '@/types/salary-slip'
 import { cloneDeep } from 'lodash-es'
@@ -42,17 +43,21 @@ interface FieldRule {
   key: PayslipFieldKey
   /** 优先匹配合计类标签 */
   totalPatterns: RegExp[]
+  /** 同义词弱匹配（精确/包含类正则，非编辑距离） */
+  synonymPatterns?: RegExp[]
 }
 
 const FIELD_RULES: FieldRule[] = [
   {
     key: 'preTaxMonthly',
     totalPatterns: [/应发(?:工资|薪金|合计)?$/, /税前(?:工资|薪金|合计)?$/, /工资总额$/, /税前合计$/, /应发总计$/],
+    synonymPatterns: [/应发合计/, /应发金额/, /税前收入/, /应发数$/, /税前月薪/],
   },
   {
     key: 'ssPersonalAmount',
     // 排除单位缴存/基数/补贴行，只收个人社保合计
     totalPatterns: [/^(?!.*(?:公司|单位|企业|基数|补贴)).*(?:社保|五险)/, /个人.*(?:社保|五险)/, /(?:社保|五险).*个人/],
+    synonymPatterns: [/^(?!.*(?:公司|单位|企业|基数|补贴)).*社保合计/, /个人社保合计/],
   },
   {
     key: 'hfPersonalAmount',
@@ -61,26 +66,40 @@ const FIELD_RULES: FieldRule[] = [
       /个人.*(?:公积金|一金)/,
       /(?:公积金|一金).*个人/,
     ],
+    synonymPatterns: [/^(?!.*(?:公司|单位|企业|基数|补贴)).*公积金合计/, /个人公积金合计/],
   },
   {
     key: 'specialDeductionMonthly',
     totalPatterns: [/专项附加扣除/, /个税专项扣除/, /附加扣除/, /专项扣除/, /专项附加$/],
+    synonymPatterns: [/专项附加合计/, /累计专项附加/],
   },
   {
     key: 'personalIncomeTax',
     totalPatterns: [/个人所得税/, /个税/, /代扣个税/, /所得税/, /代扣代缴.*税/, /应交个税/],
+    synonymPatterns: [/本月个税/, /扣缴个税/, /税金$/],
   },
   {
     key: 'postTaxMonthly',
     totalPatterns: [/实发(?:工资|薪金|合计)?$/, /税后(?:工资|薪金)?$/, /到手(?:工资|薪金)?$/, /实发合计$/, /实发金额$/, /税后实发$/, /实际发放$/],
+    synonymPatterns: [/实发数$/, /到手金额/, /实发月薪/, /税后收入/],
   },
 ]
 
 function parseAmount(value: string): number | null {
-  const trimmed = value.trim()
-  if (!trimmed || trimmed === '-')
+  let normalized = value
+    .trim()
+    .replace(/\s/g, '')
+    .replace(/[,，]/g, '')
+    .replace(/[¥￥元]/g, '')
+    .replace(/^−/, '-')
+
+  const paren = normalized.match(/^[（(](.+)[）)]$/)
+  if (paren)
+    normalized = `-${paren[1]}`
+
+  if (!normalized || normalized === '-')
     return null
-  const num = Number(trimmed.replace(/,/g, ''))
+  const num = Number(normalized)
   if (!Number.isFinite(num))
     return null
   return Math.round(num * 100) / 100
@@ -121,6 +140,9 @@ export function mapLineItemsToPayslipFields(lineItems: LineItem[]): MapLineItems
       if (matchRule(label, rule.totalPatterns)) {
         fields[rule.key] = amount
         return
+      }
+      if (rule.synonymPatterns?.length && matchRule(label, rule.synonymPatterns)) {
+        fields[rule.key] = amount
       }
     })
   }

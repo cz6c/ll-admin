@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'e:\\cz6\\tsb\\.codex\\hooks\\comment-gate-session-start.mjs'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

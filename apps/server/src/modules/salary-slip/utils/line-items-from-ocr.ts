@@ -6,8 +6,11 @@
  * - medium：配对率 ≥ 0.6 且歧义项 ≤ 2
  * - low：其余；单项 confidence < 0.55 或 ambiguous 会记 warning
  * 重复标签追加 (2)/(3)… 避免 key 冲突
+ * 合计勾稽失败时压低 confidence（见 applyPayslipConsistencyCheck）
  */
 import type { AlignedPair } from "@/plugins/utils/ocr-layout";
+import { parseAmountNumber } from "@/plugins/utils/ocr-layout";
+import { applyPayslipConsistencyCheck } from "./payslip-consistency";
 
 /** 整单置信度档位 */
 export type LineItemsConfidence = "high" | "medium" | "low";
@@ -29,27 +32,12 @@ export interface LineItemsFromOcrResult {
   confidence: LineItemsConfidence;
 }
 
-function parseAmount(text: string): number | null {
-  const normalized = text.replace(/,/g, "").trim();
-  if (!normalized || normalized === "-") {
-    return null;
-  }
-  if (!/^-?\d+([.,]\d+)?$/.test(normalized.replace(",", "."))) {
-    return null;
-  }
-  const num = Number(normalized.replace(",", "."));
-  if (!Number.isFinite(num)) {
-    return null;
-  }
-  return Math.round(num * 100) / 100;
-}
-
 function formatAmountDisplay(text: string): string {
-  const amount = parseAmount(text);
+  const amount = parseAmountNumber(text);
   if (amount === null) {
     return text.trim() || "-";
   }
-  return (Math.round(amount * 100) / 100).toFixed(2);
+  return amount.toFixed(2);
 }
 
 function isValidLabel(label: string): boolean {
@@ -68,6 +56,9 @@ function resolveLineItemKey(label: string, existingKeys: Set<string>): string {
 }
 
 function buildPairWarning(pair: AlignedPair): string {
+  if (pair.warning) {
+    return pair.warning;
+  }
   if (pair.ambiguous) {
     return `「${pair.label}」金额存在歧义，请核对`;
   }
@@ -122,7 +113,7 @@ export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): 
 
     let value = "-";
     if (pair.value !== null && pair.value !== "-") {
-      const amount = parseAmount(pair.value);
+      const amount = parseAmountNumber(pair.value);
       if (amount === null) {
         warning = appendWarning(warning, `「${pair.label}」金额格式异常：${pair.value}`);
         value = pair.value;
@@ -172,5 +163,5 @@ export function lineItemsFromOcr(pairs: AlignedPair[], orphans: string[] = []): 
     confidence = "low";
   }
 
-  return { line_items, confidence };
+  return applyPayslipConsistencyCheck(line_items, confidence);
 }

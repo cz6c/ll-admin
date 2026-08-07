@@ -27,7 +27,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v5
         with:
-          node-version: "22.18.0"
+          node-version: "22.22.2"
           cache: "pnpm"
 
       # common 的 main/module 指向 dist（已 gitignore），必须先 build 再编 admin

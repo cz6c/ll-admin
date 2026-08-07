@@ -1,13 +1,14 @@
 /**
  * 工资条识别 OCR 策略
- * 流程：OcrService → 列对齐 → lineItemsFromOcr → 倾斜门禁
+ * 流程：OcrService → 倾斜检测/几何 deskew → 列对齐 → lineItemsFromOcr → hints
  */
 import { Injectable } from "@nestjs/common";
 import { OcrService } from "@/plugins/ocr/ocr.service";
 import { OcrProviderError } from "@/plugins/ocr/ocr-provider.interface";
-import { detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
+import { deskewCells, detectTableSkew, extractAlignedPairs } from "@/plugins/utils/ocr-layout";
 import { SalarySlipResultDto } from "../dto/salary-slip-result.dto";
 import { lineItemsFromOcr } from "../utils/line-items-from-ocr";
+import { buildRecognizeHints, capConfidenceForSkew } from "../utils/recognize-hints";
 import { buildOcrLogSnapshot, buildResultLogSnapshot } from "../utils/recognize-logger";
 import type { RecognizeStrategyInput, RecognizeStrategyOutcome, SalarySlipRecognizeStrategy } from "./recognize.types";
 
@@ -41,15 +42,6 @@ export class OcrRecognizeStrategy implements SalarySlipRecognizeStrategy {
       };
     }
 
-    const ocrSnapshot = buildOcrLogSnapshot({
-      ok: true,
-      provider: ocrResult.provider,
-      layout: ocrResult.layout,
-      providerMeta: ocrResult.meta,
-      cells: ocrResult.cells,
-      text: ocrResult.text
-    });
-
     if (!ocrResult.cells.length) {
       return {
         ok: false,
@@ -62,32 +54,42 @@ export class OcrRecognizeStrategy implements SalarySlipRecognizeStrategy {
       };
     }
 
+    const skewResult = detectTableSkew(ocrResult.cells, ocrResult.layout);
+    const cellsForAlign = skewResult.skewed ? deskewCells(ocrResult.cells, skewResult) : ocrResult.cells;
+
+    const ocrSnapshot = buildOcrLogSnapshot({
+      ok: true,
+      provider: ocrResult.provider,
+      layout: ocrResult.layout,
+      providerMeta: {
+        ...ocrResult.meta,
+        failReason: skewResult.skewed
+          ? `deskew_applied:slope=${skewResult.slope ?? ""}`
+          : ocrResult.meta?.failReason
+      },
+      cells: cellsForAlign,
+      text: ocrResult.text
+    });
+
     const alignStart = Date.now();
-    const { pairs, orphans } = extractAlignedPairs(ocrResult.cells, ocrResult.layout);
+    const { pairs, orphans } = extractAlignedPairs(cellsForAlign, ocrResult.layout);
     timing.align = Date.now() - alignStart;
 
     const rulesStart = Date.now();
     const rulesResult = lineItemsFromOcr(pairs, orphans);
     timing.rules = Date.now() - rulesStart;
-    const resultSnapshot = buildResultLogSnapshot(rulesResult);
 
-    const skewResult = detectTableSkew(ocrResult.cells, ocrResult.layout);
-    if (skewResult.skewed) {
-      return {
-        ok: false,
-        engine: "ocr",
-        errorCode: "table_skewed",
-        httpStatus: 400,
-        message: "表格倾斜，请重新拍摄",
-        timing,
-        ocr: ocrSnapshot,
-        resultSnapshot
-      };
-    }
+    const confidence = capConfidenceForSkew(rulesResult.confidence, skewResult.skewed);
+    const hints = buildRecognizeHints({ skewed: skewResult.skewed, confidence });
+    const resultSnapshot = buildResultLogSnapshot({
+      line_items: rulesResult.line_items,
+      confidence
+    });
 
     const result: SalarySlipResultDto = {
       line_items: rulesResult.line_items,
-      confidence: rulesResult.confidence
+      confidence,
+      hints
     };
 
     return {

@@ -199,6 +199,8 @@ async function onRefresherRefresh() {
           :key="chip.value"
           class="history-chip"
           :class="activeFilter === chip.value ? 'history-chip--active' : ''"
+          hover-class="history-chip--pressed"
+          :hover-stay-time="60"
           @click="activeFilter = chip.value"
         >
           <wd-icon
@@ -318,12 +320,18 @@ async function onRefresherRefresh() {
   color: #6b7280;
   background: #fff;
   border: 2rpx solid #e5e7eb;
+  /* 筛选高频：只做按压缩放，不给颜色过渡拖慢切换手感 */
+  transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .history-chip--active {
   color: #fff;
   background: var(--wot-primary-6);
   border-color: var(--wot-primary-6);
+}
+
+.history-chip--pressed {
+  transform: scale(0.96);
 }
 
 .history-swipe-del {

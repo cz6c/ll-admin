@@ -1,10 +1,9 @@
 <script lang="ts" setup>
 /**
  * 薪算狮空状态
- * 职责：历史列表空态展示海报同款狮形象；真空仓引导核对，筛选无结果换文案
+ * 职责：真空仓引导核对，筛选无结果换文案
  * 适用：salary/history
  */
-import { LION_URL } from '@/utils/lionAssets'
 
 defineOptions({ name: 'SalaryLionEmpty' })
 
@@ -31,14 +30,6 @@ function goVerify() {
 
 <template>
   <view class="lion-empty">
-    <view class="lion-empty__mascot">
-      <image
-        class="lion-empty__lion"
-        :src="LION_URL"
-        mode="aspectFit"
-      />
-    </view>
-
     <view class="lion-empty__title">
       {{ title }}
     </view>
@@ -49,6 +40,8 @@ function goVerify() {
     <view
       v-if="showAction"
       class="lion-empty__btn"
+      hover-class="lion-empty__btn--pressed"
+      :hover-stay-time="70"
       @click="goVerify"
     >
       去核对工资条
@@ -65,19 +58,6 @@ function goVerify() {
   color: #999999;
 }
 
-.lion-empty__mascot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 24rpx;
-}
-
-.lion-empty__lion {
-  width: 134rpx;
-  height: 134rpx;
-  opacity: 0.8;
-}
-
 .lion-empty__title {
   font-size: 32rpx;
 }
@@ -92,5 +72,13 @@ function goVerify() {
   margin-top: 34rpx;
   font-size: 28rpx;
   color: var(--wot-primary-6);
+  padding: 12rpx 28rpx;
+  border-radius: 999rpx;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.lion-empty__btn--pressed {
+  transform: scale(0.97);
+  opacity: 0.9;
 }
 </style>

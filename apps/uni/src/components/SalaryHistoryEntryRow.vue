@@ -45,8 +45,10 @@ const iconColor = computed(() => {
 
 <template>
   <view
-    class="flex items-center gap-20rpx px-28rpx py-24rpx"
+    class="history-entry-row flex items-center gap-20rpx px-28rpx py-24rpx"
     :class="{ 'border-b border-#edf0f6': bordered }"
+    hover-class="history-entry-row--pressed"
+    :hover-stay-time="70"
     @click="$emit('click')"
   >
     <view
@@ -78,6 +80,15 @@ const iconColor = computed(() => {
 </template>
 
 <style scoped lang="scss">
+.history-entry-row {
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.history-entry-row--pressed {
+  transform: scale(0.985);
+  opacity: 0.92;
+}
+
 .entry-icon {
   width: 72rpx;
   height: 72rpx;

@@ -194,7 +194,12 @@ function dismissShareLandingTip() {
         <text class="share-landing-tip__text">
           好友在测算全年到手，输入月薪即可估算
         </text>
-        <view class="share-landing-tip__close" @click="dismissShareLandingTip">
+        <view
+          class="share-landing-tip__close"
+          hover-class="pressable-fade--pressed"
+          :hover-stay-time="50"
+          @click="dismissShareLandingTip"
+        >
           <wd-icon name="close" size="28rpx" color="#c0c4cc" />
         </view>
       </view>
@@ -361,6 +366,8 @@ function dismissShareLandingTip() {
   padding: 24rpx;
   border-radius: 16rpx;
   background: var(--wot-primary-1);
+  /* 分享落地偶发：短进场防硬切；scale≥0.95，不用 scale(0) */
+  animation: tip-enter 200ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
 .share-landing-tip__text {
@@ -372,6 +379,25 @@ function dismissShareLandingTip() {
 
 .share-landing-tip__close {
   flex-shrink: 0;
+  padding: 4rpx;
+}
+
+@keyframes tip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8rpx) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-landing-tip {
+    animation: none;
+  }
 }
 
 :deep(.salary-cell-input) {

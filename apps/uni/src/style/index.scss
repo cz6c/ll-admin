@@ -27,6 +27,32 @@ page {
   --wot-primary-10: #041b33;
 
   --wot-button-radius-main: 12rpx;
+
+  /* 动效 token（emil-design-eng）：强 ease-out 用于按压/偶发进场 */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --press-duration: 120ms;
+}
+
+/*
+ * 主包自定义可点 view 的按压态（hover-class 用）
+ * 为何全局：多页共用同一手感，避免各页抄一份弱 ease / 不一致 scale
+ */
+.pressable {
+  transition: transform var(--press-duration) var(--ease-out-strong);
+}
+
+.pressable--pressed {
+  transform: scale(0.97);
+}
+
+.pressable-soft--pressed {
+  transform: scale(0.985);
+  opacity: 0.92;
+}
+
+.pressable-fade--pressed {
+  opacity: 0.65;
 }
 
 /*

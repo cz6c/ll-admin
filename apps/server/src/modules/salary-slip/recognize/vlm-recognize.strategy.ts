@@ -6,6 +6,7 @@ import { Injectable } from "@nestjs/common";
 import { VlmService } from "@/plugins/vlm/vlm.service";
 import { VlmProviderError } from "@/plugins/vlm/vlm-provider.interface";
 import { SalarySlipResultDto } from "../dto/salary-slip-result.dto";
+import { buildRecognizeHints } from "../utils/recognize-hints";
 import { buildOcrLogSnapshot, buildResultLogSnapshot } from "../utils/recognize-logger";
 import type { RecognizeStrategyInput, RecognizeStrategyOutcome, SalarySlipRecognizeStrategy } from "./recognize.types";
 
@@ -23,9 +24,11 @@ export class VlmRecognizeStrategy implements SalarySlipRecognizeStrategy {
       const extracted = await this.vlmService.extractSalarySlip(input.buffer, input.mimeType);
       timing.vlm = Date.now() - vlmStart;
 
+      const hints = buildRecognizeHints({ confidence: extracted.confidence });
       const result: SalarySlipResultDto = {
         line_items: extracted.line_items,
-        confidence: extracted.confidence
+        confidence: extracted.confidence,
+        hints
       };
       const resultSnapshot = buildResultLogSnapshot({
         line_items: extracted.line_items,

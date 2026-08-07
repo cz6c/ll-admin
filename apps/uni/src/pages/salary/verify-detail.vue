@@ -275,7 +275,13 @@ function fmtDiff(diff: number) {
         <text class="compare-hint__text">
           {{ calcModeHint }}
         </text>
-        <view v-if="firstMissingPayPeriod" class="compare-hint__cta mt-16rpx" @click="goFillMissingMonth">
+        <view
+          v-if="firstMissingPayPeriod"
+          class="compare-hint__cta pressable mt-16rpx"
+          hover-class="pressable--pressed"
+          :hover-stay-time="70"
+          @click="goFillMissingMonth"
+        >
           去补 {{ firstMissingMonthLabel }} 核对
         </view>
       </view>
@@ -348,7 +354,12 @@ function fmtDiff(diff: number) {
 
       <!-- 第二层：计算过程（默认折叠，优先结论与对比） -->
       <view class="mt-24rpx card-rounded px-32rpx">
-        <view class="flex items-center gap-16rpx py-24rpx" @click="showTaxCalc = !showTaxCalc">
+        <view
+          class="pressable flex items-center gap-16rpx py-24rpx"
+          hover-class="pressable-soft--pressed"
+          :hover-stay-time="60"
+          @click="showTaxCalc = !showTaxCalc"
+        >
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
           <text class="text-30rpx text-#333 font-600"> 个税计算 </text>
           <text class="min-w-0 flex-1 text-24rpx text-#999">本期个税怎么算出来的</text>
@@ -440,7 +451,12 @@ function fmtDiff(diff: number) {
 
       <!-- 工资条原始数据（默认折叠） -->
       <view class="mt-24rpx card-rounded px-32rpx">
-        <view class="flex items-center gap-16rpx py-24rpx" @click="showRawFields = !showRawFields">
+        <view
+          class="pressable flex items-center gap-16rpx py-24rpx"
+          hover-class="pressable-soft--pressed"
+          :hover-stay-time="60"
+          @click="showRawFields = !showRawFields"
+        >
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
           <text class="text-30rpx text-#333 font-600"> 工资条明细 </text>
           <text class="min-w-0 flex-1 text-24rpx text-#999">原始数据</text>
@@ -598,6 +614,7 @@ function fmtDiff(diff: number) {
   font-size: 24rpx;
   color: var(--wot-warning-main);
   line-height: 1.5;
+  animation: tip-enter 200ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
 .compare-hint__text {
@@ -610,6 +627,25 @@ function fmtDiff(diff: number) {
   font-size: 24rpx;
   font-weight: 600;
   color: var(--wot-primary-6);
+  padding: 4rpx 0;
+}
+
+@keyframes tip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8rpx) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compare-hint {
+    animation: none;
+  }
 }
 
 .calc-step {

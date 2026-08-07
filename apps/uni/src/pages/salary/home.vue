@@ -12,7 +12,6 @@ import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { captureChannelFromQuery } from '@/utils/channelFrom'
-import { LION_URL } from '@/utils/lionAssets'
 import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
 defineOptions({ name: 'SalaryHome' })
@@ -158,11 +157,6 @@ function goVerify() {
           算得清楚，对得明白
         </view>
       </view>
-      <image
-        class="hero-card__mascot"
-        :src="LION_URL"
-        mode="aspectFit"
-      />
     </view>
 
     <!-- 上叠内容：工具卡 → 最近；信任数据沉底（私密工具忌强社会证明） -->
@@ -228,7 +222,9 @@ function goVerify() {
           最近记录
         </view>
         <view
-          class="text-24rpx text-primary"
+          class="pressable text-24rpx text-primary"
+          hover-class="pressable--pressed"
+          :hover-stay-time="60"
           @click.stop="openAllHistory"
         >
           全部
@@ -258,7 +254,12 @@ function goVerify() {
         <view class="mt-8rpx text-24rpx text-#999">
           完成一次核对后会出现在这里
         </view>
-        <view class="recent-empty-wrap__cta mt-24rpx" @click="goVerify">
+        <view
+          class="recent-empty-wrap__cta mt-24rpx"
+          hover-class="recent-empty-wrap__cta--pressed"
+          :hover-stay-time="70"
+          @click="goVerify"
+        >
           去核对工资条
         </view>
       </view>
@@ -285,13 +286,6 @@ function goVerify() {
   font-weight: 400;
 }
 
-.hero-card__mascot {
-  flex-shrink: 0;
-  width: 136rpx;
-  height: 136rpx;
-  opacity: 0.26;
-}
-
 .content-panel {
   margin-top: -36rpx;
   position: relative;
@@ -301,7 +295,10 @@ function goVerify() {
 .feature-card {
   background: #fff;
   box-shadow: 0 4rpx 24rpx rgba(31, 35, 41, 0.04);
-  transition: transform 0.12s ease;
+  /* 按压反馈 120ms + 强 ease-out；松手同曲线可中断，避免弱 ease 发黏 */
+  transition:
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .feature-card--primary {
@@ -314,7 +311,7 @@ function goVerify() {
 }
 
 .feature-card--pressed {
-  transform: scale(0.985);
+  transform: scale(0.97);
   opacity: 0.96;
 }
 
@@ -392,5 +389,10 @@ function goVerify() {
   padding: 12rpx 28rpx;
   border-radius: 999rpx;
   background: var(--wot-success-surface, #ecfdf5);
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.recent-empty-wrap__cta--pressed {
+  transform: scale(0.97);
 }
 </style>

@@ -319,7 +319,12 @@ function goVerify() {
 
       <!-- 计算明细折叠 -->
       <view class="mt-24rpx card-rounded px-32rpx">
-        <view class="flex items-center gap-16rpx py-24rpx" @click="showBreakdown = !showBreakdown">
+        <view
+          class="pressable flex items-center gap-16rpx py-24rpx"
+          hover-class="pressable-soft--pressed"
+          :hover-stay-time="60"
+          @click="showBreakdown = !showBreakdown"
+        >
           <text class="text-30rpx text-#333 font-600">计算明细</text>
           <text class="min-w-0 flex-1 text-24rpx text-#999" />
           <wd-icon :name="showBreakdown ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />

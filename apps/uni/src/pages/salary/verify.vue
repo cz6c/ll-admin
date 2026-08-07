@@ -42,7 +42,7 @@ const REQUIRED_AMOUNT_KEYS: PayslipFieldKey[] = [
 const showDialog = ref(false)
 const popupZIndex = 1100
 const salaryHistoryStore = useSalaryHistoryStore()
-const { previewPath, lineItems, loading: recognizing, chooseImage } = useSalarySlipRecognize()
+const { previewPath, lineItems, recognizeHints, loading: recognizing, chooseImage } = useSalarySlipRecognize()
 
 const calendarMinDate = dayjs('2020-01-01').valueOf()
 const calendarMaxDate = dayjs().add(1, 'year').endOf('year').valueOf()
@@ -302,7 +302,12 @@ function dismissShareLandingTip() {
         <text class="share-landing-tip__text">
           好友在用累计预扣法核对工资条，上传或手动填写即可
         </text>
-        <view class="share-landing-tip__close" @click="dismissShareLandingTip">
+        <view
+          class="share-landing-tip__close"
+          hover-class="pressable-fade--pressed"
+          :hover-stay-time="50"
+          @click="dismissShareLandingTip"
+        >
           <wd-icon name="close" size="28rpx" color="#c0c4cc" />
         </view>
       </view>
@@ -318,8 +323,8 @@ function dismissShareLandingTip() {
             <view class="w-600rpx rounded-24rpx bg-white p-40rpx">
               <scroll-view scroll-y class="max-h-520rpx">
                 <view class="whitespace-pre-wrap text-26rpx text-#666 leading-relaxed">
-                  <view>1.请确保图片角度正常，文字清晰。</view>
-                  <view>2.系统将自动识别工资条明细填入核对表单。</view>
+                  <view>1.请确保图片角度正常、文字清晰；倾斜时系统会尝试校正，仍建议重新拍正。</view>
+                  <view>2.系统将自动识别工资条明细填入核对表单，请核对后再保存。</view>
                   <view>3.识别完成后系统会立即删除图片，不留存。</view>
                 </view>
               </scroll-view>
@@ -332,8 +337,29 @@ function dismissShareLandingTip() {
           </wd-popup>
         </view>
 
-        <view class="mt-24rpx card-rounded border-4rpx border-#dcdfe6 border-dashed transition-colors" @click="chooseImage">
-          <wd-img v-if="previewPath" width="100%" :src="previewPath" :enable-preview="true" mode="widthFix" radius="8rpx" />
+        <view
+          v-if="recognizeHints.length"
+          class="recognize-hints mt-16rpx"
+        >
+          <view
+            v-for="hint in recognizeHints"
+            :key="hint.code"
+            class="recognize-hints__item"
+          >
+            <wd-icon name="warning" size="28rpx" class="recognize-hints__icon" />
+            <text class="recognize-hints__text">
+              {{ hint.message }}
+            </text>
+          </view>
+        </view>
+
+        <view
+          class="upload-zone mt-24rpx card-rounded border-4rpx border-#dcdfe6 border-dashed"
+          hover-class="upload-zone--pressed"
+          :hover-stay-time="80"
+          @click="chooseImage"
+        >
+          <wd-img v-if="previewPath" width="100%" :src="previewPath" mode="widthFix" radius="8rpx" />
           <view v-else class="flex flex-col items-center justify-center py-60rpx">
             <wd-icon name="scan" size="60rpx" color="#999" />
             <view class="mt-16rpx text-26rpx text-#999">
@@ -347,7 +373,12 @@ function dismissShareLandingTip() {
 
         <!-- 识别明细 -->
         <view v-if="unmappedItems.length" class="mt-24rpx">
-          <view class="flex items-center justify-between text-28rpx text-#333" @click="showUnmapped = !showUnmapped">
+          <view
+            class="pressable flex items-center justify-between text-28rpx text-#333"
+            hover-class="pressable-soft--pressed"
+            :hover-stay-time="60"
+            @click="showUnmapped = !showUnmapped"
+          >
             <text>识别明细（{{ unmappedItems.length }} 项）</text>
             <wd-icon :name="showUnmapped ? 'up' : 'down'" size="28rpx" />
           </view>
@@ -461,6 +492,7 @@ function dismissShareLandingTip() {
   padding: 24rpx;
   border-radius: 16rpx;
   background: var(--wot-primary-1);
+  animation: tip-enter 200ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both;
 }
 
 .share-landing-tip__text {
@@ -472,6 +504,19 @@ function dismissShareLandingTip() {
 
 .share-landing-tip__close {
   flex-shrink: 0;
+  padding: 4rpx;
+}
+
+@keyframes tip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8rpx) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .manual-hint {
@@ -481,5 +526,80 @@ function dismissShareLandingTip() {
   line-height: 1.4;
   color: #8a8f99;
   background: #f7f8fa;
+}
+
+.recognize-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.recognize-hints__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: var(--wot-warning-surface);
+  border: 1rpx solid var(--wot-warning-particular, var(--wot-warning-surface));
+  /* 偶发提示：从略下沉 + 半透明进场，避免 v-if 硬切；scale≥0.95 */
+  animation: hint-enter 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.recognize-hints__item:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.recognize-hints__item:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.recognize-hints__icon {
+  flex-shrink: 0;
+  margin-top: 2rpx;
+  color: var(--wot-warning-main);
+}
+
+.recognize-hints__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  line-height: 1.45;
+  color: var(--wot-warning-main);
+}
+
+.upload-zone {
+  transition:
+    transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.upload-zone--pressed {
+  transform: scale(0.985);
+  border-color: var(--wot-primary-4);
+  background-color: var(--wot-primary-1);
+}
+
+@keyframes hint-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8rpx) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recognize-hints__item {
+    animation: none;
+  }
+
+  .share-landing-tip {
+    animation: none;
+  }
 }
 </style>

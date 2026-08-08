@@ -68,6 +68,10 @@ export default defineConfig({
     'i-carbon-chevron-up',
     'i-carbon-checkmark-filled',
     'i-carbon-warning-filled',
+    // 工作台工具入口（动态 :class 绑定）
+    'i-carbon-wifi',
+    'i-carbon-camera',
+    'i-carbon-restaurant',
   ],
   rules: [
     [

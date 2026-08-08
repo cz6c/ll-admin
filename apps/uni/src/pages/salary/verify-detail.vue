@@ -222,7 +222,7 @@ const confirmActionSub = computed(() => {
 
 /** 确认按申报：二次确认弹层（默认可改系统反推应发） */
 const showInferredConfirm = ref(false)
-/** 弹层内申报应发输入（字符串便于 digit 输入） */
+/** 弹层内申报收入输入（字符串便于 digit 输入） */
 const inferredEditText = ref('')
 /** 打开弹层后聚焦输入，强化「可改」感知 */
 const inferredInputFocus = ref(false)
@@ -236,23 +236,6 @@ const inferredConfirmSlipText = computed(() => {
   if (slip == null)
     return '—'
   return formatSalaryAmount(slip)
-})
-
-/**
- * 弹层对照：相对工资条的差额文案
- * 正数 = 少报，负数 = 多报；与工资条几乎相同则不展示
- */
-const inferredConfirmDeltaHint = computed(() => {
-  const slip = record.value?.preTaxMonthly
-  const amount = Number(inferredEditText.value)
-  if (slip == null || !Number.isFinite(amount))
-    return ''
-  const delta = Math.round((slip - amount) * 100) / 100
-  if (Math.abs(delta) <= 0.01)
-    return ''
-  if (delta > 0)
-    return `相对工资条少报约 ¥${formatSalaryAmount(delta)}`
-  return `相对工资条多报约 ¥${formatSalaryAmount(Math.abs(delta))}`
 })
 
 /** 打开确认框，带入系统反推值 */
@@ -283,7 +266,7 @@ function onInferredEditInput(e: { detail?: { value?: string } }) {
 }
 
 /**
- * 用户确认后把（可改的）申报应发写入后端，供后续月 prior 使用
+ * 用户确认后把（可改的）申报收入写入后端，供后续月 prior 使用
  * @note 分位平台无法唯一反推，故以用户确认为准
  */
 async function submitConfirmedInferred() {
@@ -293,7 +276,7 @@ async function submitConfirmedInferred() {
     return
   const amount = Math.round(Number(inferredEditText.value) * 100) / 100
   if (!Number.isFinite(amount) || amount < 0) {
-    uni.showToast({ title: '请输入有效申报应发', icon: 'none' })
+    uni.showToast({ title: '请输入有效申报收入', icon: 'none' })
     return
   }
   if (Math.abs(amount - row.preTaxMonthly) <= 0.01) {
@@ -805,7 +788,7 @@ function fmtDiff(diff: number) {
 
     <!--
       按申报继续：二次确认（Apple alert + 可编辑金额）
-      职责：对照工资条 / 申报应发，主路径明确提交，取消易达且可点遮罩关闭
+      职责：对照工资条 / 申报收入，主路径明确提交，取消易达且可点遮罩关闭
     -->
     <wd-popup
       v-model="showInferredConfirm"
@@ -817,10 +800,10 @@ function fmtDiff(diff: number) {
     >
       <view class="inferred-alert" :class="{ 'is-saving': inferredSaving }">
         <text class="inferred-alert__title">
-          确认申报应发
+          确认申报收入
         </text>
         <text class="inferred-alert__message">
-          可按个税 App「收入」改准；确认后后续月份按此累计
+          可按个税 App「收入」改准；后续计算按此累计
         </text>
 
         <view class="inferred-alert__card">
@@ -837,13 +820,10 @@ function fmtDiff(diff: number) {
           <view class="inferred-alert__field" :class="{ 'is-disabled': inferredSaving }">
             <view class="inferred-alert__field-head">
               <text class="inferred-alert__field-label">
-                申报应发
+                申报收入
               </text>
               <view class="inferred-alert__field-hint">
                 <view class="inferred-alert__field-hint-icon i-carbon-edit" />
-                <text class="inferred-alert__field-hint-text">
-                  点按修改
-                </text>
               </view>
             </view>
             <view class="inferred-alert__field-body">
@@ -858,41 +838,35 @@ function fmtDiff(diff: number) {
                 :focus="inferredInputFocus"
                 :adjust-position="true"
                 :cursor-spacing="24"
-                placeholder="输入申报应发"
-                placeholder-class="inferred-alert__placeholder"
+                placeholder="输入申报收入"
+                placeholder-style="color:#c5c9ce;font-size:32rpx;font-weight:500;"
                 @input="onInferredEditInput"
                 @blur="inferredInputFocus = false"
               >
             </view>
           </view>
-          <text v-if="inferredConfirmDeltaHint" class="inferred-alert__delta">
-            {{ inferredConfirmDeltaHint }}
-          </text>
         </view>
 
-        <view
-          class="inferred-alert__primary pressable"
-          :class="{ 'is-disabled': inferredSaving }"
-          hover-class="pressable--pressed"
-          :hover-start-time="0"
-          :hover-stay-time="80"
-          @click="submitConfirmedInferred"
-        >
-          <text class="inferred-alert__primary-text">
-            {{ inferredSaving ? '保存中…' : '按申报继续' }}
-          </text>
-        </view>
-        <view
-          class="inferred-alert__cancel pressable"
-          :class="{ 'is-disabled': inferredSaving }"
-          hover-class="pressable-fade--pressed"
-          :hover-start-time="0"
-          :hover-stay-time="80"
-          @click="closeInferredConfirm"
-        >
-          <text class="inferred-alert__cancel-text">
+        <view class="inferred-alert__actions">
+          <wd-button
+            type="primary"
+            block
+            :round="true"
+            :loading="inferredSaving"
+            :disabled="inferredSaving"
+            @click="submitConfirmedInferred"
+          >
+            按申报继续
+          </wd-button>
+          <wd-button
+            variant="text"
+            block
+            :disabled="inferredSaving"
+            custom-class="inferred-alert__cancel"
+            @click="closeInferredConfirm"
+          >
             取消
-          </text>
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -1005,14 +979,24 @@ function fmtDiff(diff: number) {
   gap: 12rpx;
 }
 
+/*
+ * 状态条与选择行共用行高/内边距，避免「已按申报」与「按申报继续」视觉高度跳动
+ */
+.action-rail__status,
+.action-choice {
+  box-sizing: border-box;
+  min-height: 112rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+}
+
 .action-rail__status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
-  padding: 20rpx 22rpx;
-  border-radius: 16rpx;
   background: var(--wot-success-surface);
+  border: 1rpx solid var(--wot-success-particular);
 }
 
 .action-rail__status-main {
@@ -1025,8 +1009,8 @@ function fmtDiff(diff: number) {
 
 .action-rail__status-icon {
   flex-shrink: 0;
-  width: 32rpx;
-  height: 32rpx;
+  width: 28rpx;
+  height: 28rpx;
   color: var(--wot-success-main);
 }
 
@@ -1036,19 +1020,19 @@ function fmtDiff(diff: number) {
 
 .action-rail__status-title {
   display: block;
-  font-size: 26rpx;
+  font-size: 28rpx;
   font-weight: 600;
   color: var(--wot-success-main);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   line-height: 1.3;
 }
 
 .action-rail__status-sub {
   display: block;
-  margin-top: 4rpx;
+  margin-top: 6rpx;
   font-size: 22rpx;
   color: #5c6670;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .action-rail__status-revert {
@@ -1063,14 +1047,13 @@ function fmtDiff(diff: number) {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 22rpx 24rpx;
-  border-radius: 16rpx;
   background: #f5f6f8;
+  border: 1rpx solid transparent;
 }
 
 .action-choice--primary {
   background: var(--wot-primary-1);
-  border: 1rpx solid var(--wot-primary-2);
+  border-color: var(--wot-primary-2);
 }
 
 .action-choice--secondary {
@@ -1079,7 +1062,7 @@ function fmtDiff(diff: number) {
 
 .action-choice--solo {
   background: var(--wot-primary-1);
-  border: 1rpx solid var(--wot-primary-2);
+  border-color: var(--wot-primary-2);
 }
 
 .action-choice__body {
@@ -1279,59 +1262,15 @@ function fmtDiff(diff: number) {
   font-variant-numeric: tabular-nums;
 }
 
-.inferred-alert__placeholder {
-  color: #c5c9ce;
-  font-weight: 500;
-}
-
-.inferred-alert__delta {
-  display: block;
-  margin-top: 12rpx;
-  padding: 0 12rpx;
-  text-align: left;
-  font-size: 22rpx;
-  color: var(--wot-warning-main);
-  line-height: 1.35;
-}
-
-.inferred-alert__primary {
+.inferred-alert__actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 8rpx;
   margin-top: 32rpx;
-  min-height: 88rpx;
-  border-radius: 20rpx;
-  background: var(--wot-primary-6);
 }
 
-.inferred-alert__primary-text {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.inferred-alert__cancel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 80rpx;
-  margin-top: 4rpx;
-}
-
-.inferred-alert__cancel-text {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: var(--wot-primary-6);
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.inferred-alert__primary.is-disabled,
-.inferred-alert__cancel.is-disabled {
-  opacity: 0.55;
-  pointer-events: none;
+:deep(.inferred-alert__cancel) {
+  color: var(--wot-primary-6) !important;
 }
 
 .inferred-alert.is-saving .inferred-alert__input {

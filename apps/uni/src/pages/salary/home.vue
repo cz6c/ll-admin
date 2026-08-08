@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * 薪算狮首页
- * 主流程：未同意协议则 redirect 门禁页 → 主次工具入口 → 本年核对进度
+ * 主流程：未同意协议则 redirect 门禁页 → 核对模块（入口+进度同组）→ 测算次卡
  */
 import type { YearMonthCell } from '@/utils/salaryVerifyYearProgress'
 import { onLoad, onShow } from '@dcloudio/uni-app'
@@ -91,9 +91,12 @@ const featureStats = computed(() => {
 /** 本年 1–12 月核对进度（截止上月，与核对页默认所属月一致） */
 const yearProgress = computed(() => buildYearVerifyProgress(salaryHistoryStore.verifyItems))
 
+const verifyFeature = computed(() => features.find(f => f.key === 'verify')!)
+const calcFeature = computed(() => features.find(f => f.key === 'calc')!)
+
 /**
- * 功能卡底部一行状态：整卡唯一入口，不再放第二套 CTA
- * 核对有记录时只指下方进度，避免与进度摘要重复说「最近」
+ * 功能卡底部一行状态：整卡唯一入口
+ * 核对有记录时指同组下方进度，避免与进度摘要重复说「最近」
  */
 function featureHint(featureKey: string) {
   const stats = featureStats.value[featureKey as keyof typeof featureStats.value]
@@ -128,10 +131,7 @@ function enterFeature(feature: HomeFeature) {
   uni.navigateTo({ url: feature.url })
 }
 
-function openAllHistory() {
-  uni.navigateTo({ url: '/pages/salary/history' })
-}
-
+/** 进度头「核对记录」：仅核对 tab */
 function openVerifyHistory() {
   uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
 }
@@ -185,66 +185,77 @@ function onMonthClick(cell: YearMonthCell) {
       </view>
     </view>
 
-    <!-- 上叠内容：主次工具卡 → 本年核对进度（轻材质状态面板） -->
+    <!-- 方案 A：核对模块（入口+进度同组紧贴）→ 测算次卡 -->
     <view class="content-panel px-24rpx pb-32rpx">
-      <view class="feature-stack flex flex-col gap-16rpx">
+      <view class="verify-group">
         <view
-          v-for="feature in features"
-          :key="feature.key"
-          class="feature-card card-rounded"
-          :class="feature.primary ? 'feature-card--primary' : 'feature-card--secondary'"
+          class="feature-card feature-card--primary card-rounded"
           hover-class="feature-card--pressed"
           :hover-stay-time="70"
-          @click="enterFeature(feature)"
+          @click="enterFeature(verifyFeature)"
         >
           <view class="feature-card__main flex items-center gap-20rpx">
-            <view
-              class="feature-card__icon shrink-0"
-              :class="feature.theme === 'green' ? 'feature-card__icon--green' : 'feature-card__icon--blue'"
-            >
+            <view class="feature-card__icon feature-card__icon--green shrink-0">
               <wd-icon
-                :name="feature.icon"
-                :size="feature.primary ? '26px' : '22px'"
-                :color="feature.theme === 'green' ? 'var(--wot-success-main)' : 'var(--wot-primary-6)'"
+                :name="verifyFeature.icon"
+                size="26px"
+                color="var(--wot-success-main)"
               />
             </view>
             <view class="min-w-0 flex-1">
               <view class="flex items-center gap-12rpx">
-                <text
-                  class="feature-card__title"
-                  :class="feature.primary ? 'feature-card__title--primary' : 'feature-card__title--secondary'"
-                >
-                  {{ feature.title }}
+                <text class="feature-card__title feature-card__title--primary">
+                  {{ verifyFeature.title }}
                 </text>
-                <text
-                  v-if="feature.primary"
-                  class="feature-card__badge"
-                >
+                <text class="feature-card__badge">
                   推荐
                 </text>
               </view>
-              <view
-                class="feature-card__desc"
-                :class="feature.primary ? 'feature-card__desc--primary' : 'feature-card__desc--secondary'"
-              >
-                {{ feature.desc }}
+              <view class="feature-card__desc feature-card__desc--primary">
+                {{ verifyFeature.desc }}
               </view>
             </view>
           </view>
-
-          <!-- 仅状态文案：整卡单击进入，不再放箭头/胶囊第二入口 -->
           <view class="feature-card__hint">
-            {{ featureHint(feature.key) }}
+            {{ featureHint('verify') }}
           </view>
         </view>
+
+        <SalaryVerifyYearProgress
+          :progress="yearProgress"
+          @open-history="openVerifyHistory"
+          @cta="onProgressCta"
+          @month-click="onMonthClick"
+        />
       </view>
 
-      <SalaryVerifyYearProgress
-        :progress="yearProgress"
-        @open-history="openAllHistory"
-        @cta="onProgressCta"
-        @month-click="onMonthClick"
-      />
+      <view
+        class="feature-card feature-card--secondary card-rounded mt-16rpx"
+        hover-class="feature-card--pressed"
+        :hover-stay-time="70"
+        @click="enterFeature(calcFeature)"
+      >
+        <view class="feature-card__main flex items-center gap-20rpx">
+          <view class="feature-card__icon feature-card__icon--blue shrink-0">
+            <wd-icon
+              :name="calcFeature.icon"
+              size="22px"
+              color="var(--wot-primary-6)"
+            />
+          </view>
+          <view class="min-w-0 flex-1">
+            <text class="feature-card__title feature-card__title--secondary">
+              {{ calcFeature.title }}
+            </text>
+            <view class="feature-card__desc feature-card__desc--secondary">
+              {{ calcFeature.desc }}
+            </view>
+          </view>
+        </view>
+        <view class="feature-card__hint">
+          {{ featureHint('calc') }}
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -287,6 +298,13 @@ function onMonthClick(cell: YearMonthCell) {
   z-index: 1;
 }
 
+/* 核对入口与进度同组：组内间距小于组与测算的间距 */
+.verify-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
 .feature-card {
   /* 按压反馈 120ms + 强 ease-out；松手同曲线可中断 */
   transition:
@@ -294,7 +312,7 @@ function onMonthClick(cell: YearMonthCell) {
     opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-/* 主路径：更大触控面 + 更重材质；用色边区分，不用卡内发丝分割线 */
+/* 主路径：更大触控面 + 更重材质；用色边区分 */
 .feature-card--primary {
   padding: 36rpx 32rpx 28rpx;
   border: 2rpx solid var(--wot-success-particular, rgba(16, 185, 129, 0.28));
@@ -302,7 +320,7 @@ function onMonthClick(cell: YearMonthCell) {
   box-shadow: 0 8rpx 32rpx rgba(16, 185, 129, 0.1);
 }
 
-/* 次路径：无描边，仅靠间距与字重分层，减少仪表盘感 */
+/* 次路径：无描边，仅靠间距与字重分层 */
 .feature-card--secondary {
   padding: 24rpx 28rpx 20rpx;
   border: none;
@@ -381,7 +399,6 @@ function onMonthClick(cell: YearMonthCell) {
   line-height: 1.35;
 }
 
-/* 状态行：用字重/间距与正文分层，不用 border-top */
 .feature-card__hint {
   margin-top: 22rpx;
   font-size: 22rpx;

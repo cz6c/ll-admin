@@ -2,7 +2,7 @@
 /**
  * 首页本年核对进度卡
  * 职责：展示 1–12 月状态、图例、摘要与 CTA；可点月格跳转核对/详情
- * 适用：salary/home；未来月不可点（无按压、无 toast）
+ * 适用：salary/home 核对模块内（紧贴入口卡下方）；未来月不可点
  */
 import type { YearMonthCell, YearMonthStatus, YearVerifyProgress } from '@/utils/salaryVerifyYearProgress'
 
@@ -14,7 +14,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** 右侧「全部记录」 */
+  /** 右侧「核对记录」→ 历史页核对 tab */
   openHistory: []
   /** 主按钮：去核对 / 核对记录 */
   cta: []
@@ -58,7 +58,7 @@ function onCellClick(cell: YearMonthCell) {
         :hover-stay-time="60"
         @click.stop="emit('openHistory')"
       >
-        全部记录
+        核对记录
       </view>
     </view>
 
@@ -112,9 +112,8 @@ function onCellClick(cell: YearMonthCell) {
 </template>
 
 <style scoped lang="scss">
-/* 进度面板：浅底无描边，材质轻于工具卡；区块用间距分层，不用发丝线 */
+/* 进度面板：浅底无描边，材质轻于工具卡；区块用间距分层 */
 .year-progress {
-  margin-top: 32rpx;
   padding: 28rpx 28rpx 24rpx;
   border-radius: 24rpx;
   background: #f7f8fa;
@@ -211,7 +210,6 @@ function onCellClick(cell: YearMonthCell) {
 }
 
 .year-progress__cell--inert {
-  /* 不可用态：无按压反馈，避免假按钮 */
   pointer-events: none;
 }
 

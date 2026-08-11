@@ -17,7 +17,7 @@ alwaysApply: true
 |-----|------|------|
 | admin | `@apps/admin` | Vue3 管理后台（Element Plus + VXE Table） |
 | server | `@apps/server` | NestJS API + TypeORM |
-| uni | `@apps/uni` | uni-app 移动端（聚鑫助手） |
+| uni | `@apps/uni` | uni-app 移动端 |
 | docs | — | VitePress 开发文档 |
 | common | `@llcz/common` | 跨端纯 TS 工具库 |
 
@@ -53,7 +53,7 @@ alwaysApply: true
 
 | App | 规则文件 |
 |-----|----------|
-| 全仓 | `monorepo-core.mdc`、`comment-standards.mdc`（注释规范） |
+| 全仓 | `monorepo-core.mdc`、`comment-standards.mdc`（注释规范）、`file-naming.mdc`（文件与目录命名） |
 | admin | `vue-admin.mdc` |
 | uni | `vue-uni.mdc` |
 | server | `nestjs-server.mdc` |

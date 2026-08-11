@@ -1,0 +1,44 @@
+---
+description: 全仓源码文件与目录命名（小驼峰与组件大驼峰，禁止连字符与下划线）
+alwaysApply: true
+---
+
+# 文件与目录命名约定
+
+**新增、移动、重命名**时，**文件名与目录名同等遵守**本规则；存量违规路径不借机全仓改名，仅在本次需求触及该路径时顺带改为合规名并改全引用。
+
+## 规则
+
+| 类型 | 命名 | 示例 |
+|------|------|------|
+| 普通源码文件 | **小驼峰** `camelCase` | `reportDisplay.ts`、`dailyReport.ts` |
+| 普通源码目录 | **小驼峰** `camelCase` | `views/dailyReport/`、`api/appSettings/`、`csSettings/` |
+| Vue / 前端 **组件**文件 | **大驼峰** `PascalCase` | `CsToolsBar.vue`、`UserCard.vue` |
+| **组件**目录（含 `index.vue` 的文件夹） | **大驼峰** `PascalCase` | `components/CsToolsBar/`、`components/UserCard/` |
+
+文件与其所在目录各自独立合规；不能因目录合规就放过文件名（反之亦然）。
+
+## 禁止
+
+文件名、**目录名**中均不得出现：
+
+- 连字符：`daily-report.ts`、`cs-settings/`、`daily-report/`
+- 下划线：`report_display.ts`、`keyring_store/`（Rust 例外见下）
+
+```text
+❌ views/daily-report/   cs-settings/   report_display.ts
+✅ views/dailyReport/    csSettings/    reportDisplay.ts
+❌ components/cs-tools-bar/
+✅ components/CsToolsBar/
+```
+
+## 例外（不要强行改名）
+
+- **生态/工具强制路径**：`package.json`、`pnpm-lock.yaml`、`Cargo.toml`、`src-tauri/`、`node_modules/`、`.github/workflows/`、`vite.config.*`、`tsconfig*.json`、`.env*` 等。
+- **Rust**：`.rs` 文件与 **Rust module 目录** 遵循语言惯例 **snake_case**（与 rustc/clippy 一致）。
+- **公开 URL / 路由 path**、HTTP 路径、数据库列名等非「仓库内路径名」的约定，不受本规则约束。
+- **第三方 / 生成物**：`dist`、`target`、锁文件内路径等。
+
+## AI 自检
+
+新建或改路径前：文件名与目录名是否都无 `-` / `_`？组件路径是否大驼峰、其余源码路径是否小驼峰？所有 import / 路由懒加载路径是否已同步？

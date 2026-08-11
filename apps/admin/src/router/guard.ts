@@ -1,4 +1,5 @@
 import { RouterEnum } from "@/router";
+import { isCsPublicPath, sanitizePostLoginRedirect } from "@/router/dailyReport";
 import { useAuthStore } from "@/store/modules/auth";
 import { usePermissionStore } from "@/store/modules/permission";
 import { getToken } from "@/utils/auth";
@@ -16,13 +17,20 @@ function setupPermissionGuard(router: Router) {
   const whitePathList: string[] = ["/login", "/test"];
 
   router.beforeEach(async (to, from, next) => {
+    // 工作日报 / 应用设置为 CS 本机工具：不校验登录 / 服务端菜单权限
+    if (isCsPublicPath(to.path)) {
+      return next();
+    }
+
     const authStore = useAuthStore();
     const data = getToken();
 
     // 验证token
     if (data?.token) {
       if (to.name === RouterEnum.BASE_LOGIN_NAME) {
-        return next({ path: to.query?.redirect ? decodeURIComponent(to.query.redirect as string) : "/" });
+        const raw = to.query?.redirect ? decodeURIComponent(to.query.redirect as string) : "/";
+        const path = sanitizePostLoginRedirect(raw);
+        return next({ path });
       }
       // 验证用户权限
       if (!authStore.userId) {
@@ -51,8 +59,8 @@ function setupPermissionGuard(router: Router) {
       if (whitePathList.includes(to.path)) {
         return next();
       } else {
-        // 无权限，前端登出
-        useAuthStore().webLogout();
+        // 传入目标 path：避免 currentRoute 仍停在日报时把 redirect 写成日报地址
+        useAuthStore().webLogout(to.fullPath);
         return false;
       }
     }

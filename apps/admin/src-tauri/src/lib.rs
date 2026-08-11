@@ -1,28 +1,30 @@
-//! Tauri 桌面壳：单实例聚焦、系统菜单、外链 opener 能力注册
-//! 职责：挂载 single-instance / opener 插件与应用菜单；窗口由 tauri.conf.json 创建
-//! 适用：admin CS（Win x64）壳层行为，不承载业务页面逻辑
+//! Tauri 桌面壳：单实例、托盘、外链 opener、工作日报定时
+//! 职责：壳层能力；「更多工具」菜单在前端 UI（CsToolsBar），不再使用原生系统菜单栏
+//! 适用：admin CS（Win x64）
 
-use std::sync::atomic::{AtomicU64, Ordering};
+mod app_settings;
+mod daily_report;
+
+use std::sync::Mutex;
 
 use tauri::{
-  menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-  Manager, WebviewWindow,
+  menu::{Menu, MenuItem},
+  tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+  Emitter, Manager,
 };
 
-/// 页面缩放因子（f64 bits）；PredefinedMenuItem 无 Win 可用的 zoom_*，故自管状态
-static PAGE_ZOOM_BITS: AtomicU64 = AtomicU64::new(f64::to_bits(1.0));
+fn focus_main(app: &tauri::AppHandle) {
+  if let Some(w) = app.get_webview_window("main") {
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+  }
+}
 
-/// 调整主窗 WebView 缩放；`delta=None` 时重置为 1.0（限制 0.5..=3.0）
-fn apply_page_zoom(window: &WebviewWindow, delta: Option<f64>) {
-  let next = match delta {
-    None => 1.0,
-    Some(d) => {
-      let current = f64::from_bits(PAGE_ZOOM_BITS.load(Ordering::Relaxed));
-      (current + d).clamp(0.5, 3.0)
-    }
-  };
-  PAGE_ZOOM_BITS.store(f64::to_bits(next), Ordering::Relaxed);
-  let _ = window.set_zoom(next);
+/// 主窗内打开工具页（today | history | settings | admin | /path）
+fn open_in_main(app: &tauri::AppHandle, target: &str) {
+  focus_main(app);
+  let _ = app.emit_to("main", "app:navigate", target);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,17 +32,28 @@ pub fn run() {
   tauri::Builder::default()
     // single-instance MUST be first：二次启动时聚焦已有主窗，避免多开
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-      // 优先 label=main（与 tauri.conf.json 对齐）；找不到时回退首个窗，避免静默无聚焦
-      let window = app
-        .get_webview_window("main")
-        .or_else(|| app.webview_windows().into_values().next());
-      if let Some(w) = window {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-      }
+      focus_main(app);
     }))
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_autostart::init(
+      tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+      Some(vec!["--autostart"]),
+    ))
+    .manage(Mutex::new(daily_report::ScheduleState::default()))
+    .invoke_handler(tauri::generate_handler![
+      app_settings::app_settings_get,
+      app_settings::app_settings_save,
+      daily_report::daily_report_default_prompt,
+      daily_report::daily_report_get_settings,
+      daily_report::daily_report_save_settings,
+      daily_report::daily_report_set_api_key,
+      daily_report::daily_report_has_api_key,
+      daily_report::daily_report_list,
+      daily_report::daily_report_get,
+      daily_report::daily_report_run,
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -50,102 +63,70 @@ pub fn run() {
         )?;
       }
 
-      // 窗口由 tauri.conf.json 创建，setup 只挂菜单，避免再建第二个 Webview
       let handle = app.handle();
 
-      let about = MenuItem::with_id(handle, "about", "关于", true, None::<&str>)?;
-      let devtools = MenuItem::with_id(handle, "devtools", "开发者工具", true, None::<&str>)?;
-      let reload = MenuItem::with_id(handle, "reload", "强制刷新", true, None::<&str>)?;
-      let quit = PredefinedMenuItem::quit(handle, Some("退出"))?;
+      // 托盘保留快捷入口；应用内菜单改由前端 CsToolsBar 提供
+      let tray_open = MenuItem::with_id(handle, "tray_open", "打开主界面", true, None::<&str>)?;
+      let tray_daily = MenuItem::with_id(handle, "tray_daily", "打开工作日报", true, None::<&str>)?;
+      let tray_run = MenuItem::with_id(handle, "tray_run", "立刻生成日报", true, None::<&str>)?;
+      let tray_quit = MenuItem::with_id(handle, "tray_quit", "退出", true, None::<&str>)?;
+      let tray_menu = Menu::with_items(handle, &[&tray_open, &tray_daily, &tray_run, &tray_quit])?;
 
-      let app_submenu = Submenu::with_items(
-        handle,
-        "ll-admin",
-        true,
-        &[&about, &devtools, &reload, &quit],
-      )?;
+      let icon = app
+        .default_window_icon()
+        .cloned()
+        .expect("missing default window icon");
 
-      let edit_submenu = Submenu::with_items(
-        handle,
-        "编辑",
-        true,
-        &[
-          &PredefinedMenuItem::undo(handle, Some("撤销"))?,
-          &PredefinedMenuItem::redo(handle, Some("重做"))?,
-          &PredefinedMenuItem::separator(handle)?,
-          &PredefinedMenuItem::cut(handle, Some("剪切"))?,
-          &PredefinedMenuItem::copy(handle, Some("复制"))?,
-          &PredefinedMenuItem::paste(handle, Some("粘贴"))?,
-          &PredefinedMenuItem::select_all(handle, Some("全选"))?,
-        ],
-      )?;
+      let _tray = TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&tray_menu)
+        .tooltip("ll-admin")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+          "tray_open" => open_in_main(app, "admin"),
+          "tray_daily" => open_in_main(app, "today"),
+          "tray_run" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+              match daily_report::daily_report_run(app.clone()).await {
+                Ok(_) => open_in_main(&app, "today"),
+                Err(e) => log::warn!("tray run daily report: {e}"),
+              }
+            });
+          }
+          "tray_quit" => {
+            app.exit(0);
+          }
+          _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+          if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+          } = event
+          {
+            focus_main(tray.app_handle());
+          }
+        })
+        .build(app)?;
 
-      // Tauri 2.11 无 PredefinedMenuItem::zoom_*；fullscreen 在 Win 上也不支持 → 用自定义项
-      let zoom_in = MenuItem::with_id(handle, "zoom_in", "加大", true, None::<&str>)?;
-      let zoom_reset = MenuItem::with_id(handle, "zoom_reset", "默认大小", true, None::<&str>)?;
-      let zoom_out = MenuItem::with_id(handle, "zoom_out", "缩小", true, None::<&str>)?;
-      let fullscreen = MenuItem::with_id(handle, "fullscreen", "进入全屏", true, None::<&str>)?;
-      let view_submenu = Submenu::with_items(
-        handle,
-        "显示",
-        true,
-        &[
-          &zoom_in,
-          &zoom_reset,
-          &zoom_out,
-          &PredefinedMenuItem::separator(handle)?,
-          &fullscreen,
-        ],
-      )?;
-
-      let menu = Menu::with_items(handle, &[&app_submenu, &edit_submenu, &view_submenu])?;
-      app.set_menu(menu)?;
+      daily_report::start_scheduler(app.handle().clone());
 
       Ok(())
     })
-    .on_menu_event(|app, event| match event.id().as_ref() {
-      "about" => {
-        // 无独立 about 面板时仅聚焦主窗；后续可换 dialog 插件
-        if let Some(w) = app.get_webview_window("main") {
-          let _ = w.set_focus();
+    .on_window_event(|window, event| {
+      if window.label() != "main" {
+        return;
+      }
+      if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        let minimize = app_settings::load_settings(window.app_handle())
+          .map(|s| s.minimize_to_tray_on_close)
+          .unwrap_or(true);
+        if minimize {
+          api.prevent_close();
+          let _ = window.hide();
         }
       }
-      "devtools" => {
-        if let Some(w) = app.get_webview_window("main") {
-          if w.is_devtools_open() {
-            w.close_devtools();
-          } else {
-            w.open_devtools();
-          }
-        }
-      }
-      "reload" => {
-        if let Some(w) = app.get_webview_window("main") {
-          let _ = w.reload();
-        }
-      }
-      "zoom_in" => {
-        if let Some(w) = app.get_webview_window("main") {
-          apply_page_zoom(&w, Some(0.1));
-        }
-      }
-      "zoom_out" => {
-        if let Some(w) = app.get_webview_window("main") {
-          apply_page_zoom(&w, Some(-0.1));
-        }
-      }
-      "zoom_reset" => {
-        if let Some(w) = app.get_webview_window("main") {
-          apply_page_zoom(&w, None);
-        }
-      }
-      "fullscreen" => {
-        if let Some(w) = app.get_webview_window("main") {
-          let next = !w.is_fullscreen().unwrap_or(false);
-          let _ = w.set_fullscreen(next);
-        }
-      }
-      _ => {}
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

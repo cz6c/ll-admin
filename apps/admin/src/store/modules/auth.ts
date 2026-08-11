@@ -6,6 +6,7 @@ import type { UserVo } from "#/api/system/user.d";
 import { usePermissionStore } from "@/store/modules/permission";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 import router, { RouterEnum } from "@/router";
+import { isCsPublicPath } from "@/router/dailyReport";
 import $feedback from "@/utils/feedback";
 
 interface authStoreState {
@@ -56,11 +57,17 @@ export const useAuthStore = defineStore("auth", {
     },
 
     /**
-     * @description: 前端登出
+     * 前端登出
+     * @param redirectPath 登录成功后回跳路径；不传则取当前路由。
+     * @note 须由守卫传入 `to.fullPath`：未登录点「后台」时 currentRoute 仍可能是日报页，
+     *       误把 redirect 写成 /daily-report/* 会导致登录后跳回日报
      */
-    webLogout() {
+    webLogout(redirectPath?: string) {
       removeToken();
       this.$reset();
+      const raw = redirectPath ?? router.currentRoute.value.fullPath;
+      // 日报 / 应用设置为免登录工具页，不应作为后台登录回跳目标
+      const redirect = !raw || raw.startsWith("/login") || isCsPublicPath(raw) ? "/" : raw;
       setTimeout(() => {
         usePermissionStore().$reset();
         useTagsViewStore().$reset();
@@ -68,7 +75,7 @@ export const useAuthStore = defineStore("auth", {
           name: RouterEnum.BASE_LOGIN_NAME,
           replace: true,
           query: {
-            redirect: encodeURIComponent(router.currentRoute.value.fullPath)
+            redirect: encodeURIComponent(redirect)
           }
         });
       }, 500);

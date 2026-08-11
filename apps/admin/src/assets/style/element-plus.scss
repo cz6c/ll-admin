@@ -133,3 +133,12 @@
     font-size: 16px;
   }
 }
+
+/*
+ * EP theme 在 .el-card 上写死 --el-card-border-radius: 4px，且按需 CSS 常晚于业务样式注入。
+ * 同选择器无法覆盖，须提高优先级；与 Uno radius-card / .cz-card 统一为 8px。
+ */
+#app .el-card {
+  --el-card-border-radius: 8px;
+  border-radius: 8px;
+}

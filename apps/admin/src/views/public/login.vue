@@ -10,6 +10,7 @@ import { getPlatFormUUID } from "@/utils/auth";
 import LoginSvgCom from "@/assets/svg/login.svg?component";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { RouterEnum } from "@/router";
+import { sanitizePostLoginRedirect } from "@/router/dailyReport";
 import { usePermissionStore } from "@/store/modules/permission";
 
 defineOptions({
@@ -62,9 +63,12 @@ function handleLogin() {
         usePermissionStore()
           .initRouter()
           .then(router => {
-            router.push({
-              path: route.query?.redirect ? decodeURIComponent(route.query.redirect as string) : "/"
-            });
+            const raw = route.query?.redirect
+              ? decodeURIComponent(route.query.redirect as string)
+              : "/";
+            // 登录回跳忽略 CS 本机工具页（免登录，不应抢后台落地页）
+            const path = sanitizePostLoginRedirect(raw);
+            router.push({ path });
           });
         loading.value = false;
       } catch (error: any) {

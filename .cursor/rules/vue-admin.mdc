@@ -39,6 +39,18 @@ alwaysApply: false
 
 - 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
 - 图表用 ECharts（见 `views/charts`）。
+- **样式优先 UnoCSS**（原子类 / shortcuts）；仅 `:deep`、复杂伪类或难表达布局保留少量 scoped SCSS。
+- **卡片圆角**：区块统一 **8px**，内嵌面（列表行、pre 块）**6px**。优先用 `uno.config.ts` shortcuts，勿散落手写 `rounded-8px border …`：
+
+| shortcut | 用途 |
+|----------|------|
+| `radius-card` / `card-rounded` | 圆角 token / el-card 与壳层 |
+| `card-panel` | 带边框底色的卡片面 |
+| `card-section` | 内容区块（含内边距） |
+| `card-meta` | 状态条等横向元信息条 |
+| `radius-inner` | 卡片内嵌小圆角 |
+
+- **逻辑复用优先**：日期用 `@llcz/common`（`dateUtil` / `formatToDate` / `formatToDatetime` 等），其它优先现有 utils、composables、插件；禁止重复造轮子。
 
 ## 共享库
 

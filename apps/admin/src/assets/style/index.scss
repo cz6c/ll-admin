@@ -14,6 +14,7 @@
 }
 
 .cz-card{
+  /* 与 Uno shortcut radius-card / card-rounded 统一为 8px */
   border-radius: 8px;
   background-color: var(--bg-color);
   padding: 16px;

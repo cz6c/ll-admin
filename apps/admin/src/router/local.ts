@@ -1,3 +1,4 @@
+/** 图表等通用本地菜单（Web / CS 均可）；工作日报不走侧栏，见 Navbar 操作栏 */
 export default [
   {
     name: "Chart",

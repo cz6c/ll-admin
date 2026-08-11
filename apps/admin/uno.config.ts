@@ -54,7 +54,16 @@ export default defineConfig({
     "fixed-center": "fixed left-0 top-0 flex-center wh-full",
     "nowrap-hidden": "whitespace-nowrap overflow-hidden",
     "ellipsis-text": "nowrap-hidden text-ellipsis",
-    "transition-base": "transition-all duration-300 ease-in-out"
+    "transition-base": "transition-all duration-300 ease-in-out",
+    // 卡片圆角统一 8px（与 .cz-card / --el-card-border-radius 对齐）；内嵌面 6px
+    "radius-card": "rounded-8px",
+    "radius-inner": "rounded-6px",
+    "card-rounded": "radius-card overflow-hidden",
+    "card-panel":
+      "card-rounded border border-[var(--el-border-color-lighter)] bg-[var(--el-bg-color)]",
+    "card-section": "card-panel px-16px py-14px",
+    "card-meta":
+      "card-panel flex flex-wrap items-center gap-12px px-14px py-10px text-13px"
   },
   theme: {
     colors: {

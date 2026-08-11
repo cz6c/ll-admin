@@ -2,6 +2,9 @@ import { createRouter, createWebHistory, createWebHashHistory } from "vue-router
 import type { RouteRecordRaw, RouterHistory } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
+import { dailyReportConstantRoutes } from "@/router/dailyReport";
+import { isTauri } from "@/utils/tauri";
+
 export const Layout = () => import("@/layout/index.vue");
 export const IFrame = () => import("@/layout/iframe/index.vue");
 
@@ -16,7 +19,7 @@ export enum RouterEnum {
   BASE_NOT_FOUND_NAME = "NOT_FOUND"
 }
 
-// 公共菜单
+// 公共菜单（404 必须最后；CS 日报插在 404 前）
 const routesList: AppRouteRecordRaw[] = [
   // 根路由
   {
@@ -70,6 +73,8 @@ const routesList: AppRouteRecordRaw[] = [
       }
     ]
   },
+  // CS 工作日报：静态路由、免登录；入口在 Navbar 操作栏
+  ...(isTauri() ? dailyReportConstantRoutes : []),
   {
     path: "/:pathMatch(.*)*",
     name: RouterEnum.BASE_NOT_FOUND_NAME,

@@ -14,7 +14,7 @@
     "cs:vite-build:staging": "rimraf dist && vite build --mode staging",
     "cs:build": "tauri build",
     "cs:staging": "tauri build --config src-tauri/tauri.staging.conf.json",
-    "icon": "tauri icon public/icon.png",
+    "icon": "tauri icon src-tauri/icons/ccode-icon-b.png",
     "tauri": "tauri",
     "preview": "vite preview",
     "lint": "pnpm run lint:eslint",
@@ -23,7 +23,7 @@
     "typecheck": "vue-tsc --noEmit",
     "svgo": "svgo -f ./src/assets/svg -o ./src/assets/svg"
   },
-  "description": "ll-admin",
+  "description": "Ccode",
   "author": {
     "name": "cz6code",
     "email": "chenzb961@163.com",

@@ -81,7 +81,7 @@ onUnmounted(() => {
         <h2 class="m-0 text-18px font-600 text-[var(--el-text-color-primary)]">今日日报</h2>
         <span class="text-13px text-[var(--el-text-color-secondary)]">{{ today }}</span>
       </div>
-      <div class="flex flex-wrap gap-8px">
+      <div class="flex flex-wrap">
         <el-button type="primary" :loading="running" @click="onRun">立刻生成</el-button>
         <el-button :disabled="running" @click="loadToday">刷新</el-button>
       </div>
@@ -93,7 +93,7 @@ onUnmounted(() => {
           <p class="m-0 mb-4px text-13px text-[var(--el-text-color-regular)]">点击「立刻生成」，或在计划时间到点后自动跑。</p>
           <p class="m-0 text-13px text-[var(--el-text-color-secondary)]">未配置工作区时请先到日报设置。</p>
         </template>
-        <div class="mt-8px flex justify-center gap-8px">
+        <div class="mt-8px flex justify-center">
           <el-button type="primary" :loading="running" @click="onRun">立刻生成</el-button>
           <el-button @click="goSettings">去设置</el-button>
         </div>

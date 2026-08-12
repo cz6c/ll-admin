@@ -2,8 +2,6 @@
 
 `vue-cz-admin` 是一款开源免费且开箱即用的中后台管理系统模版，也可用于学习参考。使用了最新的 `Vue3`、`Vite4`、`Element-Plus`、`TypeScript`、`Pinia` 等主流技术开发。
 
-[文档地址](https://blog.cz6hy9.top/product/admin/)
-
 ## 预览
 
 ## 准备

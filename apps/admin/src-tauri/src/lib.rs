@@ -80,7 +80,7 @@ pub fn run() {
       let _tray = TrayIconBuilder::new()
         .icon(icon)
         .menu(&tray_menu)
-        .tooltip("ll-admin")
+        .tooltip("Ccode")
         .on_menu_event(|app, event| match event.id().as_ref() {
           "tray_open" => open_in_main(app, "admin"),
           "tray_daily" => open_in_main(app, "today"),

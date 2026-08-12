@@ -14,7 +14,7 @@
       </el-scrollbar>
     </div>
     <div class="code-info">
-      <div v-if="sidebar.opened" class="des">技术支持：cz6</div>
+      <div v-if="sidebar.opened" class="des">技术支持：Ccode</div>
     </div>
   </div>
 </template>

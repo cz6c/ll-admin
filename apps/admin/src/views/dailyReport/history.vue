@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { getDailyReport, listDailyReports, type DailyReport } from "@/api/dailyReport";
 import { isTauri } from "@/utils/tauri";
+import $feedback from "@/utils/feedback";
 import ReportDetailPanel from "./ReportDetailPanel.vue";
 
 defineOptions({ name: "DailyReportHistory" });
@@ -29,7 +30,7 @@ async function loadDates() {
       report.value = null;
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || String(e));
+    $feedback.message.error(e?.message || String(e));
   } finally {
     listLoading.value = false;
   }
@@ -42,7 +43,7 @@ async function selectDate(date: string) {
   try {
     report.value = await getDailyReport(date);
   } catch (e: any) {
-    ElMessage.error(e?.message || String(e));
+    $feedback.message.error(e?.message || String(e));
   } finally {
     detailLoading.value = false;
   }
@@ -56,48 +57,56 @@ onMounted(loadDates);
 </script>
 
 <template>
-  <div class="app-page flex h-full min-h-0 flex-col gap-12px">
-    <div class="flex items-center justify-between gap-12px">
-      <div class="flex items-baseline gap-10px">
-        <h2 class="m-0 text-18px font-600">历史日报</h2>
-        <span class="text-13px text-[var(--el-text-color-secondary)]">共 {{ dates.length }} 天</span>
+  <div class="app-page flex h-full min-h-0 flex-col gap-16px">
+    <div class="flex items-center justify-between gap-16px">
+      <div class="flex items-baseline gap-8px">
+        <h2 class="m-0 text-18px font-600 text-[var(--color-text)]">历史日报</h2>
+        <span class="text-12px text-[var(--color-text-tertiary)]">共 {{ dates.length }} 天</span>
       </div>
-      <el-button :loading="listLoading" @click="loadDates">刷新</el-button>
+      <a-button :loading="listLoading" @click="loadDates">刷新</a-button>
     </div>
 
     <div v-if="!listLoading && !dates.length" class="flex-1">
-      <el-card shadow="never" class="card-rounded">
-        <el-empty description="还没有历史日报">
+      <a-card class="card-rounded" :bordered="true">
+        <a-empty description="还没有历史日报">
           <template #description>
-            <p class="m-0 text-13px text-[var(--el-text-color-secondary)]">生成过的日报会按日期出现在这里。</p>
+            <p class="m-0 text-12px text-[var(--color-text-tertiary)]">生成过的日报会按日期出现在这里。</p>
           </template>
-          <el-button type="primary" @click="goToday">去今日生成</el-button>
-        </el-empty>
-      </el-card>
+          <a-button type="primary" @click="goToday">去今日生成</a-button>
+        </a-empty>
+      </a-card>
     </div>
 
-    <div v-else class="history-layout min-h-0 flex-1 gap-12px">
-      <aside v-loading="listLoading" class="card-panel flex min-h-0 flex-col">
-        <div class="border-b border-[var(--el-border-color-lighter)] px-14px py-12px text-13px font-600 text-[var(--el-text-color-regular)]">日期</div>
-        <ul class="m-0 flex-1 list-none overflow-auto p-6px">
-          <li
-            v-for="d in dates"
-            :key="d"
-            class="radius-inner cursor-pointer px-12px py-8px text-13px text-[var(--el-text-color-regular)] transition-colors hover:bg-[var(--el-fill-color-light)]"
-            :class="{
-              'bg-[var(--el-color-primary-light-9)] font-600 text-[var(--el-color-primary)]': d === activeDate
-            }"
-            @click="selectDate(d)"
-          >
-            {{ d }}
-          </li>
-        </ul>
-      </aside>
+    <div v-else class="history-layout min-h-0 flex-1 gap-16px">
+      <a-spin :spinning="listLoading" class="history-aside-spin">
+        <aside class="card-panel flex min-h-0 flex-col">
+          <div class="border-b border-[var(--border-color)] px-16px py-12px text-14px font-600 text-[var(--color-text-secondary)]">
+            日期
+          </div>
+          <ul class="m-0 flex-1 list-none overflow-auto p-8px">
+            <li
+              v-for="d in dates"
+              :key="d"
+              class="radius-inner cursor-pointer px-8px py-8px text-14px text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--fill-color)]"
+              :class="{
+                'bg-[var(--color-primary-bg)] font-600 text-[var(--color-primary)]': d === activeDate
+              }"
+              @click="selectDate(d)"
+            >
+              {{ d }}
+            </li>
+          </ul>
+        </aside>
+      </a-spin>
 
-      <section v-loading="detailLoading" class="flex min-h-0 min-w-0 flex-col gap-12px overflow-auto">
-        <el-empty v-if="!report && !detailLoading" description="请选择左侧日期" />
-        <ReportDetailPanel v-else-if="report" :report="report" />
-      </section>
+      <a-spin :spinning="detailLoading" class="history-detail-spin min-h-0 min-w-0">
+        <section class="flex min-h-0 min-w-0 flex-col gap-16px overflow-auto">
+          <Transition name="panel-fade" mode="out-in">
+            <a-empty v-if="!report && !detailLoading" key="empty" description="请选择左侧日期" />
+            <ReportDetailPanel v-else-if="report" :key="activeDate" :report="report" />
+          </Transition>
+        </section>
+      </a-spin>
     </div>
   </div>
 </template>
@@ -107,9 +116,17 @@ onMounted(loadDates);
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
 }
+
+.history-aside-spin,
+.history-detail-spin {
+  min-height: 0;
+  height: 100%;
+}
+
 @media (max-width: 800px) {
   .history-layout {
     grid-template-columns: 1fr;
+
     :deep(aside) {
       max-height: 200px;
     }

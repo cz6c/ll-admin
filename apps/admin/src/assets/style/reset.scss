@@ -15,6 +15,7 @@ body {
   font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
   line-height: inherit;
   color: #333333;
+  background-color: #f5f5f5;
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizelegibility;
@@ -192,10 +193,6 @@ video {
 
 .dark {
   color-scheme: dark;
-}
-
-label {
-  font-weight: 700;
 }
 
 *,

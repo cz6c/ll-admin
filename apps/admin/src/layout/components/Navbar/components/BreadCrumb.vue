@@ -32,18 +32,17 @@ getBreadcrumb();
 </script>
 
 <template>
-  <el-breadcrumb class="app-breadcrumb" separator="/">
-    <transition-group name="breadcrumb">
-      <el-breadcrumb-item v-for="(item, index) in levelList" :key="item.path">
-        <span v-if="item.redirect === 'noRedirect' || index == levelList.length - 1" class="no-redirect">{{ item.meta.title }}</span>
-        <a v-else @click.prevent="handleLink(item)">{{ item.meta.title }}</a>
-      </el-breadcrumb-item>
-    </transition-group>
-  </el-breadcrumb>
+  <!-- 勿用 transition-group 包裹：antd Breadcrumb 只接受 Item/Separator 作为子节点 -->
+  <a-breadcrumb class="app-breadcrumb" separator="/">
+    <a-breadcrumb-item v-for="(item, index) in levelList" :key="item.path">
+      <span v-if="item.redirect === 'noRedirect' || index == levelList.length - 1" class="no-redirect">{{ item.meta.title }}</span>
+      <a v-else @click.prevent="handleLink(item)">{{ item.meta.title }}</a>
+    </a-breadcrumb-item>
+  </a-breadcrumb>
 </template>
 
 <style lang="scss" scoped>
-.app-breadcrumb.el-breadcrumb {
+.app-breadcrumb {
   display: inline-block;
   font-size: 14px;
   line-height: 50px;

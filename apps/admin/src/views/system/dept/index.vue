@@ -44,10 +44,9 @@ const toolbarButtons: BtnOptionsProps[] = [
   {
     btnText: "新增",
     props: {
-      type: "primary",
-      plain: true
+      type: "primary"
     },
-    icon: "ep:plus",
+    icon: "ant-design:plus-outlined",
     authCode: "add",
     handleClick: () => {
       handleAdd(null);
@@ -55,11 +54,8 @@ const toolbarButtons: BtnOptionsProps[] = [
   },
   {
     btnText: "展开/折叠",
-    props: {
-      type: "info",
-      plain: true
-    },
-    icon: "ep:sort",
+    props: {},
+    icon: "ant-design:sort-ascending-outlined",
     handleClick: () => {
       expandAllChange();
     }
@@ -135,10 +131,9 @@ const rowButtons: BtnOptionsProps<DeptTreeVo>[] = [
   {
     btnText: "修改",
     props: {
-      type: "primary",
-      plain: true
+      type: "primary"
     },
-    icon: "ep:edit",
+    icon: "ant-design:edit-outlined",
     authCode: "edit",
     handleClick: ({ row }) => {
       handleUpdate(row);
@@ -146,11 +141,8 @@ const rowButtons: BtnOptionsProps<DeptTreeVo>[] = [
   },
   {
     btnText: "子级",
-    props: {
-      type: "primary",
-      plain: true
-    },
-    icon: "ep:plus",
+    props: {},
+    icon: "ant-design:plus-outlined",
     authCode: "add",
     handleClick: ({ row }) => {
       handleAdd(row);
@@ -159,10 +151,10 @@ const rowButtons: BtnOptionsProps<DeptTreeVo>[] = [
   {
     btnText: "删除",
     props: {
-      type: "danger",
-      plain: true
+      type: "primary",
+      danger: true
     },
-    icon: "ep:delete",
+    icon: "ant-design:delete-outlined",
     authCode: "remove",
     handleClick: ({ row }) => {
       handleDelete(row);
@@ -240,7 +232,7 @@ function handleUpdate(row) {
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="default" />
+        <ToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #tools_slot="data">
         <ToolButtons :buttons="rowButtons" :data="data" />
@@ -248,7 +240,7 @@ function handleUpdate(row) {
     </vxe-grid>
 
     <!-- 添加或修改对话框 -->
-    <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
+    <a-modal v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
       <EditDeptForm
         v-if="editDialog.open"
         :deptId="editDialog.deptId"
@@ -257,6 +249,6 @@ function handleUpdate(row) {
         @success="initListSearch"
         @cancel="editDialog.open = false"
       />
-    </el-dialog>
+    </a-modal>
   </div>
 </template>

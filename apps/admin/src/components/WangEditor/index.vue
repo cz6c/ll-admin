@@ -14,10 +14,15 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 富文本编辑器（wangEditor）
+ * 职责：双向绑定 HTML；自定义图/视频上传；失焦时通知 ant FormItem 校验
+ * 适用：公告等内容编辑；失焦时对接 ant FormItem 校验
+ */
 import { IToolbarConfig, IEditorConfig, IDomEditor } from "@wangeditor/editor";
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import "@wangeditor/editor/dist/css/style.css";
-import { formContextKey, formItemContextKey } from "element-plus";
+import { useInjectFormItemContext } from "ant-design-vue/es/form/FormItemContext";
 import { uploadImg } from "@/api/public";
 
 defineOptions({
@@ -60,14 +65,9 @@ const props = withDefaults(defineProps<RichEditorProps>(), {
   disabled: false
 });
 
-// 获取 el-form 组件上下文
-const formContext = inject(formContextKey, void 0);
-// 获取 el-form-item 组件上下文
-const formItemContext = inject(formItemContextKey, void 0);
-// 判断是否禁用上传和删除
-const self_disabled = computed(() => {
-  return props.disabled || formContext?.disabled;
-});
+// 失焦时触发 ant FormItem 校验
+const formItemContext = useInjectFormItemContext();
+const self_disabled = computed(() => props.disabled);
 
 // 判断当前富文本编辑器是否禁用
 if (self_disabled.value) nextTick(() => editorRef.value?.disable());
@@ -90,12 +90,12 @@ const valueHtml = computed({
  * @description 图片自定义上传
  * @param file 上传的文件
  * @param insertFn 上传成功后的回调函数（插入到富文本编辑器中）
- * */
+ */
 type InsertFnTypeImg = (url: string, alt?: string, href?: string) => void;
 props.editorConfig.MENU_CONF!["uploadImage"] = {
   async customUpload(file: File, insertFn: InsertFnTypeImg) {
     if (!uploadImgValidate(file)) return;
-    let formData = new FormData();
+    const formData = new FormData();
     formData.append("file", file);
     try {
       const { data } = await uploadImg(formData);
@@ -116,12 +116,12 @@ const uploadImgValidate = (file: File): boolean => {
  * @description 视频自定义上传
  * @param file 上传的文件
  * @param insertFn 上传成功后的回调函数（插入到富文本编辑器中）
- * */
+ */
 type InsertFnTypeVideo = (url: string, poster?: string) => void;
 props.editorConfig.MENU_CONF!["uploadVideo"] = {
   async customUpload(file: File, insertFn: InsertFnTypeVideo) {
     if (!uploadVideoValidate(file)) return;
-    let formData = new FormData();
+    const formData = new FormData();
     formData.append("file", file);
     try {
       const { data } = await uploadImg(formData);
@@ -140,7 +140,8 @@ const uploadVideoValidate = (file: File): boolean => {
 
 // 编辑框失去焦点时触发
 const handleBlur = () => {
-  formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);
+  formItemContext?.onFieldBlur?.();
+  formItemContext?.onFieldChange?.();
 };
 
 // 组件销毁时，也及时销毁编辑器

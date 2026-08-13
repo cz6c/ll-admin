@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getDept, addDept, updateDept } from "@/api/system/dept";
 import { useDict } from "@/hooks/useDict";
-import { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, Rule } from "ant-design-vue/es/form";
 import $feedback from "@/utils/feedback";
 
 defineOptions({
@@ -17,7 +17,7 @@ const $emit = defineEmits(["success", "cancel"]);
 
 const { StatusEnum } = toRefs(useDict("StatusEnum"));
 
-const deptRef = ref<FormInstance>(null);
+const deptRef = ref<FormInstance>();
 const data = reactive({
   form: {
     deptId: undefined,
@@ -49,7 +49,7 @@ const data = reactive({
         trigger: "blur"
       }
     ]
-  } as FormRules
+  } as Record<string, Rule[]>
 });
 
 const { form, rules } = toRefs(data);
@@ -67,16 +67,17 @@ async function getInfo() {
 }
 
 /** 提交按钮 */
-function submitForm() {
-  unref(deptRef).validate(async valid => {
-    if (valid) {
-      const flag = form.value.deptId != undefined;
-      flag ? await updateDept(form.value) : await addDept(form.value);
-      $feedback.message.success(flag ? "修改成功" : "新增成功");
-      $emit("success");
-      $emit("cancel");
-    }
-  });
+async function submitForm() {
+  try {
+    await unref(deptRef)?.validate();
+  } catch {
+    return;
+  }
+  const flag = form.value.deptId != undefined;
+  flag ? await updateDept(form.value) : await addDept(form.value);
+  $feedback.message.success(flag ? "修改成功" : "新增成功");
+  $emit("success");
+  $emit("cancel");
 }
 
 getInfo();
@@ -84,50 +85,52 @@ getInfo();
 
 <template>
   <div>
-    <el-form ref="deptRef" :model="form" :rules="rules" label-width="80px">
-      <el-row>
-        <el-col :span="24">
-          <el-form-item v-if="form.parentName" label="上级部门" prop="parentId">
+    <a-form ref="deptRef" :model="form" :rules="rules" :label-col="{ style: { width: '80px' } }">
+      <a-row>
+        <a-col :span="24">
+          <a-form-item v-if="form.parentName" label="上级部门" name="parentId">
             {{ form.parentName }}
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="部门名称" prop="deptName">
-            <el-input v-model="form.deptName" placeholder="请输入部门名称" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="显示排序" prop="orderNum">
-            <el-input-number v-model="form.orderNum" controls-position="right" :min="0" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="负责人" prop="leader">
-            <el-input v-model="form.leader" placeholder="请输入负责人" maxlength="20" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="联系电话" prop="phone">
-            <el-input v-model="form.phone" placeholder="请输入联系电话" maxlength="11" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="邮箱" prop="email">
-            <el-input v-model="form.email" placeholder="请输入邮箱" maxlength="50" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="部门状态">
-            <el-radio-group v-model="form.status">
-              <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-radio-group>
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-form>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="部门名称" name="deptName">
+            <a-input v-model:value="form.deptName" placeholder="请输入部门名称" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="显示排序" name="orderNum">
+            <a-input-number v-model:value="form.orderNum" :min="0" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="负责人" name="leader">
+            <a-input v-model:value="form.leader" placeholder="请输入负责人" :maxlength="20" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="联系电话" name="phone">
+            <a-input v-model:value="form.phone" placeholder="请输入联系电话" :maxlength="11" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="邮箱" name="email">
+            <a-input v-model:value="form.email" placeholder="请输入邮箱" :maxlength="50" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="部门状态">
+            <a-radio-group v-model:value="form.status">
+              <a-radio v-for="dict in StatusEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
+            </a-radio-group>
+          </a-form-item>
+        </a-col>
+      </a-row>
+    </a-form>
     <div class="flex items-center justify-center">
-      <el-button type="primary" @click="submitForm">确 定</el-button>
-      <el-button @click="$emit('cancel')">取 消</el-button>
+      <a-space>
+        <a-button type="primary" @click="submitForm">确 定</a-button>
+        <a-button @click="$emit('cancel')">取 消</a-button>
+      </a-space>
     </div>
   </div>
 </template>

@@ -17,7 +17,6 @@
       "dom"
     ],
     "types": [
-      "element-plus/global",
       "node",
       "vite/client",
       "unplugin-icons/types/vue"

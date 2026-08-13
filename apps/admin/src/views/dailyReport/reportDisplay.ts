@@ -14,11 +14,11 @@ export const REPORT_STATUS_LABEL: Record<ReportStatus, string> = {
   empty: "无提交"
 };
 
-/** 状态 → Element Plus tag type */
-export const REPORT_STATUS_TAG: Record<ReportStatus, "success" | "danger" | "info"> = {
+/** 状态 → ant-design-vue Tag color */
+export const REPORT_STATUS_TAG: Record<ReportStatus, "success" | "error" | "default"> = {
   success: "success",
-  failed: "danger",
-  empty: "info"
+  failed: "error",
+  empty: "default"
 };
 
 /** 总结来源 → 元信息文案 */
@@ -29,12 +29,12 @@ export const SUMMARY_SOURCE_LABEL: Record<SummarySource, string> = {
   scanLogAiFailed: "AI 调用失败，已回退日志"
 };
 
-/** 总结来源 → tag type */
-export const SUMMARY_SOURCE_TAG: Record<SummarySource, "success" | "warning" | "danger" | "info"> = {
+/** 总结来源 → ant-design-vue Tag color */
+export const SUMMARY_SOURCE_TAG: Record<SummarySource, "success" | "warning" | "error" | "default"> = {
   ai: "success",
   scanLogNoKey: "warning",
-  scanLogNoCommits: "info",
-  scanLogAiFailed: "danger"
+  scanLogNoCommits: "default",
+  scanLogAiFailed: "error"
 };
 
 /**

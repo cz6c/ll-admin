@@ -3,7 +3,7 @@ import { updateUser, addUser, getUser } from "@/api/system/user";
 import { listRole } from "@/api/system/role";
 import { listPost } from "@/api/system/post";
 import { useDict } from "@/hooks/useDict";
-import { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, Rule } from "ant-design-vue/es/form";
 import $feedback from "@/utils/feedback";
 
 defineOptions({
@@ -20,7 +20,7 @@ const { UserSexEnum, StatusEnum, UserTypeEnum } = toRefs(useDict("UserSexEnum", 
 
 const initPassword = ref(undefined);
 
-const userRef = ref<FormInstance>(null);
+const userRef = ref<FormInstance>();
 const postOptions = ref([]);
 const roleOptions = ref([]);
 const data = reactive({
@@ -74,7 +74,7 @@ const data = reactive({
         trigger: "blur"
       }
     ]
-  } as FormRules
+  } as Record<string, Rule[]>
 });
 
 const { form, rules } = toRefs(data);
@@ -99,16 +99,17 @@ async function getPostAndRoleAllFn() {
 }
 
 /** 提交按钮 */
-function submitForm() {
-  unref(userRef).validate(async valid => {
-    if (valid) {
-      const flag = form.value.userId != undefined;
-      flag ? await updateUser(form.value) : await addUser(form.value);
-      $feedback.message.success(flag ? "修改成功" : "新增成功");
-      $emit("success");
-      $emit("cancel");
-    }
-  });
+async function submitForm() {
+  try {
+    await unref(userRef)?.validate();
+  } catch {
+    return;
+  }
+  const flag = form.value.userId != undefined;
+  flag ? await updateUser(form.value) : await addUser(form.value);
+  $feedback.message.success(flag ? "修改成功" : "新增成功");
+  $emit("success");
+  $emit("cancel");
 }
 
 getInfo();
@@ -116,109 +117,113 @@ getInfo();
 
 <template>
   <div>
-    <el-form ref="userRef" :model="form" :rules="rules" label-width="100px">
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="用户账号" prop="userName">
-            <el-input v-model="form.userName" placeholder="请输入用户账号" maxlength="30" :disabled="form.userId" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="用户密码" prop="password">
-            <el-input
-              v-model="form.password"
+    <a-form ref="userRef" :model="form" :rules="rules" :label-col="{ style: { width: '100px' } }">
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="用户账号" name="userName">
+            <a-input v-model:value="form.userName" placeholder="请输入用户账号" :maxlength="30" :disabled="!!form.userId" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="用户密码" name="password">
+            <a-input-password
+              v-model:value="form.password"
               placeholder="请输入用户密码"
-              type="password"
-              maxlength="20"
-              :show-password="!form.userId"
-              :disabled="form.userId"
+              :maxlength="20"
+              :visibility-toggle="!form.userId"
+              :disabled="!!form.userId"
             />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="用户昵称" prop="nickName">
-            <el-input v-model="form.nickName" placeholder="请输入用户昵称" maxlength="30" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="用户性别">
-            <el-select v-model="form.sex" placeholder="请选择">
-              <el-option v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="手机号码" prop="phonenumber">
-            <el-input v-model="form.phonenumber" placeholder="请输入手机号码" maxlength="11" :disabled="form.userId" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="邮箱" prop="email">
-            <el-input v-model="form.email" placeholder="请输入邮箱" maxlength="50" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="归属部门" prop="deptId">
-            <el-tree-select
-              v-model="form.deptId"
-              :data="props.deptOptions"
-              :props="{ label: 'deptName', children: 'children' }"
-              value-key="deptId"
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="用户昵称" name="nickName">
+            <a-input v-model:value="form.nickName" placeholder="请输入用户昵称" :maxlength="30" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="用户性别">
+            <a-select v-model:value="form.sex" placeholder="请选择" :options="UserSexEnum" allow-clear style="width: 100%" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="手机号码" name="phonenumber">
+            <a-input v-model:value="form.phonenumber" placeholder="请输入手机号码" :maxlength="11" :disabled="!!form.userId" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="邮箱" name="email">
+            <a-input v-model:value="form.email" placeholder="请输入邮箱" :maxlength="50" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="归属部门" name="deptId">
+            <a-tree-select
+              v-model:value="form.deptId"
+              :tree-data="props.deptOptions"
+              :field-names="{ label: 'deptName', value: 'deptId', children: 'children' }"
               placeholder="请选择归属部门"
-              check-strictly
+              tree-default-expand-all
+              allow-clear
+              style="width: 100%"
             />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="岗位">
-            <el-select v-model="form.postIds" multiple placeholder="请选择">
-              <el-option v-for="item in postOptions" :key="item.postId" :label="item.postName" :value="item.postId" :disabled="item.status == 1" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="24">
-          <el-form-item label="角色">
-            <el-select v-model="form.roleIds" multiple placeholder="请选择">
-              <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId" :disabled="item.status == 1" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="状态">
-            <el-radio-group v-model="form.status">
-              <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-radio-group>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="用户类型">
-            <el-radio-group v-model="form.userType">
-              <el-radio v-for="dict in UserTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-radio-group>
-          </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="24">
-          <el-form-item label="备注">
-            <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-form>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="岗位">
+            <a-select v-model:value="form.postIds" mode="multiple" placeholder="请选择" allow-clear style="width: 100%">
+              <a-select-option v-for="item in postOptions" :key="item.postId" :value="item.postId" :disabled="item.status == 1">
+                {{ item.postName }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="24">
+          <a-form-item label="角色">
+            <a-select v-model:value="form.roleIds" mode="multiple" placeholder="请选择" allow-clear style="width: 100%">
+              <a-select-option v-for="item in roleOptions" :key="item.roleId" :value="item.roleId" :disabled="item.status == 1">
+                {{ item.roleName }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="状态">
+            <a-radio-group v-model:value="form.status">
+              <a-radio v-for="dict in StatusEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
+            </a-radio-group>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="用户类型">
+            <a-radio-group v-model:value="form.userType">
+              <a-radio v-for="dict in UserTypeEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
+            </a-radio-group>
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-row>
+        <a-col :span="24">
+          <a-form-item label="备注">
+            <a-textarea v-model:value="form.remark" placeholder="请输入内容" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+    </a-form>
     <div class="flex items-center justify-center">
-      <el-button type="primary" @click="submitForm">确 定</el-button>
-      <el-button @click="$emit('cancel')">取 消</el-button>
+      <a-space>
+        <a-button type="primary" @click="submitForm">确 定</a-button>
+        <a-button @click="$emit('cancel')">取 消</a-button>
+      </a-space>
     </div>
   </div>
 </template>

@@ -40,15 +40,13 @@ const searchList = reactive<SearchFormItem[]>([
     }
   },
   {
-    type: "date-picker",
+    type: "date-range",
     prop: "dateRange",
     label: "创建时间",
     props: {
-      type: "daterange",
       valueFormat: "YYYY-MM-DD",
-      rangeSeparator: "-",
-      startPlaceholder: "开始日期",
-      endPlaceholder: "结束日期"
+      placeholder: ["开始日期", "结束日期"],
+      separator: "-"
     }
   }
 ]);
@@ -65,10 +63,9 @@ const toolbarButtons: BtnOptionsProps[] = [
   {
     btnText: "新增",
     props: {
-      type: "primary",
-      plain: true
+      type: "primary"
     },
-    icon: "ep:plus",
+    icon: "ant-design:plus-outlined",
     authCode: "add",
     handleClick: () => {
       handleAdd();
@@ -77,10 +74,10 @@ const toolbarButtons: BtnOptionsProps[] = [
   {
     btnText: "删除",
     props: {
-      type: "danger",
-      plain: true
+      type: "primary",
+      danger: true
     },
-    icon: "ep:delete",
+    icon: "ant-design:delete-outlined",
     authCode: "remove",
     handleClick: () => {
       handleDelete();
@@ -92,11 +89,8 @@ const toolbarButtons: BtnOptionsProps[] = [
   },
   {
     btnText: "导出",
-    props: {
-      type: "warning",
-      plain: true
-    },
-    icon: "ep:download",
+    props: {},
+    icon: "ant-design:download-outlined",
     authCode: "export",
     handleClick: () => {
       handleExport();
@@ -179,10 +173,9 @@ const rowButtons: BtnOptionsProps<SysConfigVo>[] = [
   {
     btnText: "修改",
     props: {
-      type: "primary",
-      plain: true
+      type: "primary"
     },
-    icon: "ep:edit",
+    icon: "ant-design:edit-outlined",
     authCode: "edit",
     handleClick: ({ row }) => {
       handleUpdate(row);
@@ -191,10 +184,10 @@ const rowButtons: BtnOptionsProps<SysConfigVo>[] = [
   {
     btnText: "删除",
     props: {
-      type: "danger",
-      plain: true
+      type: "primary",
+      danger: true
     },
-    icon: "ep:delete",
+    icon: "ant-design:delete-outlined",
     authCode: "remove",
     handleClick: ({ row }) => {
       handleDelete(row);
@@ -268,7 +261,7 @@ function handleUpdate(row) {
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="default" />
+        <ToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #tools_slot="data">
         <ToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
@@ -276,8 +269,8 @@ function handleUpdate(row) {
     </vxe-grid>
 
     <!-- 添加或修改对话框 -->
-    <el-dialog v-model="editDialog.open" :title="editDialog.title" width="800px" append-to-body>
+    <a-modal v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
       <EditConfigForm v-if="editDialog.open" :configId="editDialog.configId" @success="initListSearch" @cancel="editDialog.open = false" />
-    </el-dialog>
+    </a-modal>
   </div>
 </template>

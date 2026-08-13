@@ -138,7 +138,7 @@ defineOptions({
       margin-bottom: 20px;
       font-size: 32px;
       font-weight: bold;
-      color: #5353dd;
+      color: var(--color-primary);
       opacity: 0;
       line-height: 40px;
       animation-name: slideUp;
@@ -180,7 +180,7 @@ defineOptions({
       text-align: center;
       text-decoration: none;
       color: #fff;
-      background: #5353dd;
+      background: var(--color-primary);
       opacity: 0;
       line-height: 36px;
       cursor: pointer;
@@ -188,6 +188,29 @@ defineOptions({
       animation-duration: 0.5s;
       animation-delay: 0.3s;
       animation-fill-mode: forwards;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wscn-http404 {
+    .pic-404__child {
+      &.left,
+      &.mid {
+        animation: none;
+        opacity: 0.55;
+      }
+    }
+
+    .bullshit {
+      &__oops,
+      &__headline,
+      &__info,
+      &__return-home {
+        animation: none;
+        opacity: 1;
+        transform: none;
+      }
     }
   }
 }

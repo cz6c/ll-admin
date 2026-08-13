@@ -1,18 +1,18 @@
 <template>
   <div :class="classObj" class="app-wrapper">
     <div v-if="device === 'mobile' && sidebar.opened" class="drawer-bg" @click="handleClickOutside" />
-    <el-aside class="sidebar-container">
+    <aside class="sidebar-container">
       <Sidebar />
-    </el-aside>
+    </aside>
     <div :class="{ hasTagsView: needTagsView }" class="main-container">
-      <el-header height="50px">
+      <header class="layout-header">
         <Navbar @setLayout="setLayout" @toggleClick="toggleSideBar" />
-      </el-header>
+      </header>
       <TagsView v-if="needTagsView" />
       <section class="app-main">
-        <el-scrollbar>
+        <div class="app-main-scroll">
           <AppMain />
-        </el-scrollbar>
+        </div>
       </section>
     </div>
     <Settings ref="settingRef" />

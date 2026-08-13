@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from "@/store/modules/auth";
-import type { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, Rule } from "ant-design-vue/es/form";
 import { getCodeImg } from "@/api/public";
 import { encrypt, decrypt } from "@/utils/jsencrypt";
 import Cookies from "js-cookie";
@@ -8,7 +8,6 @@ import { productConfig } from "@/config";
 import $feedback from "@/utils/feedback";
 import { getPlatFormUUID } from "@/utils/auth";
 import LoginSvgCom from "@/assets/svg/login.svg?component";
-import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { RouterEnum } from "@/router";
 import { sanitizePostLoginRedirect } from "@/router/dailyReport";
 import { usePermissionStore } from "@/store/modules/permission";
@@ -33,7 +32,7 @@ const loginForm = reactive({
   code: "",
   uuid: getPlatFormUUID()
 });
-const rules: FormRules = {
+const rules: Record<string, Rule[]> = {
   password: [{ required: true, message: "请输入密码", trigger: "blur" }],
   userName: [{ required: true, message: "请输入账号", trigger: "blur" }],
   code: [{ required: true, trigger: "change", message: "请输入验证码" }]
@@ -42,43 +41,42 @@ const rules: FormRules = {
 /**
  * @description: 登录
  */
-function handleLogin() {
+async function handleLogin() {
   if (!unref(formRef)) return;
-  unref(formRef).validate(async valid => {
-    if (valid) {
-      try {
-        loading.value = true;
-        // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
-        if (loginForm.rememberMe) {
-          Cookies.set("userName", loginForm.userName, { expires: 30 });
-          Cookies.set("password", encrypt(loginForm.password), { expires: 30 });
-          Cookies.set("rememberMe", loginForm.rememberMe, { expires: 30 });
-        } else {
-          // 否则移除
-          Cookies.remove("userName");
-          Cookies.remove("password");
-          Cookies.remove("rememberMe");
-        }
-        await useAuthStore().login(loginForm);
-        usePermissionStore()
-          .initRouter()
-          .then(router => {
-            const raw = route.query?.redirect
-              ? decodeURIComponent(route.query.redirect as string)
-              : "/";
-            // 登录回跳忽略 CS 本机工具页（免登录，不应抢后台落地页）
-            const path = sanitizePostLoginRedirect(raw);
-            router.push({ path });
-          });
-        loading.value = false;
-      } catch (error: any) {
-        $feedback.message.warning(error.message);
-        loading.value = false;
-        // 重新获取验证码
-        if (captchaEnabled.value) getCode();
-      }
+  try {
+    await unref(formRef).validate();
+  } catch {
+    return;
+  }
+  try {
+    loading.value = true;
+    // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
+    if (loginForm.rememberMe) {
+      Cookies.set("userName", loginForm.userName, { expires: 30 });
+      Cookies.set("password", encrypt(loginForm.password), { expires: 30 });
+      Cookies.set("rememberMe", loginForm.rememberMe, { expires: 30 });
+    } else {
+      // 否则移除
+      Cookies.remove("userName");
+      Cookies.remove("password");
+      Cookies.remove("rememberMe");
     }
-  });
+    await useAuthStore().login(loginForm);
+    usePermissionStore()
+      .initRouter()
+      .then(router => {
+        const raw = route.query?.redirect ? decodeURIComponent(route.query.redirect as string) : "/";
+        // 登录回跳忽略 CS 本机工具页（免登录，不应抢后台落地页）
+        const path = sanitizePostLoginRedirect(raw);
+        router.push({ path });
+      });
+    loading.value = false;
+  } catch (error: any) {
+    $feedback.message.warning(error.message);
+    loading.value = false;
+    // 重新获取验证码
+    if (captchaEnabled.value) getCode();
+  }
 }
 
 async function getCode() {
@@ -110,47 +108,43 @@ getCookie();
     <div class="login-fr">
       <div class="login-conten">
         <div class="title-wrapper">
-          <h1 class="title">Welcome back!</h1>
-          <p class="description">{{ BASE_TITLE }}</p>
+          <h1 class="title">{{ BASE_TITLE }}</h1>
+          <p class="description">Welcome back!</p>
         </div>
-        <el-form ref="formRef" :rules="rules" :model="loginForm">
-          <el-form-item prop="userName">
-            <el-input v-model="loginForm.userName" auto-complete="off" placeholder="请输入账号" :prefix-icon="useRenderIcon('ep:user')" />
-          </el-form-item>
-          <el-form-item prop="password">
-            <el-input
-              v-model="loginForm.password"
-              type="password"
-              show-password
-              auto-complete="off"
-              placeholder="请输入密码"
-              :prefix-icon="useRenderIcon('ep:lock')"
-              @keyup.enter="handleLogin"
-            />
-          </el-form-item>
-          <el-form-item v-if="captchaEnabled" prop="code">
+        <a-form ref="formRef" :rules="rules" :model="loginForm">
+          <a-form-item name="userName">
+            <a-input v-model:value="loginForm.userName" autocomplete="off" placeholder="请输入账号" size="large">
+              <template #prefix>
+                <IconifyIcon icon="ant-design:user-outlined" width="16px" height="16px" />
+              </template>
+            </a-input>
+          </a-form-item>
+          <a-form-item name="password">
+            <a-input-password v-model:value="loginForm.password" autocomplete="off" placeholder="请输入密码" size="large" @pressEnter="handleLogin">
+              <template #prefix>
+                <IconifyIcon icon="ant-design:lock-outlined" width="16px" height="16px" />
+              </template>
+            </a-input-password>
+          </a-form-item>
+          <a-form-item v-if="captchaEnabled" name="code">
             <div class="login-code">
-              <el-input
-                v-model="loginForm.code"
-                size="large"
-                auto-complete="off"
-                placeholder="验证码"
-                style="width: 60%"
-                :prefix-icon="useRenderIcon('ri:shield-check-line')"
-                @keyup.enter="handleLogin()"
-              />
+              <a-input v-model:value="loginForm.code" size="large" autocomplete="off" placeholder="验证码" style="width: 60%" @pressEnter="handleLogin()">
+                <template #prefix>
+                  <IconifyIcon icon="ant-design:safety-certificate-outlined" width="16px" height="16px" />
+                </template>
+              </a-input>
               <div class="code" @click="getCode" v-html="codeUrl" />
             </div>
-          </el-form-item>
-          <el-form-item prop="rememberMe">
-            <el-checkbox v-model="loginForm.rememberMe">记住密码</el-checkbox>
-          </el-form-item>
-        </el-form>
-        <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin()">
+          </a-form-item>
+          <a-form-item name="rememberMe">
+            <a-checkbox v-model:checked="loginForm.rememberMe">记住密码</a-checkbox>
+          </a-form-item>
+        </a-form>
+        <a-button type="primary" class="login-btn" :loading="loading" @click="handleLogin()">
           {{ !loading ? "登 录" : "登 录 中..." }}
-        </el-button>
+        </a-button>
       </div>
-      <div class="version-tips">版权信息 | cz6</div>
+      <div class="version-tips">版权信息 | Ccode</div>
     </div>
   </div>
 </template>
@@ -181,32 +175,32 @@ getCookie();
         .title {
           font-size: 32px;
           font-weight: 600;
+          line-height: 1.15;
+          letter-spacing: -0.02em;
+          color: rgba(0, 0, 0, 0.88);
         }
 
         .description {
-          font-size: 16px;
+          margin-top: 8px;
+          font-size: 15px;
           font-weight: 400;
-          color: #999999;
-          line-height: 36px;
+          letter-spacing: 0;
+          color: rgba(0, 0, 0, 0.45);
+          line-height: 1.5;
         }
       }
 
-      :deep(.el-form) {
-        .el-form-item {
+      :deep(.ant-form) {
+        .ant-form-item {
           position: relative;
           margin-bottom: 24px;
           width: 300px;
-
-          .el-input__inner {
-            border-radius: 8px;
-            height: 40px;
-            line-height: 40px;
-          }
         }
         .login-code {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          width: 100%;
           .code {
             width: 36%;
             height: 40px;
@@ -222,7 +216,11 @@ getCookie();
         border-radius: 8px;
         width: 300px;
         height: 40px;
-        line-height: 40px;
+        transition: transform var(--dur-press) var(--ease-out);
+
+        &:active:not(:disabled) {
+          transform: scale(0.97);
+        }
       }
 
       .login-timeout {

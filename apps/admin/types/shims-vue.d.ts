@@ -1,2 +1,2 @@
-// 第三方库
-declare module "element-plus/dist/locale/zh-cn.mjs";
+// 第三方库模块声明
+declare module "ant-design-vue/es/locale/zh_CN";

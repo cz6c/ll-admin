@@ -1,19 +1,24 @@
 <template>
-  <el-config-provider :locale="zhCn">
+  <a-config-provider :locale="zhCN" :theme="antdTheme">
     <div class="app-root" :class="{ 'is-cs': isCs }">
       <CsToolsBar v-if="isCs" />
       <div class="app-body">
         <router-view />
       </div>
     </div>
-  </el-config-provider>
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
-import { ElConfigProvider } from "element-plus";
-import zhCn from "element-plus/dist/locale/zh-cn.mjs";
+import zhCN from "ant-design-vue/es/locale/zh_CN";
+import { message, notification } from "ant-design-vue";
+import dayjs from "dayjs";
+import "dayjs/locale/zh-cn";
 import CsToolsBar from "@/components/CsToolsBar/index.vue";
+import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri } from "@/utils/tauri";
+
+dayjs.locale("zh-cn");
 
 defineOptions({
   name: "App"
@@ -21,6 +26,15 @@ defineOptions({
 
 const router = useRouter();
 const isCs = isTauri();
+const settingsStore = useSettingsStore();
+
+/** Ant Design 主题 token：跟随 settings.theme */
+const antdTheme = computed(() => ({
+  token: {
+    colorPrimary: settingsStore.theme || "#1688ff",
+    borderRadius: 8
+  }
+}));
 
 /** 托盘等壳层事件 → 主窗内路由（不新开窗口） */
 function resolveAppNavigate(raw: string): string {
@@ -40,9 +54,21 @@ function resolveAppNavigate(raw: string): string {
   }
 }
 
+/**
+ * CS 顶栏占位：message/notification 用 inline top，需与 --cs-shell-bar-height 对齐
+ * （全屏遮罩类偏移见 antd.scss）
+ */
+function syncCsOverlayOffset() {
+  const barH =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 44;
+  message.config({ top: barH + 8 });
+  notification.config({ top: barH + 24 });
+}
+
 onMounted(async () => {
   if (!isCs) return;
   document.documentElement.classList.add("cs-shell");
+  syncCsOverlayOffset();
   const { listen } = await import("@tauri-apps/api/event");
   listen<string>("app:navigate", event => {
     router.push(resolveAppNavigate(String(event.payload || "today")));
@@ -60,7 +86,7 @@ onBeforeUnmount(() => {
   &.is-cs {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
   }
 }
 .app-body {

@@ -1,9 +1,9 @@
-import type { FormItemRule } from "element-plus";
+import type { Rule } from "ant-design-vue/es/form";
 import type { CSSProperties } from "vue";
 import type { FormViewProps } from "./index.vue";
 import type { SearchFormProps } from "./SearchForm.vue";
 import type FormView from "./index.vue";
-import type SearchForm from "./index.vue";
+import type SearchForm from "./SearchForm.vue";
 
 // 选项类型
 export interface OptionsType {
@@ -30,6 +30,7 @@ export type FormItemType =
   | "tree-select"
   | "cascader"
   | "date-picker"
+  | "date-range"
   | "time-picker"
   | "time-select"
   | "switch"
@@ -46,13 +47,14 @@ export interface FormItemProps {
   type: FormItemType; // 当前项搜索框的类型
   prop: string; // model 的键名
   label: string; // 标签文本
-  props?: PropsType; // 额外参数，该属性所有值会透传到组件内，elm组件可参考 element plus 官方对应组件文档
+  /** 透传到 ant 控件的属性（options / treeData / valueFormat / placeholder …） */
+  props?: PropsType;
   itemLabelWidth?: string | number;
 }
 
 export interface BaseFormItem extends FormItemProps {
   required?: boolean;
-  rules?: Array<FormItemRule>;
+  rules?: Array<Rule>;
   span?: number;
   offset?: number;
   itemStyle?: CSSProperties;

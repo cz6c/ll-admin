@@ -1,9 +1,16 @@
 <script setup lang="ts">
+/**
+ * 单图上传
+ * 职责：自定义请求上传图片，回写 url；成功后触发 ant FormItem onFieldChange
+ * 适用：表单头像 / 封面等单图字段
+ */
 import { generateUUID } from "@llcz/common";
 import { uploadImg } from "@/api/public";
-import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
-import type { UploadProps, UploadRequestOptions } from "element-plus";
+import { useInjectFormItemContext } from "ant-design-vue/es/form/FormItemContext";
+import type { UploadProps } from "ant-design-vue";
+import type { UploadRequestOption } from "ant-design-vue/es/vc-upload/interface";
 import { ImageMimeType } from "./index.d";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "UploadImg"
@@ -37,263 +44,222 @@ const uuid = ref("id-" + generateUUID());
 
 // 查看图片
 const imgViewVisible = ref(false);
-// 获取 el-form 组件上下文
-const formContext = inject(formContextKey, void 0);
-// 获取 el-form-item 组件上下文
-const formItemContext = inject(formItemContextKey, void 0);
+// ant FormItem 上下文：上传成功后触发字段校验
+const formItemContext = useInjectFormItemContext();
 // 判断是否禁用上传和删除
-const self_disabled = computed(() => {
-  return props.disabled || formContext?.disabled;
-});
+const self_disabled = computed(() => props.disabled);
 
 /**
  * @description 图片上传
- * @param options upload 所有配置项
- * */
-const handleHttpUpload = async (options: UploadRequestOptions) => {
-  let formData = new FormData();
-  formData.append("file", options.file);
+ * @param options upload 自定义请求参数
+ */
+const handleHttpUpload = async (options: UploadRequestOption) => {
+  const formData = new FormData();
+  formData.append("file", options.file as File);
   try {
     const { data } = await uploadImg(formData);
     modelValue.value = data.url;
-    // 调用 el-form 内部的校验方法（可自动校验）
-    formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);
+    formItemContext?.onFieldChange?.();
+    options.onSuccess?.(data as any);
+    $feedback.message.success("图片上传成功！");
   } catch (error) {
-    options.onError(error as any);
+    options.onError?.(error as any);
+    $feedback.message.error("图片上传失败，请您重新上传！");
   }
 };
 
 /**
  * @description 删除图片
- * */
+ */
 const deleteImg = () => {
   modelValue.value = "";
+  formItemContext?.onFieldChange?.();
 };
 
 /**
- * @description 编辑图片
- * */
+ * @description 编辑图片：触发隐藏 file input
+ */
 const editImg = () => {
-  const dom = document.querySelector(`#${uuid.value} .el-upload__input`);
-  dom && dom.dispatchEvent(new MouseEvent("click"));
+  const dom = document.querySelector(`#${uuid.value} input[type=file]`) as HTMLInputElement | null;
+  dom?.dispatchEvent(new MouseEvent("click"));
 };
 
 /**
  * @description 文件上传之前判断
- * @param rawFile 选择的文件
- * */
-const beforeUpload: UploadProps["beforeUpload"] = rawFile => {
-  const imgSize = rawFile.size / 1024 / 1024 < props.fileSize;
-  const imgType = props.fileType.includes(rawFile.type as ImageMimeType);
-  if (!imgType)
-    ElNotification({
-      title: "温馨提示",
-      message: "上传图片不符合所需的格式！",
-      type: "warning"
-    });
-  if (!imgSize)
-    setTimeout(() => {
-      ElNotification({
-        title: "温馨提示",
-        message: `上传图片大小不能超过 ${props.fileSize}M！`,
-        type: "warning"
-      });
-    }, 0);
+ */
+const beforeUpload: UploadProps["beforeUpload"] = file => {
+  const imgSize = file.size / 1024 / 1024 < props.fileSize;
+  const imgType = props.fileType.includes(file.type as ImageMimeType);
+  if (!imgType) $feedback.message.warning("上传图片不符合所需的格式！");
+  if (!imgSize) $feedback.message.warning(`上传图片大小不能超过 ${props.fileSize}M！`);
   return imgType && imgSize;
-};
-
-/**
- * @description 图片上传成功
- * */
-const uploadSuccess = () => {
-  ElNotification({
-    title: "温馨提示",
-    message: "图片上传成功！",
-    type: "success"
-  });
-};
-
-/**
- * @description 图片上传错误
- * */
-const uploadError = () => {
-  ElNotification({
-    title: "温馨提示",
-    message: "图片上传失败，请您重新上传！",
-    type: "error"
-  });
 };
 </script>
 
 <template>
   <div class="upload-box">
-    <el-upload
+    <a-upload
       :id="uuid"
+      name="file"
       action="#"
       :class="['upload', self_disabled ? 'disabled' : '', drag ? 'no-border' : '']"
+      list-type="picture-card"
       :multiple="false"
       :disabled="self_disabled"
-      :show-file-list="false"
-      :http-request="handleHttpUpload"
+      :show-upload-list="false"
+      :custom-request="handleHttpUpload"
       :before-upload="beforeUpload"
-      :on-success="uploadSuccess"
-      :on-error="uploadError"
-      :drag="drag"
       :accept="fileType.join(',')"
     >
       <template v-if="modelValue">
-        <img :src="modelValue" class="upload-image" />
-        <div class="upload-handle" @click.stop>
-          <div v-if="!self_disabled" class="handle-icon" @click="editImg">
-            <IconifyIcon icon="ep:edit" class="el-icon" />
-          </div>
-          <div class="handle-icon" @click="imgViewVisible = true">
-            <IconifyIcon icon="ep:zoom-in" class="el-icon" />
-          </div>
-          <div v-if="!self_disabled" class="handle-icon" @click="deleteImg">
-            <IconifyIcon icon="ep:delete" class="el-icon" />
+        <div class="upload-card-inner">
+          <img :src="modelValue" class="upload-image" />
+          <div class="upload-handle" @click.stop>
+            <div v-if="!self_disabled" class="handle-icon" @click="editImg">
+              <IconifyIcon icon="ant-design:edit-outlined" class="action-icon" />
+            </div>
+            <div class="handle-icon" @click="imgViewVisible = true">
+              <IconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
+            </div>
+            <div v-if="!self_disabled" class="handle-icon" @click="deleteImg">
+              <IconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
+            </div>
           </div>
         </div>
       </template>
       <template v-else>
         <div class="upload-empty">
           <slot name="empty">
-            <IconifyIcon icon="ep:plus" class="el-icon--upload" />
+            <IconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
           </slot>
         </div>
       </template>
-    </el-upload>
-    <div class="el-upload__tip">
+    </a-upload>
+    <div class="upload-tip">
       <slot name="tip" />
     </div>
-    <el-image-viewer v-if="imgViewVisible" :url-list="[modelValue]" @close="imgViewVisible = false" />
+    <a-image
+      :style="{ display: 'none' }"
+      :src="modelValue"
+      :preview="{
+        visible: imgViewVisible,
+        onVisibleChange: (vis: boolean) => (imgViewVisible = vis)
+      }"
+    />
   </div>
 </template>
 
 <style scoped lang="scss">
 .is-error {
   .upload {
-    :deep(.el-upload),
-    :deep(.el-upload-dragger) {
-      border: 1px dashed var(--el-color-danger) !important;
+    :deep(.ant-upload),
+    :deep(.ant-upload-select) {
+      border-color: #ff4d4f !important;
 
       &:hover {
-        border-color: var(--el-color-primary) !important;
+        border-color: var(--color-primary) !important;
       }
     }
   }
 }
 
 :deep(.disabled) {
-  .el-upload,
-  .el-upload-dragger {
-    border: 1px dashed var(--el-border-color-darker) !important;
-    background: var(--el-disabled-bg-color);
+  .ant-upload,
+  .ant-upload-select {
+    border-color: #d9d9d9 !important;
+    background: #f5f5f5;
     cursor: not-allowed !important;
 
     &:hover {
-      border: 1px dashed var(--el-border-color-darker) !important;
+      border-color: #d9d9d9 !important;
     }
   }
 }
 
 .upload-box {
   .no-border {
-    :deep(.el-upload) {
-      border: none !important;
+    :deep(.ant-upload) {
+      border-style: dashed;
     }
   }
 
   :deep(.upload) {
-    .el-upload {
+    .ant-upload.ant-upload-select {
       position: relative;
       display: flex;
       justify-content: center;
       align-items: center;
       overflow: hidden;
-      border: 1px dashed var(--el-border-color-darker);
+      border: 1px dashed #d9d9d9;
       border-radius: v-bind(borderRadius);
       width: v-bind(width);
       height: v-bind(height);
-      transition: var(--el-transition-duration-fast);
+      margin: 0;
+      transition: border-color 0.2s;
 
       &:hover {
-        border-color: var(--el-color-primary);
+        border-color: var(--color-primary);
 
         .upload-handle {
           opacity: 1;
         }
       }
+    }
+  }
 
-      .el-upload-dragger {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-        border: 1px dashed var(--el-border-color-darker);
-        border-radius: v-bind(borderRadius);
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background-color: transparent;
+  .upload-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
 
-        &:hover {
-          border: 1px dashed var(--el-color-primary);
-        }
-      }
+  .upload-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 
-      .el-upload-dragger.is-dragover {
-        border: 2px dashed var(--el-color-primary) !important;
-        background-color: var(--el-color-primary-light-9);
-      }
+  .upload-handle {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgb(0 0 0 / 60%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
 
-      .upload-image {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
+    .handle-icon {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0 6%;
+      color: aliceblue;
+      flex-direction: column;
 
-      .upload-handle {
-        position: absolute;
-        top: 0;
-        right: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
-        height: 100%;
-        background: rgb(0 0 0 / 60%);
-        opacity: 0;
-        transition: var(--el-transition-duration-fast);
-        box-sizing: border-box;
-        cursor: pointer;
-
-        .handle-icon {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          padding: 0 6%;
-          color: aliceblue;
-          flex-direction: column;
-
-          .el-icon {
-            font-size: 20px;
-          }
-        }
-      }
-
-      .upload-empty {
-        display: flex;
-        justify-content: center;
-        align-items: center;
+      .action-icon {
+        font-size: 20px;
       }
     }
   }
 
-  .el-upload__tip {
+  .upload-empty {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-plus {
+    font-size: 24px;
+    color: #999;
+  }
+
+  .upload-tip {
     line-height: 18px;
     text-align: center;
   }
 }
 </style>
-.

@@ -1,21 +1,23 @@
 <template>
-  <el-form ref="userRef" :model="user" :rules="rules" label-width="80px">
-    <el-form-item label="用户昵称" prop="nickName">
-      <el-input v-model="user.nickName" maxlength="30" />
-    </el-form-item>
-    <el-form-item label="邮箱" prop="email">
-      <el-input v-model="user.email" maxlength="50" />
-    </el-form-item>
-    <el-form-item label="性别">
-      <el-radio-group v-model="user.sex">
-        <el-radio v-for="dict in UserSexEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-      </el-radio-group>
-    </el-form-item>
-    <el-form-item>
-      <el-button type="primary" @click="submit">保存</el-button>
-      <el-button type="danger" @click="close">关闭</el-button>
-    </el-form-item>
-  </el-form>
+  <a-form ref="userRef" :model="user" :rules="rules" :label-col="{ style: { width: '80px' } }">
+    <a-form-item label="用户昵称" name="nickName">
+      <a-input v-model:value="user.nickName" :maxlength="30" />
+    </a-form-item>
+    <a-form-item label="邮箱" name="email">
+      <a-input v-model:value="user.email" :maxlength="50" />
+    </a-form-item>
+    <a-form-item label="性别">
+      <a-radio-group v-model:value="user.sex">
+        <a-radio v-for="dict in UserSexEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
+      </a-radio-group>
+    </a-form-item>
+    <a-form-item>
+      <a-space>
+        <a-button type="primary" @click="submit">保存</a-button>
+        <a-button danger @click="close">关闭</a-button>
+      </a-space>
+    </a-form-item>
+  </a-form>
 </template>
 
 <script setup lang="ts">
@@ -23,7 +25,7 @@ import { UpdateProfileDto } from "#/api/system/user";
 import { updateUserProfile } from "@/api/system/user";
 import { useDict } from "@/hooks/useDict";
 import { useAuthStore } from "@/store/modules/auth";
-import { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, Rule } from "ant-design-vue/es/form";
 import $feedback from "@/utils/feedback";
 import { useTagsViewStore } from "@/store/modules/tagsView";
 
@@ -35,9 +37,9 @@ const { UserSexEnum } = toRefs(useDict("UserSexEnum"));
 const user = defineModel<UpdateProfileDto>("user");
 
 const authStore = useAuthStore();
-const userRef = ref<FormInstance>(null);
+const userRef = ref<FormInstance>();
 
-const rules = ref<FormRules>({
+const rules = ref<Record<string, Rule[]>>({
   nickName: [{ required: true, message: "用户昵称不能为空", trigger: "blur" }],
   email: [
     { required: true, message: "邮箱地址不能为空", trigger: "blur" },
@@ -50,15 +52,15 @@ const rules = ref<FormRules>({
 });
 
 /** 提交按钮 */
-function submit() {
-  unref(userRef).validate(valid => {
-    if (valid) {
-      updateUserProfile(unref(user)).then(response => {
-        $feedback.message.success("修改成功");
-        authStore.getLoginUserInfo();
-      });
-    }
-  });
+async function submit() {
+  try {
+    await unref(userRef)?.validate();
+  } catch {
+    return;
+  }
+  await updateUserProfile(unref(user));
+  $feedback.message.success("修改成功");
+  authStore.getLoginUserInfo();
 }
 /** 关闭按钮 */
 function close() {

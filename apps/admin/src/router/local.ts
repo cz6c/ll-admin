@@ -7,7 +7,7 @@ export default [
     component: "Layout",
     meta: {
       title: "图表",
-      icon: "ri:bar-chart-box-line",
+      icon: "ant-design:bar-chart-outlined",
       noCache: false,
       link: null,
       activeMenu: "",

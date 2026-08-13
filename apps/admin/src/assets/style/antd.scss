@@ -1,0 +1,120 @@
+/**
+ * Ant Design Vue 局部覆盖
+ * 主样式走 CSS-in-JS；此处仅补布局/消息/nprogress 等缺口
+ */
+
+/* nprogress：只用实色条，禁止 glow（设计体系去干扰） */
+#nprogress {
+  & .bar {
+    background-color: var(--color-primary) !important;
+  }
+
+  & .peg {
+    box-shadow: none !important;
+  }
+
+  & .spinner-icon {
+    border-top-color: var(--color-primary);
+    border-left-color: var(--color-primary);
+  }
+}
+
+/*
+ * 带图标按钮：Iconify 非 antdicon，默认基线易导致图标与文字不垂直居中
+ */
+.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ant-btn > .ant-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.ant-btn > .ant-btn-icon > * {
+  display: block;
+  line-height: 0;
+}
+
+.ant-btn-icon + span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.settings-drawer.ant-drawer .ant-drawer-content {
+  background: color-mix(in srgb, var(--bg-color, #fff) 72%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.settings-drawer-mask {
+  background: rgba(0, 0, 0, 0.28) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/*
+ * CS 顶栏常驻且 z-index 更高（CsToolsBar=2000）：
+ * 全局浮层/遮罩勿盖住顶栏；全屏类扣高度，贴顶类加 top 偏移。
+ * Web 下 --cs-shell-bar-height 为 0，规则无副作用。
+ */
+html.cs-shell {
+  /* 全屏遮罩类：Drawer / Modal / Image 预览 */
+  .ant-drawer .ant-drawer-mask,
+  .ant-drawer .ant-drawer-content-wrapper,
+  .ant-modal-root .ant-modal-mask,
+  .ant-modal-root .ant-modal-wrap,
+  .ant-image-preview-root .ant-image-preview-mask,
+  .ant-image-preview-root .ant-image-preview-wrap {
+    top: var(--cs-shell-bar-height) !important;
+    height: calc(100% - var(--cs-shell-bar-height)) !important;
+  }
+
+  /* 贴顶提示：message 默认 top 8px，notification 默认 24px */
+  .ant-message {
+    top: calc(var(--cs-shell-bar-height) + 8px) !important;
+  }
+
+  .ant-notification {
+    &.ant-notification-top,
+    &.ant-notification-topLeft,
+    &.ant-notification-topRight {
+      top: calc(var(--cs-shell-bar-height) + 24px) !important;
+    }
+  }
+
+  /* 进度条贴在壳顶栏之下，避免被标题栏挡住 */
+  #nprogress .bar {
+    top: var(--cs-shell-bar-height) !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .settings-drawer.ant-drawer .ant-drawer-content {
+    background: var(--bg-color, #fff) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .settings-drawer-mask {
+    background: rgba(0, 0, 0, 0.45) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  #app .app-wrapper .drawer-bg {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* a-spin 包块级内容时占满宽度，避免遮罩横向塌缩 */
+.ant-spin-nested-loading {
+  width: 100%;
+}

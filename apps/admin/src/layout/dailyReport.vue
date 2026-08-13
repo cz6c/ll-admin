@@ -18,20 +18,17 @@ const tabs = [
   <div class="daily-report-shell">
     <header class="shell-header">
       <nav class="tabs" aria-label="日报分区">
-        <router-link
-          v-for="tab in tabs"
-          :key="tab.path"
-          :to="tab.path"
-          class="tab"
-          :class="{ active: route.path === tab.path }"
-          :title="tab.hint"
-        >
+        <router-link v-for="tab in tabs" :key="tab.path" :to="tab.path" class="tab" :class="{ active: route.path === tab.path }" :title="tab.hint">
           {{ tab.title }}
         </router-link>
       </nav>
     </header>
     <main class="shell-main">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <Transition name="tab-fade" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </Transition>
+      </router-view>
     </main>
   </div>
 </template>
@@ -41,15 +38,15 @@ const tabs = [
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-bg-color-page, #f5f7fa);
+  background: var(--fill-color);
 }
 .shell-header {
   display: flex;
   align-items: center;
   height: 44px;
   padding: 0 12px;
-  background: var(--el-bg-color, #fff);
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--bg-color, #fff);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 .tabs {
@@ -61,20 +58,20 @@ const tabs = [
   position: relative;
   padding: 8px 16px;
   border-radius: 6px;
-  color: var(--el-text-color-regular);
+  color: rgba(0, 0, 0, 0.65);
   text-decoration: none;
   font-size: 14px;
   transition:
     color 0.12s ease,
     background 0.12s ease;
   &:hover {
-    color: var(--el-color-primary);
-    background: var(--el-color-primary-light-9);
+    color: var(--color-primary);
+    background: var(--color-primary-bg);
   }
   &.active {
-    color: var(--el-color-primary);
+    color: var(--color-primary);
     font-weight: 600;
-    background: var(--el-color-primary-light-9);
+    background: var(--color-primary-bg);
   }
 }
 .shell-main {

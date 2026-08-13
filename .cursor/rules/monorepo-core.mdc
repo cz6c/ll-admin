@@ -15,7 +15,7 @@ alwaysApply: true
 
 | App | 包名 | 说明 |
 |-----|------|------|
-| admin | `@apps/admin` | Vue3 管理后台（Element Plus + VXE Table） |
+| admin | `@apps/admin` | Vue3 管理后台（Ant Design Vue + VXE Table） |
 | server | `@apps/server` | NestJS API + TypeORM |
 | uni | `@apps/uni` | uni-app 移动端 |
 | docs | — | VitePress 开发文档 |
@@ -54,7 +54,7 @@ alwaysApply: true
 | App | 规则文件 |
 |-----|----------|
 | 全仓 | `monorepo-core.mdc`、`comment-standards.mdc`（注释规范）、`file-naming.mdc`（文件与目录命名） |
-| admin | `vue-admin.mdc` |
+| admin | `vue-admin.mdc`、`antd-design-system.mdc`（Ant Design 5.x UI 原则） |
 | uni | `vue-uni.mdc` |
 | server | `nestjs-server.mdc` |
 | docs | `vitepress-docs.mdc` |

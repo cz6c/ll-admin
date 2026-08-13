@@ -10,193 +10,97 @@
     position: relative;
     height: 100%;
     width: 100%;
-    background: #f1f3f6;
+    background: var(--fill-color);
 
     .drawer-bg {
-      background: #000000;
-      opacity: 0.3;
+      /* 半透明遮罩 + 轻 blur；比纯黑实底更像浮层材质 */
+      background: rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(8px) saturate(120%);
+      -webkit-backdrop-filter: blur(8px) saturate(120%);
+      opacity: 1;
       width: 100%;
       top: 0;
       height: 100%;
       position: absolute;
-      z-index: 999;
+      /* 低于侧栏，遮主内容；高于侧栏会挡住移动端抽屉菜单 */
+      z-index: 99;
     }
   }
   .sidebar-container {
-    -webkit-transition: width 0.28s;
-    transition: width 0.28s;
-    width: 220px !important;
+    -webkit-transition: width var(--dur-panel) var(--ease-out);
+    transition: width var(--dur-panel) var(--ease-out);
+    width: 200px !important;
     background-color: var(--bg-color);
     height: 100%;
     position: fixed;
-    font-size: 0px;
     top: 0;
     bottom: 0;
     left: 0;
-    z-index: 1001;
+    /* ant Modal/Drawer 默认 zIndex=1000，侧栏必须低于此，否则弹窗遮罩盖不住侧栏 */
+    z-index: 100;
     overflow: hidden;
     border-right: 1px solid var(--border-color);
 
-    // reset element-ui css
-    .horizontal-collapse-transition {
-      transition:
-        0s width ease-in-out,
-        0s padding-left ease-in-out,
-        0s padding-right ease-in-out;
-    }
-
     .scrollbar-wrapper {
       overflow-x: hidden !important;
-    }
-
-    .el-scrollbar__bar.is-vertical {
-      right: 0px;
-    }
-
-    .el-scrollbar {
       height: 100%;
+      overflow-y: auto;
     }
 
-    .el-menu {
-      border: none;
+    /* 菜单外观交给 ant-design-vue Menu 默认样式，仅去掉侧栏内边框 */
+    .ant-menu {
+      border-inline-end: none !important;
       height: 100%;
-      width: 100% !important;
-    }
-
-    a {
-      display: inline-block;
-      width: 100%;
-      overflow: hidden;
-    }
-
-    .svg-icon {
-      flex-shrink: 0;
-      margin-right: 12px;
-    }
-
-    .el-menu-item,
-    .menu-title {
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-
-    // 不包含子集的一级菜单
-    .sub-menu-title-noDropdown,
-    .el-sub-menu__title {
-      margin: 0px 8px 4px;
-      border-radius: 8px;
-
-      &:hover {
-        background-color: transparent;
-        .svg-icon {
-          transform: scale(1.2);
-          transition: transform 0.28s;
-        }
-      }
-    }
-
-    // 包含子集的一级菜单
-    & .nest-menu .el-sub-menu > .el-sub-menu__title,
-    & .el-sub-menu .el-menu-item {
-      margin: 0px 8px 4px;
-      border-radius: 8px;
-
-      &:hover {
-        background-color: transparent;
-        .svg-icon {
-          transform: scale(1.2);
-          transition: transform 0.28s;
-        }
-      }
-    }
-
-    .el-menu-item {
-      &.is-active {
-        background-color: var(--color-primary-bg) !important;
-      }
+      background: transparent !important;
     }
   }
   .main-container {
     height: 100%;
-    transition: margin-left 0.28s;
-    margin-left: 220px;
+    transition: margin-left var(--dur-panel) var(--ease-out);
+    margin-left: 200px;
     position: relative;
 
-    .el-header {
+    > header,
+    .layout-header {
+      height: var(--layout-navbar-height);
+      padding: 0 16px;
       background-color: var(--bg-color);
       border-bottom: 1px solid var(--border-color);
     }
     .app-main {
-      /* 50= navbar  50  */
-      min-height: calc(100vh - 50px);
+      /* 扣 CS 顶栏 + navbar，与 .app-page 同源变量 */
+      min-height: calc(100vh - var(--cs-shell-bar-height) - var(--layout-navbar-height));
       width: 100%;
       position: relative;
       overflow: hidden;
     }
 
+    .app-main-scroll {
+      height: 100%;
+      overflow: auto;
+    }
+
     &.hasTagsView {
       .app-main {
-        /* 84 = navbar + tags-view = 50 + 35 */
-        min-height: calc(100vh - 85px);
+        min-height: calc(
+          100vh - var(--cs-shell-bar-height) - var(--layout-navbar-height) - var(--layout-tags-height)
+        );
       }
     }
   }
 
-  // 收起菜单
+  // 收起：容器 66px；菜单项样式沿用 ant Menu，仅让菜单铺满容器宽
   .collapseSidebar {
     .sidebar-container {
-      width: 64px !important;
+      width: 66px !important;
+
+      .ant-menu-inline-collapsed {
+        width: 100% !important;
+      }
     }
 
     .main-container {
-      margin-left: 64px;
-    }
-
-    // 不包含子集的一级菜单
-    .sub-menu-title-noDropdown {
-      padding: 0 !important;
-      position: relative;
-
-      .el-menu-tooltip__trigger {
-        padding: 0 !important;
-
-        .svg-icon {
-          margin-left: 15px;
-        }
-      }
-    }
-
-    // 包含子集的一级菜单
-    .el-sub-menu {
-      & > .el-sub-menu__title {
-        padding: 0 !important;
-
-        .svg-icon {
-          margin-left: 15px;
-        }
-      }
-    }
-
-    .el-menu--collapse {
-      .el-sub-menu {
-        & > .el-sub-menu__title {
-          & > span {
-            height: 0;
-            width: 0;
-            overflow: hidden;
-            visibility: hidden;
-            display: inline-block;
-          }
-          & > i {
-            height: 0;
-            width: 0;
-            overflow: hidden;
-            visibility: hidden;
-            display: inline-block;
-          }
-        }
-      }
+      margin-left: 66px;
     }
   }
 
@@ -208,17 +112,10 @@
       }
       .sidebar-container {
         pointer-events: none;
-        transition-duration: 0.3s;
-        transform: translate3d(-220px, 0, 0);
+        transition-duration: var(--dur-panel);
+        transform: translate3d(-200px, 0, 0);
       }
     }
-  }
-}
-
-.nest-menu {
-  .svg-icon {
-    flex-shrink: 0;
-    margin-right: 12px;
   }
 }
 
@@ -246,6 +143,19 @@ html.cs-shell {
         bottom: 0;
         height: auto !important;
       }
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app {
+    .sidebar-container,
+    .main-container {
+      transition: none !important;
+    }
+
+    .mobile.collapseSidebar .sidebar-container {
+      transition: none !important;
     }
   }
 }

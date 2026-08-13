@@ -1,50 +1,70 @@
 <template>
-  <el-drawer v-model="showSettings" :withHeader="false" direction="rtl" size="300px">
-    <h3 class="drawer-title">系统配置</h3>
-    <el-divider />
-    <div class="drawer-item">
-      <span>主题色</span>
-      <span class="comp-style">
-        <el-color-picker v-model="theme" :predefine="predefineColors" @change="themeChange" />
-      </span>
-    </div>
-
+  <!--
+    材质：半透明 + blur；reduced-transparency 时在全局样式回退为实底
+    CS 下高度/顶距由 antd.scss 扣 --cs-shell-bar-height，不靠抬 z-index 盖顶栏
+  -->
+  <a-drawer
+    v-model:open="showSettings"
+    root-class-name="settings-drawer"
+    class="settings-drawer"
+    :closable="false"
+    placement="right"
+    :width="300"
+    :mask-style="maskStyle"
+    title="系统配置"
+  >
     <div class="drawer-item">
       <span>灰色模式</span>
       <span class="comp-style">
-        <el-switch v-model="greyVal" inline-prompt active-text="开" inactive-text="关" />
+        <a-switch v-model:checked="greyVal" checked-children="开" un-checked-children="关" />
       </span>
     </div>
 
     <div class="drawer-item">
       <span>色弱模式</span>
       <span class="comp-style">
-        <el-switch v-model="weakVal" inline-prompt active-text="开" inactive-text="关" />
+        <a-switch v-model:checked="weakVal" checked-children="开" un-checked-children="关" />
       </span>
     </div>
 
     <div class="drawer-item">
       <span>标签页</span>
       <span class="comp-style">
-        <el-switch v-model="tagsView" inline-prompt active-text="开" inactive-text="关" />
+        <a-switch v-model:checked="tagsView" checked-children="开" un-checked-children="关" />
       </span>
     </div>
 
     <div class="drawer-item">
       <span>Logo</span>
       <span class="comp-style">
-        <el-switch v-model="sidebarLogo" inline-prompt active-text="开" inactive-text="关" />
+        <a-switch v-model:checked="sidebarLogo" checked-children="开" un-checked-children="关" />
       </span>
     </div>
 
-    <el-divider />
+    <a-divider />
 
-    <el-button type="primary" plain :icon="useRenderIcon('ep:document-add')" @click="saveSetting">保存配置</el-button>
-    <el-button plain :icon="useRenderIcon('ep:refresh')" @click="resetSetting">重置配置</el-button>
-  </el-drawer>
+    <a-space>
+      <a-button type="primary" @click="saveSetting">
+        <template #icon>
+          <component :is="useRenderIcon('ant-design:file-add-outlined')" />
+        </template>
+        保存配置
+      </a-button>
+      <a-button @click="resetSetting">
+        <template #icon>
+          <component :is="useRenderIcon('ant-design:reload-outlined')" />
+        </template>
+        重置配置
+      </a-button>
+    </a-space>
+  </a-drawer>
 </template>
 
 <script setup>
+/**
+ * 布局系统配置抽屉
+ * 职责：灰色/色弱/标签页/Logo；主色由产品默认与 ConfigProvider 管理，不再在此改
+ */
 import { useSettingsStore } from "@/store/modules/settings";
 import { WebStorage } from "@/utils/storage";
 import $feedback from "@/utils/feedback";
@@ -53,14 +73,14 @@ import { useRenderIcon } from "@/hooks/useRenderIcon";
 const settingsStore = useSettingsStore();
 const showSettings = ref(false);
 const storeSettings = computed(() => settingsStore);
-const predefineColors = ref(["#605fec", "#409EFF", "#ff4500", "#ff8c00", "#ffd700", "#90ee90", "#00ced1", "#1e90ff", "#c71585"]);
 
-const theme = computed({
-  get: () => storeSettings.value.theme,
-  set: val => {
-    settingsStore.changeSetting({ key: "theme", value: val });
-  }
-});
+/** 与 antd.scss .settings-drawer-mask 对齐 */
+const maskStyle = {
+  background: "rgba(0, 0, 0, 0.28)",
+  backdropFilter: "blur(4px)",
+  WebkitBackdropFilter: "blur(4px)"
+};
+
 const greyVal = computed({
   get: () => storeSettings.value.greyVal,
   set: val => {
@@ -86,9 +106,11 @@ const sidebarLogo = computed({
   }
 });
 
+/**
+ * 写入本地布局配置；仍带上 theme 以免覆盖掉既有主色缓存
+ */
 function saveSetting() {
-  $feedback.loading("正在保存到本地，请稍候...");
-  let layoutSetting = {
+  const layoutSetting = {
     theme: storeSettings.value.theme,
     greyVal: storeSettings.value.greyVal,
     weakVal: storeSettings.value.weakVal,
@@ -96,12 +118,13 @@ function saveSetting() {
     sidebarLogo: storeSettings.value.sidebarLogo
   };
   new WebStorage("localStorage").setItem("layout-setting", layoutSetting);
-  setTimeout($feedback.closeLoading(), 1000);
+  $feedback.message.success("配置已保存");
 }
+
+/** 清除本地布局缓存后立即刷新 */
 function resetSetting() {
-  $feedback.loading("正在清除设置缓存并刷新，请稍候...");
   new WebStorage("localStorage").removeItem("layout-setting");
-  setTimeout("window.location.reload()", 1000);
+  window.location.reload();
 }
 function openSetting() {
   showSettings.value = true;
@@ -113,11 +136,6 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
-.drawer-title {
-  font-weight: bold;
-  font-size: 16px;
-}
-
 .drawer-item {
   padding: 12px 0;
   font-size: 14px;

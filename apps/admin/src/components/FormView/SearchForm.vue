@@ -20,7 +20,7 @@ export interface SearchFormProps {
 // 默认值
 const props = withDefaults(defineProps<SearchFormProps>(), {
   searchCol: () => ({ xs: 1, sm: 2, md: 2, lg: 3, xl: 4 }),
-  labelWidth: 120
+  labelWidth: 80
 });
 
 const searchParam = defineModel<{ [key: string]: any }>({ required: true }); // 表单参数
@@ -35,6 +35,13 @@ const collapsed = ref(true);
 // 获取响应式断点
 const gridRef = ref();
 const breakPoint = computed<BreakPoint>(() => gridRef.value?.breakPoint);
+
+/** label 固定宽度 → ant Form labelCol.style */
+function toLabelCol(width: string | number | undefined) {
+  if (width == null || width === "") return undefined;
+  const w = typeof width === "number" ? `${width}px` : String(width);
+  return { style: { width: w } };
+}
 
 // 判断是否显示 展开/合并 按钮
 const showCollapse = computed(() => {
@@ -62,35 +69,51 @@ const reset = () => {
 };
 </script>
 <template>
-  <el-form v-if="columns.length" ref="formRef" :model="searchParam" label-suffix="：" v-bind="$attrs">
+  <a-form
+    v-if="columns.length"
+    ref="formRef"
+    class="search-form"
+    :model="searchParam"
+    layout="horizontal"
+    :label-col="toLabelCol(labelWidth)"
+    colon
+    v-bind="$attrs"
+  >
     <Grid ref="gridRef" :collapsed="collapsed" :gap="[20, 0]" :cols="searchCol">
       <GridItem v-for="(item, index) in columns" :key="item.prop" v-bind="item" :index="index">
-        <el-form-item :prop="item.prop" :label="item.label" :labelWidth="item.itemLabelWidth || props.labelWidth">
+        <a-form-item :name="item.prop" :label="item.label" :label-col="item.itemLabelWidth ? toLabelCol(item.itemLabelWidth) : undefined">
           <FormItem v-model="searchParam" :column="item" />
-        </el-form-item>
+        </a-form-item>
       </GridItem>
       <GridItem suffix>
         <div class="operation">
-          <el-button type="primary" :icon="useRenderIcon('ep:search')" @click="$emit('search')">搜索</el-button>
-          <el-button :icon="useRenderIcon('ep:refresh')" @click="reset()">重置</el-button>
-          <el-button v-if="showCollapse" type="primary" link class="search-isOpen" @click="collapsed = !collapsed">
-            {{ collapsed ? "展开" : "合并" }}
-            <IconifyIcon class="el-icon--right" :icon="collapsed ? 'ep:arrow-down' : 'ep:arrow-up'" />
-          </el-button>
+          <a-space>
+            <a-button type="primary" @click="$emit('search')">
+              <template #icon>
+                <component :is="useRenderIcon('ant-design:search-outlined')" />
+              </template>
+              搜索
+            </a-button>
+            <a-button @click="reset()">
+              <template #icon>
+                <component :is="useRenderIcon('ant-design:reload-outlined')" />
+              </template>
+              重置
+            </a-button>
+            <a-button v-if="showCollapse" type="link" class="search-isOpen" @click="collapsed = !collapsed">
+              {{ collapsed ? "展开" : "合并" }}
+              <IconifyIcon class="collapse-icon" :icon="collapsed ? 'ant-design:down-outlined' : 'ant-design:up-outlined'" />
+            </a-button>
+          </a-space>
         </div>
       </GridItem>
     </Grid>
-  </el-form>
+  </a-form>
 </template>
 <style lang="scss" scoped>
-.el-form {
-  .el-form-item__content > * {
+.search-form {
+  :deep(.ant-form-item-control-input-content) > * {
     width: 100%;
-  }
-
-  // 去除时间选择器上下 padding
-  .el-range-editor.el-input__wrapper {
-    padding: 0 10px;
   }
 }
 
@@ -99,5 +122,9 @@ const reset = () => {
   justify-content: flex-end;
   align-items: center;
   margin-bottom: 18px;
+}
+
+.collapse-icon {
+  margin-left: 4px;
 }
 </style>

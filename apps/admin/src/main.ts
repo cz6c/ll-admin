@@ -6,12 +6,14 @@ import { setupRouterGuard } from "@/router/guard";
 import { registerGlobComp } from "@/components";
 import { setupGlobDirectives } from "@/directives";
 import "@/utils/sso";
-import MQTTClientSingleton from "@/utils/mqtt";
+// import MQTTClientSingleton from "@/utils/mqtt";
 // 带重试机制的发布
-MQTTClientSingleton.safePublish("前端");
+// MQTTClientSingleton.safePublish("前端");
 
 // css
 import "normalize.css";
+import "ant-design-vue/dist/reset.css";
+import "nprogress/nprogress.css";
 // 引入重置样式
 import "@/assets/style/reset.scss";
 import "@/assets/style/index.scss";
@@ -20,9 +22,13 @@ import "@/assets/style/index.scss";
 import "virtual:uno.css";
 
 import { addPreventDefault } from "@/utils/preventDefault";
+import { setupAntdDefaults } from "@/utils/setupAntdDefaults";
 
 const isProd = process.env.NODE_ENV === "production";
 isProd && addPreventDefault();
+
+/** antdv 无 ConfigProvider.modal.centered，启动时改默认值 */
+setupAntdDefaults();
 
 const app = createApp(App);
 

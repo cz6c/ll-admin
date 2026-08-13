@@ -1,17 +1,21 @@
 <script setup lang="ts">
+/**
+ * 工具栏单按钮
+ * 职责：权限外的可见/禁用由 options 控制；props 直接透传 ant-design-vue Button
+ */
 import { isFunction } from "@llcz/common";
-import { ElButton } from "element-plus";
+import type { ButtonProps } from "ant-design-vue/es/button";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 
 defineOptions({
   name: "ToolButton"
 });
 
-type ElButtonProps = Omit<Parameters<(typeof ElButton)["setup"]>[0], "icon">;
 export type BtnOptionsProps<T = any> = {
   btnText: string;
   icon: string;
-  props: Partial<ElButtonProps>;
+  /** ant-design-vue Button 属性（type / ghost / danger / size …） */
+  props: Partial<ButtonProps>;
   authCode?: string;
   visible?: (data: { row: T }) => boolean;
   disabled?: (data: { row: T }) => boolean;
@@ -28,7 +32,6 @@ const disabledCom = computed(() => {
   return options.props.disabled || (isFunction(options.disabled) && options.disabled(data));
 });
 
-// 按钮点击事件
 function handleClick() {
   isFunction(options.handleClick) && options.handleClick(data);
 }
@@ -36,14 +39,17 @@ function handleClick() {
 <template>
   <div
     v-tippy="{
-      content: !disabledCom ? '' : `<p style='color: var(--el-color-danger)' >${options.disabledTooltip}</p>`,
+      content: !disabledCom ? '' : `<p style='color: #ff4d4f' >${options.disabledTooltip}</p>`,
       allowHTML: true,
       theme: 'light'
     }"
   >
-    <el-button v-bind="options.props" :icon="useRenderIcon(options.icon)" :disabled="disabledCom" @click.stop="handleClick">
-      {{ options.btnText }}
-    </el-button>
+    <a-button v-bind="options.props" :disabled="disabledCom" @click.stop="handleClick">
+      <template v-if="options.icon" #icon>
+        <component :is="useRenderIcon(options.icon, { width: '1em', height: '1em' })" />
+      </template>
+      <span>{{ options.btnText }}</span>
+    </a-button>
   </div>
 </template>
 

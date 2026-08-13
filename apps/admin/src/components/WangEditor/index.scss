@@ -1,10 +1,10 @@
-/* 富文本组件校验失败样式 */
-.is-error {
+/* 富文本：跟随 ant FormItem 校验失败态 */
+.ant-form-item-has-error {
   .editor-box {
-    border-color: var(--el-color-danger);
+    border-color: #ff4d4f;
 
     .editor-toolbar {
-      border-bottom-color: var(--el-color-danger);
+      border-bottom-color: #ff4d4f;
     }
   }
 }

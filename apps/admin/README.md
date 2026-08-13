@@ -1,6 +1,6 @@
 ## 简介
 
-`vue-cz-admin` 是一款开源免费且开箱即用的中后台管理系统模版，也可用于学习参考。使用了最新的 `Vue3`、`Vite4`、`Element-Plus`、`TypeScript`、`Pinia` 等主流技术开发。
+`Ccode-admin` 是一款开源免费且开箱即用的中后台管理系统模版，也可用于学习参考。使用了最新的 `Vue3`、`Vite`、`Ant Design Vue`、`TypeScript`、`Pinia`、`VXE Table` 等主流技术开发。
 
 ## 预览
 
@@ -8,12 +8,13 @@
 
 - [node](http://nodejs.org/) 和 [git](https://git-scm.com/) -项目开发环境，node 版本建议`v16.18.1`以上
 - [Vue3](https://v3.vuejs.org/) - 熟悉 Vue 基础语法
-- [Vite4](https://vitejs.dev/) - 熟悉 vite 特性
+- [Vite](https://vitejs.dev/) - 熟悉 vite 特性
 - [TypeScript](https://www.typescriptlang.org/) - 熟悉`TypeScript`基本语法
 - [Es6+](http://es6.ruanyifeng.com/) - 熟悉 es6 基本语法
 - [Vue-Router](https://next.router.vuejs.org/) - 熟悉 vue-router 基本使用
-- [Element-Plus](https://element-plus.org/zh-CN/) - 熟悉 ui 基本使用
-- [Pinia](https://element-plus.org/zh-CN/) - 熟悉状态管理插件的基本使用
+- [Ant Design Vue](https://antdv.com/) - 熟悉 UI 基本使用
+- [Pinia](https://pinia.vuejs.org/) - 熟悉状态管理插件的基本使用
+- [VXE Table](https://vxetable.cn/) - 熟悉表格组件基本使用
 
 ## 安装使用
 

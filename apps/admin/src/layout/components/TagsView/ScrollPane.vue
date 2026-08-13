@@ -1,28 +1,31 @@
 <template>
-  <el-scrollbar ref="scrollContainer" :vertical="false" class="scroll-container" @wheel.prevent="handleScroll">
-    <slot />
-  </el-scrollbar>
+  <div ref="scrollContainerRef" class="scroll-container" @wheel.prevent="handleScroll">
+    <div ref="scrollWrapperRef" class="scroll-wrapper">
+      <slot />
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { useTagsViewStore } from "@/store/modules/tagsView";
 
 const tagAndTagSpacing = ref(4);
-const { proxy } = getCurrentInstance();
-
-const scrollWrapper = computed(() => proxy.$refs.scrollContainer.$refs.wrapRef);
+const scrollContainerRef = ref(null);
+const scrollWrapperRef = ref(null);
 
 onMounted(() => {
-  scrollWrapper.value.addEventListener("scroll", emitScroll, true);
+  scrollWrapperRef.value?.addEventListener("scroll", emitScroll, true);
 });
 onBeforeUnmount(() => {
-  scrollWrapper.value.removeEventListener("scroll", emitScroll);
+  scrollWrapperRef.value?.removeEventListener("scroll", emitScroll);
 });
 
 function handleScroll(e) {
   const eventDelta = e.wheelDelta || -e.deltaY * 40;
-  const $scrollWrapper = scrollWrapper.value;
-  $scrollWrapper.scrollLeft = $scrollWrapper.scrollLeft + eventDelta / 4;
+  const $scrollWrapper = scrollWrapperRef.value;
+  if ($scrollWrapper) {
+    $scrollWrapper.scrollLeft = $scrollWrapper.scrollLeft + eventDelta / 4;
+  }
 }
 const emits = defineEmits(["scroll"]);
 const emitScroll = () => {
@@ -33,9 +36,11 @@ const tagsViewStore = useTagsViewStore();
 const visitedViews = computed(() => tagsViewStore.visitedViews);
 
 function moveToTarget(currentTag) {
-  const $container = proxy.$refs.scrollContainer.$el;
+  const $container = scrollContainerRef.value;
+  const $scrollWrapper = scrollWrapperRef.value;
+  if (!$container || !$scrollWrapper) return;
+
   const $containerWidth = $container.offsetWidth;
-  const $scrollWrapper = scrollWrapper.value;
 
   let firstTag = null;
   let lastTag = null;
@@ -88,11 +93,17 @@ defineExpose({ moveToTarget });
   position: relative;
   overflow: hidden;
   width: 100%;
-  :deep(.el-scrollbar__bar) {
-    bottom: 0px;
-  }
-  :deep(.el-scrollbar__wrap) {
-    height: 39px;
+  height: 39px;
+}
+
+.scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 39px;
+  /* 隐藏横向滚动条，仍可用滚轮/程序滚动 */
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 </style>

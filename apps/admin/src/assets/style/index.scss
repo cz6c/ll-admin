@@ -1,5 +1,5 @@
 @use "./transition.scss";
-@use "./element-plus.scss";
+@use "./antd.scss";
 @use "./vxeTable.scss";
 @use "./layout.scss";
 
@@ -13,21 +13,40 @@
   filter: invert(80%);
 }
 
-.cz-card{
-  /* 与 Uno shortcut radius-card / card-rounded 统一为 8px */
+/*
+ * 按下反馈：pointer-down 即缩放（Apple Response）
+ */
+.ant-btn:not(:disabled):active {
+  transform: scale(0.97);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+.navbar .tool.icon:active {
+  transform: scale(0.97);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ant-btn:not(:disabled):active,
+  .navbar .tool.icon:active {
+    transform: none;
+    transition: none;
+  }
+}
+
+.cz-card {
   border-radius: 8px;
   background-color: var(--bg-color);
   padding: 16px;
 }
 
 .main-container {
-  // 页面样式
   .app-page {
-    margin: 16px;
+    margin: 12px;
     box-sizing: border-box;
-    /* 50= navbar  50  */
-    height: calc(100vh - 50px - 32px);
-    // 内容区高度-自动
+    height: calc(
+      100vh - var(--cs-shell-bar-height) - var(--layout-navbar-height) - var(--layout-page-margin-y)
+    );
     &.auto-height {
       height: auto;
     }
@@ -35,8 +54,10 @@
 
   &.hasTagsView {
     .app-page {
-      /* 88 = navbar + tags-view = 50 + 38 */
-      height: calc(100vh - 88px - 32px);
+      height: calc(
+        100vh - var(--cs-shell-bar-height) - var(--layout-navbar-height) - var(--layout-tags-height) -
+          var(--layout-page-margin-y)
+      );
     }
   }
 }

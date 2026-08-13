@@ -1,9 +1,18 @@
 <template>
+  <!--
+    个人头像裁剪上传
+    主流程：点头像开 Modal → 选图本地预览裁剪 → 提交 uploadImg + uploadAvatar
+  -->
   <div class="user-info-head" @click="editCropper()">
-    <img :src="options.img" title="点击上传头像" class="img-circle img-lg" />
-    <el-dialog v-model="open" :title="title" width="800px" append-to-body @opened="modalOpened" @close="closeDialog">
-      <el-row>
-        <el-col :xs="24" :md="12" :style="{ height: '350px' }">
+    <img v-if="options.img" :src="options.img" title="点击上传头像" class="img-circle img-lg" />
+    <span v-else>点击上传头像</span>
+    <a-modal v-model:open="open" :title="title" width="800px" :footer="null" destroy-on-close @cancel="closeDialog">
+      <a-row>
+        <a-col :xs="24" :md="12" :style="{ height: '350px' }">
+          <!--
+            antdv Modal 无 EP dialog 的 @opened / React 的 afterOpenChange；
+            须等 open 后 nextTick 再挂载 cropper，否则容器宽高为 0 裁剪区空白。
+          -->
           <vue-cropper
             v-if="visible"
             ref="cropperRef"
@@ -16,44 +25,59 @@
             :outputType="options.outputType"
             @realTime="realTime"
           />
-        </el-col>
-        <el-col :xs="24" :md="12" :style="{ height: '350px' }">
+        </a-col>
+        <a-col :xs="24" :md="12" :style="{ height: '350px' }">
           <div class="avatar-upload-preview">
             <img :src="options.previews.url" :style="options.previews.img" />
           </div>
-        </el-col>
-      </el-row>
+        </a-col>
+      </a-row>
       <br />
-      <el-row>
-        <el-col :lg="2" :md="2">
-          <el-upload action="#" :http-request="requestUpload" :show-file-list="false" :before-upload="beforeUpload">
-            <el-button>
+      <a-row>
+        <a-col :lg="2" :md="2">
+          <!-- 仅本地选图进裁剪，不走 Upload 自动上传；与 ImportTemp 同模式 -->
+          <a-upload accept="image/*" :show-upload-list="false" :before-upload="beforeUpload">
+            <a-button>
               选择
-              <IconifyIcon class="el-icon--right" icon="ep:upload" />
-            </el-button>
-          </el-upload>
-        </el-col>
-        <el-col :lg="{ span: 1, offset: 2 }" :md="2">
-          <el-button :icon="useRenderIcon('ep:plus')" @click="changeScale(1)" />
-        </el-col>
-        <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button :icon="useRenderIcon('ep:minus')" @click="changeScale(-1)" />
-        </el-col>
-        <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button :icon="useRenderIcon('ep:refresh-left')" @click="rotateLeft()" />
-        </el-col>
-        <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button :icon="useRenderIcon('ep:refresh-right')" @click="rotateRight()" />
-        </el-col>
-        <el-col :lg="{ span: 2, offset: 6 }" :md="2">
-          <el-button type="primary" @click="sumbit()">提 交</el-button>
-        </el-col>
-      </el-row>
-    </el-dialog>
+              <IconifyIcon icon="ant-design:upload-outlined" />
+            </a-button>
+          </a-upload>
+        </a-col>
+        <a-col :lg="{ span: 1, offset: 2 }" :md="2">
+          <a-button @click="changeScale(1)">
+            <template #icon><component :is="useRenderIcon('ant-design:plus-outlined')" /></template>
+          </a-button>
+        </a-col>
+        <a-col :lg="{ span: 1, offset: 1 }" :md="2">
+          <a-button @click="changeScale(-1)">
+            <template #icon><component :is="useRenderIcon('ant-design:minus-outlined')" /></template>
+          </a-button>
+        </a-col>
+        <a-col :lg="{ span: 1, offset: 1 }" :md="2">
+          <a-button @click="rotateLeft()">
+            <template #icon><component :is="useRenderIcon('ant-design:undo-outlined')" /></template>
+          </a-button>
+        </a-col>
+        <a-col :lg="{ span: 1, offset: 1 }" :md="2">
+          <a-button @click="rotateRight()">
+            <template #icon><component :is="useRenderIcon('ant-design:redo-outlined')" /></template>
+          </a-button>
+        </a-col>
+        <a-col :lg="{ span: 2, offset: 6 }" :md="2">
+          <a-button type="primary" @click="sumbit()">提 交</a-button>
+        </a-col>
+      </a-row>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
+/**
+ * 个人中心头像裁剪上传
+ * 职责：Modal 内 vue-cropper 选图裁剪，提交后回写 authStore.avatar
+ * 适用：用户资料页头像入口
+ */
+import type { UploadProps } from "ant-design-vue";
 import { uploadAvatar } from "@/api/system/user";
 import { uploadImg } from "@/api/public";
 import { useAuthStore } from "@/store/modules/auth";
@@ -65,120 +89,171 @@ defineOptions({
 });
 
 const authStore = useAuthStore();
-const cropperRef = ref(null);
+const cropperRef = ref<{
+  rotateLeft: () => void;
+  rotateRight: () => void;
+  changeScale: (num: number) => void;
+  getCropBlob: (cb: (blob: Blob) => void) => void;
+} | null>(null);
 
 const open = ref(false);
 const visible = ref(false);
 const title = ref("修改头像");
 
-//图片裁剪数据
+/** 图片裁剪与预览状态 */
 const options = reactive({
-  img: authStore.avatar, // 裁剪图片的地址
-  autoCrop: true, // 是否默认生成截图框
-  autoCropWidth: 200, // 默认生成截图框宽度
-  autoCropHeight: 200, // 默认生成截图框高度
-  fixedBox: true, // 固定截图框大小 不允许改变
-  outputType: "png", // 默认生成截图为PNG格式
+  img: authStore.avatar,
+  autoCrop: true,
+  autoCropWidth: 200,
+  autoCropHeight: 200,
+  fixedBox: true,
+  outputType: "png",
   previews: {
     url: "",
-    img: ""
-  } //预览数据
+    img: "" as string | Record<string, string>
+  }
 });
 
-/** 编辑头像 */
+/** Modal 打开后再挂载 cropper，保证容器已有尺寸 */
+watch(open, async isOpen => {
+  if (isOpen) {
+    await nextTick();
+    visible.value = true;
+  } else {
+    visible.value = false;
+  }
+});
+
+/** 打开头像裁剪弹窗 */
 function editCropper() {
   open.value = true;
 }
-/** 打开弹出层结束时的回调 */
-function modalOpened() {
-  visible.value = true;
-}
-/** 覆盖默认上传行为 */
-function requestUpload() {
-  return null;
-}
+
 /** 向左旋转 */
 function rotateLeft() {
-  unref(cropperRef).rotateLeft();
+  cropperRef.value?.rotateLeft();
 }
 /** 向右旋转 */
 function rotateRight() {
-  unref(cropperRef).rotateRight();
+  cropperRef.value?.rotateRight();
 }
 /** 图片缩放 */
-function changeScale(num) {
-  num = num || 1;
-  unref(cropperRef).changeScale(num);
+function changeScale(num?: number) {
+  cropperRef.value?.changeScale(num || 1);
 }
 
-const nowFile = ref(null);
-/** 上传预处理 */
-function beforeUpload(file) {
-  if (file.type.indexOf("image/") == -1) {
+const nowFile = ref<File | null>(null);
+
+/**
+ * 选文件后本地读成 dataURL 喂给 cropper；返回 false 阻止 antd 自动上传
+ */
+const beforeUpload: UploadProps["beforeUpload"] = file => {
+  if (file.type.indexOf("image/") === -1) {
     $feedback.message.error("文件格式错误，请上传图片类型,如：JPG，PNG后缀的文件。");
-  } else {
-    nowFile.value = file;
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      options.img = reader.result as string;
-    };
+    return false;
+  }
+  nowFile.value = file as File;
+  const reader = new FileReader();
+  reader.readAsDataURL(file as File);
+  reader.onload = () => {
+    options.img = reader.result as string;
+  };
+  return false;
+};
+
+/**
+ * 裁剪后上传头像并回写登录用户信息
+ * @note 必须先 await uploadAvatar（写库+刷新 Redis 会话），再 getLoginUserInfo；
+ *       并行调用会读到旧会话 avatar 为空并覆盖本地刚赋的值
+ */
+async function sumbit() {
+  if (!nowFile.value) {
+    $feedback.message.warning("请先选择图片");
+    return;
+  }
+  const cropper = cropperRef.value;
+  if (!cropper) return;
+
+  const blob = await new Promise<Blob>(resolve => {
+    cropper.getCropBlob(resolve);
+  });
+  const source = nowFile.value;
+  const newFile = new File([blob], source.name, { type: source.type });
+  const formData = new FormData();
+  formData.append("fileType", "avatar");
+  formData.append("file", newFile);
+
+  try {
+    const { data } = await uploadImg(formData);
+    const url = data.url;
+    await uploadAvatar({ avatar: url });
+    options.img = url;
+    authStore.avatar = url;
+    await authStore.getLoginUserInfo();
+    open.value = false;
+    visible.value = false;
+    nowFile.value = null;
+    $feedback.message.success("修改成功");
+  } catch {
+    // 错误提示由 http 拦截器统一处理
   }
 }
-/** 上传图片 */
-function sumbit() {
-  unref(cropperRef).getCropBlob(blob => {
-    let newFile = new File([blob], unref(nowFile).name, {
-      type: unref(nowFile).type
-    });
-    let formData = new FormData();
-    formData.append("fileType", "avatar");
-    formData.append("file", newFile);
-    uploadImg(formData).then(response => {
-      open.value = false;
-      options.img = response.data.url;
-      authStore.avatar = options.img;
-      uploadAvatar({ avatar: options.img });
-      $feedback.message.success("修改成功");
-      visible.value = false;
-      authStore.getLoginUserInfo();
-    });
-  });
-}
-/** 实时预览 */
-function realTime(data) {
+
+/** 裁剪框实时预览 */
+function realTime(data: { url: string; img: string | Record<string, string> }) {
   options.previews = data;
 }
-/** 关闭窗口 */
+
+/** 关闭时还原为当前已保存头像 */
 function closeDialog() {
   options.img = authStore.avatar;
   visible.value = false;
+  nowFile.value = null;
 }
 </script>
 
 <style lang="scss" scoped>
 .user-info-head {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 120px;
   width: 120px;
+  border-radius: 50%;
+  background-color: var(--fill-color);
+  cursor: pointer;
+  overflow: hidden;
+
+  .img-circle {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
+  &:hover::after {
+    content: "+";
+    position: absolute;
+    inset: 0;
+    color: #eee;
+    background: rgba(0, 0, 0, 0.5);
+    font-size: 24px;
+    line-height: 120px;
+    text-align: center;
+    border-radius: 50%;
+  }
 }
 
-.user-info-head:hover:after {
-  content: "+";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  color: #eee;
-  background: rgba(0, 0, 0, 0.5);
-  font-size: 24px;
-  font-style: normal;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  cursor: pointer;
-  line-height: 120px;
+.avatar-upload-preview {
+  position: relative;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
+  box-shadow: 0 0 4px #ccc;
+  overflow: hidden;
 }
 </style>

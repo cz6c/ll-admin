@@ -1,8 +1,15 @@
 <script setup lang="ts">
+/**
+ * 多图上传
+ * 职责：picture-card 列表上传，同步 fileList；成功后触发 ant FormItem onFieldChange
+ * 适用：表单多图字段
+ */
 import { uploadImg } from "@/api/public";
-import type { UploadProps, UploadFile, UploadUserFile, UploadRequestOptions } from "element-plus";
-import { ElNotification, formContextKey, formItemContextKey } from "element-plus";
+import { useInjectFormItemContext } from "ant-design-vue/es/form/FormItemContext";
+import type { UploadFile, UploadProps } from "ant-design-vue";
+import type { UploadRequestOption } from "ant-design-vue/es/vc-upload/interface";
 import { ImageMimeType } from "./index.d";
+import $feedback from "@/utils/feedback";
 
 defineOptions({
   name: "UploadImgs"
@@ -30,110 +37,68 @@ const props = withDefaults(defineProps<UploadFileProps>(), {
   borderRadius: "8px"
 });
 
-const modelValue = defineModel<UploadUserFile[]>({ required: true }); //  图片地址 ==> 必传
+const modelValue = defineModel<UploadFile[]>({ required: true }); //  图片列表 ==> 必传
 
-// 获取 el-form 组件上下文
-const formContext = inject(formContextKey, void 0);
-// 获取 el-form-item 组件上下文
-const formItemContext = inject(formItemContextKey, void 0);
-// 判断是否禁用上传和删除
-const self_disabled = computed(() => {
-  return props.disabled || formContext?.disabled;
-});
+const formItemContext = useInjectFormItemContext();
+const self_disabled = computed(() => props.disabled);
 
 /**
  * @description 文件上传之前判断
- * @param rawFile 选择的文件
- * */
-const beforeUpload: UploadProps["beforeUpload"] = rawFile => {
-  const imgSize = rawFile.size / 1024 / 1024 < props.fileSize;
-  const imgType = props.fileType.includes(rawFile.type as ImageMimeType);
-  if (!imgType)
-    ElNotification({
-      title: "温馨提示",
-      message: "上传图片不符合所需的格式！",
-      type: "warning"
-    });
-  if (!imgSize)
-    setTimeout(() => {
-      ElNotification({
-        title: "温馨提示",
-        message: `上传图片大小不能超过 ${props.fileSize}M！`,
-        type: "warning"
-      });
-    }, 0);
+ */
+const beforeUpload: UploadProps["beforeUpload"] = file => {
+  if ((modelValue.value?.length ?? 0) >= props.limit) {
+    $feedback.message.warning(`当前最多只能上传 ${props.limit} 张图片，请移除后上传！`);
+    return false;
+  }
+  const imgSize = file.size / 1024 / 1024 < props.fileSize;
+  const imgType = props.fileType.includes(file.type as ImageMimeType);
+  if (!imgType) $feedback.message.warning("上传图片不符合所需的格式！");
+  if (!imgSize) $feedback.message.warning(`上传图片大小不能超过 ${props.fileSize}M！`);
   return imgType && imgSize;
 };
 
 /**
  * @description 图片上传
- * @param options upload 所有配置项
- * */
-const handleHttpUpload = async (options: UploadRequestOptions) => {
-  let formData = new FormData();
-  formData.append("file", options.file);
+ */
+const handleHttpUpload = async (options: UploadRequestOption) => {
+  const formData = new FormData();
+  formData.append("file", options.file as File);
   try {
     const { data } = await uploadImg(formData);
-    options.onSuccess(data);
+    options.onSuccess?.(data as any);
   } catch (error) {
-    options.onError(error as any);
+    options.onError?.(error as any);
+    $feedback.message.error("图片上传失败，请您重新上传！");
   }
 };
 
 /**
- * @description 图片上传成功
- * @param response 上传响应结果
- * @param uploadFile 上传的文件
- * */
-const uploadSuccess = (response: { url: string } | undefined, uploadFile: UploadFile) => {
-  if (!response) return;
-  uploadFile.url = response.url;
-  // 调用 el-form 内部的校验方法（可自动校验）
-  formItemContext?.prop && formContext?.validateField([formItemContext.prop as string]);
-  ElNotification({
-    title: "温馨提示",
-    message: "图片上传成功！",
-    type: "success"
-  });
+ * @description 列表变更：成功项补 url 并触发校验
+ */
+const handleChange: UploadProps["onChange"] = ({ file, fileList }) => {
+  if (file.status === "done") {
+    const res = file.response as { url?: string } | undefined;
+    if (res?.url) file.url = res.url;
+    formItemContext?.onFieldChange?.();
+    $feedback.message.success("图片上传成功！");
+  }
+  modelValue.value = fileList;
 };
 
 /**
  * @description 删除图片
- * @param file 删除的文件
- * */
+ */
 const handleRemove = (file: UploadFile) => {
   modelValue.value = modelValue.value.filter(item => item.url !== file.url || item.name !== file.name);
-};
-
-/**
- * @description 图片上传错误
- * */
-const uploadError = () => {
-  ElNotification({
-    title: "温馨提示",
-    message: "图片上传失败，请您重新上传！",
-    type: "error"
-  });
-};
-
-/**
- * @description 文件数超出
- * */
-const handleExceed = () => {
-  ElNotification({
-    title: "温馨提示",
-    message: `当前最多只能上传 ${props.limit} 张图片，请移除后上传！`,
-    type: "warning"
-  });
+  formItemContext?.onFieldChange?.();
 };
 
 /**
  * @description 图片预览
- * @param file 预览的文件
- * */
+ */
 const viewImageUrl = ref("");
 const imgViewVisible = ref(false);
-const handlePictureCardPreview: UploadProps["onPreview"] = file => {
+const handlePictureCardPreview = (file: UploadFile) => {
   viewImageUrl.value = file.url!;
   imgViewVisible.value = true;
 };
@@ -141,164 +106,148 @@ const handlePictureCardPreview: UploadProps["onPreview"] = file => {
 
 <template>
   <div class="upload-box">
-    <el-upload
+    <a-upload
       v-model:file-list="modelValue"
       action="#"
       list-type="picture-card"
       :class="['upload', self_disabled ? 'disabled' : '', drag ? 'no-border' : '']"
       :multiple="true"
       :disabled="self_disabled"
-      :limit="limit"
-      :http-request="handleHttpUpload"
+      :max-count="limit"
+      :custom-request="handleHttpUpload"
       :before-upload="beforeUpload"
-      :on-exceed="handleExceed"
-      :on-success="uploadSuccess"
-      :on-error="uploadError"
-      :drag="drag"
       :accept="fileType.join(',')"
+      @change="handleChange"
     >
-      <div class="upload-empty">
+      <div v-if="modelValue.length < limit" class="upload-empty">
         <slot name="empty">
-          <IconifyIcon icon="ep:plus" class="el-icon--upload" />
+          <IconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
         </slot>
       </div>
-      <template #file="{ file }">
-        <img :src="file.url" class="upload-image" />
-        <div class="upload-handle" @click.stop>
-          <div class="handle-icon" @click="handlePictureCardPreview(file)">
-            <IconifyIcon icon="ep:zoom-in" class="el-icon" />
-          </div>
-          <div v-if="!self_disabled" class="handle-icon" @click="handleRemove(file)">
-            <IconifyIcon icon="ep:delete" class="el-icon" />
+      <template #itemRender="{ file }">
+        <div class="upload-list-item">
+          <img :src="file.url" class="upload-image" />
+          <div class="upload-handle" @click.stop>
+            <div class="handle-icon" @click="handlePictureCardPreview(file)">
+              <IconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
+            </div>
+            <div v-if="!self_disabled" class="handle-icon" @click="handleRemove(file)">
+              <IconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
+            </div>
           </div>
         </div>
       </template>
-    </el-upload>
-    <div class="el-upload__tip">
+    </a-upload>
+    <div class="upload-tip">
       <slot name="tip" />
     </div>
-    <el-image-viewer v-if="imgViewVisible" :url-list="[viewImageUrl]" @close="imgViewVisible = false" />
+    <a-image
+      :style="{ display: 'none' }"
+      :src="viewImageUrl"
+      :preview="{
+        visible: imgViewVisible,
+        onVisibleChange: (vis: boolean) => (imgViewVisible = vis)
+      }"
+    />
   </div>
 </template>
 
 <style scoped lang="scss">
 .is-error {
   .upload {
-    :deep(.el-upload--picture-card),
-    :deep(.el-upload-dragger) {
-      border: 1px dashed var(--el-color-danger) !important;
+    :deep(.ant-upload-select-picture-card) {
+      border-color: #ff4d4f !important;
 
       &:hover {
-        border-color: var(--el-color-primary) !important;
+        border-color: var(--color-primary) !important;
       }
     }
   }
 }
 
 :deep(.disabled) {
-  .el-upload--picture-card,
-  .el-upload-dragger {
-    border: 1px dashed var(--el-border-color-darker);
-    background: var(--el-disabled-bg-color) !important;
+  .ant-upload-select-picture-card {
+    border-color: #d9d9d9;
+    background: #f5f5f5 !important;
     cursor: not-allowed;
 
     &:hover {
-      border-color: var(--el-border-color-darker) !important;
+      border-color: #d9d9d9 !important;
     }
   }
 }
 
 .upload-box {
-  .no-border {
-    :deep(.el-upload--picture-card) {
-      border: none !important;
-    }
-  }
-
   :deep(.upload) {
-    .el-upload-dragger {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-      border: 1px dashed var(--el-border-color-darker);
-      border-radius: v-bind(borderRadius);
-      padding: 0;
-      width: 100%;
-      height: 100%;
-
-      &:hover {
-        border: 1px dashed var(--el-color-primary);
-      }
-    }
-
-    .el-upload-dragger.is-dragover {
-      border: 2px dashed var(--el-color-primary) !important;
-      background-color: var(--el-color-primary-light-9);
-    }
-
-    .el-upload-list__item,
-    .el-upload--picture-card {
+    .ant-upload-select-picture-card,
+    .ant-upload-list-item-container {
       border-radius: v-bind(borderRadius);
       width: v-bind(width);
       height: v-bind(height);
+    }
+
+    .ant-upload-select-picture-card {
       background-color: transparent;
-    }
-
-    .upload-image {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-
-    .upload-handle {
-      position: absolute;
-      top: 0;
-      right: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      width: 100%;
-      height: 100%;
-      background: rgb(0 0 0 / 60%);
-      opacity: 0;
-      transition: var(--el-transition-duration-fast);
-      box-sizing: border-box;
-      cursor: pointer;
-
-      .handle-icon {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 0 6%;
-        color: aliceblue;
-        flex-direction: column;
-
-        .el-icon {
-          font-size: 20px;
-        }
-      }
-    }
-
-    .el-upload-list__item {
-      &:hover {
-        .upload-handle {
-          opacity: 1;
-        }
-      }
-    }
-
-    .upload-empty {
-      display: flex;
-      justify-content: center;
-      align-items: center;
     }
   }
 
-  .el-upload__tip {
+  .upload-list-item {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: v-bind(borderRadius);
+
+    &:hover .upload-handle {
+      opacity: 1;
+    }
+  }
+
+  .upload-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .upload-handle {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgb(0 0 0 / 60%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
+
+    .handle-icon {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0 6%;
+      color: aliceblue;
+      flex-direction: column;
+
+      .action-icon {
+        font-size: 20px;
+      }
+    }
+  }
+
+  .upload-empty {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .upload-plus {
+    font-size: 24px;
+    color: #999;
+  }
+
+  .upload-tip {
     line-height: 15px;
     text-align: center;
   }
 }
 </style>
-.

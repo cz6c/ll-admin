@@ -3,10 +3,9 @@ import type { IconProps } from "@iconify/vue";
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
 
 /**
- * @description: 通过函数创建图标组件，支持iconify中所有的图标
- * @param {string} icon 必传 图标
- * @param {IconProps} options 可选属性
- * @return {*} Component
+ * 通过函数创建图标组件（@iconify/vue）
+ * @param icon 图标名，统一使用 ant-design:xxx
+ * @param options Iconify 可选属性
  */
 export function useRenderIcon(icon: string, options?: Omit<IconProps, "icon">): Component {
   return defineComponent({

@@ -55,8 +55,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-loading="loading" element-loading-text="加载中..." class="app-page">
-    <iframe ref="frameRef" :src="frameSrc" class="iframe-page" />
+  <div class="app-page">
+    <a-spin :spinning="loading" tip="加载中...">
+      <iframe ref="frameRef" :src="frameSrc" class="iframe-page" />
+    </a-spin>
   </div>
 </template>
 

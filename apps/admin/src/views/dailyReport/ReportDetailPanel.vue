@@ -26,7 +26,7 @@ const summaryRef = ref<HTMLElement | null>(null);
 const scanLogRef = ref<HTMLElement | null>(null);
 const scanLogText = computed(() => getScanLogText(props.report));
 const hasAiSummary = computed(() => hasIndependentAiSummary(props.report));
-const statusType = computed(() => REPORT_STATUS_TAG[props.report.status] || "info");
+const statusType = computed(() => REPORT_STATUS_TAG[props.report.status] || "default");
 const statusText = computed(() => REPORT_STATUS_LABEL[props.report.status] || props.report.status);
 const summarySource = computed(() => resolveSummarySource(props.report));
 const sourceType = computed(() => SUMMARY_SOURCE_TAG[summarySource.value]);
@@ -42,25 +42,25 @@ defineExpose({ scrollToSummary });
 </script>
 
 <template>
-  <div class="flex flex-col gap-12px">
+  <div class="flex flex-col gap-16px">
     <div class="card-meta">
-      <el-tag :type="statusType" effect="light" size="small">{{ statusText }}</el-tag>
-      <el-tag :type="sourceType" effect="plain" size="small">{{ sourceText }}</el-tag>
-      <span class="text-[var(--el-text-color-regular)]">提交 {{ report.rawCommits.length }}</span>
-      <span v-if="report.modelName" class="text-[var(--el-text-color-secondary)]">{{ report.modelName }}</span>
-      <span class="text-[var(--el-text-color-secondary)]">{{ formatReportTime(report.finishedAt) }}</span>
+      <a-tag :color="statusType">{{ statusText }}</a-tag>
+      <a-tag :color="sourceType">{{ sourceText }}</a-tag>
+      <span class="text-[var(--color-text-secondary)]">提交 {{ report.rawCommits.length }}</span>
+      <span v-if="report.modelName" class="text-[var(--color-text-tertiary)]">{{ report.modelName }}</span>
+      <span class="text-[var(--color-text-tertiary)]">{{ formatReportTime(report.finishedAt) }}</span>
     </div>
 
     <section v-if="hasAiSummary" ref="summaryRef" class="card-section">
-      <div class="mb-10px flex items-baseline gap-10px">
-        <h3 class="m-0 text-15px font-600">AI 总结</h3>
+      <div class="mb-8px flex items-baseline gap-8px">
+        <h3 class="m-0 text-16px font-600">AI 总结</h3>
       </div>
       <pre class="summary summary--primary">{{ report.summaryMarkdown }}</pre>
     </section>
 
     <section ref="scanLogRef" class="card-section">
-      <div class="mb-10px flex items-baseline gap-10px">
-        <h3 class="m-0 text-15px font-600">扫描日志</h3>
+      <div class="mb-8px flex items-baseline gap-8px">
+        <h3 class="m-0 text-16px font-600">扫描日志</h3>
       </div>
       <pre class="summary">{{ scanLogText || "（无）" }}</pre>
     </section>
@@ -70,17 +70,17 @@ defineExpose({ scrollToSummary });
 <style scoped lang="scss">
 .summary {
   margin: 0;
-  padding: 12px 14px;
+  padding: 12px 16px;
   white-space: pre-wrap;
   word-break: break-word;
-  background: var(--el-fill-color-light);
+  background: var(--fill-color);
   border-radius: 6px;
   font-family: inherit;
   line-height: 1.65;
-  font-size: 13px;
+  font-size: 14px;
   &--primary {
-    background: var(--el-color-primary-light-9);
-    border: 1px solid var(--el-color-primary-light-7);
+    background: var(--color-primary-bg);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, white);
   }
 }
 </style>

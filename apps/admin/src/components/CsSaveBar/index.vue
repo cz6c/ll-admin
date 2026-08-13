@@ -19,8 +19,10 @@ const emit = defineEmits<{
 <template>
   <div class="cs-save-bar">
     <slot />
-    <el-button :disabled="saving" @click="emit('reload')">重新加载</el-button>
-    <el-button type="primary" :loading="saving" @click="emit('save')">保存</el-button>
+    <a-space>
+      <a-button :disabled="saving" @click="emit('reload')">重新加载</a-button>
+      <a-button type="primary" :loading="saving" @click="emit('save')">保存</a-button>
+    </a-space>
   </div>
 </template>
 
@@ -34,10 +36,9 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
   height: 50px;
   padding: 0 16px;
-  background: var(--el-bg-color);
-  border-top: 1px solid var(--el-border-color);
+  background: var(--bg-color);
+  border-top: 1px solid var(--border-color);
 }
 </style>

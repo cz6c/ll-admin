@@ -1,63 +1,103 @@
+/* 路由 / 面板 / 面包屑过渡；时长与缓动取自 theme.scss motion tokens */
+
 /* fade */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.26s;
+  transition: opacity var(--dur-panel) var(--ease-out);
 }
 
-.fade-enter,
-.fade-leave-active {
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
 }
 
-/* fade-transform */
+/*
+ * fade-transform：对称路径（进出同一方向），避免左进右出造成空间断裂
+ * 用轻微 translateY + opacity；不对称 X 滑入已弃用
+ */
 .fade-transform-leave-active,
 .fade-transform-enter-active {
-  transition: all 0.26s;
+  transition:
+    opacity var(--dur-panel) var(--ease-out),
+    transform var(--dur-panel) var(--ease-out);
 }
 
-.fade-transform-enter-from {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
+.fade-transform-enter-from,
 .fade-transform-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateY(6px);
+}
+
+/* 日报 empty↔详情、历史详情桥接 */
+.panel-fade-enter-active {
+  transition:
+    opacity var(--dur-panel) var(--ease-out),
+    transform var(--dur-panel) var(--ease-out);
+}
+
+.panel-fade-leave-active {
+  transition: opacity var(--dur-fade) var(--ease-out);
+}
+
+.panel-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+.panel-fade-leave-to {
+  opacity: 0;
+}
+
+/* 日报 Tab 切页：比主路由更短，避免 Tab 感觉迟钝 */
+.tab-fade-enter-active,
+.tab-fade-leave-active {
+  transition: opacity var(--dur-fade) var(--ease-out);
+}
+
+.tab-fade-enter-from,
+.tab-fade-leave-to {
+  opacity: 0;
 }
 
 /* breadcrumb transition */
 .breadcrumb-enter-active {
-  transition: all 0.4s;
+  transition:
+    opacity 0.28s var(--ease-out),
+    transform 0.28s var(--ease-out);
 }
 
 .breadcrumb-leave-active {
   position: absolute;
-  transition: all 0.3s;
+  transition:
+    opacity var(--dur-fade) var(--ease-out),
+    transform var(--dur-fade) var(--ease-out);
 }
 
 .breadcrumb-enter-from,
-.breadcrumb-leave-active {
+.breadcrumb-leave-to {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateX(12px);
 }
 
-/**
- * @description 重置el-menu的展开收起动画时长
- */
-.outer-most .el-collapse-transition-leave-active,
-.outer-most .el-collapse-transition-enter-active {
-  transition: 0.2s all ease-in-out !important;
-}
+@media (prefers-reduced-motion: reduce) {
+  .fade-enter-active,
+  .fade-leave-active,
+  .fade-transform-leave-active,
+  .fade-transform-enter-active,
+  .panel-fade-enter-active,
+  .panel-fade-leave-active,
+  .tab-fade-enter-active,
+  .tab-fade-leave-active,
+  .breadcrumb-enter-active,
+  .breadcrumb-leave-active {
+    transition: opacity 120ms ease !important;
+  }
 
-/* logo 过渡动画 */
-@keyframes logoAnimation {
-  0% {
-    transform: scale(0);
-  }
-  80% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
+  .fade-transform-enter-from,
+  .fade-transform-leave-to,
+  .panel-fade-enter-from,
+  .breadcrumb-enter-from,
+  .breadcrumb-leave-to {
+    transform: none !important;
   }
 }

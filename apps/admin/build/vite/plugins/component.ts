@@ -1,10 +1,10 @@
 /**
  * @name  AutoRegistryComponents
- * @description 按需加载，自动引入组件
+ * @description 按需加载，自动引入组件（Ant Design Vue）
  */
 
 import Components from "unplugin-vue-components/vite";
-import { VueUseComponentsResolver, ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import { VueUseComponentsResolver, AntDesignVueResolver } from "unplugin-vue-components/resolvers";
 
 export const AutoRegistryComponents = () => {
   return Components({
@@ -17,6 +17,7 @@ export const AutoRegistryComponents = () => {
     directives: true,
     include: [/\.vue$/, /\.vue\?vue/, /\.md$/],
     exclude: [/[\\/]node_modules[\\/]/, /[\\/]\.git[\\/]/, /[\\/]\.nuxt[\\/]/],
-    resolvers: [VueUseComponentsResolver(), ElementPlusResolver({ importStyle: "sass" })]
+    // antdv4 走 CSS-in-JS，resolver 不再拉 less/css 旁路
+    resolvers: [VueUseComponentsResolver(), AntDesignVueResolver({ importStyle: false, resolveIcons: false })]
   });
 };

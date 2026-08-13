@@ -66,11 +66,10 @@ pub fn run() {
       let handle = app.handle();
 
       // 托盘保留快捷入口；应用内菜单改由前端 CsToolsBar 提供
-      let tray_open = MenuItem::with_id(handle, "tray_open", "打开主界面", true, None::<&str>)?;
+      let tray_open = MenuItem::with_id(handle, "tray_open", "打开管理后台", true, None::<&str>)?;
       let tray_daily = MenuItem::with_id(handle, "tray_daily", "打开工作日报", true, None::<&str>)?;
-      let tray_run = MenuItem::with_id(handle, "tray_run", "立刻生成日报", true, None::<&str>)?;
       let tray_quit = MenuItem::with_id(handle, "tray_quit", "退出", true, None::<&str>)?;
-      let tray_menu = Menu::with_items(handle, &[&tray_open, &tray_daily, &tray_run, &tray_quit])?;
+      let tray_menu = Menu::with_items(handle, &[&tray_open, &tray_daily, &tray_quit])?;
 
       let icon = app
         .default_window_icon()
@@ -84,15 +83,6 @@ pub fn run() {
         .on_menu_event(|app, event| match event.id().as_ref() {
           "tray_open" => open_in_main(app, "admin"),
           "tray_daily" => open_in_main(app, "today"),
-          "tray_run" => {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-              match daily_report::daily_report_run(app.clone()).await {
-                Ok(_) => open_in_main(&app, "today"),
-                Err(e) => log::warn!("tray run daily report: {e}"),
-              }
-            });
-          }
           "tray_quit" => {
             app.exit(0);
           }

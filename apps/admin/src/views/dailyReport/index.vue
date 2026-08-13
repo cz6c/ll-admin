@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { formatToDate } from "@llcz/common";
 import { getDailyReport, runDailyReport, type DailyReport } from "@/api/dailyReport";
 import { isTauri } from "@/utils/tauri";
+import $feedback from "@/utils/feedback";
 import { runResultMessage } from "./reportDisplay";
 import ReportDetailPanel from "./ReportDetailPanel.vue";
 
@@ -22,13 +23,16 @@ const report = ref<DailyReport | null>(null);
 const today = formatToDate();
 const panelRef = ref<InstanceType<typeof ReportDetailPanel> | null>(null);
 
+const spinning = computed(() => loading.value || running.value);
+const spinTip = computed(() => (running.value ? "正在扫描并调用 AI…" : ""));
+
 async function loadToday() {
   if (!isTauri()) return;
   loading.value = true;
   try {
     report.value = await getDailyReport(today);
   } catch (e: any) {
-    ElMessage.error(e?.message || String(e));
+    $feedback.message.error(e?.message || String(e));
   } finally {
     loading.value = false;
   }
@@ -40,14 +44,14 @@ async function onRun() {
   try {
     report.value = await runDailyReport();
     const tip = runResultMessage(report.value);
-    if (tip.type === "success") ElMessage.success(tip.message);
-    else if (tip.type === "warning") ElMessage.warning(tip.message);
-    else if (tip.type === "error") ElMessage.error(tip.message);
-    else ElMessage.info(tip.message);
+    if (tip.type === "success") $feedback.message.success(tip.message);
+    else if (tip.type === "warning") $feedback.message.warning(tip.message);
+    else if (tip.type === "error") $feedback.message.error(tip.message);
+    else $feedback.message.info(tip.message);
     await nextTick();
     panelRef.value?.scrollToSummary();
   } catch (e: any) {
-    ElMessage.error(e?.message || String(e));
+    $feedback.message.error(e?.message || String(e));
   } finally {
     running.value = false;
   }
@@ -75,38 +79,42 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-loading="loading || running" class="app-page flex flex-col gap-12px" :element-loading-text="running ? '正在扫描并调用 AI…' : ''">
-    <div class="flex flex-wrap items-center justify-between gap-12px">
-      <div class="flex items-baseline gap-10px">
-        <h2 class="m-0 text-18px font-600 text-[var(--el-text-color-primary)]">今日日报</h2>
-        <span class="text-13px text-[var(--el-text-color-secondary)]">{{ today }}</span>
-      </div>
-      <div class="flex flex-wrap">
-        <el-button type="primary" :loading="running" @click="onRun">立刻生成</el-button>
-        <el-button :disabled="running" @click="loadToday">刷新</el-button>
-      </div>
-    </div>
-
-    <el-card v-if="!report" shadow="never" class="empty-card card-rounded">
-      <el-empty description="今日尚未生成日报">
-        <template #description>
-          <p class="m-0 mb-4px text-13px text-[var(--el-text-color-regular)]">点击「立刻生成」，或在计划时间到点后自动跑。</p>
-          <p class="m-0 text-13px text-[var(--el-text-color-secondary)]">未配置工作区时请先到日报设置。</p>
-        </template>
-        <div class="mt-8px flex justify-center">
-          <el-button type="primary" :loading="running" @click="onRun">立刻生成</el-button>
-          <el-button @click="goSettings">去设置</el-button>
+  <a-spin :spinning="spinning" :tip="spinTip">
+    <div class="app-page flex flex-col gap-16px">
+      <div class="flex flex-wrap items-center justify-between gap-16px">
+        <div class="flex items-baseline gap-8px">
+          <h2 class="m-0 text-18px font-600 text-[var(--color-text)]">今日日报</h2>
+          <span class="text-12px text-[var(--color-text-tertiary)]">{{ today }}</span>
         </div>
-      </el-empty>
-    </el-card>
+        <a-space>
+          <a-button type="primary" :loading="running" @click="onRun">立刻生成</a-button>
+          <a-button :disabled="running" @click="loadToday">刷新</a-button>
+        </a-space>
+      </div>
 
-    <ReportDetailPanel v-else ref="panelRef" :report="report" />
-  </div>
+      <Transition name="panel-fade" mode="out-in">
+        <a-card v-if="!report" key="empty" class="empty-card card-rounded" :bordered="true">
+          <a-empty description="今日尚未生成日报">
+            <template #description>
+              <p class="m-0 mb-4px text-12px text-[var(--color-text-secondary)]">
+                点击上方「立刻生成」，或在计划时间到点后自动跑。
+              </p>
+              <p class="m-0 text-12px text-[var(--color-text-tertiary)]">未配置工作区时请先到日报设置。</p>
+            </template>
+            <div class="mt-8px flex justify-center">
+              <a-button @click="goSettings">去设置</a-button>
+            </div>
+          </a-empty>
+        </a-card>
+        <ReportDetailPanel v-else :key="report?.date || 'detail'" ref="panelRef" :report="report" />
+      </Transition>
+    </div>
+  </a-spin>
 </template>
 
 <style scoped lang="scss">
 .empty-card {
-  :deep(.el-empty) {
+  :deep(.ant-empty) {
     padding: 48px 16px;
   }
 }

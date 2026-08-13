@@ -1,4 +1,9 @@
 <script setup lang="ts">
+/**
+ * 工具栏按钮组
+ * 职责：按权限/可见性渲染 ToolButton；超出 maxShowNum 收进 Popover
+ * @note 并排按钮用 a-space（antd 官方间距），勿依赖 Button 自身 margin
+ */
 defineOptions({
   name: "ToolButtons"
 });
@@ -15,10 +20,10 @@ const {
 } = defineProps<{
   buttons: BtnOptionsProps<any>[];
   data?: { row: any };
-  // 超过几个按钮显示更多按钮，并把后面的按钮功能放进更多按钮中
+  /** 超过几个按钮收入「更多」 */
   maxShowNum?: number;
-  // 按钮大小
-  size?: "large" | "default" | "small";
+  /** ant Button size */
+  size?: "large" | "middle" | "small";
 }>();
 
 const maxShowNumCom = computed(() => maxShowNum || buttons.length);
@@ -29,24 +34,26 @@ const getBtnVisible = (btn: BtnOptionsProps) => {
 };
 </script>
 <template>
-  <div class="action-btns">
+  <a-space :size="8" align="center" class="action-btns">
     <template v-for="(btn, index) in buttons.slice(0, maxShowNumCom)">
-      <ToolButton v-if="getBtnVisible(btn)" :key="index" class="action-btn" :options="{ ...btn, props: { ...btn.props, size } }" :data="data" />
+      <ToolButton v-if="getBtnVisible(btn)" :key="index" :options="{ ...btn, props: { ...btn.props, size } }" :data="data" />
     </template>
-    <!-- maxShowNum后的按钮收起 -->
-    <el-popover v-if="moreBtnsCom.length > 0" effect="light" trigger="hover" placement="left-start">
-      <ToolButton v-for="(btn, index) in moreBtnsCom" :key="index" :options="{ ...btn, props: { ...btn.props, size, text: true } }" :data="data" />
-      <template v-slot:reference>
-        <el-button :icon="useRenderIcon('ep:operation')" :size="size" />
+    <a-popover v-if="moreBtnsCom.length > 0" trigger="hover" placement="leftTop">
+      <template #content>
+        <a-space direction="vertical" :size="4" class="more-btns">
+          <ToolButton
+            v-for="(btn, index) in moreBtnsCom"
+            :key="index"
+            :options="{ ...btn, props: { ...btn.props, size, type: 'text' } }"
+            :data="data"
+          />
+        </a-space>
       </template>
-    </el-popover>
-  </div>
+      <a-button :size="size">
+        <template #icon>
+          <component :is="useRenderIcon('ant-design:appstore-outlined')" />
+        </template>
+      </a-button>
+    </a-popover>
+  </a-space>
 </template>
-
-<style scoped lang="scss">
-.action-btns {
-  display: flex;
-  align-items: center;
-  column-gap: 10px;
-}
-</style>

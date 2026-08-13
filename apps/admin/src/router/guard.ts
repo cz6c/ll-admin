@@ -5,7 +5,7 @@ import { usePermissionStore } from "@/store/modules/permission";
 import { getToken } from "@/utils/auth";
 import type { Router } from "vue-router";
 import nProgress from "nprogress";
-import { ElMessage, ElNotification } from "element-plus";
+import { message, notification } from "ant-design-vue";
 import { productConfig } from "@/config";
 
 /**
@@ -89,8 +89,8 @@ function setupCommonGuard(router: Router) {
 
     // 路由切换时关闭消息实例
     try {
-      ElMessage.closeAll();
-      ElNotification.closeAll();
+      message.destroy();
+      notification.destroy();
     } catch (error) {
       console.log("message guard error:" + error);
     }

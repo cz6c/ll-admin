@@ -1,7 +1,11 @@
 <script setup lang="ts">
+/**
+ * Iconify 图标选择器
+ * 职责：分页浏览 ant-design 图标集，写入 `ant-design:name` 字符串
+ */
 import { IconJson } from "./data";
 import { cloneDeep } from "lodash-es";
-import { CSSProperties } from "vue";
+import type { CSSProperties } from "vue";
 
 type ParameterCSSProperties = (item?: string) => CSSProperties | undefined;
 
@@ -9,40 +13,38 @@ defineOptions({
   name: "IconSelect"
 });
 
+const PREFIX = "ant-design:";
+
 const inputValue = defineModel({ type: String });
 
-const icon = ref();
-const currentActiveType = ref("ep:");
-// 深拷贝图标数据，前端做搜索
-const copyIconList = cloneDeep(IconJson);
+const icon = ref("");
+/** 分类后缀：outlined / filled / twotone */
+const currentActiveType = ref("outlined");
+const copyIconList = cloneDeep(IconJson[PREFIX] as string[]);
 const totalPage = ref(0);
-// 每页显示35个图标
 const pageSize = ref(35);
 const currentPage = ref(1);
-
-// 搜索条件
 const filterValue = ref("");
 
 const tabsList = [
-  {
-    label: "Element Plus",
-    name: "ep:"
-  },
-  {
-    label: "Remix Icon",
-    name: "ri:"
-  }
+  { label: "线框", name: "outlined" },
+  { label: "实底", name: "filled" },
+  { label: "双色", name: "twotone" }
 ];
 
+const filteredList = computed(() =>
+  copyIconList.filter(
+    i => i.endsWith(`-${currentActiveType.value}`) && i.toLowerCase().includes(filterValue.value.toLowerCase())
+  )
+);
+
 const pageList = computed(() =>
-  copyIconList[currentActiveType.value]
-    .filter(i => i.includes(filterValue.value))
-    .slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
+  filteredList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
 );
 
 const iconItemStyle = computed((): ParameterCSSProperties => {
   return item => {
-    if (inputValue.value === currentActiveType.value + item) {
+    if (inputValue.value === PREFIX + item) {
       return {
         borderColor: "var(--color-primary)",
         color: "var(--color-primary)"
@@ -52,32 +54,39 @@ const iconItemStyle = computed((): ParameterCSSProperties => {
 });
 
 function setVal() {
-  currentActiveType.value = inputValue.value.substring(0, inputValue.value.indexOf(":") + 1) || tabsList[0].name;
-  icon.value = inputValue.value.substring(inputValue.value.indexOf(":") + 1);
+  const val = inputValue.value || "";
+  if (val.startsWith(PREFIX)) {
+    icon.value = val.slice(PREFIX.length);
+  } else {
+    icon.value = val.includes(":") ? val.slice(val.indexOf(":") + 1) : val;
+  }
+  if (icon.value.endsWith("-filled")) currentActiveType.value = "filled";
+  else if (icon.value.endsWith("-twotone")) currentActiveType.value = "twotone";
+  else currentActiveType.value = "outlined";
 }
 
 function onBeforeEnter() {
   setVal();
-  // 寻找当前图标在第几页
-  const curIconIndex = copyIconList[currentActiveType.value].findIndex(i => i === icon.value);
+  const curIconIndex = filteredList.value.findIndex(i => i === icon.value);
   if (curIconIndex !== -1) currentPage.value = Math.ceil((curIconIndex + 1) / pageSize.value);
 }
 
-function onAfterLeave() {
-  filterValue.value = "";
+function onOpenChange(open: boolean) {
+  if (open) onBeforeEnter();
+  else filterValue.value = "";
 }
 
-function handleClick({ props }) {
+function handleTabChange(key: string | number) {
   currentPage.value = 1;
-  currentActiveType.value = props.name;
+  currentActiveType.value = String(key);
 }
 
-function onChangeIcon(item) {
+function onChangeIcon(item: string) {
   icon.value = item;
-  inputValue.value = currentActiveType.value + item;
+  inputValue.value = PREFIX + item;
 }
 
-function onCurrentChange(page) {
+function onCurrentChange(page: number) {
   currentPage.value = page;
 }
 
@@ -87,8 +96,10 @@ function onClear() {
 }
 
 watch(
-  () => pageList.value,
-  () => (totalPage.value = copyIconList[currentActiveType.value].filter(i => i.includes(filterValue.value)).length),
+  () => filteredList.value,
+  list => {
+    totalPage.value = list.length;
+  },
   { immediate: true }
 );
 watch(
@@ -104,70 +115,78 @@ watch(
 
 <template>
   <div class="selector">
-    <el-input v-model="inputValue" disabled>
-      <template #append>
-        <el-popover
-          :width="372"
-          trigger="click"
-          :popper-options="{
-            placement: 'auto'
-          }"
-          @before-enter="onBeforeEnter"
-        >
-          <template #reference>
-            <div class="w-8 h-8 cursor-pointer flex justify-center items-center">
-              <IconifyIcon v-if="!icon" icon="ri:search-eye-line" />
-              <IconifyIcon v-else :icon="inputValue" />
+    <a-input v-model:value="inputValue" disabled>
+      <template #addonAfter>
+        <a-popover :overlay-style="{ width: '372px' }" trigger="click" placement="bottom" @open-change="onOpenChange">
+          <div class="w-8 h-8 cursor-pointer flex justify-center items-center">
+            <IconifyIcon v-if="!icon" icon="ant-design:file-search-outlined" />
+            <IconifyIcon v-else :icon="inputValue" />
+          </div>
+          <template #content>
+            <a-input v-model:value="filterValue" class="px-2 pt-2" placeholder="搜索图标" allow-clear />
+            <a-tabs v-model:active-key="currentActiveType" @change="handleTabChange">
+              <a-tab-pane v-for="pane in tabsList" :key="pane.name" :tab="pane.label">
+                <div class="icon-scroll">
+                  <ul class="flex flex-wrap px-2! ml-2!">
+                    <li
+                      v-for="(item, key) in pageList"
+                      :key="key"
+                      :title="item"
+                      class="icon-item p-2 cursor-pointer mr-2 mt-1 flex justify-center items-center border border-solid border-[#e5e7eb]"
+                      :style="iconItemStyle(item)"
+                      @click="onChangeIcon(item)"
+                    >
+                      <IconifyIcon :icon="PREFIX + item" width="20px" height="20px" />
+                    </li>
+                  </ul>
+                  <a-empty v-show="pageList.length === 0" :description="`${filterValue} 图标不存在`" :image-style="{ height: '60px' }" />
+                </div>
+              </a-tab-pane>
+            </a-tabs>
+            <div class="w-full h-9 flex items-center overflow-auto border-t border-[#e5e7eb]">
+              <a-pagination
+                class="flex-auto ml-2"
+                size="small"
+                :total="totalPage"
+                :current="currentPage"
+                :page-size="pageSize"
+                :show-size-changer="false"
+                @change="onCurrentChange"
+              />
+              <a-button class="justify-end mx-2!" type="primary" danger size="small" @click="onClear">清空</a-button>
             </div>
           </template>
-
-          <el-input v-model="filterValue" class="px-2 pt-2" placeholder="搜索图标" clearable />
-          <el-tabs v-model="currentActiveType" @tab-click="handleClick">
-            <el-tab-pane v-for="(pane, index) in tabsList" :key="index" :label="pane.label" :name="pane.name">
-              <el-scrollbar height="220px">
-                <ul class="flex flex-wrap px-2! ml-2!">
-                  <li
-                    v-for="(item, key) in pageList"
-                    :key="key"
-                    :title="item"
-                    class="icon-item p-2 cursor-pointer mr-2 mt-1 flex justify-center items-center border border-solid border-[#e5e7eb]"
-                    :style="iconItemStyle(item)"
-                    @click="onChangeIcon(item)"
-                  >
-                    <IconifyIcon :icon="currentActiveType + item" width="20px" height="20px" />
-                  </li>
-                </ul>
-                <el-empty v-show="pageList.length === 0" :description="`${filterValue} 图标不存在`" :image-size="60" />
-              </el-scrollbar>
-            </el-tab-pane>
-          </el-tabs>
-          <div class="w-full h-9 flex items-center overflow-auto border-t border-[#e5e7eb]">
-            <el-pagination
-              class="flex-auto ml-2"
-              :total="totalPage"
-              :current-page="currentPage"
-              :page-size="pageSize"
-              :pager-count="5"
-              layout="pager"
-              background
-              size="small"
-              @current-change="onCurrentChange"
-            />
-            <el-button class="justify-end mx-2!" type="danger" size="small" text bg @click="onClear"> 清空 </el-button>
-          </div>
-        </el-popover>
+        </a-popover>
       </template>
-    </el-input>
+    </a-input>
   </div>
 </template>
 
 <style lang="scss" scoped>
+.icon-scroll {
+  height: 220px;
+  overflow: auto;
+}
 .icon-item {
+  transition:
+    color var(--dur-press) var(--ease-out),
+    border-color var(--dur-press) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+
   &:hover {
     color: var(--color-primary);
     border-color: var(--color-primary);
     transform: scaleX(1.05);
-    transition: all 0.4s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-item {
+    transition: none;
+
+    &:hover {
+      transform: none;
+    }
   }
 }
 </style>

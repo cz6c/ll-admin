@@ -38,15 +38,13 @@ const searchList = reactive<SearchFormItem[]>([
     }
   },
   {
-    type: "date-picker",
+    type: "date-range",
     prop: "dateRange",
     label: "登录时间",
     props: {
-      type: "daterange",
       valueFormat: "YYYY-MM-DD",
-      rangeSeparator: "-",
-      startPlaceholder: "开始日期",
-      endPlaceholder: "结束日期"
+      placeholder: ["开始日期", "结束日期"],
+      separator: "-"
     }
   }
 ]);
@@ -64,11 +62,8 @@ const apiQuery = reactive<LoginlogListParams>({
 const toolbarButtons: BtnOptionsProps[] = [
   {
     btnText: "导出",
-    props: {
-      type: "warning",
-      plain: true
-    },
-    icon: "ep:download",
+    props: {},
+    icon: "ant-design:download-outlined",
     authCode: "export",
     handleClick: () => {
       handleExport();
@@ -165,7 +160,7 @@ function handleExport() {
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="default" />
+        <ToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
     </vxe-grid>
   </div>

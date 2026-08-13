@@ -1,74 +1,79 @@
 <template>
   <div ref="printRef" class="app-page">
-    <!-- <el-button @click="print">打印</el-button> -->
-    <el-card>
-      <template #header>
-        <span class="flex-center"><IconifyIcon class="mr-1" icon="ep:monitor" />服务器信息</span>
-        <el-row v-if="server.sys" :gutter="10" class="mt-4">
-          <el-col :span="6"> 服务器名称：{{ server.sys.computerName }} </el-col>
-          <el-col :span="6"> 部署目录：{{ server.sys.userDir }} </el-col>
-          <el-col :span="6"> 操作系统：{{ server.sys.osName }}-{{ server.sys.osArch }} </el-col>
-          <el-col :span="6"> 服务器IP：{{ server.sys.computerIp }} </el-col>
-        </el-row>
+    <!-- <a-button @click="print">打印</a-button> -->
+    <a-card>
+      <template #title>
+        <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:desktop-outlined" />服务器信息</span>
+        <a-row v-if="server.sys" :gutter="10" class="mt-4">
+          <a-col :span="6"> 服务器名称：{{ server.sys.computerName }} </a-col>
+          <a-col :span="6"> 部署目录：{{ server.sys.userDir }} </a-col>
+          <a-col :span="6"> 操作系统：{{ server.sys.osName }}-{{ server.sys.osArch }} </a-col>
+          <a-col :span="6"> 服务器IP：{{ server.sys.computerIp }} </a-col>
+        </a-row>
       </template>
 
-      <el-row :gutter="10">
-        <el-col v-if="server.cpu" :span="8">
+      <a-row :gutter="10">
+        <a-col v-if="server.cpu" :span="8">
           <div class="flex-col-center">
             CPU使用率
-            <el-progress
+            <a-progress
               type="circle"
-              :percentage="+server.cpu.usage"
-              :color="server.cpu.usage > 85 ? '#f56c6c' : 100 - server.cpu.usage > 70 ? '#e6a23c' : '#5cb87a'"
+              :percent="+server.cpu.usage"
+              :stroke-color="server.cpu.usage > 85 ? '#ff4d4f' : 100 - server.cpu.usage > 70 ? '#faad14' : '#52c41a'"
             />
             CPU-{{ server.cpu.cpuNum }}核
           </div>
-        </el-col>
-        <el-col v-if="server.mem" :span="8">
+        </a-col>
+        <a-col v-if="server.mem" :span="8">
           <div class="flex-col-center">
             内存使用率
-            <el-progress
+            <a-progress
               type="circle"
-              :percentage="+server.mem.usage"
-              :color="server.mem.usage > 85 ? '#f56c6c' : server.mem.usage > 70 ? '#e6a23c' : '#5cb87a'"
+              :percent="+server.mem.usage"
+              :stroke-color="server.mem.usage > 85 ? '#ff4d4f' : server.mem.usage > 70 ? '#faad14' : '#52c41a'"
             />
             {{ server.mem.used }}/{{ server.mem.total }}GB
           </div>
-        </el-col>
-        <el-col v-if="server.sysFiles" :span="8">
+        </a-col>
+        <a-col v-if="server.sysFiles" :span="8">
           <div class="flex-col-center">
             磁盘使用率
-            <el-progress
+            <a-progress
               type="circle"
-              :percentage="+server.sysFiles.usage"
-              :color="server.sysFiles.usage > 85 ? '#f56c6c' : server.sysFiles.usage > 70 ? '#e6a23c' : '#5cb87a'"
+              :percent="+server.sysFiles.usage"
+              :stroke-color="server.sysFiles.usage > 85 ? '#ff4d4f' : server.sysFiles.usage > 70 ? '#faad14' : '#52c41a'"
             />
             {{ server.sysFiles.used }}/{{ server.sysFiles.total }}GB
           </div>
-        </el-col>
-      </el-row>
-    </el-card>
+        </a-col>
+      </a-row>
+    </a-card>
 
-    <el-card class="mt-4">
-      <template #header>
-        <span class="flex-center"><IconifyIcon class="mr-1" icon="ep:collection" />redis信息</span>
-        <el-row v-if="cache.info" :gutter="10" class="mt-4">
-          <el-col :span="6"> Redis版本：{{ cache.info.redis_version }} </el-col>
-          <el-col :span="6"> 端口：{{ cache.info.tcp_port }} </el-col>
-          <el-col :span="6"> 运行时间(天)：{{ cache.info.uptime_in_days }} </el-col>
-          <el-col :span="6"> 客户端数：{{ cache.info.connected_clients }} </el-col>
-          <el-col :span="6"> 内存总量：{{ cache.info.used_memory_rss }} </el-col>
-          <el-col :span="6"> 内存峰值：{{ cache.info.used_memory }} </el-col>
-          <el-col :span="6"> 查找数据库键成功的次数：{{ cache.info.keyspace_hits }} </el-col>
-          <el-col :span="6"> 查找数据库键失败的次数：{{ cache.info.keyspace_misses }} </el-col>
-        </el-row>
+    <a-card class="mt-4">
+      <template #title>
+        <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:database-outlined" />redis信息</span>
+        <a-row v-if="cache.info" :gutter="10" class="mt-4">
+          <a-col :span="6"> Redis版本：{{ cache.info.redis_version }} </a-col>
+          <a-col :span="6"> 端口：{{ cache.info.tcp_port }} </a-col>
+          <a-col :span="6"> 运行时间(天)：{{ cache.info.uptime_in_days }} </a-col>
+          <a-col :span="6"> 客户端数：{{ cache.info.connected_clients }} </a-col>
+          <a-col :span="6"> 内存总量：{{ cache.info.used_memory_rss }} </a-col>
+          <a-col :span="6"> 内存峰值：{{ cache.info.used_memory }} </a-col>
+          <a-col :span="6"> 查找数据库键成功的次数：{{ cache.info.keyspace_hits }} </a-col>
+          <a-col :span="6"> 查找数据库键失败的次数：{{ cache.info.keyspace_misses }} </a-col>
+        </a-row>
       </template>
       <div ref="commandstats" style="height: 360px" />
-    </el-card>
+    </a-card>
   </div>
 </template>
 
 <script setup>
+/**
+ * 服务监控
+ * 职责：展示主机 CPU/内存/磁盘与 Redis 命令统计图
+ * 适用：monitor/server
+ */
 import { getServer } from "@/api/monitor/server";
 import { getCache } from "@/api/monitor/cache";
 import Print from "@/utils/print";

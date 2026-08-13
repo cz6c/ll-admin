@@ -4004,7 +4004,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:setting',
+    'ant-design:setting-outlined',
     '',
     'M'
   ),
@@ -4027,7 +4027,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:monitor',
+    'ant-design:desktop-outlined',
     '',
     'M'
   ),
@@ -4050,7 +4050,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:link',
+    'ant-design:link-outlined',
     '',
     'M'
   ),
@@ -4073,7 +4073,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:user',
+    'ant-design:user-outlined',
     '',
     'M'
   ),
@@ -4119,7 +4119,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ri:admin-line',
+    'ant-design:solution-outlined',
     '',
     'M'
   ),
@@ -4142,7 +4142,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:menu',
+    'ant-design:menu-outlined',
     '',
     'M'
   ),
@@ -4165,7 +4165,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ri:git-branch-line',
+    'ant-design:apartment-outlined',
     '',
     'M'
   ),
@@ -4188,7 +4188,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:suitcase',
+    'ant-design:idcard-outlined',
     '',
     'M'
   ),
@@ -4211,7 +4211,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:set-up',
+    'ant-design:control-outlined',
     '',
     'M'
   ),
@@ -4234,7 +4234,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:bell',
+    'ant-design:bell-outlined',
     '',
     'M'
   ),
@@ -4257,7 +4257,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:odometer',
+    'ant-design:dashboard-outlined',
     '',
     'M'
   ),
@@ -4280,7 +4280,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ep:collection',
+    'ant-design:database-outlined',
     '',
     'M'
   ),
@@ -4303,7 +4303,7 @@ VALUES
     '1',
     '0',
     '0',
-    'ri:user-voice-line',
+    'ant-design:customer-service-outlined',
     '',
     'M'
   ),
@@ -4326,7 +4326,7 @@ VALUES
     '0',
     '0',
     '0',
-    'ep:link',
+    'ant-design:link-outlined',
     '',
     'M'
   ),
@@ -4349,7 +4349,7 @@ VALUES
     '0',
     '0',
     '0',
-    'ep:link',
+    'ant-design:link-outlined',
     '',
     'M'
   );

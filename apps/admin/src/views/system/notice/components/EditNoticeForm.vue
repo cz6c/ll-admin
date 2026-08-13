@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { getNotice, addNotice, updateNotice } from "@/api/system/notice";
 import { useDict } from "@/hooks/useDict";
-import { FormInstance, FormRules } from "element-plus";
+import type { FormInstance, Rule } from "ant-design-vue/es/form";
 import $feedback from "@/utils/feedback";
 
 defineOptions({
@@ -15,7 +15,7 @@ const $emit = defineEmits(["success", "cancel"]);
 
 const { StatusEnum, NoticeTypeEnum } = toRefs(useDict("StatusEnum", "NoticeTypeEnum"));
 
-const noticeRef = ref<FormInstance>(null);
+const noticeRef = ref<FormInstance>();
 const data = reactive({
   form: {
     noticeId: undefined,
@@ -27,7 +27,7 @@ const data = reactive({
   rules: {
     noticeTitle: [{ required: true, message: "公告标题不能为空", trigger: "blur" }],
     noticeType: [{ required: true, message: "公告类型不能为空", trigger: "change" }]
-  } as FormRules
+  } as Record<string, Rule[]>
 });
 
 const { form, rules } = toRefs(data);
@@ -42,16 +42,17 @@ async function getInfo() {
 }
 
 /** 提交按钮 */
-function submitForm() {
-  unref(noticeRef).validate(async valid => {
-    if (valid) {
-      const flag = form.value.noticeId != undefined;
-      flag ? await updateNotice(form.value) : await addNotice(form.value);
-      $feedback.message.success(flag ? "修改成功" : "新增成功");
-      $emit("success");
-      $emit("cancel");
-    }
-  });
+async function submitForm() {
+  try {
+    await unref(noticeRef)?.validate();
+  } catch {
+    return;
+  }
+  const flag = form.value.noticeId != undefined;
+  flag ? await updateNotice(form.value) : await addNotice(form.value);
+  $feedback.message.success(flag ? "修改成功" : "新增成功");
+  $emit("success");
+  $emit("cancel");
 }
 
 getInfo();
@@ -59,37 +60,37 @@ getInfo();
 
 <template>
   <div>
-    <el-form ref="noticeRef" :model="form" :rules="rules" label-width="80px">
-      <el-row>
-        <el-col :span="12">
-          <el-form-item label="公告标题" prop="noticeTitle">
-            <el-input v-model="form.noticeTitle" placeholder="请输入公告标题" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="公告类型" prop="noticeType">
-            <el-select v-model="form.noticeType" placeholder="请选择">
-              <el-option v-for="dict in NoticeTypeEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="24">
-          <el-form-item label="状态">
-            <el-radio-group v-model="form.status">
-              <el-radio v-for="dict in StatusEnum" :key="dict.value" :label="dict.label" :value="dict.value" />
-            </el-radio-group>
-          </el-form-item>
-        </el-col>
-        <el-col :span="24">
-          <el-form-item label="内容">
+    <a-form ref="noticeRef" :model="form" :rules="rules" :label-col="{ style: { width: '80px' } }">
+      <a-row>
+        <a-col :span="12">
+          <a-form-item label="公告标题" name="noticeTitle">
+            <a-input v-model:value="form.noticeTitle" placeholder="请输入公告标题" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="公告类型" name="noticeType">
+            <a-select v-model:value="form.noticeType" placeholder="请选择" :options="NoticeTypeEnum" allow-clear style="width: 100%" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="24">
+          <a-form-item label="状态">
+            <a-radio-group v-model:value="form.status">
+              <a-radio v-for="dict in StatusEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
+            </a-radio-group>
+          </a-form-item>
+        </a-col>
+        <a-col :span="24">
+          <a-form-item label="内容">
             <WangEditor v-model="form.noticeContent" height="400px" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-form>
+          </a-form-item>
+        </a-col>
+      </a-row>
+    </a-form>
     <div class="flex items-center justify-center">
-      <el-button type="primary" @click="submitForm">确 定</el-button>
-      <el-button @click="$emit('cancel')">取 消</el-button>
+      <a-space>
+        <a-button type="primary" @click="submitForm">确 定</a-button>
+        <a-button @click="$emit('cancel')">取 消</a-button>
+      </a-space>
     </div>
   </div>
 </template>

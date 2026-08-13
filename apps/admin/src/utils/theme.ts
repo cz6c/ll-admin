@@ -1,4 +1,9 @@
-// 设置class
+/**
+ * 主题与 html class 工具
+ * 职责：切换灰色/色弱 class；写入自有 CSS 变量与 Ant Design token 桥接变量
+ */
+
+/** 设置/移除目标元素 class */
 export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement) {
   const targetEl = target || document.body;
   let { className } = targetEl;
@@ -6,31 +11,29 @@ export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement
   targetEl.className = flag ? `${className} ${clsName}` : className;
 }
 
-// 处理主题样式
-export function handleThemeStyle(theme) {
+/**
+ * 处理主题色：自有变量供 Uno/布局；--ant-color-primary 供少量覆盖；
+ * ConfigProvider 的 token 由 App.vue 响应式注入
+ */
+export function handleThemeStyle(theme: string) {
   document.documentElement.style.setProperty("--color-primary", theme);
   document.documentElement.style.setProperty("--color-primary-bg", getLightColor(theme, 9 / 10));
-  document.documentElement.style.setProperty("--el-color-primary", theme);
-  for (let i = 1; i <= 9; i++) {
-    document.documentElement.style.setProperty(`--el-color-primary-light-${i}`, `${getLightColor(theme, i / 10)}`);
-  }
-  for (let i = 1; i <= 9; i++) {
-    document.documentElement.style.setProperty(`--el-color-primary-dark-${i}`, `${getDarkColor(theme, i / 10)}`);
-  }
+  document.documentElement.style.setProperty("--ant-color-primary", theme);
+  // VXE 主色与品牌色对齐
+  document.documentElement.style.setProperty("--vxe-ui-font-primary-color", theme);
 }
 
-// hex颜色转rgb颜色
-export function hexToRgb(str) {
+export function hexToRgb(str: string) {
   str = str.replace("#", "");
-  const hexs = str.match(/../g);
+  const hexs = str.match(/../g) as string[];
+  const rgb = [0, 0, 0];
   for (let i = 0; i < 3; i++) {
-    hexs[i] = parseInt(hexs[i], 16);
+    rgb[i] = parseInt(hexs[i], 16);
   }
-  return hexs;
+  return rgb;
 }
 
-// rgb颜色转Hex颜色
-export function rgbToHex(r, g, b) {
+export function rgbToHex(r: number, g: number, b: number) {
   const hexs = [r.toString(16), g.toString(16), b.toString(16)];
   for (let i = 0; i < 3; i++) {
     if (hexs[i].length == 1) {
@@ -40,8 +43,7 @@ export function rgbToHex(r, g, b) {
   return `#${hexs.join("")}`;
 }
 
-// 变浅颜色值
-export function getLightColor(color, level) {
+export function getLightColor(color: string, level: number) {
   const rgb = hexToRgb(color);
   for (let i = 0; i < 3; i++) {
     rgb[i] = Math.floor((255 - rgb[i]) * level + rgb[i]);
@@ -49,8 +51,7 @@ export function getLightColor(color, level) {
   return rgbToHex(rgb[0], rgb[1], rgb[2]);
 }
 
-// 变深颜色值
-export function getDarkColor(color, level) {
+export function getDarkColor(color: string, level: number) {
   const rgb = hexToRgb(color);
   for (let i = 0; i < 3; i++) {
     rgb[i] = Math.floor(rgb[i] * (1 - level));

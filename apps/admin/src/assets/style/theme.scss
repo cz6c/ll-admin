@@ -1,21 +1,53 @@
-$--color-primary: rgb(83, 83, 221);
+/* 与 uni 主色 --wot-primary-6 对齐 */
+$--color-primary: #1688ff;
 $--bg-color: #ffffff;
 $--fill-color: #f0f2f5;
 $--border-color: #dcdfe6;
 
 :root {
   --color-primary: #{$--color-primary};
-  --color-primary-bg: rgba(83, 83, 221, 0.1);
+  --color-primary-bg: rgba(22, 136, 255, 0.1);
   --bg-color: #{$--bg-color};
   --fill-color: #{$--fill-color};
   --border-color: #{$--border-color};
+  /* 中性文字（对齐 Ant Design 文本透明度阶梯，避免页内散落 #303133/#606266/#909399） */
+  --color-text: rgba(0, 0, 0, 0.88);
+  --color-text-secondary: rgba(0, 0, 0, 0.65);
+  --color-text-tertiary: rgba(0, 0, 0, 0.45);
 
-  // element-plus
-  --el-color-primary: #{$--color-primary};
-  --el-bg-color: #{$--bg-color};
-  --el-fill-color: #{$--fill-color};
-  --el-border-color: #{$--border-color};
+  /* Ant Design 桥接（少量覆盖用；主色以 ConfigProvider token 为准） */
+  --ant-color-primary: #{$--color-primary};
 
   // vxetable
   --vxe-ui-font-primary-color: #{$--color-primary};
+
+  /*
+   * Motion tokens（Apple / Emil）：
+   * --ease-out 强调出手即反馈；press 短、panel 中、fade 用于轻切页
+   */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-press: 140ms;
+  --dur-fade: 180ms;
+  --dur-panel: 220ms;
+
+  /*
+   * 布局铬条高度：页面用 100vh 扣减时必须计入 CS 顶栏，否则内容区溢出
+   * Web 无顶栏 → --cs-shell-bar-height: 0；Tauri 由 html.cs-shell 设为 44px
+   */
+  --layout-navbar-height: 50px;
+  --layout-tags-height: 38px;
+  --layout-page-margin-y: 24px; /* .app-page 上下 margin 12+12 */
+  --cs-tools-bar-height: 44px;
+  --cs-shell-bar-height: 0px;
+}
+
+/* Tauri 壳：顶栏占位，供 layout / app-page 的 vh 计算统一扣减 */
+html.cs-shell {
+  --cs-shell-bar-height: var(--cs-tools-bar-height);
+  overflow: hidden;
+
+  body,
+  #app {
+    overflow: hidden;
+  }
 }

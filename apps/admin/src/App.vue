@@ -17,6 +17,7 @@ import "dayjs/locale/zh-cn";
 import CsToolsBar from "@/components/CsToolsBar/index.vue";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri } from "@/utils/tauri";
+import { FONT_FAMILY, COLOR_TEXT, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, COLOR_TEXT_DISABLED } from "@/utils/theme";
 
 dayjs.locale("zh-cn");
 
@@ -28,11 +29,16 @@ const router = useRouter();
 const isCs = isTauri();
 const settingsStore = useSettingsStore();
 
-/** Ant Design 主题 token：跟随 settings.theme */
+/** Ant Design 主题 token：跟随 settings.theme；字族/字色与 theme.scss 统一 */
 const antdTheme = computed(() => ({
   token: {
     colorPrimary: settingsStore.theme || "#1688ff",
-    borderRadius: 8
+    borderRadius: 8,
+    fontFamily: FONT_FAMILY,
+    colorText: COLOR_TEXT,
+    colorTextSecondary: COLOR_TEXT_SECONDARY,
+    colorTextTertiary: COLOR_TEXT_TERTIARY,
+    colorTextDisabled: COLOR_TEXT_DISABLED
   }
 }));
 

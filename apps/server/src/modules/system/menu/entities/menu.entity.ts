@@ -58,15 +58,6 @@ export class SysMenuEntity extends BaseEntity {
   })
   public name: string;
 
-  @Column({
-    type: "varchar",
-    name: "active_menu",
-    length: 255,
-    default: "",
-    comment: "高亮菜单"
-  })
-  public activeMenu: string;
-
   //是否为外链
   @Column({
     type: "enum",
@@ -86,16 +77,6 @@ export class SysMenuEntity extends BaseEntity {
     comment: "是否缓存"
   })
   public isCache: YesNoEnum;
-
-  //是否显示
-  @Column({
-    type: "enum",
-    enum: YesNoEnum,
-    default: YesNoEnum.YES,
-    name: "visible",
-    comment: "是否显示"
-  })
-  public visible: YesNoEnum;
 
   @Column({
     type: "varchar",

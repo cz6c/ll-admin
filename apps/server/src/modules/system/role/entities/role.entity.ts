@@ -26,13 +26,13 @@ export class SysRoleEntity extends BaseEntity {
   })
   public roleKey: string;
 
-  //数据范围（1：全部数据权限 2：自定数据权限 3：本部门数据权限 4：本部门及以下数据权限 5：仅本人数据权限）
+  //数据范围（1全部 2本部门 3本部门及以下 4仅本人）
   @Column({
     type: "enum",
     enum: DataScopeEnum,
     default: DataScopeEnum.DATA_SCOPE_ALL,
     name: "data_scope",
-    comment: "数据范围"
+    comment: "数据范围（1全部 2本部门 3本部门及以下 4仅本人）"
   })
   public dataScope: DataScopeEnum;
 

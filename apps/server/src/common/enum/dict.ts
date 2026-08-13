@@ -91,35 +91,22 @@ export const UserType = {
 /**
  * 数据过滤规则枚举
  */
+/**
+ * 数据过滤规则枚举
+ * 1 全部 / 2 本部门 / 3 本部门及以下 / 4 仅本人（已移除原「自定」）
+ */
 export enum DataScopeEnum {
-  /**
-   * 全部数据权限
-   */
+  /** 全部数据权限 */
   DATA_SCOPE_ALL = "1",
-
-  /**
-   * 自定数据权限
-   */
-  DATA_SCOPE_CUSTOM = "2",
-
-  /**
-   * 部门数据权限
-   */
-  DATA_SCOPE_DEPT = "3",
-
-  /**
-   * 部门及以下数据权限
-   */
-  DATA_SCOPE_DEPT_AND_CHILD = "4",
-
-  /**
-   * 仅本人数据权限
-   */
-  DATA_SCOPE_SELF = "5"
+  /** 本部门数据权限 */
+  DATA_SCOPE_DEPT = "2",
+  /** 本部门及以下数据权限 */
+  DATA_SCOPE_DEPT_AND_CHILD = "3",
+  /** 仅本人数据权限 */
+  DATA_SCOPE_SELF = "4"
 }
 export const DataScope = {
   [DataScopeEnum.DATA_SCOPE_ALL]: "全部数据权限",
-  [DataScopeEnum.DATA_SCOPE_CUSTOM]: "自定数据权限",
   [DataScopeEnum.DATA_SCOPE_DEPT]: "部门数据权限",
   [DataScopeEnum.DATA_SCOPE_DEPT_AND_CHILD]: "部门及以下数据权限",
   [DataScopeEnum.DATA_SCOPE_SELF]: "仅本人数据权限"

@@ -4,22 +4,54 @@ $--bg-color: #ffffff;
 $--fill-color: #f0f2f5;
 $--border-color: #dcdfe6;
 
+/** 正文色阶：与 Ant Design colorText* 对齐 */
+$--color-text: rgba(0, 0, 0, 0.88);
+$--color-text-secondary: rgba(0, 0, 0, 0.65);
+$--color-text-tertiary: rgba(0, 0, 0, 0.45);
+$--color-text-disabled: rgba(0, 0, 0, 0.25);
+
+/**
+ * 正文字体：Ant Design 5 系统栈 + 中文兜底（PingFang / 微软雅黑）
+ * 等宽：代码块专用；页面禁止再写死另一套 font-family
+ */
+$--font-family:
+  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans",
+  "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", sans-serif, "Apple Color Emoji",
+  "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+$--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+  "Courier New", monospace;
+
 :root {
   --color-primary: #{$--color-primary};
   --color-primary-bg: rgba(22, 136, 255, 0.1);
   --bg-color: #{$--bg-color};
   --fill-color: #{$--fill-color};
   --border-color: #{$--border-color};
-  /* 中性文字（对齐 Ant Design 文本透明度阶梯，避免页内散落 #303133/#606266/#909399） */
-  --color-text: rgba(0, 0, 0, 0.88);
-  --color-text-secondary: rgba(0, 0, 0, 0.65);
-  --color-text-tertiary: rgba(0, 0, 0, 0.45);
+  /* 中性文字（对齐 Ant Design 文本透明度阶梯） */
+  --color-text: #{$--color-text};
+  --color-text-secondary: #{$--color-text-secondary};
+  --color-text-tertiary: #{$--color-text-tertiary};
+  --color-text-disabled: #{$--color-text-disabled};
+
+  --font-family: #{$--font-family};
+  --font-family-mono: #{$--font-family-mono};
 
   /* Ant Design 桥接（少量覆盖用；主色以 ConfigProvider token 为准） */
   --ant-color-primary: #{$--color-primary};
+  --ant-color-text: var(--color-text);
+  --ant-color-text-secondary: var(--color-text-secondary);
+  --ant-color-text-tertiary: var(--color-text-tertiary);
+  --ant-color-text-disabled: var(--color-text-disabled);
 
-  // vxetable
+  // vxetable：色与字族跟主题 token 走
   --vxe-ui-font-primary-color: #{$--color-primary};
+  --vxe-ui-font-family: var(--font-family);
+  --vxe-ui-font-color: var(--color-text);
+  --vxe-ui-font-lighten-color: var(--color-text-secondary);
+  --vxe-ui-font-disabled-color: var(--color-text-disabled);
+  --vxe-ui-table-header-font-weight: 500;
+  --vxe-ui-border-radius: var(--ant-border-radius, 8px);
+  --vxe-ui-table-border-radius: var(--vxe-ui-border-radius);
 
   /*
    * Motion tokens（Apple / Emil）：

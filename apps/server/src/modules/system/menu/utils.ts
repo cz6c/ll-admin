@@ -42,14 +42,14 @@ const formatTreeNodeBuildMenus = (menus: any[]): any[] => {
     const formattedNode: any = {};
     formattedNode.name = menu.name;
     formattedNode.path = getRouterPath(menu);
-    formattedNode.hidden = menu.visible === "1";
+    // 侧栏隐藏改由前端 staticRoutes.hidden 控制，动态菜单一律展示
+    formattedNode.hidden = false;
     formattedNode.component = menu.component;
     formattedNode.meta = {
       title: menu.menuName,
       icon: menu.icon,
       noCache: menu.isCache === YesNoEnum.NO,
-      link: menu.isFrame === YesNoEnum.YES ? menu.path : null,
-      activeMenu: menu.activeMenu
+      link: menu.isFrame === YesNoEnum.YES ? menu.path : null
     };
     if (menu.children) {
       formattedNode.redirect = "noRedirect";

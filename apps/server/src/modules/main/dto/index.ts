@@ -74,7 +74,7 @@ export class RouteMeta {
   icon: string;
 
   @ApiProperty({ description: "当路由设置了该属性，则会高亮相对应的侧边栏" })
-  activeMenu: string;
+  activeMenu?: string;
 
   @ApiProperty({ description: "是否忽略KeepAlive缓存" })
   noCache: boolean;

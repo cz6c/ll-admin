@@ -8,13 +8,11 @@ export type UpdateMenuDto = {
   path: string;
   component: string;
   name: string;
-  activeMenu: string;
   isCache: string;
   isFrame: string;
   perm: string;
   menuType: string;
   status: string;
-  visible: string;
   icon?: string;
 };
 

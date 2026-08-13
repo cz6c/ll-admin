@@ -1,16 +1,18 @@
 <script setup lang="ts">
 /**
  * 角色编辑表单
- * 职责：新增/编辑角色，含数据权限部门树与菜单权限树勾选
- * 适用：角色列表弹窗；树勾选态用 ant Tree checkedKeys
+ * 职责：新增/编辑角色；菜单权限为 VXE 树表「左菜单右功能」勾选（图2）
+ * 适用：角色列表弹窗；提交 menuIds（M+F）；无自定义部门数据权限
  */
 import { addRole, getRole, updateRole } from "@/api/system/role";
-import { roleDeptTreeSelect, deptTreeSelect } from "@/api/system/dept";
 import { roleMenuTreeSelect, menuTreeSelect } from "@/api/system/menu";
 import { useDict } from "@/hooks/useDict";
 import type { FormInstance, Rule } from "ant-design-vue/es/form";
-import type { Key } from "ant-design-vue/es/_util/type";
+import type { MenuTreeVo } from "#/api/system/menu";
+import type { VxeGridInstance, VxeGridProps } from "vxe-table";
+import type { VxeGridBindOptions } from "#/vxe-grid";
 import $feedback from "@/utils/feedback";
+import { collectAllMenuIds, toMenuTableRows, type MenuTableRow } from "@/utils/menuTree";
 
 defineOptions({
   name: "EditRoleForm"
@@ -23,20 +25,16 @@ const $emit = defineEmits(["success", "cancel"]);
 
 const { StatusEnum, DataScopeEnum } = toRefs(useDict("StatusEnum", "DataScopeEnum"));
 
-const menuOptions = ref([]);
-const menuExpand = ref(false);
+/** 原始树（含 F），提交全选时用 */
+const menuRawTree = ref<MenuTreeVo[]>([]);
+const menuExpand = ref(true);
 const menuNodeAll = ref(false);
-const menuExpandedKeys = ref<Key[]>([]);
-/** checkStrictly 时 ant Tree 使用 { checked, halfChecked } 结构 */
-const menuCheckedKeys = ref<{ checked: Key[]; halfChecked: Key[] }>({ checked: [], halfChecked: [] });
-
-const deptOptions = ref([]);
-const deptExpand = ref(false);
-const deptNodeAll = ref(false);
-const deptExpandedKeys = ref<Key[]>([]);
-const deptCheckedKeys = ref<{ checked: Key[]; halfChecked: Key[] }>({ checked: [], halfChecked: [] });
+/** 已勾选的 menuId（含 M 与 F） */
+const checkedMenuIds = ref<Set<number>>(new Set());
 
 const roleRef = ref<FormInstance>();
+const menuGridRef = ref<VxeGridInstance<MenuTableRow>>();
+
 const data = reactive({
   form: {
     roleId: undefined,
@@ -45,8 +43,8 @@ const data = reactive({
     roleSort: 0,
     dataScope: "1",
     status: "0",
-    menuIds: [],
-    deptIds: [],
+    menuIds: [] as number[],
+    deptIds: [] as number[],
     remark: undefined
   },
   rules: {
@@ -59,93 +57,151 @@ const data = reactive({
 
 const { form, rules } = toRefs(data);
 
-/** 递归收集树节点 key，用于展开/全选 */
-function collectKeys(nodes: any[], keyField: string): Key[] {
-  const keys: Key[] = [];
-  const walk = (list: any[]) => {
-    for (const n of list || []) {
-      keys.push(n[keyField]);
-      if (n.children?.length) walk(n.children);
+const menuGridOptions = reactive<VxeGridProps<MenuTableRow>>({
+  border: true,
+  height: 300,
+  // 权限多选换行需动态行高
+  showOverflow: false,
+  scrollY: {
+    enabled: false
+  },
+  rowConfig: {
+    keyField: "menuId",
+    isHover: true
+  },
+  treeConfig: {
+    childrenField: "children",
+    expandAll: true,
+    indent: 0
+  },
+  columns: [
+    {
+      field: "menuName",
+      title: "菜单",
+      width: 220,
+      treeNode: true,
+      align: "left",
+      showOverflow: true,
+      slots: {
+        default: "menu_slot"
+      }
+    },
+    {
+      field: "perms",
+      title: "权限",
+      showOverflow: false,
+      className: "menu-perm-cell",
+      slots: {
+        default: "perms_slot"
+      }
     }
-  };
-  walk(nodes);
-  return keys;
+  ],
+  data: []
+});
+
+function isChecked(id: number) {
+  return checkedMenuIds.value.has(id);
+}
+
+function setChecked(id: number, on: boolean) {
+  const next = new Set(checkedMenuIds.value);
+  if (on) next.add(id);
+  else next.delete(id);
+  checkedMenuIds.value = next;
+}
+
+/** 二级 M 勾选：联动其下全部 F */
+function onMenuCheck(row: MenuTableRow, checked: boolean) {
+  setChecked(row.menuId, checked);
+  for (const p of row.perms || []) {
+    setChecked(p.menuId, checked);
+  }
+  if (row.children?.length) {
+    for (const child of row.children) {
+      onMenuCheck(child, checked);
+    }
+  }
+  syncParentChecks();
+}
+
+/** 勾 F：自动勾所属二级 M */
+function onPermCheck(row: MenuTableRow, permId: number, checked: boolean) {
+  setChecked(permId, checked);
+  if (checked) setChecked(row.menuId, true);
+  syncParentChecks();
+}
+
+/** 一级 M：根据子级刷新勾选态 */
+function syncParentChecks() {
+  const next = new Set(checkedMenuIds.value);
+  for (const root of menuGridOptions.data || []) {
+    if (!root.children?.length) continue;
+    const allOn = root.children.every(c => next.has(c.menuId));
+    const anyOn = root.children.some(c => next.has(c.menuId));
+    if (allOn) next.add(root.menuId);
+    else if (!anyOn) next.delete(root.menuId);
+  }
+  checkedMenuIds.value = next;
+}
+
+function parentIndeterminate(row: MenuTableRow) {
+  if (!row.children?.length) return false;
+  const n = row.children.filter(c => isChecked(c.menuId)).length;
+  return n > 0 && n < row.children.length;
+}
+
+function applyMenuRows(rows: MenuTableRow[]) {
+  menuGridOptions.data = rows;
+  nextTick(() => {
+    if (menuExpand.value) {
+      unref(menuGridRef)?.setAllTreeExpand(true);
+    } else {
+      unref(menuGridRef)?.clearTreeExpand();
+    }
+  });
 }
 
 async function getInfo() {
   if (props.roleId) {
-    const { data } = await getRole(props.roleId);
+    const { data: role } = await getRole(props.roleId);
     for (const key of Object.keys(form.value)) {
-      form.value[key] = data[key];
+      form.value[key] = role[key];
     }
     nextTick(() => {
-      /** 根据角色ID查询菜单树结构 */
       roleMenuTreeSelect(props.roleId).then(res => {
-        menuOptions.value = res.data.menus;
-        menuCheckedKeys.value = { checked: res.data.checkedIds || [], halfChecked: [] };
-      });
-      /** 根据角色ID查询部门树结构 */
-      roleDeptTreeSelect(props.roleId).then(res => {
-        deptOptions.value = res.data.depts;
-        deptCheckedKeys.value = { checked: res.data.checkedIds || [], halfChecked: [] };
+        menuRawTree.value = res.data.menus;
+        applyMenuRows(toMenuTableRows(res.data.menus));
+        checkedMenuIds.value = new Set(res.data.checkedIds || []);
       });
     });
   }
 }
 
-/** 查询菜单树结构 */
 function getMenuTreeSelect() {
   menuTreeSelect().then(response => {
-    menuOptions.value = response.data;
-  });
-}
-/** 查询部门树结构 */
-function getDeptTreeSelect() {
-  deptTreeSelect().then(response => {
-    deptOptions.value = response.data;
+    menuRawTree.value = response.data;
+    applyMenuRows(toMenuTableRows(response.data));
   });
 }
 
-/** 树权限（展开/折叠）*/
-function handleCheckedTreeExpand(checked: boolean, type: number) {
-  if (type === 1) {
-    deptExpandedKeys.value = checked ? collectKeys(deptOptions.value, "deptId") : [];
-  } else {
-    menuExpandedKeys.value = checked ? collectKeys(menuOptions.value, "menuId") : [];
-  }
-}
-/** 树权限（全选/全不选） */
-function handleCheckedTreeNodeAll(checked: boolean, type: number) {
-  if (type === 1) {
-    deptCheckedKeys.value = {
-      checked: checked ? collectKeys(deptOptions.value, "deptId") : [],
-      halfChecked: []
-    };
-  } else {
-    menuCheckedKeys.value = {
-      checked: checked ? collectKeys(menuOptions.value, "menuId") : [],
-      halfChecked: []
-    };
-  }
-}
-/** 菜单勾选结果：含全选 + 半选节点 id（后端权限树提交约定） */
-function getMenuAllCheckedKeys() {
-  return [...menuCheckedKeys.value.checked, ...menuCheckedKeys.value.halfChecked];
-}
-/** 所有勾选部门节点数据 */
-function getDeptAllCheckedKeys() {
-  return [...deptCheckedKeys.value.checked, ...deptCheckedKeys.value.halfChecked];
+function handleCheckedTreeExpand(checked: boolean) {
+  menuExpand.value = checked;
+  if (checked) unref(menuGridRef)?.setAllTreeExpand(true);
+  else unref(menuGridRef)?.clearTreeExpand();
 }
 
-/** 提交按钮 */
+function handleCheckedTreeNodeAll(checked: boolean) {
+  checkedMenuIds.value = new Set(checked ? collectAllMenuIds(menuRawTree.value) : []);
+}
+
 async function submitForm() {
   try {
     await unref(roleRef)?.validate();
   } catch {
     return;
   }
-  form.value.deptIds = getDeptAllCheckedKeys();
-  form.value.menuIds = getMenuAllCheckedKeys();
+  form.value.deptIds = [];
+  form.value.menuIds = [...checkedMenuIds.value];
   const flag = form.value.roleId != undefined;
   flag ? await updateRole(form.value) : await addRole(form.value);
   $feedback.message.success(flag ? "修改成功" : "新增成功");
@@ -154,7 +210,6 @@ async function submitForm() {
 }
 
 getMenuTreeSelect();
-getDeptTreeSelect();
 getInfo();
 </script>
 
@@ -173,35 +228,33 @@ getInfo();
       <a-form-item label="数据权限" name="dataScope">
         <a-select v-model:value="form.dataScope" placeholder="数据权限范围" :options="DataScopeEnum" style="width: 100%" />
       </a-form-item>
-      <a-form-item v-if="form.dataScope === '2'" label="自定义范围">
-        <div>
-          <a-checkbox v-model:checked="deptExpand" @change="e => handleCheckedTreeExpand(e.target.checked, 1)">展开/折叠</a-checkbox>
-          <a-checkbox v-model:checked="deptNodeAll" @change="e => handleCheckedTreeNodeAll(e.target.checked, 1)">全选/全不选</a-checkbox>
-          <div class="tree-border" style="height: 100px; overflow: auto">
-            <a-tree
-              v-model:checkedKeys="deptCheckedKeys"
-              v-model:expandedKeys="deptExpandedKeys"
-              checkable
-              check-strictly
-              :tree-data="deptOptions"
-              :field-names="{ title: 'deptName', key: 'deptId', children: 'children' }"
-            />
-          </div>
-        </div>
-      </a-form-item>
       <a-form-item label="菜单权限">
         <div>
-          <a-checkbox v-model:checked="menuExpand" @change="e => handleCheckedTreeExpand(e.target.checked, 2)">展开/折叠</a-checkbox>
-          <a-checkbox v-model:checked="menuNodeAll" @change="e => handleCheckedTreeNodeAll(e.target.checked, 2)">全选/全不选</a-checkbox>
-          <div class="tree-border" style="height: 100px; overflow: auto">
-            <a-tree
-              v-model:checkedKeys="menuCheckedKeys"
-              v-model:expandedKeys="menuExpandedKeys"
-              checkable
-              check-strictly
-              :tree-data="menuOptions"
-              :field-names="{ title: 'menuName', key: 'menuId', children: 'children' }"
-            />
+         <a-space class="h-[32px]">
+          <a-checkbox :checked="menuExpand" @change="e => handleCheckedTreeExpand(e.target.checked)">展开/折叠</a-checkbox>
+          <a-checkbox v-model:checked="menuNodeAll" @change="e => handleCheckedTreeNodeAll(e.target.checked)">全选/全不选</a-checkbox>
+         </a-space>
+          <div class="menu-perm-table mt-2">
+            <vxe-grid ref="menuGridRef" v-bind="menuGridOptions as VxeGridBindOptions">
+              <template #menu_slot="{ row }">
+                <div class="menu-name-cell">
+                  <!-- 仅二级显示 └ 拐角，与菜单管理一致 -->
+                  <svg v-if="row.parentId !== 0" class="menu-tree-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+                    <path d="M4 2v8a2 2 0 0 0 2 2h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <a-checkbox :checked="isChecked(row.menuId)" :indeterminate="parentIndeterminate(row)" @change="e => onMenuCheck(row, e.target.checked)">
+                    {{ row.menuName }}
+                  </a-checkbox>
+                </div>
+              </template>
+              <template #perms_slot="{ row }">
+                <div v-if="row.perms?.length" class="menu-perm-tags" wrap>
+                  <a-checkbox v-for="p in row.perms" :key="p.menuId" :checked="isChecked(p.menuId)" @change="e => onPermCheck(row, p.menuId, e.target.checked)">
+                    {{ p.menuName }}
+                  </a-checkbox>
+                </div>
+              </template>
+            </vxe-grid>
           </div>
         </div>
       </a-form-item>
@@ -226,4 +279,30 @@ getInfo();
   </div>
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+:deep(.menu-name-cell) {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+:deep(.menu-tree-icon) {
+  flex-shrink: 0;
+  margin-right: 4px;
+  color: var(--color-text-secondary);
+}
+
+:deep(.menu-perm-tags) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+:deep(.menu-perm-cell .vxe-cell) {
+  white-space: normal !important;
+  max-height: none !important;
+  height: auto !important;
+}
+</style>

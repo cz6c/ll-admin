@@ -1,7 +1,11 @@
 <script setup lang="tsx">
+/**
+ * 菜单管理
+ * 职责：两级 M 树表（菜单名称 | 权限）；F 展示在权限列；行内 CRUD
+ * 主流程：拉取树 → toMenuTableRows → VXE；功能增删改仍走 EditMenuForm
+ */
 import { delMenu, menuTreeSelect } from "@/api/system/menu";
-import { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
-import { formatToDatetime } from "@llcz/common";
+import type { MenuTreeVo, SysMenuListParams } from "#/api/system/menu";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchFormItem } from "@/components/FormView/type";
@@ -11,6 +15,7 @@ import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
 import EditMenuForm from "./components/EditMenuForm.vue";
 import { findPathFromTree } from "@llcz/common";
+import { toMenuTableRows, type MenuTableRow } from "@/utils/menuTree";
 
 defineOptions({
   name: "MenuIndex"
@@ -62,14 +67,18 @@ const toolbarButtons: BtnOptionsProps[] = [
   }
 ];
 
-const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
+const gridOptions = reactive<VxeGridProps<MenuTableRow>>({
   height: "auto",
+  border: true,
   loading: true,
+  // 权限标签多行换行需动态行高；全局 tooltip 溢出会锁死等高
+  showOverflow: false,
+  scrollY: {
+    enabled: false
+  },
   treeConfig: {
-    childrenField: "children"
-    // transform: true,
-    // rowField: "menuId",
-    // parentField: "parentId"
+    childrenField: "children",
+    indent: 0
   },
   toolbarConfig: {
     refreshOptions: {
@@ -81,9 +90,9 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
       buttons: "toolbar_buttons"
     }
   },
-  id: route.path, // 用户个性化记忆功能，必须确保 id 是整个全局唯一的
+  id: route.path,
   customConfig: {
-    storage: true, // 存储key VXE_CUSTOM_STORE
+    storage: true,
     checkMethod({ column }) {
       return !["menuName", "tools"].includes(column.field);
     }
@@ -92,46 +101,71 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
     {
       field: "menuName",
       title: "菜单名称",
+      width: 200,
+      align: "left",
+      showOverflow: true,
       slots: {
         default({ row }) {
+          // 仅二级显示层级图标，顶级不占位不画线
+          const isChild = row.parentId !== 0;
           return (
-            <div class="flex-center">
-              <iconify-icon icon={row.icon} width="14px" height="14px" />
-              <span class="ml-1">{row.menuName}</span>
+            <div class="menu-name-cell">
+              {isChild ? (
+                <svg
+                  class="menu-tree-icon"
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 2v8a2 2 0 0 0 2 2h6"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : null}
+              <span>{row.menuName}</span>
             </div>
           );
         }
       },
-      treeNode: true,
-      fixed: "left"
+      treeNode: true
     },
     {
-      field: "icon",
-      title: "菜单类型",
+      field: "permText",
+      title: "权限",
+      showOverflow: false,
+      className: "menu-perm-cell",
       slots: {
         default({ row }) {
-          return <a-tag color={row.menuType === "M" ? "processing" : "warning"}>{row.menuType === "M" ? "菜单" : "功能"}</a-tag>;
+          if (!row.perms?.length) return null;
+          return (
+            <div class="menu-perm-tags">
+              {row.perms.map(p => (
+                <a-tag
+                  key={p.menuId}
+                  closable
+                  class="cursor-pointer"
+                  onClick={(e: MouseEvent) => {
+                    e.stopPropagation();
+                    handleUpdate(p as unknown as MenuTreeVo, true);
+                  }}
+                  onClose={(e: Event) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDeletePerm(p);
+                  }}
+                >
+                  {`${p.menuName} (${p.perm})`}
+                </a-tag>
+              ))}
+            </div>
+          );
         }
-      }
-    },
-    { field: "component", title: "组件路径" },
-    { field: "perm", title: "功能权限标识" },
-    { field: "orderNum", title: "排序" },
-    {
-      field: "status",
-      title: "状态",
-      slots: {
-        default({ row }) {
-          return <dict-tag options={StatusEnum.value} value={row.status} />;
-        }
-      }
-    },
-    {
-      field: "createTime",
-      title: "创建时间",
-      width: 150,
-      formatter: ({ row }) => {
-        return formatToDatetime(row.createTime);
       }
     },
     {
@@ -139,6 +173,7 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
       title: "操作",
       width: 240,
       fixed: "right",
+      showOverflow: true,
       slots: {
         default: "tools_slot"
       }
@@ -147,13 +182,19 @@ const gridOptions = reactive<VxeGridProps<MenuTreeVo>>({
   data: []
 });
 
+/** 接口树压成两列展示结构 */
+async function fetchMenuTable(params?: SysMenuListParams) {
+  const res = await menuTreeSelect(params as any);
+  return { ...res, data: toMenuTableRows(res.data as MenuTreeVo[]) };
+}
+
 const { gridRef, gridEvents, initListSearch, resetListSearch } = useTable({
   gridOptions,
-  getListApi: menuTreeSelect,
+  getListApi: fetchMenuTable,
   apiQuery
 });
 
-const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
+const rowButtons: BtnOptionsProps<MenuTableRow>[] = [
   {
     btnText: "修改",
     props: {
@@ -162,7 +203,7 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
     icon: "ant-design:edit-outlined",
     authCode: "edit",
     handleClick: ({ row }) => {
-      handleUpdate(row, row.menuType === "F");
+      handleUpdate(row, false);
     }
   },
   {
@@ -205,23 +246,18 @@ const rowButtons: BtnOptionsProps<MenuTreeVo>[] = [
 
 initListSearch();
 
-/** 重置按钮操作 */
 function handleReset() {
   resetListSearch();
 }
 
 const expandAll = ref(false);
-/**
- * @description: 展开收缩全部行
- */
 function expandAllChange() {
   expandAll.value = !expandAll.value;
   unref(expandAll) && unref(gridRef).setAllTreeExpand(true);
   !unref(expandAll) && unref(gridRef).clearTreeExpand();
 }
 
-/** 删除按钮操作 */
-function handleDelete(row) {
+function handleDelete(row: MenuTableRow | MenuTreeVo) {
   $feedback
     .confirm('是否确认删除名称为"' + row.menuName + '"的数据项?')
     .then(function () {
@@ -234,23 +270,23 @@ function handleDelete(row) {
     .catch(() => {});
 }
 
-/*** 角色编辑弹窗参数 */
+/** 权限列标签关闭：删 F */
+function handleDeletePerm(p: { menuId: number; menuName: string }) {
+  handleDelete(p as MenuTreeVo);
+}
+
 const editDialog = reactive({
-  // 是否显示弹出层
   open: false,
-  // 弹出层标题
   title: "",
-  menuId: undefined,
-  parentId: undefined,
+  menuId: undefined as number | undefined,
+  parentId: undefined as number | undefined,
   parentName: "",
-  isPerm: false // 按钮表单
+  isPerm: false
 });
 
-/** 新增按钮操作 */
-function handleAdd(row, isPerm = false) {
+function handleAdd(row: MenuTableRow | null, isPerm = false) {
   editDialog.menuId = undefined;
   editDialog.parentId = row ? row.menuId : 0;
-  // editDialog.parentName = row ? row.menuName : "";
   editDialog.parentName = row
     ? findPathFromTree(gridOptions.data, c => c.menuName === row.menuName)
         .map(c => c.menuName)
@@ -260,8 +296,8 @@ function handleAdd(row, isPerm = false) {
   editDialog.title = !isPerm ? "添加菜单" : "添加功能";
   editDialog.open = true;
 }
-/** 修改按钮操作 */
-function handleUpdate(row, isPerm = false) {
+
+function handleUpdate(row: MenuTreeVo | MenuTableRow | { menuId: number }, isPerm = false) {
   editDialog.menuId = row.menuId;
   editDialog.isPerm = isPerm;
   editDialog.title = !isPerm ? "修改菜单" : "修改功能";
@@ -271,7 +307,6 @@ function handleUpdate(row, isPerm = false) {
 
 <template>
   <div class="app-page cz-card">
-    <!-- 表格数据 -->
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
         <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
@@ -284,7 +319,6 @@ function handleUpdate(row, isPerm = false) {
       </template>
     </vxe-grid>
 
-    <!-- 添加或修改对话框 -->
     <a-modal v-model:open="editDialog.open" :title="editDialog.title" :width="editDialog.isPerm ? '600px' : '800px'" :footer="null" destroy-on-close>
       <EditMenuForm
         v-if="editDialog.open"
@@ -298,3 +332,32 @@ function handleUpdate(row, isPerm = false) {
     </a-modal>
   </div>
 </template>
+
+<style scoped lang="scss">
+/* JSX/VXE 插槽节点无 data-v，用 :deep 打到表格内部后代 */
+:deep(.menu-name-cell) {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+:deep(.menu-tree-icon) {
+  flex-shrink: 0;
+  margin-right: 4px;
+  color: var(--color-text-secondary);
+}
+
+:deep(.menu-perm-tags) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+:deep(.menu-perm-cell .vxe-cell) {
+  white-space: normal !important;
+  max-height: none !important;
+  height: auto !important;
+}
+</style>

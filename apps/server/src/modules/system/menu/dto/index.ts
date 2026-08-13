@@ -32,11 +32,6 @@ export class CreateMenuDto {
   @Length(0, 50)
   name: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
-  @Length(0, 200)
-  activeMenu: string;
-
   @ApiProperty({ required: true })
   @IsEnum(YesNoEnum)
   isCache: YesNoEnum;
@@ -56,10 +51,6 @@ export class CreateMenuDto {
   @ApiProperty({ required: true })
   @IsEnum(StatusEnum)
   status: StatusEnum;
-
-  @ApiProperty({ required: true })
-  @IsEnum(YesNoEnum)
-  visible: YesNoEnum;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -111,9 +102,6 @@ export class SysMenuVo extends BaseVO {
   @ApiProperty({ description: "组件name" })
   public name: string;
 
-  @ApiProperty({ description: "高亮菜单" })
-  public activeMenu: string;
-
   @ApiProperty({
     description: "是否为外链",
     enum: YesNoEnum
@@ -125,12 +113,6 @@ export class SysMenuVo extends BaseVO {
     enum: YesNoEnum
   })
   public isCache: YesNoEnum.YES;
-
-  @ApiProperty({
-    description: "是否显示",
-    enum: YesNoEnum
-  })
-  public visible: YesNoEnum.YES;
 
   @ApiProperty({ description: "菜单图标" })
   public icon: string;

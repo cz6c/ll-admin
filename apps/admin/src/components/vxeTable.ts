@@ -1,5 +1,15 @@
 import { VxeTooltip } from "vxe-pc-ui";
 import { VxeUI, VxeGrid } from "vxe-table";
+
+/**
+ * 树表展开/收起图标：对齐 ant-design up/down-circle-outlined
+ * VXE 仅接受 class 名挂在 <i> 上，具体图形见 assets/style/vxeTable.scss
+ */
+VxeUI.setIcon({
+  TABLE_TREE_OPEN: "cz-vxe-tree-icon-up-circle",
+  TABLE_TREE_CLOSE: "cz-vxe-tree-icon-down-circle"
+});
+
 // https://vxetable.cn/#/table/api
 VxeUI.setConfig({
   table: {
@@ -14,6 +24,13 @@ VxeUI.setConfig({
     emptyText: "暂无数据",
     tooltipConfig: {
       enterable: true
+    },
+    cellConfig: {
+      height: 40
+    },
+    headerCellConfig: {
+      height: 40,
+      padding: false
     },
     rowConfig: {
       keyField: "_VXE_ID",

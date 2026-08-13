@@ -115,10 +115,6 @@ export class UserService {
         if (role.dataScope === DataScopeEnum.DATA_SCOPE_ALL) {
           dataScopeAll = true;
           break;
-        } else if (role.dataScope === DataScopeEnum.DATA_SCOPE_CUSTOM) {
-          // 根据角色ID 查询部门ID列表
-          const roleWithDeptIds = await this.roleService.findRoleWithDeptIds(role.roleId);
-          deptIds.push(...roleWithDeptIds);
         } else if (role.dataScope === DataScopeEnum.DATA_SCOPE_DEPT || role.dataScope === DataScopeEnum.DATA_SCOPE_DEPT_AND_CHILD) {
           // 根据用户关联部门ID和数据权限范围 查询部门ID列表。
           const dataScopeWidthDeptIds = await this.deptService.findDeptIdsByDataScope(tokenData.user.deptId, role.dataScope);

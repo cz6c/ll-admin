@@ -29,8 +29,6 @@ const data = reactive({
     orderNum: 0,
     isFrame: "1",
     isCache: "0",
-    visible: "0",
-    activeMenu: "",
     status: "0",
     component: "",
     name: "",
@@ -212,24 +210,6 @@ getInfo();
                 <span v-tippy="{ content: '选择缓存，则会被`keep-alive`缓存，需匹配组件名称使用' }"> 是否缓存 </span>
               </template>
               <a-radio-group v-model:value="form.isCache">
-                <a-radio v-for="dict in YesNoEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
-              </a-radio-group>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item name="activeMenu">
-              <template #label>
-                <span v-tippy="{ content: '选择隐藏时，可配置高亮菜单，如：`/system/user`' }"> 高亮菜单 </span>
-              </template>
-              <a-input v-model:value="form.activeMenu" placeholder="请输入高亮菜单" :maxlength="255" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item name="visible">
-              <template #label>
-                <span v-tippy="{ content: '选择隐藏则菜单将不会出现在侧边栏，但仍然可以访问' }"> 显示状态 </span>
-              </template>
-              <a-radio-group v-model:value="form.visible">
                 <a-radio v-for="dict in YesNoEnum" :key="dict.value" :value="dict.value">{{ dict.label }}</a-radio>
               </a-radio-group>
             </a-form-item>

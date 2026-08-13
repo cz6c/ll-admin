@@ -3,6 +3,7 @@ import type { RouteRecordRaw, RouterHistory } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
 import { dailyReportConstantRoutes } from "@/router/dailyReport";
+import { staticRoutes } from "@/router/staticRoutes";
 import { isTauri } from "@/utils/tauri";
 
 export const Layout = () => import("@/layout/index.vue");
@@ -75,6 +76,8 @@ const routesList: AppRouteRecordRaw[] = [
   },
   // CS 工作日报：静态路由、免登录；入口在 Navbar 操作栏
   ...(isTauri() ? dailyReportConstantRoutes : []),
+  // 菜单外静态页（个人中心等）：登录即可访问，不进侧栏、不进 sys_menu
+  ...staticRoutes,
   {
     path: "/:pathMatch(.*)*",
     name: RouterEnum.BASE_NOT_FOUND_NAME,

@@ -11,6 +11,8 @@
     "build:dev": "rollup -c",
     "build": "rollup -c --environment production",
     "typecheck": "tsc --noEmit",
+    "bump": "node ./scripts/bumpVersion.mjs",
+    "release": "pnpm run bump && npm publish --access public",
     "prepack": "pnpm run build",
     "pack": "npm publish --access public",
     "postpublish": "node ./scripts/sync-consumers.mjs",

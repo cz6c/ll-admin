@@ -495,7 +495,6 @@ function fmtDiff(diff: number) {
         <view v-if="showActionRail" class="action-rail">
           <view v-if="canRevertInferred" class="action-rail__status">
             <view class="action-rail__status-main">
-              <view class="action-rail__status-icon i-carbon-checkmark-filled" />
               <view class="action-rail__status-copy">
                 <text class="action-rail__status-title">
                   已按报税收入
@@ -568,11 +567,11 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 差在哪：只留对比表，原因已在结论卡 -->
+      <!-- 对比表：原因已在结论卡 -->
       <view class="mt-24rpx card-rounded px-32rpx pb-8rpx">
         <view class="flex items-center gap-16rpx py-24rpx">
           <text class="text-30rpx text-#333 font-600">
-            差在哪
+            对比表
           </text>
           <text class="min-w-0 flex-1 text-24rpx text-#999">
             系统 vs 工资条
@@ -594,10 +593,7 @@ function fmtDiff(diff: number) {
               差异
             </text>
           </view>
-          <view
-            class="compare-list__row"
-            :class="{ 'compare-list__row--warn': !verify.taxMatch }"
-          >
+          <view class="compare-list__row">
             <text class="compare-list__cell compare-list__cell--item">
               个税
             </text>
@@ -611,10 +607,7 @@ function fmtDiff(diff: number) {
               {{ verify.taxMatch ? '一致' : fmtDiff(verify.taxDiff) }}
             </text>
           </view>
-          <view
-            class="compare-list__row"
-            :class="{ 'compare-list__row--warn': !verify.postTaxMatch }"
-          >
+          <view class="compare-list__row">
             <text class="compare-list__cell compare-list__cell--item">
               税后月薪
             </text>
@@ -967,8 +960,6 @@ function fmtDiff(diff: number) {
   flex-direction: column;
   gap: 8rpx;
   margin-top: 28rpx;
-  padding-top: 24rpx;
-  border-top: 1rpx solid rgba(0, 0, 0, 0.04);
 }
 
 /*
@@ -997,13 +988,6 @@ function fmtDiff(diff: number) {
   gap: 14rpx;
   min-width: 0;
   flex: 1;
-}
-
-.action-rail__status-icon {
-  flex-shrink: 0;
-  width: 28rpx;
-  height: 28rpx;
-  color: var(--wot-success-main);
 }
 
 .action-rail__status-copy {
@@ -1109,7 +1093,7 @@ function fmtDiff(diff: number) {
   align-items: center;
   justify-content: center;
   gap: 4rpx;
-  padding: 12rpx 8rpx 4rpx;
+  padding: 16rpx 8rpx 4rpx;
 }
 
 .action-rail__link-text {
@@ -1297,19 +1281,6 @@ function fmtDiff(diff: number) {
 
 .compare-list__row + .compare-list__row {
   border-top: 1rpx solid #f0f2f5;
-}
-
-.compare-list__row--warn {
-  margin: 0 -12rpx;
-  padding-left: 12rpx;
-  padding-right: 12rpx;
-  border-radius: 12rpx;
-  background: var(--wot-warning-surface, #fff7e8);
-}
-
-.compare-list__row--warn + .compare-list__row,
-.compare-list__row + .compare-list__row--warn {
-  border-top-color: transparent;
 }
 
 .compare-list__cell {

@@ -72,6 +72,7 @@ function fmt(n: number | null) {
   return formatSalaryAmount(n)
 }
 
+/** 状态列配色：不用警告色（报税修正只靠计入累计金额的橙色区分） */
 function statusClass(status: YearLedgerRow['status']) {
   return `ledger-row__status--${status}`
 }
@@ -115,7 +116,7 @@ function goEmptyVerify() {
             {{ ledger.title }}
           </text>
           <text class="mt-12rpx block text-24rpx text-#999 leading-relaxed">
-            与个人所得税 App「收入纳税明细」对照；* 为报税收入
+            与个人所得税 App「收入纳税明细」对照
           </text>
         </view>
       </view>
@@ -152,16 +153,13 @@ function goEmptyVerify() {
               <text class="ledger-head__m">
                 月
               </text>
-              <text class="ledger-head__col ledger-head__col--main">
-                计入累计
-              </text>
               <text class="ledger-head__col">
-                条上应发
+                计入累计
               </text>
               <text class="ledger-head__col">
                 个税
               </text>
-              <text class="ledger-head__st">
+              <text class="ledger-head__col">
                 状态
               </text>
             </view>
@@ -182,16 +180,16 @@ function goEmptyVerify() {
               <text class="ledger-row__m tabular-nums">
                 {{ row.month }}
               </text>
-              <text class="ledger-row__col ledger-row__col--main tabular-nums">
-                {{ fmt(row.cumulativePreTax) }}{{ row.useDeclared ? '*' : '' }}
-              </text>
-              <text class="ledger-row__col tabular-nums">
-                {{ fmt(row.slipPreTax) }}
+              <text
+                class="ledger-row__col tabular-nums"
+                :class="{ 'ledger-row__col--declared': row.useDeclared }"
+              >
+                {{ fmt(row.cumulativePreTax) }}
               </text>
               <text class="ledger-row__col tabular-nums">
                 {{ fmt(row.slipTax) }}
               </text>
-              <text class="ledger-row__st" :class="statusClass(row.status)">
+              <text class="ledger-row__col" :class="statusClass(row.status)">
                 {{ yearLedgerStatusLabel(row.status) }}
               </text>
             </view>
@@ -200,16 +198,13 @@ function goEmptyVerify() {
               <text class="ledger-foot__label">
                 合计
               </text>
-              <text class="ledger-foot__col ledger-foot__col--main tabular-nums">
-                {{ fmt(ledger.sumCumulativePreTax) }}
-              </text>
               <text class="ledger-foot__col tabular-nums">
-                —
+                {{ fmt(ledger.sumCumulativePreTax) }}
               </text>
               <text class="ledger-foot__col tabular-nums">
                 {{ fmt(ledger.sumSlipTax) }}
               </text>
-              <text class="ledger-foot__st" />
+              <text class="ledger-foot__col" />
             </view>
           </view>
         </view>
@@ -269,24 +264,6 @@ function goEmptyVerify() {
   text-align: right;
 }
 
-.ledger-head__col--main,
-.ledger-row__col--main,
-.ledger-foot__col--main {
-  color: #333;
-  font-weight: 600;
-  font-size: 24rpx;
-}
-
-.ledger-head__st,
-.ledger-row__st,
-.ledger-foot__st {
-  width: 120rpx;
-  flex-shrink: 0;
-  font-size: 22rpx;
-  text-align: right;
-  color: #999;
-}
-
 .ledger-row {
   border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
 }
@@ -294,6 +271,12 @@ function goEmptyVerify() {
 .ledger-row__col {
   color: #666;
   font-size: 24rpx;
+}
+
+/* 报税修正：仅金额用警告色；状态列保持中性/语义色，不用警告色 */
+.ledger-row__col--declared {
+  color: var(--wot-warning-main);
+  font-weight: 600;
 }
 
 .ledger-row--pressed {
@@ -317,11 +300,11 @@ function goEmptyVerify() {
 }
 
 .ledger-row__status--declared {
-  color: var(--wot-primary-6);
+  color: var(--wot-success-main);
 }
 
 .ledger-row__status--missing {
-  color: var(--wot-warning-main);
+  color: var(--wot-primary-6);
 }
 
 .ledger-row__status--future {
@@ -340,6 +323,7 @@ function goEmptyVerify() {
   font-size: 20rpx;
   color: #999;
   line-height: 1.2;
+  text-align: center;
 }
 
 .ledger-foot__col {

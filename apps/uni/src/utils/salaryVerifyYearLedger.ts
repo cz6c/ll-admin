@@ -1,8 +1,9 @@
 import type { Dayjs } from 'dayjs'
 /**
  * 本年累计对照台账模型
- * 职责：按自然年生成 1–12 月行（计入累计应发 / 工资条应发 / 个税 / 状态）与已核合计
+ * 职责：按自然年生成 1–12 月行（计入累计收入 / 个税 / 状态）与已核合计
  * 适用：verifyYear 对照页；与个税 App「收入纳税明细」逐月对照
+ * @note 计入累计 = 修正金额 | 应发−其他扣款（见 effectivePreTaxForCumulative）
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import dayjs from 'dayjs'
@@ -25,15 +26,13 @@ export interface YearLedgerRow {
   /** 已核时有值 */
   recordId?: string
   /**
-   * 计入累计的应发（主列，对个税 App）
-   * @note 确认申报后为 inferredPreTax；待核/未到为 null
+   * 计入累计的收入（主列，对个税 App「本期收入」）
+   * @note 有修正用修正金额；默认应发 − 其他扣款；待核/未到为 null
    */
   cumulativePreTax: number | null
-  /** 工资条应发；待核/未到为 null */
-  slipPreTax: number | null
   /** 工资条个税；待核/未到为 null */
   slipTax: number | null
-  /** 是否申报口径（主列带 *） */
+  /** 是否报税修正口径（计入累计用警告色） */
   useDeclared: boolean
 }
 
@@ -109,7 +108,6 @@ export function buildYearVerifyLedger(
         payPeriod,
         status: 'future',
         cumulativePreTax: null,
-        slipPreTax: null,
         slipTax: null,
         useDeclared: false,
       })
@@ -123,7 +121,6 @@ export function buildYearVerifyLedger(
         payPeriod,
         status: 'missing',
         cumulativePreTax: null,
-        slipPreTax: null,
         slipTax: null,
         useDeclared: false,
       })
@@ -133,7 +130,7 @@ export function buildYearVerifyLedger(
     const useDeclared = Boolean(record.useInferredForCumulative && record.inferredPreTax != null)
     const cumulativePreTax = effectivePreTaxForCumulative(record)
     const result = computeVerifyForRecord(record, records)
-    // 已按申报优先于有差异，便于对照 App 时识别口径
+    // 已按报税优先于有差异，便于对照 App 时识别口径
     let status: YearLedgerRowStatus
     if (useDeclared)
       status = 'declared'
@@ -148,7 +145,6 @@ export function buildYearVerifyLedger(
       status,
       recordId: record.id,
       cumulativePreTax,
-      slipPreTax: record.preTaxMonthly,
       slipTax: record.personalIncomeTax,
       useDeclared,
     })

@@ -115,7 +115,7 @@ function goEmptyVerify() {
             {{ ledger.title }}
           </text>
           <text class="mt-12rpx block text-24rpx text-#999 leading-relaxed">
-            与个税 App「收入纳税明细」对照；* 为申报口径
+            与个人所得税 App「收入纳税明细」对照；* 为报税收入
           </text>
         </view>
       </view>

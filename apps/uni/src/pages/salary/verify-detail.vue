@@ -202,11 +202,11 @@ const showActionRail = computed(() => {
 const confirmActionSub = computed(() => {
   const v = verify.value
   if (!v?.inferredPreTax)
-    return '后续月份按个税 App 收入计算'
-  return `系统估算约 ¥${formatSalaryAmount(v.inferredPreTax)}`
+    return '后续月份按报税收入计算'
+  return `估你报税约 ¥${formatSalaryAmount(v.inferredPreTax)}`
 })
 
-/** 确认按个税 App 收入：二次确认弹层（默认可改系统估算应发） */
+/** 确认报税收入：二次确认弹层（默认可改系统估算应发） */
 const showInferredConfirm = ref(false)
 /** 弹层内申报收入输入（字符串便于 digit 输入） */
 const inferredEditText = ref('')
@@ -293,7 +293,7 @@ async function submitConfirmedInferred() {
     // 以详情接口为准重拉 item + relatedVerifyList，避免仅信 upsert 回包漏字段
     historyId.value = updated.id
     await fetchDetail({ silent: true })
-    uni.showToast({ title: '已按个税 App 口径', icon: 'success' })
+    uni.showToast({ title: '已按报税收入', icon: 'success' })
   }
   catch (err) {
     const msg = err instanceof Error ? err.message : '保存失败'
@@ -463,7 +463,7 @@ function fmtDiff(diff: number) {
 <template>
   <view class="page-shell pb-safe">
     <view v-if="record && verify && breakdown" class="p-24rpx">
-      <!-- 顶部结论卡：一致或差异；缺月只提示累计口径 -->
+      <!-- 顶部结论卡：结论一行 + 原因全文宽；操作轨再下沉，避免头区挤成一团 -->
       <view class="summary-card card-rounded p-32rpx">
         <view class="summary-card__head">
           <view class="summary-card__icon" :class="summaryMatch ? 'is-ok' : 'is-warn'">
@@ -476,11 +476,12 @@ function fmtDiff(diff: number) {
             <text class="summary-card__period">
               {{ summaryPeriodLabel }}
             </text>
-            <text v-if="summaryCause" class="summary-card__sub">
-              {{ summaryCause }}
-            </text>
           </view>
         </view>
+
+        <text v-if="summaryCause" class="summary-card__sub">
+          {{ summaryCause }}
+        </text>
 
         <view v-if="calcModeHint" class="summary-card__hint mt-20rpx">
           <text class="summary-card__hint-text">
@@ -489,16 +490,15 @@ function fmtDiff(diff: number) {
         </view>
 
         <!--
-          操作轨：同时只一条主 CTA（按个税 App / 修改工资条）；
-          补缺月只在首页进度卡引导
+          操作轨：主路径用选择行；次链降为文字链，减轻结论卡厚度
         -->
-        <view v-if="showActionRail" class="action-rail mt-28rpx">
+        <view v-if="showActionRail" class="action-rail">
           <view v-if="canRevertInferred" class="action-rail__status">
             <view class="action-rail__status-main">
               <view class="action-rail__status-icon i-carbon-checkmark-filled" />
               <view class="action-rail__status-copy">
                 <text class="action-rail__status-title">
-                  已按个税 App 口径
+                  已按报税收入
                 </text>
                 <text v-if="record.inferredPreTax != null" class="action-rail__status-sub">
                   ¥{{ fmt(record.inferredPreTax) }}
@@ -526,7 +526,7 @@ function fmtDiff(diff: number) {
           >
             <view class="action-choice__body">
               <text class="action-choice__title">
-                按个税 App 收入继续
+                按报税收入继续
               </text>
               <text class="action-choice__sub">
                 {{ confirmActionSub }}
@@ -555,20 +555,15 @@ function fmtDiff(diff: number) {
 
           <view
             v-else-if="showReverifySecondary"
-            class="action-choice action-choice--secondary pressable"
-            hover-class="pressable--pressed"
-            :hover-stay-time="70"
+            class="action-rail__link pressable"
+            hover-class="pressable-fade--pressed"
+            :hover-stay-time="60"
             @click="goReVerify"
           >
-            <view class="action-choice__body">
-              <text class="action-choice__title">
-                修改工资条
-              </text>
-              <text class="action-choice__sub">
-                {{ reverifyActionSub }}
-              </text>
-            </view>
-            <view class="action-choice__chevron i-carbon-chevron-right" />
+            <text class="action-rail__link-text">
+              修改工资条
+            </text>
+            <view class="action-rail__link-chevron i-carbon-chevron-right" />
           </view>
         </view>
       </view>
@@ -788,8 +783,8 @@ function fmtDiff(diff: number) {
     </view>
 
     <!--
-      按个税 App 收入继续：二次确认
-      职责：对照工资条 / App 收入，主路径明确提交，取消易达且可点遮罩关闭
+      按报税收入继续：二次确认
+      职责：对照工资条 / 报税收入，主路径明确提交；弹层里再点明可对照个人所得税 App
     -->
     <wd-popup
       v-model="showInferredConfirm"
@@ -801,16 +796,16 @@ function fmtDiff(diff: number) {
     >
       <view class="inferred-alert" :class="{ 'is-saving': inferredSaving }">
         <text class="inferred-alert__title">
-          确认个税 App 收入
+          确认报税收入
         </text>
         <text class="inferred-alert__message">
-          可按个税 App「收入」改准；后面月份按这个数来算
+          对照个税 App 里的收入改准；后面按这个数来算
         </text>
 
         <view class="inferred-alert__card">
           <view class="inferred-alert__row">
             <text class="inferred-alert__row-label">
-              工资条应发
+              工资条
             </text>
             <text class="inferred-alert__row-value">
               ¥{{ inferredConfirmSlipText }}
@@ -821,7 +816,7 @@ function fmtDiff(diff: number) {
           <view class="inferred-alert__field" :class="{ 'is-disabled': inferredSaving }">
             <view class="inferred-alert__field-head">
               <text class="inferred-alert__field-label">
-                个税 App 收入
+                报税收入
               </text>
               <view class="inferred-alert__field-hint">
                 <view class="inferred-alert__field-hint-icon i-carbon-edit" />
@@ -839,7 +834,7 @@ function fmtDiff(diff: number) {
                 :focus="inferredInputFocus"
                 :adjust-position="true"
                 :cursor-spacing="24"
-                placeholder="输入个税 App 收入"
+                placeholder="输入报税收入"
                 placeholder-style="color:#c5c9ce;font-size:32rpx;font-weight:500;"
                 @input="onInferredEditInput"
                 @blur="inferredInputFocus = false"
@@ -850,23 +845,22 @@ function fmtDiff(diff: number) {
 
         <view class="inferred-alert__actions">
           <wd-button
+            type="info"
+            variant="plain"
+            block
+            :disabled="inferredSaving"
+            @click="closeInferredConfirm"
+          >
+            取消
+          </wd-button>
+          <wd-button
             type="primary"
             block
-            :round="true"
             :loading="inferredSaving"
             :disabled="inferredSaving"
             @click="submitConfirmedInferred"
           >
-            按个税 App 收入继续
-          </wd-button>
-          <wd-button
-            variant="text"
-            block
-            :disabled="inferredSaving"
-            custom-class="inferred-alert__cancel"
-            @click="closeInferredConfirm"
-          >
-            取消
+            确认
           </wd-button>
         </view>
       </view>
@@ -939,18 +933,19 @@ function fmtDiff(diff: number) {
 
 .summary-card__period {
   display: block;
-  margin-top: 6rpx;
+  margin-top: 4rpx;
   font-size: 22rpx;
   color: #8a9199;
   line-height: 1.3;
 }
 
+/* 原因全文宽，不跟图标并排挤换行 */
 .summary-card__sub {
   display: block;
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: #333;
-  line-height: 1.45;
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  color: #5c6670;
+  line-height: 1.5;
 }
 
 .summary-card__hint {
@@ -966,21 +961,24 @@ function fmtDiff(diff: number) {
   line-height: 1.45;
 }
 
-/* 结论卡操作轨：双路径选择，主次分层，按压走全局 pressable */
+/* 结论卡操作轨：主路径一块，次链文字降权 */
 .action-rail {
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 8rpx;
+  margin-top: 28rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.04);
 }
 
 /*
- * 状态条与选择行共用行高/内边距，避免主 CTA 与次链视觉高度跳动
+ * 状态条与主选择行共用行高/内边距
  */
 .action-rail__status,
 .action-choice {
   box-sizing: border-box;
-  min-height: 112rpx;
-  padding: 22rpx 24rpx;
+  min-height: 104rpx;
+  padding: 20rpx 24rpx;
   border-radius: 16rpx;
 }
 
@@ -1105,13 +1103,35 @@ function fmtDiff(diff: number) {
   pointer-events: none;
 }
 
+/* 次链：单行文字，不与主 CTA 抢块级厚度 */
+.action-rail__link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+  padding: 12rpx 8rpx 4rpx;
+}
+
+.action-rail__link-text {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #8a9199;
+  line-height: 1.3;
+}
+
+.action-rail__link-chevron {
+  width: 24rpx;
+  height: 24rpx;
+  color: #c0c4cc;
+}
+
 /*
  * 二次确认：iOS alert 结构 + 可编辑金额卡
  * 主按钮实心底、取消纯文字；按压缩放走全局 pressable，按下即时反馈
  */
 .inferred-alert {
-  width: 622rpx;
-  padding: 40rpx 36rpx 20rpx;
+  width: 660rpx;
+  padding: 36rpx;
   border-radius: 28rpx;
   background: #fff;
   box-sizing: border-box;
@@ -1258,13 +1278,10 @@ function fmtDiff(diff: number) {
 
 .inferred-alert__actions {
   display: flex;
-  flex-direction: column;
-  gap: 8rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 32rpx;
   margin-top: 32rpx;
-}
-
-:deep(.inferred-alert__cancel) {
-  color: var(--wot-primary-6) !important;
 }
 
 .inferred-alert.is-saving .inferred-alert__input {

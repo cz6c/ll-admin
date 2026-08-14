@@ -121,13 +121,13 @@ export function computeVerifyBreakdown(
   return verifyPayslipTaxBreakdown(recordToVerifyInput(record), buildVerifyOptions(record, allRecords))
 }
 
-/** 列表/详情用异常摘要：优先申报口径提示，否则个税/税后差异 */
+/** 列表/详情用异常摘要：优先报税偏差提示，否则个税/税后差异 */
 export function formatVerifyAbnormalSummary(result: PayslipVerifyResult): string {
   if (result.reportBias === 'under' && result.inferredPreTax != null) {
-    return `申报偏低（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
+    return `报税偏低（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
   }
   if (result.reportBias === 'over' && result.inferredPreTax != null) {
-    return `申报偏高（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
+    return `报税偏高（约 ¥${formatSalaryAmount(result.inferredPreTax)}）`
   }
   const parts: string[] = []
   if (!result.taxMatch) {

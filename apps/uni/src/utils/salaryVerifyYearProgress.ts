@@ -98,16 +98,16 @@ export function buildYearVerifyProgress(
     else if (dueCell?.status === 'mismatched') {
       const dueRecord = byMonth.get(lastDueMonth)
       if (dueRecord?.useInferredForCumulative) {
-        summary = `${lastDueMonth} 月已核 · 已按个税 App 口径`
+        summary = `${lastDueMonth} 月已核 · 已按报税收入`
       }
       else {
         const bias = dueRecord
           ? (dueRecord.reportBias ?? computeVerifyForRecord(dueRecord, yearRecords).reportBias)
           : null
         if (bias === 'under')
-          summary = `${lastDueMonth} 月已核 · 个税 App 收入偏低`
+          summary = `${lastDueMonth} 月已核 · 报税收入偏低`
         else if (bias === 'over')
-          summary = `${lastDueMonth} 月已核 · 个税 App 收入偏高`
+          summary = `${lastDueMonth} 月已核 · 报税收入偏高`
         else
           summary = `${lastDueMonth} 月已核 · 有差异`
       }

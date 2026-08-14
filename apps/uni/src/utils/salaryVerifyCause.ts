@@ -2,7 +2,7 @@
  * 核对差异主因判定
  * 职责：按固定优先级输出一句话主因、推荐动作与「修改工资条」场景副文案
  * 适用：verify-detail 结论卡副文；不替代操作轨按钮，只强化「为什么 + 先做什么」
- * @note 文案面向小白：少用「申报 / 自洽 / 累计」等术语
+ * @note 文案面向小白：统一用「报税收入」，少用「申报 / 自洽 / 累计」等术语
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
 import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
@@ -42,7 +42,7 @@ export interface ResolveVerifyCauseInput {
 
 /**
  * 按优先级解析差异主因
- * 1 可反推个税 App 收入 → 2 仅税后 → 3 仅个税且反推失败 → 4 两项都差 → 5 已按 App 口径仍有差
+ * 1 可反推报税收入 → 2 仅税后 → 3 仅个税且反推失败 → 4 两项都差 → 5 已按报税口径仍有差
  * @note 缺月补齐只在首页进度卡引导；税后公式验算已从详情移除，主因白话即可
  */
 export function resolveVerifyCause(input: ResolveVerifyCauseInput): VerifyCause {
@@ -62,16 +62,17 @@ export function resolveVerifyCause(input: ResolveVerifyCauseInput): VerifyCause 
     const biasText = v.reportBias === 'under' ? '偏低' : '偏高'
     return {
       kind: 'report_bias',
-      summary: `个税对不上，个税 App 里的收入可能${biasText}（约 ¥${formatSalaryAmount(v.inferredPreTax)}）`,
+      // 金额只出现在主 CTA 副文，避免结论卡重复挤两遍
+      summary: `个税对不上，报税收入可能比工资条${biasText === '偏低' ? '低' : '高'}`,
       action: 'confirm_inferred',
-      reverifyHint: '如果是工资条填错了，改金额后重算',
+      reverifyHint: '改金额后重算',
     }
   }
 
   if (record.useInferredForCumulative) {
     return {
       kind: 'declared_residual',
-      summary: '已按个税 App 口径计算；和工资条仍可能有差',
+      summary: '已按报税收入计算；和工资条仍可能有差',
       action: 'reverify',
       reverifyHint: '可改回工资条口径，或修正条上金额',
     }

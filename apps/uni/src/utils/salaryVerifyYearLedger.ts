@@ -69,7 +69,7 @@ export function yearLedgerStatusLabel(status: YearLedgerRowStatus): string {
     case 'mismatched':
       return '有差异'
     case 'declared':
-      return '已按申报'
+      return '已按报税'
     case 'missing':
       return '待核'
     case 'future':

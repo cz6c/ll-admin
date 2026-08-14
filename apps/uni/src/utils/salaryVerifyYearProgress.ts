@@ -1,11 +1,13 @@
 /**
  * 首页「本年核对进度」模型
- * 职责：按自然年把核对记录映射为 1–12 月格子状态与摘要/CTA
+ * 职责：按自然年把核对记录映射为 1–12 月格子状态与摘要
  * 适用：salary/home 进度卡；截止月与核对页一致，用「上月」作为最近应核月
+ * @note 去核 / 对照入口分别走月格点击与右上角「对照表」，模型不再带底部 CTA
  */
+import type { Dayjs } from 'dayjs'
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
-import dayjs, { type Dayjs } from 'dayjs'
-import { buildPayPeriod, parsePayPeriod, previousPayPeriod } from '@/utils/payPeriod'
+import dayjs from 'dayjs'
+import { buildPayPeriod, parsePayPeriod } from '@/utils/payPeriod'
 import { computeVerifyForRecord } from '@/utils/payslipVerify'
 
 /** 单月格子状态 */
@@ -21,19 +23,13 @@ export interface YearMonthCell {
   recordId?: string
 }
 
-/** 进度卡主按钮：去核对应带 payPeriod；已齐则进历史核对 tab */
-export type YearProgressCtaMode = 'verify' | 'history'
-
 /** 首页本年核对进度视图模型 */
 export interface YearVerifyProgress {
   year: number
   title: string
   months: YearMonthCell[]
+  /** 底部状态一句，不含操作入口 */
   summary: string
-  ctaLabel: string
-  ctaMode: YearProgressCtaMode
-  /** ctaMode=verify 时带入核对页的所属月 */
-  ctaPayPeriod?: string
   /** 截至上月仍未核的月份序号 */
   missingMonths: number[]
 }
@@ -87,21 +83,12 @@ export function buildYearVerifyProgress(
 
   const title = `${year}年核对进度`
   let summary: string
-  let ctaLabel: string
-  let ctaMode: YearProgressCtaMode
-  let ctaPayPeriod: string | undefined
 
   if (lastDueMonth === 0) {
     summary = '发了工资条？先核上月'
-    ctaLabel = '去核对'
-    ctaMode = 'verify'
-    ctaPayPeriod = previousPayPeriod()
   }
   else if (missingMonths.length > 0) {
     summary = formatMissingSummary(missingMonths)
-    ctaLabel = '去核对'
-    ctaMode = 'verify'
-    ctaPayPeriod = buildPayPeriod(year, missingMonths[0])
   }
   else {
     const dueCell = months.find(cell => cell.month === lastDueMonth)
@@ -111,25 +98,23 @@ export function buildYearVerifyProgress(
     else if (dueCell?.status === 'mismatched') {
       const dueRecord = byMonth.get(lastDueMonth)
       if (dueRecord?.useInferredForCumulative) {
-        summary = `${lastDueMonth} 月已核 · 已按申报口径`
+        summary = `${lastDueMonth} 月已核 · 已按个税 App 口径`
       }
       else {
         const bias = dueRecord
           ? (dueRecord.reportBias ?? computeVerifyForRecord(dueRecord, yearRecords).reportBias)
           : null
         if (bias === 'under')
-          summary = `${lastDueMonth} 月已核 · 申报偏低`
+          summary = `${lastDueMonth} 月已核 · 个税 App 收入偏低`
         else if (bias === 'over')
-          summary = `${lastDueMonth} 月已核 · 申报偏高`
+          summary = `${lastDueMonth} 月已核 · 个税 App 收入偏高`
         else
           summary = `${lastDueMonth} 月已核 · 有差异`
       }
     }
-    else
+    else {
       summary = '今年已核齐'
-    // 与顶栏「全部记录」区分：只进核对 tab
-    ctaLabel = '核对记录'
-    ctaMode = 'history'
+    }
   }
 
   return {
@@ -137,9 +122,6 @@ export function buildYearVerifyProgress(
     title,
     months,
     summary,
-    ctaLabel,
-    ctaMode,
-    ctaPayPeriod,
     missingMonths,
   }
 }
@@ -147,10 +129,7 @@ export function buildYearVerifyProgress(
 /** 缺月文案：最多列 3 个，其余收成「等 N 月」 */
 function formatMissingSummary(missingMonths: number[]): string {
   const shown = missingMonths.slice(0, 3)
-  const rest = missingMonths.length - shown.length
   // 口语化短句，避免与工具卡 hint 抢篇幅
-  let text = `还差 ${shown.join('、')} 月`
-  if (rest > 0)
-    text += `…等 ${rest} 月`
+  const text = `差 ${shown.join('、')} ${missingMonths.length > 3 ? '...等' : ''}月，未核对`
   return text
 }

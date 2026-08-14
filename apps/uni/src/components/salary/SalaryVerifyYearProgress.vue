@@ -1,8 +1,9 @@
 <script lang="ts" setup>
 /**
  * 首页本年核对进度卡
- * 职责：展示 1–12 月状态、图例、摘要与 CTA；可点月格跳转核对/详情
+ * 职责：展示 1–12 月状态、图例与摘要；可点月格跳转核对/详情；对照表走右上角
  * 适用：salary/home 核对模块内（紧贴入口卡下方）；未来月不可点
+ * @note 底部只留状态文案，不再放「去核对」——与月格缺月点击重复
  */
 import type { YearMonthCell, YearMonthStatus, YearVerifyProgress } from '@/utils/salaryVerifyYearProgress'
 
@@ -14,10 +15,8 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** 右侧「核对记录」→ 历史页核对 tab */
-  openHistory: []
-  /** 主按钮：去核对 / 核对记录 */
-  cta: []
+  /** 右侧「对照表」→ 本年累计对照页 */
+  openLedger: []
   /** 点击可交互月格 */
   monthClick: [cell: YearMonthCell]
 }>()
@@ -56,9 +55,9 @@ function onCellClick(cell: YearMonthCell) {
         class="year-progress__all pressable"
         hover-class="pressable--pressed"
         :hover-stay-time="60"
-        @click.stop="emit('openHistory')"
+        @click.stop="emit('openLedger')"
       >
-        核对记录
+        对照表
       </view>
     </view>
 
@@ -99,14 +98,6 @@ function onCellClick(cell: YearMonthCell) {
       <view class="year-progress__summary">
         {{ progress.summary }}
       </view>
-      <view
-        class="year-progress__cta"
-        hover-class="year-progress__cta--pressed"
-        :hover-stay-time="70"
-        @click.stop="emit('cta')"
-      >
-        {{ progress.ctaLabel }}
-      </view>
     </view>
   </view>
 </template>
@@ -116,7 +107,7 @@ function onCellClick(cell: YearMonthCell) {
 .year-progress {
   padding: 28rpx 28rpx 24rpx;
   border-radius: 24rpx;
-  background: #f7f8fa;
+  background: #fbfbfb;
 }
 
 .year-progress__header {
@@ -236,35 +227,13 @@ function onCellClick(cell: YearMonthCell) {
 
 .year-progress__footer {
   margin-top: 28rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
 }
 
 .year-progress__summary {
-  min-width: 0;
-  flex: 1;
   font-size: 24rpx;
   font-weight: 400;
   letter-spacing: 0.01em;
   color: #666;
   line-height: 1.45;
-}
-
-.year-progress__cta {
-  flex-shrink: 0;
-  font-size: 24rpx;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--wot-success-main);
-  background: var(--wot-success-surface, #ecfdf5);
-  padding: 10rpx 22rpx;
-  border-radius: 999rpx;
-  transition: transform 140ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1));
-}
-
-.year-progress__cta--pressed {
-  transform: scale(0.97);
 }
 </style>

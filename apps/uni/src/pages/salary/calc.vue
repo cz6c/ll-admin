@@ -174,8 +174,8 @@ async function submitCalc() {
   }
 }
 
-/** 次级入口：与首页「全部记录」文案对齐，带测算 tab */
-function goAllRecords() {
+/** 次级入口：仅本页进入测算记录列表（无类型切换） */
+function goCalcRecords() {
   uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
 }
 
@@ -308,9 +308,9 @@ function dismissShareLandingTip() {
         class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
         hover-class="pressable--pressed"
         :hover-stay-time="60"
-        @click="goAllRecords"
+        @click="goCalcRecords"
       >
-        全部记录
+        测算记录
       </view>
       <view class="mt-24rpx px-16rpx text-center text-22rpx text-#999 leading-relaxed">
         注：计算结果仅供参考

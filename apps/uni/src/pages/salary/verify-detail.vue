@@ -1,8 +1,8 @@
 <script lang="ts" setup>
 /**
- * 月薪核对历史详情：顶部结论卡（含操作轨）→ 项目对比 → 计算过程 → 工资条原始数据。
+ * 月薪核对历史详情：结论卡（原因+操作）→ 项目对比 → 折叠计算/原始数据。
  * 主流程：详情接口 → 页面本地 item + relatedVerifyList → 累计预扣重算（不写列表 store）
- * 差异态：按申报继续先弹确认框（默认可改系统反推应发）再落库；修改工资条重核
+ * 差异态：同时只一条主 CTA；补缺月只走首页进度卡；缺月仅一行口径说明
  * 拉新：微信转发落到核对页（带 from），标题仅结论不带金额
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
@@ -14,9 +14,10 @@ import { toHistoryRecord, toVerifyRecord, useSalaryHistoryStore } from '@/store/
 import { buildFromQuery, DEFAULT_SHARE_FROM } from '@/utils/channelFrom'
 import { formatSalaryAmount } from '@/utils/formatSalaryAmount'
 import { SHARE_POSTER_URL } from '@/utils/lionAssets'
-import { buildPayPeriod, parsePayPeriod } from '@/utils/payPeriod'
+import { parsePayPeriod } from '@/utils/payPeriod'
 import { computeVerifyBreakdown } from '@/utils/payslipVerify'
 import { PAYSLIP_FIELD_LABELS } from '@/utils/salarySlipFieldMap'
+import { resolveVerifyCause } from '@/utils/salaryVerifyCause'
 import { buildVerifyReentryQuery } from '@/utils/verifyReentry'
 
 defineOptions({ name: 'SalaryVerifyDetail' })
@@ -104,11 +105,6 @@ function retryLoad() {
   void fetchDetail()
 }
 
-/** 失败恢复：回全部记录（核对 tab） */
-function goAllRecords() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
-}
-
 const detail = computed(() => {
   if (!record.value)
     return null
@@ -117,6 +113,28 @@ const detail = computed(() => {
 
 const verify = computed(() => detail.value?.verify ?? null)
 const breakdown = computed(() => detail.value?.breakdown ?? null)
+
+/**
+ * ideal 缺月口径说明：白话告知怎么估的，不引导去补（补月走首页进度卡）
+ * @example 少了 3、5 月的工资条，前面月份先按本月来估
+ */
+const calcModeHint = computed(() => {
+  const v = verify.value
+  if (!v || v.calcMode !== 'ideal')
+    return ''
+  const missing = v.missingPriorMonths
+  if (missing && missing.length > 0) {
+    const shown = missing.slice(0, 3)
+    const rest = missing.length - shown.length
+    let months = shown.join('、')
+    if (rest > 0)
+      months += `…等 ${missing.length} 月`
+    else
+      months += ' 月'
+    return `少了 ${months}的工资条，前面月份先按本月来估`
+  }
+  return '前面月份的工资条不全，先按本月来估'
+})
 
 /**
  * 拉新转发：标题只写结论不带金额；封面用固定海报，避免截屏泄密；落地核对页 + from
@@ -134,65 +152,6 @@ onShareAppMessage(() => {
   }
 })
 
-const calcModeHint = computed(() => {
-  const v = verify.value
-  if (!v || v.calcMode !== 'ideal')
-    return ''
-  const missing = v.missingPriorMonths
-  if (missing?.length) {
-    const months = missing.map(m => `${m}月`).join('、')
-    return `缺 ${months}，暂按本月估算`
-  }
-  return '暂无完整历史，结果仅供参考'
-})
-
-/** 首个缺月 YYYY-MM；仅引导一个月，避免一次塞多月 */
-const firstMissingPayPeriod = computed(() => {
-  const missing = verify.value?.missingPriorMonths
-  if (!missing?.length || !record.value)
-    return ''
-  const { year } = parsePayPeriod(record.value.payPeriod)
-  if (!year)
-    return ''
-  return buildPayPeriod(year, missing[0])
-})
-
-const firstMissingMonthLabel = computed(() => {
-  if (!firstMissingPayPeriod.value)
-    return ''
-  const { month } = parsePayPeriod(firstMissingPayPeriod.value)
-  return `${month}月`
-})
-
-/**
- * 对比区一句结论：短、弱视觉；金额细节留给操作轨副文案
- */
-const verdictSummary = computed(() => {
-  const v = verify.value
-  const row = record.value
-  if (!v)
-    return ''
-  if (v.overallMatch)
-    return '个税与税后均一致'
-  if (row?.useInferredForCumulative)
-    return '本月相对工资条仍可能有差'
-  if (v.reportBias === 'under')
-    return '疑似申报少报，个税偏低'
-  if (v.reportBias === 'over')
-    return '疑似申报多报，个税偏高'
-  if (!v.taxMatch && v.inferredPreTax == null && v.calcMode === 'history')
-    return '未能反推应发，请核对扣除项'
-  if (v.taxMatch && !v.postTaxMatch) {
-    const sign = v.postTaxDiff > 0 ? '多' : '少'
-    return `税后可能${sign}了 ¥${formatSalaryAmount(Math.abs(v.postTaxDiff))}`
-  }
-  if (!v.taxMatch && v.postTaxMatch) {
-    const sign = v.taxDiff > 0 ? '多' : '少'
-    return `个税可能${sign}扣 ¥${formatSalaryAmount(Math.abs(v.taxDiff))}`
-  }
-  return '个税与税后均有差异'
-})
-
 /** 可展示「按申报口径继续核对」：反推成功且尚未确认沿用 */
 const canConfirmInferred = computed(() => {
   const v = verify.value
@@ -202,25 +161,52 @@ const canConfirmInferred = computed(() => {
   return !v.taxMatch && v.inferredPreTax != null && v.reportBias != null
 })
 
+/**
+ * 差异主因：固定优先级一句话 + 推荐动作；写入结论卡副文
+ * @note 缺月不在此引导，补缺月只走首页进度卡
+ */
+const verifyCause = computed(() => {
+  const v = verify.value
+  const row = record.value
+  if (!v || !row)
+    return null
+  return resolveVerifyCause({
+    verify: v,
+    record: row,
+    canConfirmInferred: canConfirmInferred.value,
+  })
+})
+
 /** 已确认沿用：可改回工资条累计 */
 const canRevertInferred = computed(() => Boolean(record.value?.useInferredForCumulative))
 
-/** 结论卡底部操作轨：差异或已沿用申报时展示 */
+/** 主因动作：同时只强调一条主 CTA（不含补缺月） */
+const primaryCauseAction = computed(() => verifyCause.value?.action ?? 'none')
+
+const showConfirmInferredPrimary = computed(() => primaryCauseAction.value === 'confirm_inferred')
+/** 无更高优先级时，「修改工资条」升为主 CTA */
+const showReverifyPrimary = computed(() => primaryCauseAction.value === 'reverify')
+/** 有主 CTA 时「修改工资条」降为次链；已按 App 口径时仍可改条 */
+const showReverifySecondary = computed(() =>
+  showConfirmInferredPrimary.value || canRevertInferred.value,
+)
+
+/** 结论卡底部操作轨：差异或已沿用 App 口径 */
 const showActionRail = computed(() => {
   if (!verify.value)
     return false
   return !verify.value.overallMatch || canRevertInferred.value
 })
 
-/** 按申报副文案：只留金额，不讲长原因 */
+/** 主 CTA 副文案：只留金额，原因已在结论卡 */
 const confirmActionSub = computed(() => {
   const v = verify.value
   if (!v?.inferredPreTax)
-    return '后续按申报收入累计'
-  return `反推实际申报收入约 ¥${formatSalaryAmount(v.inferredPreTax)}`
+    return '后续月份按个税 App 收入计算'
+  return `系统估算约 ¥${formatSalaryAmount(v.inferredPreTax)}`
 })
 
-/** 确认按申报：二次确认弹层（默认可改系统反推应发） */
+/** 确认按个税 App 收入：二次确认弹层（默认可改系统估算应发） */
 const showInferredConfirm = ref(false)
 /** 弹层内申报收入输入（字符串便于 digit 输入） */
 const inferredEditText = ref('')
@@ -228,7 +214,8 @@ const inferredEditText = ref('')
 const inferredInputFocus = ref(false)
 const popupZIndex = 1100
 
-const reverifyActionSub = computed(() => '改金额后重新计算')
+/** 「修改工资条」场景化副文案 */
+const reverifyActionSub = computed(() => verifyCause.value?.reverifyHint ?? '改金额后重新计算')
 
 /** 弹层对照：工资条应发（只读上下文） */
 const inferredConfirmSlipText = computed(() => {
@@ -266,7 +253,7 @@ function onInferredEditInput(e: { detail?: { value?: string } }) {
 }
 
 /**
- * 用户确认后把（可改的）申报收入写入后端，供后续月 prior 使用
+ * 用户确认后把（可改的）申报收入写入后端：当月累计与后续月 prior 均按此计税
  * @note 分位平台无法唯一反推，故以用户确认为准
  */
 async function submitConfirmedInferred() {
@@ -276,11 +263,11 @@ async function submitConfirmedInferred() {
     return
   const amount = Math.round(Number(inferredEditText.value) * 100) / 100
   if (!Number.isFinite(amount) || amount < 0) {
-    uni.showToast({ title: '请输入有效申报收入', icon: 'none' })
+    uni.showToast({ title: '请输入有效金额', icon: 'none' })
     return
   }
   if (Math.abs(amount - row.preTaxMonthly) <= 0.01) {
-    uni.showToast({ title: '与工资条应发相同，无需按申报继续', icon: 'none' })
+    uni.showToast({ title: '与工资条应发相同，无需继续', icon: 'none' })
     return
   }
   const reportBias = amount < row.preTaxMonthly - 0.01 ? 'under' : 'over'
@@ -306,7 +293,7 @@ async function submitConfirmedInferred() {
     // 以详情接口为准重拉 item + relatedVerifyList，避免仅信 upsert 回包漏字段
     historyId.value = updated.id
     await fetchDetail({ silent: true })
-    uni.showToast({ title: '已按申报口径', icon: 'success' })
+    uni.showToast({ title: '已按个税 App 口径', icon: 'success' })
   }
   catch (err) {
     const msg = err instanceof Error ? err.message : '保存失败'
@@ -373,16 +360,25 @@ const summaryTitle = computed(() => {
 })
 
 /**
- * 副标题「YYYY 年 M 月 工资条」
+ * 所属月标签（始终展示，避免多月核对时丢上下文）
  */
-const summarySubtitle = computed(() => {
+const summaryPeriodLabel = computed(() => {
   if (!record.value)
     return ''
   const { year, month } = parsePayPeriod(record.value.payPeriod)
-  return `${year} 年 ${month} 月 工资条`
+  return `${year} 年 ${month} 月`
 })
 
-/** 差异态：跳转核对页并短字段带回全量数据，锁定所属月 */
+/**
+ * 结论卡原因副文：差异态用人话主因；一致态不再重复「都对得上」
+ */
+const summaryCause = computed(() => {
+  if (summaryMatch.value)
+    return ''
+  return verifyCause.value?.summary ?? ''
+})
+
+/** 差异态：打开核对页回填并锁定所属月（保存后 navigateBack 回本详情） */
 function goReVerify() {
   const row = record.value
   if (!row?.payPeriod) {
@@ -394,16 +390,7 @@ function goReVerify() {
   })
 }
 
-/** 缺月补全：仅预填首个缺月，不带回当前月金额 */
-function goFillMissingMonth() {
-  if (!firstMissingPayPeriod.value)
-    return
-  uni.navigateTo({
-    url: `/pages/salary/verify?payPeriod=${encodeURIComponent(firstMissingPayPeriod.value)}`,
-  })
-}
-
-/** 结论页降噪：计算过程与原始明细默认折叠 */
+/** 计算过程与原始明细默认折叠，不自动撑开 */
 const showTaxCalc = ref(false)
 const showRawFields = ref(false)
 
@@ -476,7 +463,7 @@ function fmtDiff(diff: number) {
 <template>
   <view class="page-shell pb-safe">
     <view v-if="record && verify && breakdown" class="p-24rpx">
-      <!-- 顶部结论卡：一致或差异；缺月提示并入卡脚，避免双横幅 -->
+      <!-- 顶部结论卡：一致或差异；缺月只提示累计口径 -->
       <view class="summary-card card-rounded p-32rpx">
         <view class="summary-card__head">
           <view class="summary-card__icon" :class="summaryMatch ? 'is-ok' : 'is-warn'">
@@ -486,8 +473,11 @@ function fmtDiff(diff: number) {
             <text class="summary-card__title" :class="summaryMatch ? 'is-ok' : 'is-warn'">
               {{ summaryTitle }}
             </text>
-            <text class="summary-card__sub">
-              {{ summarySubtitle }}
+            <text class="summary-card__period">
+              {{ summaryPeriodLabel }}
+            </text>
+            <text v-if="summaryCause" class="summary-card__sub">
+              {{ summaryCause }}
             </text>
           </view>
         </view>
@@ -496,20 +486,11 @@ function fmtDiff(diff: number) {
           <text class="summary-card__hint-text">
             {{ calcModeHint }}
           </text>
-          <view
-            v-if="firstMissingPayPeriod"
-            class="summary-card__hint-cta pressable mt-12rpx"
-            hover-class="pressable--pressed"
-            :hover-stay-time="70"
-            @click="goFillMissingMonth"
-          >
-            去补 {{ firstMissingMonthLabel }} 核对
-          </view>
         </view>
 
         <!--
-          操作轨：Agency — 两个并列选择，主路径在上；
-          按压缩放走全局 pressable，避免等 click 才有反馈
+          操作轨：同时只一条主 CTA（按个税 App / 修改工资条）；
+          补缺月只在首页进度卡引导
         -->
         <view v-if="showActionRail" class="action-rail mt-28rpx">
           <view v-if="canRevertInferred" class="action-rail__status">
@@ -517,7 +498,7 @@ function fmtDiff(diff: number) {
               <view class="action-rail__status-icon i-carbon-checkmark-filled" />
               <view class="action-rail__status-copy">
                 <text class="action-rail__status-title">
-                  已按申报累计
+                  已按个税 App 口径
                 </text>
                 <text v-if="record.inferredPreTax != null" class="action-rail__status-sub">
                   ¥{{ fmt(record.inferredPreTax) }}
@@ -536,7 +517,7 @@ function fmtDiff(diff: number) {
           </view>
 
           <view
-            v-if="canConfirmInferred"
+            v-if="showConfirmInferredPrimary"
             class="action-choice action-choice--primary pressable"
             hover-class="pressable--pressed"
             :hover-stay-time="70"
@@ -545,7 +526,7 @@ function fmtDiff(diff: number) {
           >
             <view class="action-choice__body">
               <text class="action-choice__title">
-                按申报继续
+                按个税 App 收入继续
               </text>
               <text class="action-choice__sub">
                 {{ confirmActionSub }}
@@ -555,8 +536,26 @@ function fmtDiff(diff: number) {
           </view>
 
           <view
-            class="action-choice pressable"
-            :class="canConfirmInferred || canRevertInferred ? 'action-choice--secondary' : 'action-choice--solo'"
+            v-if="showReverifyPrimary"
+            class="action-choice action-choice--solo pressable"
+            hover-class="pressable--pressed"
+            :hover-stay-time="70"
+            @click="goReVerify"
+          >
+            <view class="action-choice__body">
+              <text class="action-choice__title">
+                修改工资条
+              </text>
+              <text class="action-choice__sub">
+                {{ reverifyActionSub }}
+              </text>
+            </view>
+            <view class="action-choice__chevron i-carbon-chevron-right" />
+          </view>
+
+          <view
+            v-else-if="showReverifySecondary"
+            class="action-choice action-choice--secondary pressable"
             hover-class="pressable--pressed"
             :hover-stay-time="70"
             @click="goReVerify"
@@ -574,19 +573,15 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 第一层：结论 + 列表对照（软卡片行，去掉硬边表格） -->
+      <!-- 差在哪：只留对比表，原因已在结论卡 -->
       <view class="mt-24rpx card-rounded px-32rpx pb-8rpx">
         <view class="flex items-center gap-16rpx py-24rpx">
           <text class="text-30rpx text-#333 font-600">
-            项目对比
+            差在哪
           </text>
-          <text class="text-24rpx text-#999">
+          <text class="min-w-0 flex-1 text-24rpx text-#999">
             系统 vs 工资条
           </text>
-        </view>
-
-        <view class="verdict-line mb-16rpx">
-          {{ verdictSummary }}
         </view>
 
         <view class="compare-list mb-16rpx">
@@ -604,7 +599,10 @@ function fmtDiff(diff: number) {
               差异
             </text>
           </view>
-          <view class="compare-list__row">
+          <view
+            class="compare-list__row"
+            :class="{ 'compare-list__row--warn': !verify.taxMatch }"
+          >
             <text class="compare-list__cell compare-list__cell--item">
               个税
             </text>
@@ -618,7 +616,10 @@ function fmtDiff(diff: number) {
               {{ verify.taxMatch ? '一致' : fmtDiff(verify.taxDiff) }}
             </text>
           </view>
-          <view class="compare-list__row">
+          <view
+            class="compare-list__row"
+            :class="{ 'compare-list__row--warn': !verify.postTaxMatch }"
+          >
             <text class="compare-list__cell compare-list__cell--item">
               税后月薪
             </text>
@@ -635,7 +636,7 @@ function fmtDiff(diff: number) {
         </view>
       </view>
 
-      <!-- 第二层：计算过程（默认折叠，优先结论与对比） -->
+      <!-- 计算过程默认折叠，不自动撑开 -->
       <view class="mt-24rpx card-rounded px-32rpx">
         <view
           class="pressable flex items-center gap-16rpx py-24rpx"
@@ -644,8 +645,12 @@ function fmtDiff(diff: number) {
           @click="showTaxCalc = !showTaxCalc"
         >
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-          <text class="text-30rpx text-#333 font-600"> 个税计算 </text>
-          <text class="min-w-0 flex-1 text-24rpx text-#999">本期个税怎么算出来的</text>
+          <text class="text-30rpx text-#333 font-600">
+            怎么算的
+          </text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999">
+            本期个税计算过程
+          </text>
           <wd-icon :name="showTaxCalc ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
         </view>
 
@@ -741,8 +746,12 @@ function fmtDiff(diff: number) {
           @click="showRawFields = !showRawFields"
         >
           <view class="h-28rpx w-6rpx shrink-0 rounded-4rpx bg-primary" />
-          <text class="text-30rpx text-#333 font-600"> 工资条明细 </text>
-          <text class="min-w-0 flex-1 text-24rpx text-#999">原始数据</text>
+          <text class="text-30rpx text-#333 font-600">
+            工资条数据
+          </text>
+          <text class="min-w-0 flex-1 text-24rpx text-#999">
+            录入的原始金额
+          </text>
           <wd-icon :name="showRawFields ? 'up' : 'down'" size="28rpx" color="#c0c4cc" />
         </view>
 
@@ -776,19 +785,11 @@ function fmtDiff(diff: number) {
       <wd-button type="primary" block :round="true" custom-class="mt-32rpx" @click="retryLoad">
         重试
       </wd-button>
-      <view
-        class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
-        hover-class="pressable--pressed"
-        :hover-stay-time="60"
-        @click="goAllRecords"
-      >
-        返回全部记录
-      </view>
     </view>
 
     <!--
-      按申报继续：二次确认（Apple alert + 可编辑金额）
-      职责：对照工资条 / 申报收入，主路径明确提交，取消易达且可点遮罩关闭
+      按个税 App 收入继续：二次确认
+      职责：对照工资条 / App 收入，主路径明确提交，取消易达且可点遮罩关闭
     -->
     <wd-popup
       v-model="showInferredConfirm"
@@ -800,10 +801,10 @@ function fmtDiff(diff: number) {
     >
       <view class="inferred-alert" :class="{ 'is-saving': inferredSaving }">
         <text class="inferred-alert__title">
-          确认申报收入
+          确认个税 App 收入
         </text>
         <text class="inferred-alert__message">
-          可按个税 App「收入」改准；后续计算按此累计
+          可按个税 App「收入」改准；后面月份按这个数来算
         </text>
 
         <view class="inferred-alert__card">
@@ -820,7 +821,7 @@ function fmtDiff(diff: number) {
           <view class="inferred-alert__field" :class="{ 'is-disabled': inferredSaving }">
             <view class="inferred-alert__field-head">
               <text class="inferred-alert__field-label">
-                申报收入
+                个税 App 收入
               </text>
               <view class="inferred-alert__field-hint">
                 <view class="inferred-alert__field-hint-icon i-carbon-edit" />
@@ -838,7 +839,7 @@ function fmtDiff(diff: number) {
                 :focus="inferredInputFocus"
                 :adjust-position="true"
                 :cursor-spacing="24"
-                placeholder="输入申报收入"
+                placeholder="输入个税 App 收入"
                 placeholder-style="color:#c5c9ce;font-size:32rpx;font-weight:500;"
                 @input="onInferredEditInput"
                 @blur="inferredInputFocus = false"
@@ -856,7 +857,7 @@ function fmtDiff(diff: number) {
             :disabled="inferredSaving"
             @click="submitConfirmedInferred"
           >
-            按申报继续
+            按个税 App 收入继续
           </wd-button>
           <wd-button
             variant="text"
@@ -936,12 +937,20 @@ function fmtDiff(diff: number) {
   color: var(--wot-warning-main);
 }
 
+.summary-card__period {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #8a9199;
+  line-height: 1.3;
+}
+
 .summary-card__sub {
   display: block;
   margin-top: 8rpx;
   font-size: 24rpx;
   color: #333;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .summary-card__hint {
@@ -957,21 +966,6 @@ function fmtDiff(diff: number) {
   line-height: 1.45;
 }
 
-.summary-card__hint-cta {
-  display: inline-flex;
-  align-items: center;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--wot-primary-6);
-}
-
-.verdict-line {
-  font-size: 24rpx;
-  color: #8a9199;
-  line-height: 1.4;
-  letter-spacing: 0;
-}
-
 /* 结论卡操作轨：双路径选择，主次分层，按压走全局 pressable */
 .action-rail {
   display: flex;
@@ -980,7 +974,7 @@ function fmtDiff(diff: number) {
 }
 
 /*
- * 状态条与选择行共用行高/内边距，避免「已按申报」与「按申报继续」视觉高度跳动
+ * 状态条与选择行共用行高/内边距，避免主 CTA 与次链视觉高度跳动
  */
 .action-rail__status,
 .action-choice {
@@ -1286,6 +1280,19 @@ function fmtDiff(diff: number) {
 
 .compare-list__row + .compare-list__row {
   border-top: 1rpx solid #f0f2f5;
+}
+
+.compare-list__row--warn {
+  margin: 0 -12rpx;
+  padding-left: 12rpx;
+  padding-right: 12rpx;
+  border-radius: 12rpx;
+  background: var(--wot-warning-surface, #fff7e8);
+}
+
+.compare-list__row--warn + .compare-list__row,
+.compare-list__row + .compare-list__row--warn {
+  border-top-color: transparent;
 }
 
 .compare-list__cell {

@@ -1,8 +1,9 @@
 <script lang="ts" setup>
 /**
  * 月薪核对页
- * 主流程：选图识别 → 映射表单字段 → 选所属月 → 写入/按 id 更新 → 跳转核对详情
+ * 主流程：选图识别 → 映射表单字段 → 选所属月 → 写入/按 id 更新 → 进核对详情
  * 「重新核对」经 query 带 id 回填；必填税前、个税、税后（wd-form schema 校验 >0）
+ * 新建成功 redirectTo 详情（不留录入页在栈）；重新核对保存 navigateBack
  * 其他扣款（缺勤等）可选，不进个税累计；拉新捕获 from / 隐私门禁
  */
 import type { FormSchema } from '@wot-ui/ui'
@@ -45,7 +46,8 @@ const salaryHistoryStore = useSalaryHistoryStore()
 const { previewPath, lineItems, recognizeHints, loading: recognizing, chooseImage } = useSalarySlipRecognize()
 
 const calendarMinDate = dayjs('2020-01-01').valueOf()
-const calendarMaxDate = dayjs().add(1, 'year').endOf('year').valueOf()
+/** 工资条通常次月才发：日历最晚选到上月，禁选当月及以后 */
+const calendarMaxDate = dayjs(`${previousPayPeriod()}-01`).endOf('month').valueOf()
 
 const showPayPeriodCalendar = ref(false)
 const showFieldAssignPicker = ref(false)
@@ -115,11 +117,13 @@ onLoad((options?: Record<string, string>) => {
     return
   }
 
-  // 缺月补全：仅预填所属月，不锁月、不带回金额
+  // 缺月补全（首页进度 / 对照表）：仅预填所属月，不锁月、不带回金额
   const pp = String(options?.payPeriod || '').trim()
   if (PAY_PERIOD_RE.test(pp)) {
-    payPeriod.value = pp
-    payPeriodTs.value = payPeriodToTimestamp(pp)
+    // 与日历上限一致：当月及以后回落到上月
+    const allowed = pp > previousPayPeriod() ? previousPayPeriod() : pp
+    payPeriod.value = allowed
+    payPeriodTs.value = payPeriodToTimestamp(allowed)
   }
 })
 
@@ -207,8 +211,14 @@ function fieldDisplayValue(key: PayslipFieldKey): string {
 function onPayPeriodConfirm({ value }: { value: number }) {
   if (payPeriodLocked.value)
     return
+  const next = formatPayPeriod(value)
+  // 与 max-date 双保险：当月及以后不可核
+  if (next > previousPayPeriod()) {
+    uni.showToast({ title: '只能选择上月及以前', icon: 'none' })
+    return
+  }
   payPeriodTs.value = value
-  payPeriod.value = formatPayPeriod(value)
+  payPeriod.value = next
 }
 
 /** 锁定所属月时不允许打开日历（从详情重新核对进入） */
@@ -219,7 +229,9 @@ function openPayPeriodCalendar() {
 }
 
 /**
- * 保存核对记录后直进详情页（结果在详情展示，本页不再渲染核对结果）
+ * 保存核对记录后进入详情（本页不再渲染结果）
+ * @note 新建用 redirectTo 替换本页，保证：首页→录入→详情→回首页；对照→录入→详情→回对照
+ * @note 重新核对带 id 用 navigateBack，保证：详情→录入→回详情
  * @note 品牌 loading 至少展示 1s，避免接口过快一闪而过
  * @note schema 为拦截准绳：MP 下 form-item 可能未注册进 form，仅靠 validate().valid 会误放行
  */
@@ -234,6 +246,12 @@ async function submitVerify() {
     if (!result || result.valid) {
       uni.showToast({ title: issues[0]!.message, icon: 'none' })
     }
+    return
+  }
+
+  // 深链误带当月/未来月时拦截；重新核对锁定所属月不改此规则以外的存量
+  if (!payPeriodLocked.value && payPeriod.value > previousPayPeriod()) {
+    uni.showToast({ title: '只能选择上月及以前', icon: 'none' })
     return
   }
 
@@ -255,12 +273,12 @@ async function submitVerify() {
     ])
     if (editingId.value) {
       uni.navigateBack()
+      return
     }
-    else {
-      uni.navigateTo({
-        url: `/pages/salary/verify-detail?id=${encodeURIComponent(record.id)}`,
-      })
-    }
+    // 替换录入页，避免返回落到空白核对表
+    uni.redirectTo({
+      url: `/pages/salary/verify-detail?id=${encodeURIComponent(record.id)}`,
+    })
   }
   catch (err) {
     const msg = err instanceof Error ? err.message : '核对失败'
@@ -296,11 +314,6 @@ function onFieldAssignConfirm({ value }: { value: (string | number)[] }) {
     title: `已填入${PAYSLIP_FIELD_LABELS[key]}`,
     icon: 'success',
   })
-}
-
-/** 次级入口：与首页「全部记录」文案对齐，带核对 tab */
-function goAllRecords() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
 }
 
 function dismissShareLandingTip() {
@@ -456,14 +469,6 @@ function dismissShareLandingTip() {
           <wd-button type="primary" block :round="true" :loading="submitting" :disabled="submitting" @click="submitVerify">
             开始核对
           </wd-button>
-          <view
-            class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
-            hover-class="pressable--pressed"
-            :hover-stay-time="60"
-            @click="goAllRecords"
-          >
-            全部记录
-          </view>
         </view>
       </view>
 

@@ -2,7 +2,7 @@
 /**
  * 年度测算明细页
  * 主流程：必须带 id → 详情接口拉单条本地展示（无 store 兜底）
- * 底部「重新测算」：短字段 query 跳测算页回填；可桥接到月薪核对
+ * 底部「重新测算」：短字段 query 跳测算页回填
  * 拉新：微信转发落到测算页（带 from），标题不含金额
  * 图表：接口就绪后再挂载 qiun-data-charts，并短延时避开转场量尺寸错位
  */
@@ -128,10 +128,6 @@ function retryLoad() {
   void fetchDetail()
 }
 
-function goAllRecords() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=calc' })
-}
-
 onHide(() => {
   clearChartMountTimer()
   chartReady.value = false
@@ -254,11 +250,6 @@ function goReCalc() {
   uni.navigateTo({
     url: `/pages/salary/calc?${buildCalcReentryQuery(input, id)}`,
   })
-}
-
-/** 测算 → 核对桥：工具向，不做推荐角标 */
-function goVerify() {
-  uni.navigateTo({ url: '/pages/salary/verify' })
 }
 </script>
 
@@ -395,15 +386,6 @@ function goVerify() {
         <wd-button type="primary" block :round="true" size="large" @click="goReCalc">
           重新测算
         </wd-button>
-        <!-- 跨工具桥接降为文案链，不与主 CTA 同权 -->
-        <view
-          class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
-          hover-class="pressable--pressed"
-          :hover-stay-time="60"
-          @click="goVerify"
-        >
-          已有工资条？核对本月实发
-        </view>
       </view>
 
       <!-- #ifdef MP-WEIXIN -->
@@ -424,14 +406,6 @@ function goVerify() {
       <wd-button type="primary" block :round="true" custom-class="mt-32rpx" @click="retryLoad">
         重试
       </wd-button>
-      <view
-        class="history-link pressable mt-28rpx text-center text-26rpx text-primary"
-        hover-class="pressable--pressed"
-        :hover-stay-time="60"
-        @click="goAllRecords"
-      >
-        返回全部记录
-      </view>
     </view>
   </view>
 </template>

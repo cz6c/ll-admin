@@ -1,9 +1,10 @@
 <script lang="ts" setup>
 /**
- * 全部记录（测算 + 核对）
- * 主流程：拉全量 → 本地筛选/搜索 → 卡片列表滑动删除；真空仓引导核对
+ * 单类型历史记录（核对或测算）
+ * 主流程：?tab=verify|calc 锁定类型 → 拉全量本地过滤/搜索 → 滑动删除
+ * 入口目前仅测算页（核对历史入口暂关）；不做「全部」与类型切换
  */
-import type { SalaryHistoryEntry } from '@/utils/salaryHistoryEntry'
+import type { SalaryHistoryEntry, SalaryHistoryEntryKind } from '@/utils/salaryHistoryEntry'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useQueue } from '@wot-ui/ui'
 import { storeToRefs } from 'pinia'
@@ -17,27 +18,18 @@ import { mergeSalaryHistoryEntries } from '@/utils/salaryHistoryEntry'
 
 defineOptions({ name: 'SalaryHistory' })
 
-/** 统一历史列表：合并年薪测算与月薪核对，支持类型筛选与摘要搜索 */
 const { closeOutside } = useQueue()
 
 definePage({
   style: {
-    // 与首页「全部记录」入口对齐，便于跨页 wayfinding
-    navigationBarTitleText: '全部记录',
+    navigationBarTitleText: '核对记录',
     // 禁止页面级滚动，只允许下方 scroll-view 滚动（避免 header 跟着跑）
     disableScroll: true,
   },
 })
 
-/** 筛选胶囊：全部 / 测算 / 核对；与路由 ?tab= 对齐 */
-type HistoryFilter = 'all' | 'calc' | 'verify'
-
-/** 筛选文案缩短；行内已有类型胶囊，不再放图标减噪 */
-const FILTERS: { value: HistoryFilter, label: string }[] = [
-  { value: 'all', label: '全部' },
-  { value: 'calc', label: '测算' },
-  { value: 'verify', label: '核对' },
-]
+/** 路由锁定的记录类型；缺省 verify，避免误进「全部」 */
+type HistoryTab = SalaryHistoryEntryKind
 
 /** 搜索彩蛋：输入后进入工作台 */
 const WORKBENCH_KEY = '1111'
@@ -45,25 +37,31 @@ const WORKBENCH_KEY = '1111'
 const salaryHistoryStore = useSalaryHistoryStore()
 const { items } = storeToRefs(salaryHistoryStore)
 
-const activeFilter = ref<HistoryFilter>('all')
+const activeTab = ref<HistoryTab>('verify')
 const searchInput = ref('')
 const searchKeyword = ref('')
 
 /** 系统默认下拉刷新触发态 */
 const refresherTriggered = ref(false)
 
+const pageTitle = computed(() => (activeTab.value === 'calc' ? '测算记录' : '核对记录'))
+
+const searchPlaceholder = computed(() =>
+  activeTab.value === 'calc' ? '搜金额或结果' : '搜月份、金额或结果',
+)
+
 const unifiedList = computed(() => mergeSalaryHistoryEntries(items.value))
 
-const filteredList = computed(() => {
-  const byType = activeFilter.value === 'all'
-    ? unifiedList.value
-    : unifiedList.value.filter(item => item.kind === activeFilter.value)
+const typedList = computed(() =>
+  unifiedList.value.filter(item => item.kind === activeTab.value),
+)
 
+const filteredList = computed(() => {
   const q = searchKeyword.value.trim().toLowerCase()
   if (!q)
-    return byType
+    return typedList.value
 
-  return byType.filter((item) => {
+  return typedList.value.filter((item) => {
     const kindLabel = item.kind === 'calc' ? '年薪测算' : '月薪核对'
     return item.title.toLowerCase().includes(q)
       || item.subtitle.toLowerCase().includes(q)
@@ -72,15 +70,23 @@ const filteredList = computed(() => {
   })
 })
 
-/** 真空仓：无任何记录 */
-const isWarehouseEmpty = computed(() => unifiedList.value.length === 0)
+/** 当前类型真空仓 */
+const isTypeEmpty = computed(() => typedList.value.length === 0)
 
-/** 列表空态：真空仓引导核对；筛选/搜索无结果不展示 CTA */
+/** 列表空态：类型真空引导主流程；搜索无结果不展示 CTA */
 const listEmpty = computed(() => {
-  if (isWarehouseEmpty.value) {
+  if (isTypeEmpty.value) {
+    if (activeTab.value === 'calc') {
+      return {
+        show: true,
+        title: '还没有测算记录',
+        desc: '输入月薪，一键估算全年到手',
+        showAction: false,
+      }
+    }
     return {
       show: true,
-      title: '还没有记录',
+      title: '还没有核对记录',
       desc: '发工资条了？我在这儿帮你算清楚',
       showAction: true,
     }
@@ -89,36 +95,36 @@ const listEmpty = computed(() => {
     return {
       show: true,
       title: '没有找到相关记录',
-      desc: '换个关键词，或试试别的筛选',
+      desc: '换个关键词试试',
       showAction: false,
     }
   }
   return { show: false, title: '', desc: '', showAction: false }
 })
 
-/** 筛选切换时列表短淡入（≤150ms），高频切换不加重动画 */
-const listEnterKey = computed(() => `${activeFilter.value}|${searchKeyword.value}`)
+/** 搜索变更时列表短淡入（≤150ms） */
+const listEnterKey = computed(() => `${activeTab.value}|${searchKeyword.value}`)
 
-/** 一次拉全量后在本地按摘要/类型名过滤，避免功能名被服务端 keyword 误伤 */
 async function refreshHistory() {
   await salaryHistoryStore.fetchHistory()
 }
 
-function setFilter(value: HistoryFilter) {
-  activeFilter.value = value
+function applyTab(tab: HistoryTab) {
+  activeTab.value = tab
+  uni.setNavigationBarTitle({ title: pageTitle.value })
 }
 
 onLoad((options?: Record<string, string>) => {
-  if (options?.tab === 'calc' || options?.tab === 'verify')
-    activeFilter.value = options.tab
+  applyTab(options?.tab === 'calc' ? 'calc' : 'verify')
 })
 
 onShow(async () => {
   if (!hasPrivacyAgreed()) {
-    setPrivacyReturnPath('/pages/salary/history')
+    setPrivacyReturnPath(`/pages/salary/history?tab=${activeTab.value}`)
     uni.redirectTo({ url: PRIVACY_GATE_PATH })
     return
   }
+  uni.setNavigationBarTitle({ title: pageTitle.value })
   try {
     await refreshHistory()
   }
@@ -160,7 +166,6 @@ function confirmDelete(item: SalaryHistoryEntry) {
         return
       try {
         await salaryHistoryStore.removeById(item.id)
-        // 删接口不改 items：列表页自行再拉
         await refreshHistory()
         uni.showToast({ title: '已删除', icon: 'success' })
       }
@@ -188,41 +193,21 @@ async function onRefresherRefresh() {
 </script>
 
 <template>
-  <!-- page-meta：双保险禁掉页面滚动（部分端 disableScroll 不生效） -->
   <page-meta page-style="overflow: hidden;" />
 
   <view class="history-page page-shell" @click="closeOutside">
-    <!-- 顶栏在 scroll-view 外，flex-shrink:0，固定不滚；与页底同灰，白卡只给内容 -->
     <view class="history-page__header">
       <wd-search
         v-model="searchInput"
-        placeholder="搜月份、金额或结果"
+        :placeholder="searchPlaceholder"
         hide-cancel
         variant="light"
         custom-class="search mb-16rpx"
         @search="onSearch"
         @clear="onSearchClear"
       />
-
-      <view class="history-page__chips">
-        <view
-          v-for="chip in FILTERS"
-          :key="chip.value"
-          class="history-chip"
-          :class="activeFilter === chip.value ? 'history-chip--active' : ''"
-          hover-class="history-chip--pressed"
-          :hover-stay-time="60"
-          @click="setFilter(chip.value)"
-        >
-          <text>{{ chip.label }}</text>
-        </view>
-      </view>
     </view>
 
-    <!--
-      flex:1 + height:0：占满剩余高度，小程序 scroll-view 必须有确定高度才能内部滚动；
-      不再用 windowHeight − 实测 header，避免初始 0 导致整页溢出、header 跟着滚。
-    -->
     <scroll-view
       class="history-page__scroll"
       scroll-y
@@ -252,7 +237,6 @@ async function onRefresherRefresh() {
               <SalaryHistoryEntryRow
                 :title="item.title"
                 :subtitle="item.subtitle"
-                :kind="item.kind"
                 :emphasis="item.emphasis"
                 :emphasis-tone="item.emphasisTone"
                 @click="openItem(item)"
@@ -303,13 +287,6 @@ async function onRefresherRefresh() {
   z-index: 2;
 }
 
-.history-page__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-
 .history-page__scroll {
   flex: 1;
   height: 0;
@@ -322,7 +299,6 @@ async function onRefresherRefresh() {
   padding: 8rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
 }
 
-/* 筛选/搜索变更时短淡入，不拖慢手感 */
 .history-page__cards {
   display: flex;
   flex-direction: column;
@@ -338,31 +314,6 @@ async function onRefresherRefresh() {
 :deep(.search) {
   padding: 0 !important;
   background: none !important;
-}
-
-/* 未选：浅底无描边；选中：主色实心 —— 靠填充区分，去掉硬描边 */
-.history-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12rpx 28rpx;
-  border-radius: 999rpx;
-  font-size: 26rpx;
-  letter-spacing: 0.01em;
-  color: #6b7280;
-  background: rgba(255, 255, 255, 0.9);
-  border: none;
-  transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.history-chip--active {
-  color: #fff;
-  font-weight: 500;
-  background: var(--wot-primary-6);
-}
-
-.history-chip--pressed {
-  transform: scale(0.96);
 }
 
 .history-swipe-del {

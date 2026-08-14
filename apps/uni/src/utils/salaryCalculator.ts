@@ -715,18 +715,26 @@ export interface PayslipVerifyBreakdownResult {
   breakdown: WithholdingBreakdown
 }
 
+/** 累计预扣核对选项：前序历史 + 可选当月计税快照覆盖 */
+export interface PayslipVerifyOptions {
+  /** 同年 1..M-1 月的历史快照（不含当月） */
+  priorMonths?: PayslipMonthSnapshot[]
+  /** 同年 1..M-1 中缺失的月份序号；非空则走 ideal */
+  missingPriorMonths?: number[]
+  /**
+   * 当月计税快照；缺省从 input 推导
+   * @note 已确认申报应发时由适配层传入有效应发，input 仍保留工资条字段供税后自洽比对
+   */
+  currentMonth?: PayslipMonthSnapshot
+}
+
 /**
  * 决定累计预扣用「真实前序历史」还是「当月参数理想复制 1..M」
  * history：缺月为空且 prior 条数恰好为 M-1；否则降级 ideal
  */
 function resolveVerifyMode(
   input: PayslipVerifyInput,
-  options?: {
-    /** 同年 1..M-1 月快照（不含当月） */
-    priorMonths?: PayslipMonthSnapshot[]
-    /** 调用方已算出的缺月列表；ideal 时透出给结果 */
-    missingPriorMonths?: number[]
-  },
+  options?: PayslipVerifyOptions,
 ): {
   /** 参与累计预扣的 1..M 月序列 */
   months: PayslipMonthSnapshot[]
@@ -736,7 +744,8 @@ function resolveVerifyMode(
   const { month } = parsePayPeriod(input.payPeriod)
   const missing = options?.missingPriorMonths ?? []
   const prior = options?.priorMonths ?? []
-  const current = toMonthSnapshot(input)
+  // 允许覆盖当月计税口径（申报确认后），不改动 input 上的工资条比对字段
+  const current = options?.currentMonth ?? toMonthSnapshot(input)
   const useHistory = missing.length === 0 && prior.length === month - 1
 
   if (useHistory) {
@@ -758,12 +767,7 @@ function resolveVerifyMode(
 /** 按累计预扣法核对工资条个税；有完整前序历史时用真实月薪累计，否则理想模型 */
 export function verifyPayslipTax(
   input: PayslipVerifyInput,
-  options?: {
-    /** 同年 1..M-1 月的历史快照（不含当月） */
-    priorMonths?: PayslipMonthSnapshot[]
-    /** 同年 1..M-1 中缺失的月份序号；非空则走 ideal */
-    missingPriorMonths?: number[]
-  },
+  options?: PayslipVerifyOptions,
 ): PayslipVerifyResult {
   const resolved = resolveVerifyMode(input, options)
   const breakdown = calcWithholdingBreakdownForMonths(resolved.months)
@@ -782,12 +786,7 @@ export function verifyPayslipTax(
 /** 核对结果 + 累计预扣明细；分支规则与 verifyPayslipTax 一致 */
 export function verifyPayslipTaxBreakdown(
   input: PayslipVerifyInput,
-  options?: {
-    /** 同年 1..M-1 月的历史快照（不含当月） */
-    priorMonths?: PayslipMonthSnapshot[]
-    /** 同年 1..M-1 中缺失的月份序号；非空则走 ideal */
-    missingPriorMonths?: number[]
-  },
+  options?: PayslipVerifyOptions,
 ): PayslipVerifyBreakdownResult {
   const resolved = resolveVerifyMode(input, options)
   const breakdown = calcWithholdingBreakdownForMonths(resolved.months)

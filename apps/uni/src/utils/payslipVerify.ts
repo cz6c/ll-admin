@@ -1,7 +1,8 @@
 /**
  * 月薪核对：历史记录 → 累计预扣核对结果的适配层
  * 职责：从 store 记录拼 priorMonths / missingPriorMonths，再调 salaryCalculator 核对；
- *       已确认沿用反推的月份用申报有效应发进入累计链
+ *       已确认沿用反推的月份（含当月）用申报有效应发进入累计链；
+ *       工资条字段仍用于个税/税后比对与税后自洽
  * 适用：历史列表摘要、核对详情页明细
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
@@ -17,7 +18,7 @@ import { verifyPayslipTax, verifyPayslipTaxBreakdown } from '@/utils/salaryCalcu
 
 /**
  * 参与累计预扣的月度应发：用户确认沿用反推时用 inferredPreTax，否则用工资条应发
- * @note 不得覆盖展示用 preTaxMonthly；仅改 prior 链口径
+ * @note 不得覆盖展示用 preTaxMonthly；计税链（当月 + prior）走此口径
  */
 export function effectivePreTaxForCumulative(
   record: Pick<PayslipVerifyRecord, 'preTaxMonthly' | 'inferredPreTax' | 'useInferredForCumulative'>,
@@ -64,7 +65,10 @@ function getPriorRecords(payPeriod: string, allRecords: PayslipVerifyRecord[]): 
     .sort((a, b) => parsePayPeriod(a.payPeriod).month - parsePayPeriod(b.payPeriod).month)
 }
 
-/** store 记录 → 核对引擎输入（含用户填写的个税/税后，用于比对） */
+/**
+ * store 记录 → 核对引擎输入（工资条字段，用于个税/税后比对与税后自洽）
+ * @note 计税应发不走这里；已确认申报时由 currentMonth=recordToSnapshot 覆盖
+ */
 function recordToVerifyInput(record: PayslipVerifyRecord): PayslipVerifyInput {
   return {
     payPeriod: record.payPeriod,
@@ -79,6 +83,23 @@ function recordToVerifyInput(record: PayslipVerifyRecord): PayslipVerifyInput {
 }
 
 /**
+ * 组装核对引擎 options：prior + 当月均走有效应发快照
+ * @note 当月用 recordToSnapshot，避免确认申报后累计仍按工资条应发
+ */
+function buildVerifyOptions(
+  record: PayslipVerifyRecord,
+  allRecords: PayslipVerifyRecord[],
+) {
+  const priorRecords = getPriorRecords(record.payPeriod, allRecords)
+  const missing = listMissingPriorMonths(record.payPeriod, allRecords)
+  return {
+    priorMonths: priorRecords.map(recordToSnapshot),
+    missingPriorMonths: missing,
+    currentMonth: recordToSnapshot(record),
+  }
+}
+
+/**
  * 按累计预扣法重算单条历史记录的核对结果
  * @param allRecords 同年历史全集；缺月会体现在 missingPriorMonths，影响可核对性
  */
@@ -86,10 +107,7 @@ export function computeVerifyForRecord(
   record: PayslipVerifyRecord,
   allRecords: PayslipVerifyRecord[],
 ): PayslipVerifyResult {
-  const priorRecords = getPriorRecords(record.payPeriod, allRecords)
-  const missing = listMissingPriorMonths(record.payPeriod, allRecords)
-  const priorMonths = priorRecords.map(recordToSnapshot)
-  return verifyPayslipTax(recordToVerifyInput(record), { priorMonths, missingPriorMonths: missing })
+  return verifyPayslipTax(recordToVerifyInput(record), buildVerifyOptions(record, allRecords))
 }
 
 /**
@@ -100,13 +118,7 @@ export function computeVerifyBreakdown(
   record: PayslipVerifyRecord,
   allRecords: PayslipVerifyRecord[],
 ): PayslipVerifyBreakdownResult {
-  const priorRecords = getPriorRecords(record.payPeriod, allRecords)
-  const missing = listMissingPriorMonths(record.payPeriod, allRecords)
-  const priorMonths = priorRecords.map(recordToSnapshot)
-  return verifyPayslipTaxBreakdown(recordToVerifyInput(record), {
-    priorMonths,
-    missingPriorMonths: missing,
-  })
+  return verifyPayslipTaxBreakdown(recordToVerifyInput(record), buildVerifyOptions(record, allRecords))
 }
 
 /** 列表/详情用异常摘要：优先申报口径提示，否则个税/税后差异 */

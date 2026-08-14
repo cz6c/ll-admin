@@ -131,24 +131,16 @@ function enterFeature(feature: HomeFeature) {
   uni.navigateTo({ url: feature.url })
 }
 
-/** 进度头「核对记录」：仅核对 tab */
-function openVerifyHistory() {
-  uni.navigateTo({ url: '/pages/salary/history?tab=verify' })
+/** 进度头「对照表」：本年累计对照（与个税 App 逐月对） */
+function openVerifyYearLedger() {
+  const y = yearProgress.value.year
+  uni.navigateTo({ url: `/pages/salary/verifyYear?year=${y}` })
 }
 
 function goVerifyWithPeriod(payPeriod?: string) {
   uni.setStorageSync(LAST_ENTRY_KEY, 'verify')
   const query = payPeriod ? `?payPeriod=${encodeURIComponent(payPeriod)}` : ''
   uni.navigateTo({ url: `/pages/salary/verify${query}` })
-}
-
-function onProgressCta() {
-  const progress = yearProgress.value
-  if (progress.ctaMode === 'history') {
-    openVerifyHistory()
-    return
-  }
-  goVerifyWithPeriod(progress.ctaPayPeriod)
 }
 
 /**
@@ -223,14 +215,13 @@ function onMonthClick(cell: YearMonthCell) {
 
         <SalaryVerifyYearProgress
           :progress="yearProgress"
-          @open-history="openVerifyHistory"
-          @cta="onProgressCta"
+          @open-ledger="openVerifyYearLedger"
           @month-click="onMonthClick"
         />
       </view>
 
       <view
-        class="feature-card feature-card--secondary card-rounded mt-16rpx"
+        class="feature-card feature-card--secondary mt-16rpx card-rounded"
         hover-class="feature-card--pressed"
         :hover-stay-time="70"
         @click="enterFeature(calcFeature)"

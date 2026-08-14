@@ -82,4 +82,12 @@ html.cs-shell {
   #app {
     overflow: hidden;
   }
+
+  /*
+   * #app 默认 min-width:1024px：Windows 无边框外框 min 会使客户区略小于 1024 从而裁切。
+   * 客户区下限改由 ensureCsWindowMinInnerSize 保证，此处跟视口走，避免硬撑裁切。
+   */
+  #app {
+    min-width: 0;
+  }
 }

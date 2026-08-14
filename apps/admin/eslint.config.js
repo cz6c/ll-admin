@@ -73,6 +73,12 @@ export default defineConfig([
   ...tseslint.config({
     extends: [...tseslint.configs.recommended],
     files: ["**/*.?([cm])ts", "**/*.?([cm])tsx"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
+    },
     rules: {
       "@typescript-eslint/no-redeclare": "error",
       "@typescript-eslint/ban-ts-comment": "off",
@@ -123,7 +129,10 @@ export default defineConfig([
         },
         extraFileExtensions: [".vue"],
         parser: tseslint.parser,
-        sourceType: "module"
+        sourceType: "module",
+        // monorepo 下同时存在 admin/common 的 tsconfig，必须钉死根目录，否则 vue 解析报 tsconfigRootDir
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
       }
     },
     plugins: {

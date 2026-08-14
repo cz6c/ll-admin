@@ -21,13 +21,12 @@
       "vite/client",
       "unplugin-icons/types/vue"
     ],
-    "baseUrl": "./",
     "paths": {
       "@/*": [
-        "src/*"
+        "./src/*"
       ],
       "#/*": [
-        "types/*"
+        "./types/*"
       ]
     }
   },

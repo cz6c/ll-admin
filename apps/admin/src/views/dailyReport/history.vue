@@ -80,9 +80,7 @@ onMounted(loadDates);
     <div v-else class="history-layout min-h-0 flex-1 gap-16px">
       <a-spin :spinning="listLoading" class="history-aside-spin">
         <aside class="card-panel flex min-h-0 flex-col">
-          <div class="border-b border-[var(--border-color)] px-16px py-12px text-14px font-600 text-[var(--color-text-secondary)]">
-            日期
-          </div>
+          <div class="border-b border-[var(--border-color)] px-16px py-12px text-14px font-600 text-[var(--color-text-secondary)]">日期</div>
           <ul class="m-0 flex-1 list-none overflow-auto p-8px">
             <li
               v-for="d in dates"
@@ -101,10 +99,8 @@ onMounted(loadDates);
 
       <a-spin :spinning="detailLoading" class="history-detail-spin min-h-0 min-w-0">
         <section class="flex min-h-0 min-w-0 flex-col gap-16px overflow-auto">
-          <Transition name="panel-fade" mode="out-in">
-            <a-empty v-if="!report && !detailLoading" key="empty" description="请选择左侧日期" />
-            <ReportDetailPanel v-else-if="report" :key="activeDate" :report="report" />
-          </Transition>
+          <a-empty v-if="!report && !detailLoading" key="empty" description="请选择左侧日期" />
+          <ReportDetailPanel v-else-if="report" :key="activeDate" :report="report" />
         </section>
       </a-spin>
     </div>

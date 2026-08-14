@@ -16,7 +16,7 @@ import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import CsToolsBar from "@/components/CsToolsBar/index.vue";
 import { useSettingsStore } from "@/store/modules/settings";
-import { isTauri } from "@/utils/tauri";
+import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
 import { FONT_FAMILY, COLOR_TEXT, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, COLOR_TEXT_DISABLED } from "@/utils/theme";
 
 dayjs.locale("zh-cn");
@@ -75,6 +75,8 @@ onMounted(async () => {
   if (!isCs) return;
   document.documentElement.classList.add("cs-shell");
   syncCsOverlayOffset();
+  // 先卡客户区下限，再挂导航监听，避免启动瞬间可缩到外框 min 以下
+  await ensureCsWindowMinInnerSize();
   const { listen } = await import("@tauri-apps/api/event");
   listen<string>("app:navigate", event => {
     router.push(resolveAppNavigate(String(event.payload || "today")));

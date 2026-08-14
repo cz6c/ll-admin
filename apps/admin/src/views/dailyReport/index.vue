@@ -92,22 +92,18 @@ onUnmounted(() => {
         </a-space>
       </div>
 
-      <Transition name="panel-fade" mode="out-in">
-        <a-card v-if="!report" key="empty" class="empty-card card-rounded" :bordered="true">
-          <a-empty description="今日尚未生成日报">
-            <template #description>
-              <p class="m-0 mb-4px text-12px text-[var(--color-text-secondary)]">
-                点击上方「立刻生成」，或在计划时间到点后自动跑。
-              </p>
-              <p class="m-0 text-12px text-[var(--color-text-tertiary)]">未配置工作区时请先到日报设置。</p>
-            </template>
-            <div class="mt-8px flex justify-center">
-              <a-button @click="goSettings">去设置</a-button>
-            </div>
-          </a-empty>
-        </a-card>
-        <ReportDetailPanel v-else :key="report?.date || 'detail'" ref="panelRef" :report="report" />
-      </Transition>
+      <a-card v-if="!report" key="empty" class="empty-card card-rounded" :bordered="true">
+        <a-empty description="今日尚未生成日报">
+          <template #description>
+            <p class="m-0 mb-4px text-12px text-[var(--color-text-secondary)]">点击上方「立刻生成」，或在计划时间到点后自动跑。</p>
+            <p class="m-0 text-12px text-[var(--color-text-tertiary)]">未配置工作区时请先到日报设置。</p>
+          </template>
+          <div class="mt-8px flex justify-center">
+            <a-button @click="goSettings">去设置</a-button>
+          </div>
+        </a-empty>
+      </a-card>
+      <ReportDetailPanel v-else :key="report?.date || 'detail'" ref="panelRef" :report="report" />
     </div>
   </a-spin>
 </template>

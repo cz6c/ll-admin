@@ -3,13 +3,12 @@
     "target": "esnext",
     "module": "esnext",
     "skipLibCheck": true,
-    "moduleResolution":"node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true, // 可省去 import * as
 
     "rootDir": "src",
-    "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "types": ["node"],
 

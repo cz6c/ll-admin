@@ -1,7 +1,7 @@
 {
   "name": "@apps/admin",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -11,9 +11,9 @@
     "bs:build:staging": "rimraf dist && vite build --mode staging",
     "cs:dev": "tauri dev",
     "cs:vite-build": "rimraf dist && vite build --mode production",
-    "cs:vite-build:staging": "rimraf dist && vite build --mode staging",
-    "cs:build": "tauri build",
-    "cs:staging": "tauri build --config src-tauri/tauri.staging.conf.json",
+    "cs:bump": "node ./scripts/bumpVersion.mjs",
+    "cs:build": "pnpm run cs:bump && tauri build",
+    "cs:build:rebuild": "tauri build",
     "icon": "tauri icon src-tauri/icons/ccode-icon-b.png",
     "tauri": "tauri",
     "preview": "vite preview",

@@ -10,6 +10,7 @@ export default defineConfig({
     siteTitle: "ll-admin Docs",
     nav: [
       { text: "首页", link: "/" },
+      { text: "薪算狮", link: "/product/xinsuanshi" },
       { text: "快速开始", link: "/guide/getting-started" },
       { text: "后端", link: "/guide/server" },
       { text: "前端", link: "/guide/admin" },
@@ -17,6 +18,10 @@ export default defineConfig({
       { text: "部署", link: "/guide/deployment" }
     ],
     sidebar: [
+      {
+        text: "产品",
+        items: [{ text: "薪算狮产品文档", link: "/product/xinsuanshi" }]
+      },
       {
         text: "开始使用",
         items: [

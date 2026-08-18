@@ -16,6 +16,10 @@
 - 仅覆盖 `apps/server`
 - 不展开 `packages/common` 的源码细节，只在需要时说明其用途
 
+## 产品文档
+
+- [薪算狮产品文档](/product/xinsuanshi)：C 端个税测算与工资条核对的功能说明（面向产品 / 运营 / 研发）
+
 ## 推荐阅读顺序
 
 1. [从 0 到 1 快速开始](/guide/getting-started)

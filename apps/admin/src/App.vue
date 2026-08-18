@@ -66,7 +66,7 @@ function resolveAppNavigate(raw: string): string {
  */
 function syncCsOverlayOffset() {
   const barH =
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 44;
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 34;
   message.config({ top: barH + 8 });
   notification.config({ top: barH + 24 });
 }

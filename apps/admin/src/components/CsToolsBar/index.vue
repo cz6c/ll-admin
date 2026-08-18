@@ -154,7 +154,7 @@ onBeforeUnmount(() => {
 .cs-top-bar {
   display: flex;
   align-items: stretch;
-  height: var(--cs-tools-bar-height, 44px);
+  height: var(--cs-tools-bar-height, 34px);
   padding: 0 0 0 10px;
   flex-shrink: 0;
   background: #1f2329;

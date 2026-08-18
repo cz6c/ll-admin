@@ -64,12 +64,12 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
 
   /*
    * 布局铬条高度：页面用 100vh 扣减时必须计入 CS 顶栏，否则内容区溢出
-   * Web 无顶栏 → --cs-shell-bar-height: 0；Tauri 由 html.cs-shell 设为 44px
+   * Web 无顶栏 → --cs-shell-bar-height: 0；Tauri 由 html.cs-shell 设为 34px
    */
   --layout-navbar-height: 50px;
   --layout-tags-height: 38px;
   --layout-page-margin-y: 24px; /* .app-page 上下 margin 12+12 */
-  --cs-tools-bar-height: 44px;
+  --cs-tools-bar-height: 34px;
   --cs-shell-bar-height: 0px;
 }
 

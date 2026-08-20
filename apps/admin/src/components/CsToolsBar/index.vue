@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { productConfig } from "@/config";
 import { isCsSettingsPath, isDailyReportPath } from "@/router/dailyReport";
+import logo from "@/assets/images/logo.png";
 
 defineOptions({ name: "CsToolsBar" });
 
@@ -111,7 +112,7 @@ onBeforeUnmount(() => {
     <div class="left">
       <!-- 品牌区可拖：对齐系统标题栏「点住图标/标题拖窗」习惯 -->
       <div class="brand" :title="appTitle" @mousedown="onDragRegionMouseDown">
-        <img class="brand-logo" src="/icon.png" width="22" height="22" alt="" />
+        <img class="brand-logo" :src="logo" width="22" height="22" alt="" />
         <span class="brand-title">{{ appTitle }}</span>
       </div>
       <nav class="menu" aria-label="主入口">

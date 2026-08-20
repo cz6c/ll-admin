@@ -2,6 +2,7 @@
 .turbo
 .worktrees/
 .superpowers/
+.workbuddy/
 
 # Cursor / AI 在仓库内生成的设计稿与实现计划（不入库）
 docs/superpowers/

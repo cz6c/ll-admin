@@ -2,7 +2,7 @@
   <div class="side-bar">
     <div v-if="sidebarLogo" class="logo-container">
       <div class="logo-link">
-        <img class="sidebar-logo" src="/icon.png" width="26" height="26" alt="Ccode" />
+        <img class="sidebar-logo" :src="logo" width="26" height="26" alt="Ccode" />
         <span v-if="!collapsed" class="sidebar-title">{{ productConfig.title }}</span>
       </div>
     </div>
@@ -30,6 +30,7 @@ import { usePermissionStore } from "@/store/modules/permission";
 import { useSettingsStore } from "@/store/modules/settings";
 import { productConfig } from "@/config";
 import type { AppRouteRecordRaw } from "#/utils";
+import logo from "@/assets/images/logo.png";
 
 defineOptions({
   name: "Sidebar"

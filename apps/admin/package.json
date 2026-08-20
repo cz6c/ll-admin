@@ -14,7 +14,7 @@
     "cs:bump": "node ./scripts/bumpVersion.mjs",
     "cs:build": "pnpm run cs:bump && tauri build",
     "cs:build:rebuild": "tauri build",
-    "icon": "tauri icon src-tauri/icons/ccode-icon-b.png",
+    "icon": "tauri icon src/assets/images/logo.png",
     "tauri": "tauri",
     "preview": "vite preview",
     "lint": "pnpm run lint:eslint",

@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import { listen } from "@tauri-apps/api/event";
 import { formatToDate } from "@llcz/common";
-import { getDailyReport, runDailyReport, type DailyReport } from "@/api/dailyReport";
+import { getDailyReport, runDailyReport, DAILY_REPORT_FINISHED_EVENT, type DailyReport } from "@/api/dailyReport";
 import { isTauri } from "@/utils/tauri";
 import $feedback from "@/utils/feedback";
 import { runResultMessage } from "./reportDisplay";
@@ -66,7 +66,7 @@ let unlistenFinished: (() => void) | undefined;
 onMounted(async () => {
   await loadToday();
   if (!isTauri()) return;
-  unlistenFinished = await listen<DailyReport>("daily-report:finished", event => {
+  unlistenFinished = await listen<DailyReport>(DAILY_REPORT_FINISHED_EVENT, event => {
     if (event.payload?.date === today) {
       report.value = event.payload;
     }

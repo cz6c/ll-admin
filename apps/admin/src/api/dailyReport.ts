@@ -108,3 +108,15 @@ export function listDailyReports() {
 export function getDailyReport(date: string) {
   return invoke<DailyReport | null>("daily_report_get", { date });
 }
+
+/** Rust 推送：流水线完成（今日页刷新 + 全局 notify 门控） */
+export const DAILY_REPORT_FINISHED_EVENT = "daily-report:finished";
+
+/** Rust 推送：未产出报告即失败（如定时触发时未配置工作区） */
+export const DAILY_REPORT_RUN_ERROR_EVENT = "daily-report:run-error";
+
+/** run-error 事件负载 */
+export interface DailyReportRunErrorPayload {
+  date: string;
+  error: string;
+}

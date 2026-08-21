@@ -15,6 +15,8 @@ import { message, notification } from "ant-design-vue";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import CsToolsBar from "@/components/CsToolsBar/index.vue";
+import { useDailyReportBackgroundNotify } from "@/composables/useDailyReportBackgroundNotify";
+import { useIcloudSyncBackgroundNotify } from "@/composables/useIcloudSyncBackgroundAlert";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
 import { FONT_FAMILY, COLOR_TEXT, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, COLOR_TEXT_DISABLED } from "@/utils/theme";
@@ -28,6 +30,9 @@ defineOptions({
 const router = useRouter();
 const isCs = isTauri();
 const settingsStore = useSettingsStore();
+
+useIcloudSyncBackgroundNotify();
+useDailyReportBackgroundNotify();
 
 /** Ant Design 主题 token：跟随 settings.theme；字族/字色与 theme.scss 统一 */
 const antdTheme = computed(() => ({
@@ -55,6 +60,10 @@ function resolveAppNavigate(raw: string): string {
       return "/cs-settings";
     case "admin":
       return "/index";
+    case "album":
+      return "/album/gallery";
+    case "icloudSync":
+      return "/album/icloudSync";
     default:
       return raw.startsWith("/") ? raw : "/daily-report/today";
   }

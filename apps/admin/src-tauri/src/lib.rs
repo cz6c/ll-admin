@@ -2,8 +2,10 @@
 //! 职责：壳层能力；「更多工具」菜单在前端 UI（CsToolsBar），不再使用原生系统菜单栏
 //! 适用：admin CS（Win x64）
 
+mod album;
 mod app_settings;
 mod daily_report;
+mod icloud_sync;
 
 use std::sync::Mutex;
 
@@ -42,6 +44,7 @@ pub fn run() {
       Some(vec!["--autostart"]),
     ))
     .manage(Mutex::new(daily_report::ScheduleState::default()))
+    .manage(icloud_sync::SidecarClientHandle::new())
     .invoke_handler(tauri::generate_handler![
       app_settings::app_settings_get,
       app_settings::app_settings_save,
@@ -53,6 +56,20 @@ pub fn run() {
       daily_report::daily_report_list,
       daily_report::daily_report_get,
       daily_report::daily_report_run,
+      album::album_get_settings,
+      album::album_save_settings,
+      album::album_scan,
+      icloud_sync::icloud_sync_ping,
+      icloud_sync::icloud_sync_get_settings,
+      icloud_sync::icloud_sync_save_settings,
+      icloud_sync::icloud_sync_set_credentials,
+      icloud_sync::icloud_sync_login,
+      icloud_sync::icloud_sync_submit_2fa,
+      icloud_sync::icloud_sync_auth_state,
+      icloud_sync::queue::icloud_sync_start_job,
+      icloud_sync::queue::icloud_sync_pause_job,
+      icloud_sync::queue::icloud_sync_resume_job,
+      icloud_sync::queue::icloud_sync_job_status,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -68,8 +85,9 @@ pub fn run() {
       // 托盘保留快捷入口；应用内菜单改由前端 CsToolsBar 提供
       let tray_open = MenuItem::with_id(handle, "tray_open", "打开管理后台", true, None::<&str>)?;
       let tray_daily = MenuItem::with_id(handle, "tray_daily", "打开工作日报", true, None::<&str>)?;
+      let tray_album = MenuItem::with_id(handle, "tray_album", "打开本地相册", true, None::<&str>)?;
       let tray_quit = MenuItem::with_id(handle, "tray_quit", "退出", true, None::<&str>)?;
-      let tray_menu = Menu::with_items(handle, &[&tray_open, &tray_daily, &tray_quit])?;
+      let tray_menu = Menu::with_items(handle, &[&tray_open, &tray_daily, &tray_album, &tray_quit])?;
 
       let icon = app
         .default_window_icon()
@@ -83,6 +101,7 @@ pub fn run() {
         .on_menu_event(|app, event| match event.id().as_ref() {
           "tray_open" => open_in_main(app, "admin"),
           "tray_daily" => open_in_main(app, "today"),
+          "tray_album" => open_in_main(app, "album"),
           "tray_quit" => {
             app.exit(0);
           }

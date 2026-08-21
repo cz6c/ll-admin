@@ -25,6 +25,27 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 /// 前端监听此事件刷新今日页
 pub const EVENT_FINISHED: &str = "daily-report:finished";
 
+/// 流水线未产出报告即失败（如未配置工作区）；供全局 notify 门控
+pub const EVENT_RUN_ERROR: &str = "daily-report:run-error";
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyReportRunErrorPayload {
+  pub date: String,
+  pub error: String,
+}
+
+/// 推送「未生成报告」类失败；与 finished 互补
+pub fn emit_run_error(app: &AppHandle, date: &str, error: &str) {
+  let _ = app.emit(
+    EVENT_RUN_ERROR,
+    DailyReportRunErrorPayload {
+      date: date.to_string(),
+      error: error.to_string(),
+    },
+  );
+}
+
 struct RunGuard;
 
 impl Drop for RunGuard {

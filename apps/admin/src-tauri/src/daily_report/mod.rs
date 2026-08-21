@@ -72,8 +72,6 @@ pub fn daily_report_get(app: AppHandle, date: String) -> Result<Option<DailyRepo
 
 #[tauri::command]
 pub async fn daily_report_run(app: AppHandle) -> Result<DailyReport, String> {
-  let report = pipeline::run_daily_report(&app).await?;
-  scheduler::notify_report(&app, &report.date, report.error.as_deref());
-  Ok(report)
+  pipeline::run_daily_report(&app).await
 }
 

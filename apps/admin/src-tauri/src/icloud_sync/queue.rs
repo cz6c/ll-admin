@@ -1,0 +1,944 @@
+//! iCloud 同步队列编排
+//! 职责：catalog 落库、index 分配、串行 download、进度事件与 session 暂停续传
+//! 适用：Task 6 start/resume/status 命令；mock sidecar 可离线跑通
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
+
+use rand::Rng;
+use serde::Serialize;
+use serde_json::Value;
+use tauri::{AppHandle, Emitter};
+
+use super::ensure_sidecar_authenticated;
+use super::db::{
+  count_assets_by_status, get_job, insert_assets, insert_job, job_has_assets, list_pending_assets,
+  mark_asset_status, open_db, reset_failed_to_pending, update_job_status,
+};
+use super::naming::format_asset_filename;
+use super::settings::{icloud_sync_dir, load_settings, resolve_default_output_dir};
+use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
+use super::types::{
+  error_codes, AssetPart, AssetRow, AssetStatus, JobStatus, JobView, MediaKind,
+};
+
+const PROGRESS_EVENT: &str = "icloud-sync://progress";
+/// 任务状态变更事件；前端据此做 notify 门控与同步页 UI 刷新
+const JOB_STATUS_EVENT: &str = "icloud-sync://job-status";
+
+/// sidecar catalog 单条资产（与 Python mock 字段对齐）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogItem {
+  pub asset_id: String,
+  pub filename: String,
+  pub media_kind: MediaKind,
+  pub live_pair_id: Option<String>,
+  pub capture_at: Option<String>,
+  pub added_at: Option<String>,
+  pub parts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncProgressPayload {
+  pub done: u32,
+  pub total: u32,
+  pub filename: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncStartJobResult {
+  pub job_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncJobStatusResult {
+  pub job_id: i64,
+  pub status: JobStatus,
+  pub total: u32,
+  pub done: u32,
+  pub failed: u32,
+  pub pending: u32,
+}
+
+struct QueueRunner {
+  active_job_id: Option<i64>,
+  /// 用户 pause 时置 true；下载循环在每张之间检查并协作退出
+  pause_requested: Arc<AtomicBool>,
+}
+
+static QUEUE: OnceLock<Mutex<QueueRunner>> = OnceLock::new();
+
+fn queue_runner() -> &'static Mutex<QueueRunner> {
+  QUEUE.get_or_init(|| {
+    Mutex::new(QueueRunner {
+      active_job_id: None,
+      pause_requested: Arc::new(AtomicBool::new(false)),
+    })
+  })
+}
+
+fn clear_pause_request() {
+  if let Ok(runner) = queue_runner().lock() {
+    runner.pause_requested.store(false, Ordering::SeqCst);
+  }
+}
+
+fn is_pause_requested() -> bool {
+  queue_runner()
+    .lock()
+    .map(|r| r.pause_requested.load(Ordering::SeqCst))
+    .unwrap_or(false)
+}
+
+fn state_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+  Ok(icloud_sync_dir(app)?.join("state.db"))
+}
+
+/// 按视图排序键升序排列 catalog 并校验字段
+pub fn sort_and_validate_catalog(items: &mut [CatalogItem], view: JobView) -> Result<(), String> {
+  items.sort_by(|a, b| sort_key(a, view).cmp(&sort_key(b, view)));
+  for item in items.iter() {
+    validate_catalog_item(item, view)?;
+  }
+  Ok(())
+}
+
+fn sort_key(item: &CatalogItem, view: JobView) -> String {
+  match view {
+    JobView::Library => item.capture_at.clone().unwrap_or_default(),
+    JobView::Recents => item.added_at.clone().unwrap_or_default(),
+  }
+}
+
+/// 校验单条 catalog：排序字段与 Live 强绑定（缺 live_pair_id 视为 catalog 失败）
+fn validate_catalog_item(item: &CatalogItem, view: JobView) -> Result<(), String> {
+  let sort = sort_key(item, view);
+  if sort.is_empty() {
+    return Err(error_codes::CATALOG_SORT_MISSING.to_string());
+  }
+  if item.media_kind == MediaKind::Live && item.live_pair_id.as_deref().unwrap_or("").is_empty() {
+    return Err(error_codes::LIVE_BIND_MISSING.to_string());
+  }
+  if item.media_kind == MediaKind::Live && item.live_pair_id.is_none() {
+    return Err(error_codes::LIVE_BIND_MISSING.to_string());
+  }
+  Ok(())
+}
+
+/// 将已排序 catalog 转为 SQLite 资产行；Live still+mov 共享 index_num
+pub fn catalog_to_asset_rows(
+  job_id: i64,
+  view: JobView,
+  items: &[CatalogItem],
+) -> Result<Vec<AssetRow>, String> {
+  let mut sorted = items.to_vec();
+  sort_and_validate_catalog(&mut sorted, view)?;
+
+  let mut rows = Vec::new();
+  for (idx, item) in sorted.iter().enumerate() {
+    let index_num = i32::try_from(idx + 1).map_err(|_| "index 超出 i32 范围".to_string())?;
+    for part in &item.parts {
+      let asset_part = map_catalog_part(item.media_kind, part)?;
+      rows.push(AssetRow {
+        id: 0,
+        job_id,
+        asset_id: item.asset_id.clone(),
+        sort_key: sort_key(item, view),
+        original_filename: item.filename.clone(),
+        media_kind: item.media_kind,
+        live_pair_id: item.live_pair_id.clone(),
+        index_num,
+        part: asset_part,
+        status: AssetStatus::Pending,
+        dest_path: None,
+      });
+    }
+  }
+  Ok(rows)
+}
+
+fn map_catalog_part(media_kind: MediaKind, part: &str) -> Result<AssetPart, String> {
+  match (media_kind, part) {
+    (MediaKind::Live, "still") => Ok(AssetPart::Still),
+    (MediaKind::Live, "mov") => Ok(AssetPart::Mov),
+    (MediaKind::Photo, "still") | (MediaKind::Photo, "full") => Ok(AssetPart::Full),
+    (MediaKind::Video, "video") | (MediaKind::Video, "still") => Ok(AssetPart::Full),
+    _ => Err(format!("未知 catalog part: {media_kind:?}/{part}")),
+  }
+}
+
+fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
+  items
+    .iter()
+    .map(|value| {
+      let asset_id = value
+        .get("asset_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let filename = value
+        .get("filename")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let media_kind_s = value
+        .get("media_kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+      let media_kind = MediaKind::parse(media_kind_s)
+        .ok_or_else(|| format!("无效 media_kind: {media_kind_s}"))?;
+      let live_pair_id = value.get("live_pair_id").and_then(|v| {
+        if v.is_null() {
+          None
+        } else {
+          v.as_str().map(str::to_string)
+        }
+      });
+      let capture_at = value
+        .get("capture_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+      let added_at = value
+        .get("added_at")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+      let parts: Vec<String> = value
+        .get("parts")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+          arr
+            .iter()
+            .filter_map(|p| p.as_str().map(str::to_string))
+            .collect()
+        })
+        .unwrap_or_default();
+
+      Ok(CatalogItem {
+        asset_id,
+        filename,
+        media_kind,
+        live_pair_id,
+        capture_at,
+        added_at,
+        parts,
+      })
+    })
+    .collect()
+}
+
+fn resolve_output_dir(app: &AppHandle) -> Result<String, String> {
+  let settings = load_settings(app)?;
+  if !settings.output_dir.trim().is_empty() {
+    return Ok(settings.output_dir.trim().to_string());
+  }
+  resolve_default_output_dir(app)?
+    .map(|p| p.to_string_lossy().into_owned())
+    .ok_or_else(|| "请配置同步输出目录或相册根目录".to_string())
+}
+
+fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
+  match asset.part {
+    AssetPart::Mov => "mov",
+    AssetPart::Still => "still",
+    AssetPart::Full => {
+      if asset.media_kind == MediaKind::Video {
+        "video"
+      } else {
+        "still"
+      }
+    }
+  }
+}
+
+fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
+  let (stem, ext) = filename_stem_ext(&asset.original_filename);
+  let ext = match asset.part {
+    AssetPart::Mov => "mov".to_string(),
+    _ => ext,
+  };
+  let name = format_asset_filename(asset.index_num as u32, &stem, &ext);
+  Path::new(output_dir).join(name)
+}
+
+fn filename_stem_ext(filename: &str) -> (String, String) {
+  let path = Path::new(filename);
+  let stem = path
+    .file_stem()
+    .and_then(|s| s.to_str())
+    .unwrap_or("asset")
+    .to_string();
+  let ext = path
+    .extension()
+    .and_then(|s| s.to_str())
+    .unwrap_or("bin")
+    .to_string();
+  (stem, ext)
+}
+
+fn emit_progress(app: &AppHandle, done: u32, total: u32, filename: &str) {
+  let payload = IcloudSyncProgressPayload {
+    done,
+    total,
+    filename: filename.to_string(),
+  };
+  let _ = app.emit(PROGRESS_EVENT, &payload);
+}
+
+fn random_jitter_ms() -> u64 {
+  rand::thread_rng().gen_range(500..=2000)
+}
+
+/// 输出目录中目标文件已存在且非空，视为该资产已完成。
+/// sidecar 原子落盘成功后若在写 stdout 前断连，Rust 会误判为 pending/paused。
+fn local_dest_ready(dest: &Path) -> bool {
+  dest.is_file()
+    && std::fs::metadata(dest)
+      .map(|m| m.len() > 0)
+      .unwrap_or(false)
+}
+
+/// 磁盘已有有效文件时补记 done，避免重复下载与进度卡在最后一张。
+/// 仅精确匹配 `{index:05d}_{sanitized_stem}.{ext}`；原名参与路径以便顺序变化时校验。
+fn mark_asset_done_if_on_disk(
+  conn: &rusqlite::Connection,
+  asset: &AssetRow,
+  output_dir: &str,
+) -> Result<bool, String> {
+  let dest = dest_path_for_asset(output_dir, asset);
+  if !local_dest_ready(&dest) {
+    return Ok(false);
+  }
+  mark_asset_status(
+    conn,
+    asset.id,
+    AssetStatus::Done,
+    Some(&dest.to_string_lossy()),
+  )?;
+  Ok(true)
+}
+
+/// 扫描 pending 资产：磁盘已有文件则补记 done；若全部完成则将 job 置为 done。
+/// @returns 是否在本次 reconcile 中将 job 置为 done（调用方负责 emit）
+fn reconcile_job_with_disk(
+  conn: &rusqlite::Connection,
+  job_id: i64,
+  output_dir: &str,
+) -> Result<bool, String> {
+  let pending = list_pending_assets(conn, job_id)?;
+  for asset in &pending {
+    mark_asset_done_if_on_disk(conn, asset, output_dir)?;
+  }
+
+  let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
+  if pending == 0 && failed == 0 && done > 0 {
+    update_job_status(conn, job_id, JobStatus::Done)?;
+    return Ok(true);
+  }
+  Ok(false)
+}
+
+fn event_error_code(event: &SidecarEvent) -> Option<&str> {
+  event.code.as_deref()
+}
+
+fn is_fatal_job_error(code: &str) -> bool {
+  code == error_codes::ACCOUNT_LOCKED || code == error_codes::RATE_LIMITED
+}
+
+/// 下载阶段 auth 类错误：暂停 job、保留 SQLite，待用户显式重认证后 resume（不自动重登）
+fn is_auth_pause_error(code: &str) -> bool {
+  matches!(
+    code,
+    error_codes::SESSION_EXPIRED
+      | error_codes::AUTH_FAILED
+      | error_codes::NEED_2FA
+      | error_codes::SIDECAR_CRASHED
+  )
+}
+
+fn fetch_catalog(
+  client: &SidecarClient,
+  app: &AppHandle,
+  view: JobView,
+  apple_id: &str,
+  session_path: &Path,
+) -> Result<Vec<CatalogItem>, String> {
+  let event = client
+    .request(
+      app,
+      serde_json::json!({
+        "cmd": "catalog",
+        "view": view.as_str(),
+        "apple_id": apple_id,
+        "session_dir": session_path.to_string_lossy(),
+      }),
+    )
+    .map_err(|e| e.to_string())?;
+
+  if event.event_type == "error" {
+    let code = event_error_code(&event).unwrap_or("catalog_error");
+    let message = event.message.clone().unwrap_or_default();
+    if message.is_empty() {
+      return Err(code.to_string());
+    }
+    return Err(format!("{code}: {message}"));
+  }
+  if event.event_type != "done" {
+    return Err(format!("catalog 意外响应: type={}", event.event_type));
+  }
+
+  let raw_items = event.items.ok_or_else(|| "catalog 响应缺少 items".to_string())?;
+  parse_catalog_items(&raw_items)
+}
+
+fn try_claim_job(job_id: i64) -> Result<(), String> {
+  let mut runner = queue_runner()
+    .lock()
+    .map_err(|_| "queue lock poisoned".to_string())?;
+  if runner.active_job_id.is_some() {
+    return Err("已有同步任务正在运行".to_string());
+  }
+  runner.active_job_id = Some(job_id);
+  Ok(())
+}
+
+fn release_job(job_id: i64) {
+  if let Ok(mut runner) = queue_runner().lock() {
+    if runner.active_job_id == Some(job_id) {
+      runner.active_job_id = None;
+    }
+  }
+}
+
+fn download_one(
+  client: &Arc<SidecarClient>,
+  app: &AppHandle,
+  asset: &AssetRow,
+  dest: &Path,
+  apple_id: &str,
+  session_path: &Path,
+) -> Result<(), SidecarError> {
+  if let Some(parent) = dest.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| SidecarError::new("io_error", e.to_string()))?;
+  }
+
+  let event = client.request(
+    app,
+    serde_json::json!({
+      "cmd": "download",
+      "asset_id": asset.asset_id,
+      "part": sidecar_part_for_download(asset),
+      "dest_path": dest.to_string_lossy(),
+      "apple_id": apple_id,
+      "session_dir": session_path.to_string_lossy(),
+    }),
+  )?;
+
+  if event.event_type == "done" {
+    return Ok(());
+  }
+  if event.event_type == "error" {
+    let code = event_error_code(&event).unwrap_or(error_codes::DOWNLOAD_FAILED);
+    let message = event.message.clone().unwrap_or_default();
+    return Err(SidecarError::new(code, message));
+  }
+  Err(SidecarError::new(
+    error_codes::DOWNLOAD_FAILED,
+    format!("download 意外响应: type={}", event.event_type),
+  ))
+}
+
+/// 串行下载循环；在后台线程调用
+fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
+  let db_path = match state_db_path(&app) {
+    Ok(p) => p,
+    Err(e) => {
+      log::error!("icloud sync db path: {e}");
+      release_job(job_id);
+      return;
+    }
+  };
+
+  let outcome = (|| -> Result<(), String> {
+    client.ensure_started(&app).map_err(|e| e.to_string())?;
+
+    if let Err(e) = ensure_sidecar_authenticated(&app, client.as_ref()) {
+      let conn = open_db(&db_path)?;
+      if e.contains(error_codes::NEED_2FA)
+        || e.starts_with(error_codes::SESSION_EXPIRED)
+        || e.starts_with(error_codes::AUTH_FAILED)
+        || e.starts_with(error_codes::SIDECAR_CRASHED)
+      {
+        set_job_status(&app, &conn, job_id, JobStatus::PausedSession)?;
+        return Ok(());
+      }
+      return Err(e);
+    }
+
+    let session_path = session_dir(&app)?;
+    let conn = open_db(&db_path)?;
+    let job = get_job(&conn, job_id)?
+      .ok_or_else(|| format!("job {job_id} 不存在"))?;
+    set_job_status(&app, &conn, job_id, JobStatus::Running)?;
+
+    let apple_id = job.apple_id.clone();
+    let total = {
+      let (d, f, p) = count_assets_by_status(&conn, job_id)?;
+      d + f + p
+    };
+
+    loop {
+      if is_pause_requested() {
+        set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+        emit_progress(&app, done, total, "");
+        return Ok(());
+      }
+
+      let pending = list_pending_assets(&conn, job_id)?;
+      if pending.is_empty() {
+        set_job_status(&app, &conn, job_id, JobStatus::Done)?;
+        emit_progress(&app, total, total, "");
+        break;
+      }
+
+      let asset = &pending[0];
+
+      if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
+        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+        emit_progress(&app, done, total, &asset.original_filename);
+        continue;
+      }
+
+      let dest = dest_path_for_asset(&job.output_dir, asset);
+
+      match download_one(
+        &client,
+        &app,
+        asset,
+        &dest,
+        &apple_id,
+        &session_path,
+      ) {
+        Ok(()) => {
+          mark_asset_status(
+            &conn,
+            asset.id,
+            AssetStatus::Done,
+            Some(&dest.to_string_lossy()),
+          )?;
+          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+          emit_progress(&app, done, total, &asset.original_filename);
+        }
+        Err(err) => {
+          let code = err.code.as_str();
+          if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
+            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+            emit_progress(&app, done, total, &asset.original_filename);
+            continue;
+          }
+          if is_auth_pause_error(code) {
+            set_job_status(&app, &conn, job_id, JobStatus::PausedSession)?;
+            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+            emit_progress(&app, done, total, &asset.original_filename);
+            return Ok(());
+          }
+          if is_fatal_job_error(code) {
+            set_job_status(&app, &conn, job_id, JobStatus::Failed)?;
+            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+            emit_progress(&app, done, total, &asset.original_filename);
+            return Err(err.message);
+          }
+          // download_failed 或其它可继续错误：标记 failed 并继续
+          mark_asset_status(&conn, asset.id, AssetStatus::Failed, None)?;
+          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+          emit_progress(&app, done, total, &asset.original_filename);
+        }
+      }
+
+      // 每张之间随机间隔 0.5–2s（P0 降风险）；sleep 后再检查 pause，避免长等
+      thread::sleep(Duration::from_millis(random_jitter_ms()));
+      if is_pause_requested() {
+        set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+        emit_progress(&app, done, total, "");
+        return Ok(());
+      }
+    }
+    Ok(())
+  })();
+
+  if let Err(e) = outcome {
+    log::error!("icloud sync job {job_id} failed: {e}");
+    if let Ok(conn) = open_db(&db_path) {
+      let _ = set_job_status(&app, &conn, job_id, JobStatus::Failed);
+    }
+  }
+
+  release_job(job_id);
+}
+
+fn spawn_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
+  clear_pause_request();
+  thread::spawn(move || run_download_loop(app, job_id, client));
+}
+
+fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
+  let job = get_job(conn, job_id)?
+    .ok_or_else(|| format!("job {job_id} 不存在"))?;
+  let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
+  let total = done + failed + pending;
+  Ok(IcloudSyncJobStatusResult {
+    job_id,
+    status: job.status,
+    total,
+    done,
+    failed,
+    pending,
+  })
+}
+
+/// 推送任务状态快照；前端按 focus + route 决定 OS / message / 页内
+fn emit_job_status(app: &AppHandle, conn: &rusqlite::Connection, job_id: i64) {
+  match build_job_status(conn, job_id) {
+    Ok(payload) => {
+      let _ = app.emit(JOB_STATUS_EVENT, &payload);
+    }
+    Err(e) => log::warn!("icloud sync emit job status: {e}"),
+  }
+}
+
+/// 更新任务状态并 emit；download 循环与 pause 等路径统一走此入口
+fn set_job_status(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  job_id: i64,
+  status: JobStatus,
+) -> Result<(), String> {
+  update_job_status(conn, job_id, status)?;
+  emit_job_status(app, conn, job_id);
+  Ok(())
+}
+
+/// 新建任务：catalog 一次 → 分配 index → 落库 → 后台串行下载
+#[tauri::command]
+pub fn icloud_sync_start_job(
+  app: AppHandle,
+  view: JobView,
+  sidecar: tauri::State<'_, SidecarClientHandle>,
+) -> Result<IcloudSyncStartJobResult, String> {
+  let client = sidecar.client();
+  ensure_sidecar_authenticated(&app, client.as_ref())?;
+
+  let output_dir = resolve_output_dir(&app)?;
+  std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {e}"))?;
+
+  let settings = load_settings(&app)?;
+  let apple_id = settings.apple_id.clone();
+  let session_path = session_dir(&app)?;
+
+  let catalog_items = fetch_catalog(client.as_ref(), &app, view, &apple_id, &session_path)?;
+  if catalog_items.is_empty() {
+    return Err("catalog 为空".to_string());
+  }
+
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  let created_at = chrono::Utc::now().timestamp();
+  let job_id = insert_job(
+    &conn,
+    view,
+    &output_dir,
+    &apple_id,
+    JobStatus::Pending,
+    created_at,
+  )?;
+
+  let assets = catalog_to_asset_rows(job_id, view, &catalog_items)?;
+  insert_assets(&conn, &assets)?;
+
+  try_claim_job(job_id)?;
+  spawn_download_loop(app, job_id, client.clone());
+
+  Ok(IcloudSyncStartJobResult { job_id })
+}
+
+/// 从断点续传：paused_session 且已有 assets 时不 re-catalog；重试 failed + 继续 pending
+#[tauri::command]
+pub fn icloud_sync_resume_job(
+  app: AppHandle,
+  job_id: i64,
+  sidecar: tauri::State<'_, SidecarClientHandle>,
+) -> Result<(), String> {
+  let client = sidecar.client();
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
+
+  match job.status {
+    JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {}
+    JobStatus::Done => return Err("任务已完成".to_string()),
+    JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
+  }
+
+  if !job_has_assets(&conn, job_id)? {
+    return Err("任务无资产记录，请使用 start_job".to_string());
+  }
+
+  if let Some(output_dir) = get_job(&conn, job_id)?.map(|j| j.output_dir) {
+    if reconcile_job_with_disk(&conn, job_id, &output_dir)? {
+      emit_job_status(&app, &conn, job_id);
+      return Ok(());
+    }
+  }
+
+  try_claim_job(job_id)?;
+  if job.status == JobStatus::PausedSession || job.status == JobStatus::PausedUser {
+    set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
+  }
+  reset_failed_to_pending(&conn, job_id)?;
+  spawn_download_loop(app, job_id, client.clone());
+  Ok(())
+}
+
+/// 用户手动暂停：运行中任务协作退出；未在跑线程时直接写 paused_user
+#[tauri::command]
+pub fn icloud_sync_pause_job(app: AppHandle, job_id: i64) -> Result<(), String> {
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
+
+  match job.status {
+    JobStatus::Running | JobStatus::Pending => {}
+    JobStatus::PausedUser => return Ok(()),
+    JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
+    JobStatus::Done => return Err("任务已完成".to_string()),
+    JobStatus::Failed => return Err("任务已失败".to_string()),
+  }
+
+  let runner = queue_runner()
+    .lock()
+    .map_err(|_| "queue lock poisoned".to_string())?;
+
+  if runner.active_job_id == Some(job_id) {
+    runner.pause_requested.store(true, Ordering::SeqCst);
+    Ok(())
+  } else {
+    set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+    Ok(())
+  }
+}
+
+/// 查询任务进度与状态
+#[tauri::command]
+pub fn icloud_sync_job_status(app: AppHandle, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  if let Some(job) = get_job(&conn, job_id)? {
+    if reconcile_job_with_disk(&conn, job_id, &job.output_dir)? {
+      emit_job_status(&app, &conn, job_id);
+    }
+  }
+  build_job_status(&conn, job_id)
+}
+
+/// 供 mod 注入的 SidecarClient 包装（Tauri State 需 'static + 后台线程 Clone）
+pub struct SidecarClientHandle {
+  inner: Arc<SidecarClient>,
+}
+
+impl SidecarClientHandle {
+  pub fn new() -> Self {
+    Self {
+      inner: Arc::new(SidecarClient::new()),
+    }
+  }
+
+  pub fn client(&self) -> Arc<SidecarClient> {
+    self.inner.clone()
+  }
+}
+
+impl Default for SidecarClientHandle {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn photo(id: &str, capture: &str, added: &str) -> CatalogItem {
+    CatalogItem {
+      asset_id: id.into(),
+      filename: format!("{id}.JPG"),
+      media_kind: MediaKind::Photo,
+      live_pair_id: None,
+      capture_at: Some(capture.into()),
+      added_at: Some(added.into()),
+      parts: vec!["still".into()],
+    }
+  }
+
+  fn live(id: &str, pair: &str, capture: &str, added: &str) -> CatalogItem {
+    CatalogItem {
+      asset_id: id.into(),
+      filename: format!("{id}.HEIC"),
+      media_kind: MediaKind::Live,
+      live_pair_id: Some(pair.into()),
+      capture_at: Some(capture.into()),
+      added_at: Some(added.into()),
+      parts: vec!["still".into(), "mov".into()],
+    }
+  }
+
+  /// 2 normal + 1 live → live still/mov 共享 index 3
+  #[test]
+  fn assign_indices_two_normal_one_live_shared_index() {
+    let items = vec![
+      photo("P1", "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"),
+      photo("P2", "2024-01-02T00:00:00Z", "2024-01-03T00:00:00Z"),
+      live("L1", "LP1", "2024-01-03T00:00:00Z", "2024-01-04T00:00:00Z"),
+    ];
+
+    let rows = catalog_to_asset_rows(1, JobView::Library, &items).expect("rows");
+    assert_eq!(rows.len(), 4);
+
+    let p1: Vec<_> = rows.iter().filter(|r| r.asset_id == "P1").collect();
+    let p2: Vec<_> = rows.iter().filter(|r| r.asset_id == "P2").collect();
+    let live_rows: Vec<_> = rows.iter().filter(|r| r.asset_id == "L1").collect();
+
+    assert_eq!(p1.len(), 1);
+    assert_eq!(p1[0].index_num, 1);
+
+    assert_eq!(p2.len(), 1);
+    assert_eq!(p2[0].index_num, 2);
+
+    assert_eq!(live_rows.len(), 2);
+    assert!(live_rows.iter().all(|r| r.index_num == 3));
+    assert_eq!(live_rows[0].part, AssetPart::Still);
+    assert_eq!(live_rows[1].part, AssetPart::Mov);
+  }
+
+  #[test]
+  fn live_without_pair_id_fails_catalog() {
+    let mut item = live("L1", "LP1", "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z");
+    item.live_pair_id = None;
+    let err = catalog_to_asset_rows(1, JobView::Library, std::slice::from_ref(&item))
+      .expect_err("must fail");
+    assert_eq!(err, error_codes::LIVE_BIND_MISSING);
+  }
+
+  #[test]
+  fn auth_pause_codes_cover_session_auth_2fa_and_sidecar_crash() {
+    assert!(is_auth_pause_error(error_codes::SESSION_EXPIRED));
+    assert!(is_auth_pause_error(error_codes::AUTH_FAILED));
+    assert!(is_auth_pause_error(error_codes::NEED_2FA));
+    assert!(is_auth_pause_error(error_codes::SIDECAR_CRASHED));
+    assert!(!is_auth_pause_error(error_codes::DOWNLOAD_FAILED));
+    assert!(!is_auth_pause_error(error_codes::ACCOUNT_LOCKED));
+    assert!(!is_auth_pause_error(error_codes::RATE_LIMITED));
+  }
+
+  #[test]
+  fn recents_sort_uses_added_at() {
+    let items = vec![
+      photo("P2", "2024-01-05T00:00:00Z", "2024-01-02T00:00:00Z"),
+      photo("P1", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
+    ];
+    let rows = catalog_to_asset_rows(1, JobView::Recents, &items).expect("rows");
+    let p1 = rows.iter().find(|r| r.asset_id == "P1").expect("p1");
+    let p2 = rows.iter().find(|r| r.asset_id == "P2").expect("p2");
+    assert_eq!(p1.index_num, 1);
+    assert_eq!(p2.index_num, 2);
+  }
+
+  #[test]
+  fn local_dest_ready_requires_nonempty_file() {
+    let dir = std::env::temp_dir().join(format!(
+      "icloud_sync_dest_ready_{}",
+      std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let missing = dir.join("00031_x.jpg");
+    assert!(!local_dest_ready(&missing));
+
+    std::fs::write(&missing, b"ok").expect("write");
+    assert!(local_dest_ready(&missing));
+
+    std::fs::write(&missing, b"").expect("truncate");
+    assert!(!local_dest_ready(&missing));
+
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn mark_asset_done_if_on_disk_requires_exact_dest_path() {
+    use super::super::db::{insert_assets, insert_job, open_db};
+    use rusqlite::params;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let dir = std::env::temp_dir().join(format!(
+      "icloud_sync_exact_dest_{}",
+      std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    std::fs::write(dir.join("00031_only-index.jpg"), b"ok").expect("write");
+
+    let nanos = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("time")
+      .as_nanos();
+    let db_path = std::env::temp_dir().join(format!("icloud-sync-queue-test-{nanos}.db"));
+    let conn = open_db(&db_path).expect("open");
+    let job_id = insert_job(
+      &conn,
+      JobView::Library,
+      &dir.to_string_lossy(),
+      "user@icloud.com",
+      JobStatus::Pending,
+      1,
+    )
+    .expect("job");
+
+    let mut asset = AssetRow {
+      id: 0,
+      job_id,
+      asset_id: "A31".into(),
+      sort_key: "2026-01-01".into(),
+      original_filename: "微信图片_20260821145301_14_2.jpg".into(),
+      media_kind: MediaKind::Photo,
+      live_pair_id: None,
+      index_num: 31,
+      part: AssetPart::Full,
+      status: AssetStatus::Pending,
+      dest_path: None,
+    };
+    insert_assets(&conn, std::slice::from_ref(&asset)).expect("insert");
+    asset.id = conn
+      .query_row("SELECT id FROM assets WHERE job_id = ?1", params![job_id], |r| r.get(0))
+      .expect("asset id");
+
+    assert!(
+      !mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy()).expect("check")
+    );
+
+    let expected = dest_path_for_asset(&dir.to_string_lossy(), &asset);
+    std::fs::write(&expected, b"ok").expect("write expected");
+    assert!(
+      mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy()).expect("check")
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(db_path);
+  }
+}

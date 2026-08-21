@@ -6,5 +6,6 @@ fn main() {
   println!("cargo:rerun-if-changed=icons/128x128.png");
   println!("cargo:rerun-if-changed=icons/128x128@2x.png");
   println!("cargo:rerun-if-changed=icons/ccode-icon-b.png");
+  println!("cargo:rerun-if-changed=resources/icloud-sync-agent.exe");
   tauri_build::build()
 }

@@ -1,14 +1,14 @@
 //! 工作日报定时调度
 //! 职责：后台轮询本地时钟，在配置的 HH:mm 触发一次日报生成
 //! 适用：托盘常驻进程内调度（应用未运行则不跑）
+//! @note 用户提示由前端监听 finished / run-error 并按 CS 门控投递
 
 use std::sync::Mutex;
 
 use chrono::Local;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_notification::NotificationExt;
 
-use super::pipeline::run_scheduled;
+use super::pipeline::{emit_run_error, run_scheduled};
 use super::schedule::schedule_should_run_today;
 use super::settings::load_settings;
 
@@ -66,13 +66,10 @@ async fn tick_once(app: &AppHandle) -> Result<(), String> {
   }
 
   match run_scheduled(app).await {
-    Ok(Some(report)) => {
-      notify_report(app, &report.date, report.error.as_deref());
-      Ok(())
-    }
+    Ok(Some(_report)) => Ok(()),
     Ok(None) => Ok(()),
     Err(e) => {
-      notify_report(app, &today(), Some(&e));
+      emit_run_error(app, &today(), &e);
       Err(e)
     }
   }
@@ -80,25 +77,4 @@ async fn tick_once(app: &AppHandle) -> Result<(), String> {
 
 fn today() -> String {
   Local::now().format("%Y-%m-%d").to_string()
-}
-
-/// 系统通知；点击由前端/壳层另行处理聚焦
-pub fn notify_report(app: &AppHandle, date: &str, error: Option<&str>) {
-  let (title, body) = match error {
-    Some(e) => (
-      "工作日报生成失败".to_string(),
-      format!("{date}: {e}"),
-    ),
-    None => (
-      "今日工作日报已生成".to_string(),
-      format!("日期 {date}，点击打开查看"),
-    ),
-  };
-
-  let _ = app
-    .notification()
-    .builder()
-    .title(title)
-    .body(body)
-    .show();
 }

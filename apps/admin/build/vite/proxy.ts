@@ -23,7 +23,19 @@ export function createProxy(list: ProxyList = []) {
       ws: true,
       rewrite: path => path.replace(new RegExp(`^${prefix}`), ""),
       // https is require secure=false
-      ...(isHttps ? { secure: false } : {})
+      ...(isHttps ? { secure: false } : {}),
+      // CS 本地仅跑 admin 时 Nest 常未启动；吞掉 ECONNREFUSED，避免终端刷 proxy error
+      configure: proxy => {
+        proxy.on("error", (err, _req, res) => {
+          const refused = "code" in err && err.code === "ECONNREFUSED";
+          if (refused && res && "writeHead" in res && !res.headersSent) {
+            res.writeHead(502, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ code: 502, msg: "API 服务未启动" }));
+            return;
+          }
+          console.warn("[vite proxy]", err.message);
+        });
+      }
     };
   }
   return ret;

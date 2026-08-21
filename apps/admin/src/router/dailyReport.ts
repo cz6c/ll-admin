@@ -5,6 +5,8 @@
  */
 
 import type { AppRouteRecordRaw } from "#/utils";
+import { isAlbumPath } from "@/router/album";
+import { isIcloudSyncPath } from "@/router/icloudSync";
 
 const DailyReportLayout = () => import("@/layout/dailyReport.vue");
 
@@ -64,9 +66,9 @@ export function isCsSettingsPath(path: string): boolean {
   return path === "/cs-settings" || path.startsWith("/cs-settings/");
 }
 
-/** CS 本机工具免登录白名单（日报 + 应用设置） */
+/** CS 本机工具免登录白名单（日报 + 应用设置 + 相册 + iCloud 同步） */
 export function isCsPublicPath(path: string): boolean {
-  return isDailyReportPath(path) || isCsSettingsPath(path);
+  return isDailyReportPath(path) || isCsSettingsPath(path) || isAlbumPath(path) || isIcloudSyncPath(path);
 }
 
 /**

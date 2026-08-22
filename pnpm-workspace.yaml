@@ -5,3 +5,9 @@ packages:
 # 自有包发版后需立刻可装，不受 minimumReleaseAge 等待窗口限制
 minimumReleaseAgeExclude:
   - "@llcz/common"
+
+# 新成员初始化时不等待依赖发布年龄窗口；仍由 lockfile 固定版本和完整性校验。
+minimumReleaseAge: 0
+
+overrides:
+  unconfig: 7.3.2

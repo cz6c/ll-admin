@@ -18,32 +18,61 @@
 
 ## 安装使用
 
-- 获取项目代码
+本仓库为 monorepo，请在**仓库根目录**安装依赖；日常开发在 `apps/admin` 下执行脚本。
 
 ```bash
-git clone https://github.com/cz6c/vue-cz-admin.git
-```
+# 仓库根目录：仅安装 admin 及其 workspace 依赖（推荐）
+pnpm setup:admin
 
-- 安装依赖，推荐使用 pnpm 包管理
-
-```bash
+# 或全量安装
 pnpm install
 ```
 
-- 运行
+### Web 端（浏览器）
 
 ```bash
-pnpm run dev
+cd apps/admin
+pnpm run dev          # 或 bs:dev
+pnpm run bs:build     # 生产构建
 ```
 
-- 打包
+### 桌面端（Tauri）
 
 ```bash
-# 测试环境打包
-pnpm run build:test
-# 生产环境打包
-pnpm run build:test
+cd apps/admin
+pnpm run cs:dev       # 开发
+pnpm run cs:build     # 打包（会先构建 sidecar）
 ```
+
+## 桌面端首次开发环境清单
+
+`cs:dev` / `cs:build` 依赖 Tauri 与 Rust 工具链，除 Node.js + pnpm 外还需以下环境（Windows）：
+
+| 依赖 | 用途 | 安装方式 |
+|------|------|----------|
+| **Rust**（cargo / rustc） | Tauri 编译 | `winget install Rustlang.Rustup` 或 [rustup.rs](https://rustup.rs/) |
+| **Visual Studio Build Tools**（含 **C++** 工作负载） | MSVC 链接器 `link.exe` | `winget install Microsoft.VisualStudio.2022.BuildTools`，安装时勾选「使用 C++ 的桌面开发」 |
+| **Python 3.11+** | 构建 iCloud sidecar | `winget install Python.Python.3.12` |
+
+**首次初始化（在 `apps/admin` 目录）：**
+
+```bash
+# 1. 构建 workspace 公共包（入口在 dist/，未提交到 git）
+pnpm --filter @llcz/common build
+
+# 2. 构建 sidecar → src-tauri/resources/icloud-sync-agent.exe
+pnpm run cs:sidecar-build
+
+# 3. 启动桌面端开发
+pnpm run cs:dev
+```
+
+**说明：**
+
+- 安装 Rust / Python 后需**重启终端**（或重启 IDE），确保 `cargo`、`python` 在 PATH 中。
+- `icloud-sync-agent.exe` 已加入 `src-tauri/.gitignore`，克隆后需执行一次 `cs:sidecar-build`。
+- 登录/API 依赖后端时，另开终端在仓库根目录执行 `pnpm dev:server`。
+- sidecar 开发细节见 [`sidecar/icloudSync/README.md`](./sidecar/icloudSync/README.md)。
 
 ## Git 贡献提交规范
 

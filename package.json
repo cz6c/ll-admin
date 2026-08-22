@@ -19,6 +19,10 @@
     "dev:uni:mp": "pnpm --filter @apps/uni dev:mp-weixin",
     "dev:uni:mp:test": "pnpm --filter @apps/uni dev:mp:test",
     "build:mp": "pnpm --filter @apps/uni build:mp",
+    "setup:admin": "pnpm install --filter @apps/admin... --frozen-lockfile && pnpm --filter @llcz/common build",
+    "setup:server": "pnpm install --filter @apps/server... --frozen-lockfile && pnpm --filter @llcz/common build",
+    "setup:docs": "pnpm install --filter @apps/docs... --frozen-lockfile",
+    "setup:uni": "pnpm install --filter @apps/uni... --frozen-lockfile",
     "clean": "node ./scripts/clean.mjs",
     "reinstall": "pnpm clean --del-lock && pnpm install",
     "preinstall": "npx only-allow pnpm"
@@ -40,11 +44,5 @@
     "commitizen": {
       "path": "node_modules/cz-git"
     }
-  },
-  "pnpm": {
-    "overrides": {
-      "unconfig": "7.3.2"
-    },
-    "onlyBuiltDependencies": []
   }
 }

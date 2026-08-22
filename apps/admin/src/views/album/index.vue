@@ -89,7 +89,7 @@ async function scan() {
   try {
     const result = await invoke<MediaGroup[]>("album_scan", {
       root: rootDir.value,
-      thumbSize: THUMB_SIZE,
+      thumbSize: THUMB_SIZE
     });
     groups.value = result;
   } catch (e: any) {
@@ -147,11 +147,7 @@ onBeforeUnmount(() => {
         <div
           class="scan-progress-bar"
           :class="{ indeterminate: scanProgress.phase === 'discover' && scanProgress.total === 0 }"
-          :style="
-            scanProgress.phase === 'thumbnails' && scanProgress.total > 0
-              ? { width: scanProgressPercent + '%' }
-              : undefined
-          "
+          :style="scanProgress.phase === 'thumbnails' && scanProgress.total > 0 ? { width: scanProgressPercent + '%' } : undefined"
         />
       </div>
     </div>
@@ -182,12 +178,7 @@ onBeforeUnmount(() => {
           <span class="group-count">{{ group.files.length }} 项</span>
         </div>
         <div class="thumb-grid" :style="{ '--thumb-size': THUMB_SIZE + 'px' }">
-          <div
-            v-for="(file, fIdx) in group.files"
-            :key="file.path"
-            class="thumb-card"
-            @click="openViewer(gIdx, fIdx)"
-          >
+          <div v-for="(file, fIdx) in group.files" :key="file.path" class="thumb-card" @click="openViewer(gIdx, fIdx)">
             <!-- 图片 / 实况照片：base64 data URL 直接渲染，零协议开销 -->
             <img
               v-if="file.thumbData && (file.kind === 'image' || file.kind === 'livephoto')"
@@ -236,12 +227,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
-.album-page {
-  height: 100%;
-  background: #16181d;
-  position: relative;
-}
-
 /* 状态页 */
 .state-empty,
 .state-loading,
@@ -319,7 +304,6 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
   &::-webkit-scrollbar {
     width: 8px;
   }
@@ -348,11 +332,9 @@ onBeforeUnmount(() => {
 .group-name {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.75);
 }
 .group-count {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.35);
 }
 
 /* CSS Grid 自适应列数 */

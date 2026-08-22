@@ -19,6 +19,19 @@ pub fn consent_ready(settings: &IcloudSyncSettings) -> bool {
   settings.risk_accepted && settings.checklist_web_access && settings.checklist_adp_off
 }
 
+/// 规整并发下载数：P1 允许 1–3
+pub fn normalize_concurrency(raw: u32) -> u32 {
+  raw.clamp(1, 3)
+}
+
+/// 规整 iCloud 根域：仅允许 `com` / `cn`
+pub fn normalize_icloud_domain(raw: &str) -> String {
+  match raw.trim().to_lowercase().as_str() {
+    "cn" => "cn".to_string(),
+    _ => "com".to_string(),
+  }
+}
+
 /// 登录前 consent 门禁；未满足时返回 [`CONSENT_REQUIRED_MSG`]
 pub fn require_consent(settings: &IcloudSyncSettings) -> Result<(), String> {
   if consent_ready(settings) {
@@ -28,7 +41,38 @@ pub fn require_consent(settings: &IcloudSyncSettings) -> Result<(), String> {
   }
 }
 
-/// session 目录是否已有 cookie 等持久化文件（供 auth_state 展示，不表示仍有效）
+/// pyicloud session 文件名 stem（与 sidecar agent.py 一致）
+fn apple_id_session_stem(apple_id: &str) -> String {
+  apple_id
+    .chars()
+    .filter(|c| c.is_alphanumeric() || *c == '_')
+    .collect()
+}
+
+/// 指定 Apple ID 的 session / cookie 落盘路径
+pub fn session_paths_for_apple_id(
+  session_dir: &Path,
+  apple_id: &str,
+) -> (PathBuf, PathBuf) {
+  let stem = apple_id_session_stem(apple_id.trim());
+  (
+    session_dir.join(format!("{stem}.session")),
+    session_dir.join(stem),
+  )
+}
+
+/// 当前 Apple ID 是否已有 session 落盘（不表示仍有效）
+pub fn session_has_files_for_apple_id(app: &AppHandle, apple_id: &str) -> Result<bool, String> {
+  let trimmed = apple_id.trim();
+  if trimmed.is_empty() {
+    return Ok(false);
+  }
+  let dir = super::sidecar::session_dir(app)?;
+  let (session_path, cookie_path) = session_paths_for_apple_id(&dir, trimmed);
+  Ok(session_path.is_file() || cookie_path.is_file())
+}
+
+/// session 目录是否已有任意 cookie 等持久化文件（供 auth_state 展示，不表示仍有效）
 pub fn session_has_files(app: &AppHandle) -> Result<bool, String> {
   let dir = super::sidecar::session_dir(app)?;
   if !dir.is_dir() {
@@ -38,6 +82,22 @@ pub fn session_has_files(app: &AppHandle) -> Result<bool, String> {
     .map_err(|e| format!("读取 session 目录失败: {e}"))?
     .filter_map(Result::ok)
     .any(|entry| entry.path().is_file()))
+}
+
+/// 清除指定 Apple ID 的 session 落盘文件（登出 / 换号时）
+pub fn clear_session_for_apple_id(app: &AppHandle, apple_id: &str) -> Result<(), String> {
+  let trimmed = apple_id.trim();
+  if trimmed.is_empty() {
+    return Ok(());
+  }
+  let dir = super::sidecar::session_dir(app)?;
+  let (session_path, cookie_path) = session_paths_for_apple_id(&dir, trimmed);
+  for path in [session_path, cookie_path] {
+    if path.is_file() {
+      std::fs::remove_file(&path).map_err(|e| format!("删除 session 文件失败: {e}"))?;
+    }
+  }
+  Ok(())
 }
 
 /// iCloud 同步数据根目录：`<appData>/icloud-sync`
@@ -68,8 +128,11 @@ pub fn load_settings(app: &AppHandle) -> Result<IcloudSyncSettings, String> {
 /// 覆盖写入设置（不含 Apple ID 密码）
 pub fn save_settings(app: &AppHandle, settings: &IcloudSyncSettings) -> Result<(), String> {
   let path = settings_path(app)?;
+  let mut normalized = settings.clone();
+  normalized.concurrency = normalize_concurrency(settings.concurrency);
+  normalized.icloud_domain = normalize_icloud_domain(&settings.icloud_domain);
   let raw =
-    serde_json::to_string_pretty(settings).map_err(|e| format!("序列化 iCloud 同步设置失败: {e}"))?;
+    serde_json::to_string_pretty(&normalized).map_err(|e| format!("序列化 iCloud 同步设置失败: {e}"))?;
   fs::write(&path, raw).map_err(|e| format!("写入 iCloud 同步设置失败: {e}"))
 }
 

@@ -4,5 +4,10 @@
 .superpowers/
 .workbuddy/
 
+# Python 缓存（sidecar 等；详见 apps/admin/sidecar/icloudSync/.gitignore）
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Cursor / AI 在仓库内生成的设计稿与实现计划（不入库）
 docs/superpowers/

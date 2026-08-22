@@ -5,7 +5,7 @@ iCloud Sync sidecar agent skeleton (line-JSON over stdin/stdout).
 职责：
 - 读取宿主逐行 JSON 命令并输出逐行 JSON 事件。
 - 提供 ICLOUD_SYNC_MOCK=1 的离线路径，确保无网络环境可验证协议。
-- 将 pyicloud 异常映射到稳定机读错误码。
+- 将 pyicloud_ipd（icloudpd）异常映射到稳定机读错误码。
 
 适用场景：
 - Task 1 协议联调与离线测试。
@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,17 +27,24 @@ from protocol import (
     CODE_ACCOUNT_LOCKED,
     CODE_AUTH_FAILED,
     CODE_CATALOG_SORT_MISSING,
+    CODE_DOMAIN_MISMATCH,
     CODE_INVALID_REQUEST,
     CODE_LIVE_BIND_MISSING,
     CODE_NEED_2FA,
     CODE_RATE_LIMITED,
     CODE_SESSION_EXPIRED,
     CODE_DOWNLOAD_FAILED,
+    CatalogSortMissingError,
+    LiveBindMissingError,
     done_event,
     error_event,
     need_2fa_event,
     version_event,
 )
+
+import authDiagnostic as auth_diag
+import icloudAuth as ipd_auth
+import ipdPhotos as ipd_photos
 
 CATALOG_VIEWS = {"library", "recents"}
 
@@ -70,17 +78,25 @@ class AuthState:
     apple_id: str = ""
     session_dir: str = ""
     waiting_2fa: bool = False
+    # 是否已对当前 challenge 触发过 request_2fa；避免重复推送导致设备弹窗风暴
+    mfa_delivery_kicked_off: bool = False
+    # auth 阶段记录的投递方式；bridge 超时后 pyicloud 可能丢 delivery_method
+    delivery_method: str = ""
+    last_kickoff_path: str = ""
+    last_validate_path: str = ""
+    # SMS 路径：pyicloud_ipd validate_2fa_code_sms 所需 device id
+    sms_device_id: int | None = None
+    # 当前会话使用的 iCloud 根域（com / cn）
+    icloud_domain: str = ""
+    # catalog 后 asset_id → PhotoAsset 索引，避免每次 download 全库 O(n) 扫描
+    photo_cache: dict[str, Any] | None = None
+    photo_cache_view: str = ""
 
 
 _AUTH_STATE = AuthState()
 
-
-class CatalogSortMissingError(RuntimeError):
-    """目录项缺少视图要求的排序字段。"""
-
-
-class LiveBindMissingError(RuntimeError):
-    """检测到 Live 迹象但无法生成强绑定 live_pair_id。"""
+# 2FA 收尾：单次 trust_session（社区 icloudpd 标准）；establish 阶段不再循环打 Apple API
+_WEBAUTH_SETTLE_SEC = 1.0
 
 
 def _configure_stdio_utf8() -> None:
@@ -136,50 +152,19 @@ def _is_mock_mode() -> bool:
 
 
 def _load_pycloud_service() -> Any:
-    """
-    延迟导入 pyicloud。
-
-    @note 测试环境可能不安装 pyicloud，故仅在非 mock 且真实命令路径触发导入。
-    """
-    try:
-        from pyicloud import PyiCloudService  # type: ignore
-    except Exception as exc:
-        raise RuntimeError(f"pyicloud import failed: {exc}") from exc
-    return PyiCloudService
+    """延迟导入 pyicloud_ipd.PyiCloudService（icloudpd 同源库）。"""
+    return ipd_auth.load_service_class()
 
 
 _PYICLOUD_2FA_EXCEPTIONS: tuple[type[BaseException], ...] | None = None
 
 
 def _get_pycloud_2fa_exception_classes() -> tuple[type[BaseException], ...]:
-    """
-    延迟加载 pyicloud 2FA/2SA 相关异常类型。
-
-    @note pyicloud 未安装时返回空 tuple，调用方需配合异常类型名兜底。
-    """
+    """延迟加载 pyicloud_ipd 2FA/2SA 相关异常类型。"""
     global _PYICLOUD_2FA_EXCEPTIONS
     if _PYICLOUD_2FA_EXCEPTIONS is not None:
         return _PYICLOUD_2FA_EXCEPTIONS
-
-    classes: list[type[BaseException]] = []
-    try:
-        from pyicloud.exceptions import PyiCloud2SARequiredException  # type: ignore
-
-        classes.append(PyiCloud2SARequiredException)
-    except Exception:
-        pass
-
-    # 兼容 fork/旧版命名；当前上游仅公开 PyiCloud2SARequiredException。
-    for attr in ("PyiCloud2FARequiredException", "PyiCloudTwoStepAuthRequiredException"):
-        try:
-            module = __import__("pyicloud.exceptions", fromlist=[attr])
-            exc_cls = getattr(module, attr, None)
-            if isinstance(exc_cls, type) and issubclass(exc_cls, BaseException):
-                classes.append(exc_cls)
-        except Exception:
-            pass
-
-    _PYICLOUD_2FA_EXCEPTIONS = tuple(classes)
+    _PYICLOUD_2FA_EXCEPTIONS = ipd_auth.load_2fa_exception_classes()
     return _PYICLOUD_2FA_EXCEPTIONS
 
 
@@ -222,6 +207,11 @@ def _map_exception(exc: BaseException) -> str:
 
     if _is_2fa_required_exception(exc):
         return CODE_NEED_2FA
+    mapped = ipd_auth.map_api_exception(exc, is_2fa_required=_is_2fa_required_exception)
+    if mapped:
+        return mapped
+    if isinstance(exc, ipd_auth.IcloudDomainMismatchError) or ipd_auth.is_domain_mismatch_exception(exc):
+        return CODE_DOMAIN_MISMATCH
     if exc_type in ("PyiCloudFailedLoginException",):
         return CODE_AUTH_FAILED
     if exc_type in ("PyiCloudAPIResponseException",):
@@ -253,12 +243,395 @@ def _map_exception(exc: BaseException) -> str:
     return CODE_AUTH_FAILED
 
 
+def _session_files_present(session_dir: str, apple_id: str) -> bool:
+    """session 目录是否已有当前账号落盘文件。"""
+    if not session_dir or not apple_id.strip():
+        return False
+    stem = "".join(c for c in apple_id.strip() if c.isalnum() or c == "_")
+    base = Path(session_dir)
+    return (base / f"{stem}.session").is_file() or (base / stem).is_file()
+
+
+def _build_diagnostic(
+    *,
+    stage: str,
+    code: str,
+    message: str,
+    exc: Exception | None = None,
+) -> dict[str, Any]:
+    """封装 authDiagnostic.build_auth_diagnostic，注入 agent 侧依赖。"""
+    return auth_diag.build_auth_diagnostic(
+        stage=stage,
+        code=code,
+        message=message,
+        apple_id=_AUTH_STATE.apple_id,
+        session_dir=_AUTH_STATE.session_dir,
+        api=_AUTH_STATE.api,
+        auth_state=_AUTH_STATE,
+        has_webauth=_has_webauth_token,
+        session_auth_snapshot=_session_auth_snapshot,
+        supports_bridge=_supports_trusted_device_bridge,
+        delivery_method=_two_factor_delivery_method,
+        session_files_present=_session_files_present(_AUTH_STATE.session_dir, _AUTH_STATE.apple_id),
+        validate_path=_AUTH_STATE.last_validate_path,
+        kickoff_path=_AUTH_STATE.last_kickoff_path,
+        exc=exc,
+    )
+
+
+def _auth_error(
+    cmd: str,
+    code: str,
+    message: str,
+    *,
+    stage: str,
+    exc: Exception | None = None,
+) -> dict[str, Any]:
+    """构造带 diagnostic 的 error 事件并落盘。"""
+    diagnostic = _build_diagnostic(stage=stage, code=code, message=message, exc=exc)
+    return error_event(cmd, code, message, diagnostic=diagnostic)
+
+
 def _reset_auth_state() -> None:
     """清空进程内认证状态，等待用户显式重新 auth。"""
     _AUTH_STATE.api = None
     _AUTH_STATE.apple_id = ""
     _AUTH_STATE.session_dir = ""
     _AUTH_STATE.waiting_2fa = False
+    _AUTH_STATE.mfa_delivery_kicked_off = False
+    _AUTH_STATE.delivery_method = ""
+    _AUTH_STATE.last_kickoff_path = ""
+    _AUTH_STATE.last_validate_path = ""
+    _AUTH_STATE.sms_device_id = None
+    _AUTH_STATE.icloud_domain = ""
+    _AUTH_STATE.photo_cache = None
+    _AUTH_STATE.photo_cache_view = ""
+
+
+def _has_webauth_token(api: Any) -> bool:
+    return ipd_auth.has_webauth_token(api)
+
+
+def _session_auth_snapshot(api: Any) -> dict[str, Any]:
+    """读取 pyicloud_ipd 当前鉴权快照。"""
+    if hasattr(api, "get_auth_status"):
+        status = api.get_auth_status()
+        if isinstance(status, dict):
+            return dict(status)
+    return ipd_auth.auth_snapshot(api)
+
+
+def _is_fully_authenticated(api: Any) -> bool:
+    """登录是否完成到可访问 Photos 的程度（含 WEBAUTH cookie）。"""
+    snap = _session_auth_snapshot(api)
+    if snap.get("authenticated"):
+        return True
+    return _has_webauth_token(api) and bool(snap.get("trusted_session"))
+
+
+def _mfa_still_required(api: Any) -> bool:
+    """
+    是否仍处于 MFA 未完成态。
+
+    @note 主号「受信任设备弹窗」时 requires_2fa 可能为 False，但 WEBAUTH 仍缺失。
+    """
+    if _is_fully_authenticated(api):
+        return False
+    snap = _session_auth_snapshot(api)
+    if snap.get("requires_2fa") or snap.get("requires_2sa"):
+        return True
+    if bool(getattr(api, "_requires_mfa", False)):
+        return True
+    try:
+        sd = ipd_auth.session_data(api)
+        if sd.get("session_token") and not _has_webauth_token(api):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _two_factor_delivery_method(api: Any) -> str:
+    """当前 HSA2 验证投递方式（对齐 icloudpd infer）。"""
+    return ipd_auth.infer_delivery_method(api, _AUTH_STATE.delivery_method)
+
+
+def _delivery_detail(api: Any) -> str:
+    """面向用户的 2FA 引导文案（不含敏感信息）。"""
+    method = _two_factor_delivery_method(api)
+    notice = getattr(api, "two_factor_delivery_notice", None)
+    if method == "sms":
+        return "请输入发送到受信任设备或手机的 6 位验证码"
+    if method == "security_key":
+        return "此账号需使用安全密钥完成验证，当前客户端暂不支持"
+    if notice:
+        return str(notice)
+    # trusted_device / unknown：iPhone 上通常显示「设备验证」→ 点允许 → 6 位码
+    return (
+        "iPhone 将弹出「设备验证」或登录请求：请先在手机上点「允许」，"
+        "再将设备上显示的 6 位验证码输入下方"
+    )
+
+
+def _trigger_2fa_push_notification(api: Any) -> bool:
+    """icloudpd trigger_push_notification 包装。"""
+    return ipd_auth.kickoff_2fa_push(api)
+
+
+def _supports_trusted_device_bridge(api: Any) -> bool:
+    return ipd_auth.supports_trusted_device_bridge(api)
+
+
+def _kickoff_mfa_delivery(api: Any) -> None:
+    """
+    触发 2FA 推送（对齐 icloudpd request_2fa / request_2fa_web）。
+
+    @note 仅 trigger_push_notification（PUT）；不再叠加 bridge / request_2fa_code。
+    """
+    ok = ipd_auth.kickoff_2fa_push(api)
+    _AUTH_STATE.last_kickoff_path = "ipd_put" if ok else "ipd_put_failed"
+
+
+def _try_finalize_trusted_session(api: Any) -> bool:
+    """
+    2FA 验证码接受后，单次 trust_session 换取 WEBAUTH cookie。
+
+    @note trust_session = GET /2sv/trust + accountLogin；仅 session_token，不走 SRP 密码登录。
+    @note pyicloud validate_2fa_code 内置 trust 可能失败但仍返回 True，调用方需补调本函数。
+    @returns trust_session 是否返回 True
+    """
+    if not hasattr(api, "trust_session"):
+        return False
+    return bool(api.trust_session())
+
+
+def _try_account_login_with_token(api: Any) -> bool:
+    """
+    仅用 session_token + trust_token 走 setup accountLogin（不触发 SRP 密码登录）。
+
+    @note 当 validate POST 已写入 trust_token 但 trust_session 内 GET /2sv/trust 失败时的兜底。
+    """
+    session_data = getattr(getattr(api, "session", None), "data", None)
+    if session_data is None:
+        session_data = getattr(api, "session_data", {}) or {}
+    if not session_data.get("session_token"):
+        return False
+    auth_fn = getattr(api, "_authenticate_with_token", None)
+    if not callable(auth_fn):
+        return False
+    try:
+        auth_fn()
+        return True
+    except Exception:
+        return False
+
+
+def _persist_session_cookies(api: Any) -> None:
+    """将 pyicloud cookie jar 落盘，供后续 catalog/download 复用。"""
+    try:
+        cookies = api.session.cookies
+        if hasattr(cookies, "save"):
+            cookies.save()
+    except Exception:
+        pass
+
+
+def _establish_webauth_after_2fa(
+    api: Any,
+    *,
+    allow_trust_retry: bool = False,
+    validate_stage: str = "",
+) -> bool:
+    """
+    验证码路径完成后确认 WEBAUTH（锁号优先）。
+
+    @param allow_trust_retry validate_2fa_code 返回 True 但 WEBAUTH 仍缺失时，补 trust / accountLogin。
+    @note 仅使用 session_token + trust_token，禁止 authenticate(force_refresh=True)。
+    """
+    import time
+
+    if _is_fully_authenticated(api):
+        _persist_session_cookies(api)
+        return True
+
+    time.sleep(_WEBAUTH_SETTLE_SEC)
+    if _is_fully_authenticated(api):
+        _persist_session_cookies(api)
+        return True
+
+    if not allow_trust_retry:
+        return False
+
+    if _try_finalize_trusted_session(api):
+        suffix = f"{validate_stage}:trust_retry" if validate_stage else "trust_retry"
+        _AUTH_STATE.last_validate_path = suffix
+    if _is_fully_authenticated(api):
+        _persist_session_cookies(api)
+        return True
+
+    if _try_account_login_with_token(api):
+        suffix = f"{validate_stage}:account_login_retry" if validate_stage else "account_login_retry"
+        _AUTH_STATE.last_validate_path = suffix
+    if _is_fully_authenticated(api):
+        _persist_session_cookies(api)
+        return True
+
+    if validate_stage:
+        _AUTH_STATE.last_validate_path = f"{validate_stage}:webauth_pending"
+    return False
+
+
+def _maybe_rekickoff_mfa_for_retry(api: Any) -> None:
+    """
+    验证码已被 Apple 接受但 WEBAUTH 未就绪时，重新 PUT 推送设备验证。
+
+    @note 允许用户在同弹窗内点「允许」换码，无需 logout 重登。
+    """
+    path = _AUTH_STATE.last_validate_path
+    if path == "validate_2fa_code:false" or path.startswith("sms"):
+        return
+    if not path.startswith("validate_2fa_code"):
+        return
+    _trigger_2fa_push_notification(api)
+    _AUTH_STATE.last_kickoff_path = "ipd_put_retry"
+    _AUTH_STATE.mfa_delivery_kicked_off = True
+
+
+def _auth_2fa_failure_message() -> str:
+    """按 last_validate_path 返回更精确的 auth_2fa 失败文案。"""
+    path = _AUTH_STATE.last_validate_path
+    if path == "validate_2fa_code:false":
+        return "验证码错误；请确认 iPhone 上显示的 6 位数字与当前弹窗一致"
+    if path.endswith(":webauth_pending") or path.endswith(":trust_retry") or path.endswith(
+        ":account_login_retry"
+    ):
+        return (
+            "验证码已被接受但 Photos session 未就绪；已在 iPhone 重新推送「设备验证」，"
+            "请点「允许」并尽快输入新验证码"
+        )
+    if path == "validate_2fa_code":
+        return (
+            "验证码已被接受但 session 未完全建立；请在 iPhone 重新点「允许」并尽快输入新验证码"
+        )
+    return "验证码无效或 session 未就绪；请在设备上重新点「允许」并尽快输入新验证码"
+
+
+def _submit_2fa_code(api: Any, code: str, delivery_method: str) -> bool:
+    """
+    提交 2FA 验证码（锁号优先 · pyicloud 社区标准）。
+
+    @note trusted_device / unknown：validate_2fa_code（bridge 或 legacy POST + 内置单次 trust）。
+    @note sms：_validate_sms_code + 至多一次补 trust。
+    """
+    method = (delivery_method or _two_factor_delivery_method(api) or "unknown").strip()
+
+    try:
+        if method == "sms":
+            _AUTH_STATE.last_validate_path = "sms"
+            if not ipd_auth.submit_sms_code(api, code, _AUTH_STATE.sms_device_id):
+                _AUTH_STATE.last_validate_path = "sms:false"
+                return False
+            return _establish_webauth_after_2fa(api, allow_trust_retry=True)
+        if hasattr(api, "validate_2fa_code"):
+            _AUTH_STATE.last_validate_path = "validate_2fa_code"
+            if not bool(api.validate_2fa_code(code)):
+                _AUTH_STATE.last_validate_path = "validate_2fa_code:false"
+                return False
+        else:
+            _AUTH_STATE.last_validate_path = "validate:unsupported"
+            return False
+    except Exception as exc:
+        _AUTH_STATE.last_validate_path = f"validate_exception:{type(exc).__name__}"
+        if _is_fully_authenticated(api):
+            _persist_session_cookies(api)
+            return True
+        raise
+
+    if _is_fully_authenticated(api):
+        _persist_session_cookies(api)
+        return True
+    return _establish_webauth_after_2fa(
+        api,
+        allow_trust_retry=True,
+        validate_stage="validate_2fa_code",
+    )
+
+
+def _poll_trusted_device_completion(
+    api: Any,
+    *,
+    timeout_sec: float = 6.0,
+    interval_sec: float = 2.0,
+) -> bool:
+    """
+    轮询受信任设备「允许」后的 session 完成态。
+
+    @note UI 始终要求输入验证码，此路径极少触发；限制轮次与 trust 调用，避免长时间打 Apple API。
+    """
+    import time
+
+    deadline = time.monotonic() + timeout_sec
+    trusted_once = False
+    while time.monotonic() < deadline:
+        if _is_fully_authenticated(api):
+            return True
+        if not trusted_once:
+            trusted_once = True
+            _try_finalize_trusted_session(api)
+        if _is_fully_authenticated(api):
+            return True
+        time.sleep(interval_sec)
+    return False
+
+
+def _need_2fa_response(api: Any, cmd: str) -> dict[str, Any]:
+    """构造 need_2fa 事件并缓存 delivery_method 供后续 auth_2fa 使用。"""
+    method = _AUTH_STATE.delivery_method or _two_factor_delivery_method(api)
+    if method and method != "unknown":
+        _AUTH_STATE.delivery_method = method
+    return need_2fa_event(cmd, _delivery_detail(api), delivery_method=method or "unknown")
+
+
+def _finalize_auth_or_need_2fa(api: Any, cmd: str, *, kickoff_delivery: bool = True) -> dict[str, Any]:
+    """
+    auth/auth_2fa 共用：已完全登录则 done，否则进入 need_2fa。
+
+    @param kickoff_delivery 为 False 时不再 request_2fa，避免重复推送（如同步前 probe、待输入验证码时）。
+    """
+    if _is_fully_authenticated(api):
+        _AUTH_STATE.waiting_2fa = False
+        _AUTH_STATE.mfa_delivery_kicked_off = False
+        _AUTH_STATE.delivery_method = ""
+        return done_event(cmd)
+
+    _AUTH_STATE.waiting_2fa = True
+    if kickoff_delivery and not _AUTH_STATE.mfa_delivery_kicked_off:
+        try:
+            _kickoff_mfa_delivery(api)
+            _AUTH_STATE.mfa_delivery_kicked_off = True
+            method = _two_factor_delivery_method(api)
+            if method and method != "unknown":
+                _AUTH_STATE.delivery_method = method
+        except Exception:
+            pass
+    return _attach_challenge_diagnostic(_need_2fa_response(api, cmd), api, cmd)
+
+
+def _attach_challenge_diagnostic(event: dict[str, Any], api: Any, stage: str) -> dict[str, Any]:
+    """need_2fa 事件附带 challenge 快照，便于与后续失败一次对比。"""
+    event["diagnostic"] = auth_diag.record_challenge_snapshot(
+        stage=stage,
+        apple_id=_AUTH_STATE.apple_id,
+        session_dir=_AUTH_STATE.session_dir,
+        api=api,
+        auth_state=_AUTH_STATE,
+        has_webauth=_has_webauth_token,
+        session_auth_snapshot=_session_auth_snapshot,
+        supports_bridge=_supports_trusted_device_bridge,
+        delivery_method=_two_factor_delivery_method,
+        kickoff_path=_AUTH_STATE.last_kickoff_path,
+    )
+    return event
 
 
 def _to_iso8601(value: Any) -> str | None:
@@ -276,13 +649,10 @@ def _to_iso8601(value: Any) -> str | None:
     return None
 
 
-def _is_cloudkit_photo(photo: Any) -> bool:
-    """是否为 pyicloud CloudKit PhotoAsset（非 legacy dict 记录）。"""
-    return hasattr(photo, "is_live_photo") and hasattr(photo, "item_type")
-
-
 def _photo_asset_id(photo: Any) -> str:
-    """读取 PhotoAsset 稳定 id。"""
+    """读取 PhotoAsset 稳定 id（pyicloud_ipd PhotoAsset.id）。"""
+    if ipd_photos.is_ipd_photo_asset(photo):
+        return ipd_photos.photo_asset_id(photo)
     for attr in ("id", "asset_id"):
         value = getattr(photo, attr, None)
         if value:
@@ -290,118 +660,14 @@ def _photo_asset_id(photo: Any) -> str:
     return ""
 
 
-def _cloudkit_media_kind(photo: Any) -> tuple[str, str | None]:
-    """
-    CloudKit PhotoAsset 媒体类型识别。
-
-    @returns (media_kind, live_pair_id)
-    """
-    if bool(getattr(photo, "is_live_photo", False)):
-        asset_id = _photo_asset_id(photo)
-        live_pair_id = str(getattr(photo, "master_id", asset_id) or asset_id)
-        if not live_pair_id:
-            raise LiveBindMissingError("live photo missing bindable id")
-        return "live", live_pair_id
-    if getattr(photo, "item_type", "") == "movie":
-        return "video", None
-    return "photo", None
-
-
-def _legacy_record_pair(photo: Any) -> tuple[dict[str, Any], dict[str, Any]]:
-    """legacy pyicloud：将 _master/_asset_record 规整为 dict。"""
-    master_record = getattr(photo, "_master_record", None)
-    asset_record = getattr(photo, "_asset_record", None)
-    if not isinstance(master_record, dict):
-        master_record = {}
-    if not isinstance(asset_record, dict):
-        asset_record = {}
-    return master_record, asset_record
-
-
-def _asset_field(asset_record: dict[str, Any], key: str) -> Any:
-    """读取 CPLAsset 字段值（legacy dict 记录）。"""
-    wrapped = (asset_record.get("fields") or {}).get(key)
-    if isinstance(wrapped, dict):
-        return wrapped.get("value")
-    return None
-
-
-def _master_field(master_record: dict[str, Any], key: str) -> Any:
-    """读取 CPLMaster 字段值（legacy dict 记录）。"""
-    wrapped = (master_record.get("fields") or {}).get(key)
-    if isinstance(wrapped, dict):
-        return wrapped.get("value")
-    return None
-    """读取 CPLAsset 字段值。"""
-    wrapped = (asset_record.get("fields") or {}).get(key)
-    if isinstance(wrapped, dict):
-        return wrapped.get("value")
-    return None
-
-
-def _master_field(master_record: dict[str, Any], key: str) -> Any:
-    """读取 CPLMaster 字段值。"""
-    wrapped = (master_record.get("fields") or {}).get(key)
-    if isinstance(wrapped, dict):
-        return wrapped.get("value")
-    return None
-
-
-def _has_live_indicator(master_record: dict[str, Any], asset_record: dict[str, Any], versions: Any) -> bool:
-    """
-    判断资产是否呈现 Live 迹象。
-
-    @note UNVERIFIED：当前按 Spike 候选字段接线；后续需真实账号回填验证。
-    """
-    master_fields = master_record.get("fields") or {}
-    if any(key.startswith("resOriginalVidCompl") for key in master_fields):
-        return True
-
-    subtype = _asset_field(asset_record, "assetSubtype")
-    subtype_v2 = _asset_field(asset_record, "assetSubtypeV2")
-    if subtype not in (None, "", 0) or subtype_v2 not in (None, "", 0):
-        # UNVERIFIED：subtype 值域尚未在真实账号上确认；此处仅作为“可能是 Live”的保守信号。
-        return True
-
-    version_keys = list((versions or {}).keys()) if isinstance(versions, dict) else []
-    return any("live" in str(key).lower() for key in version_keys)
-
-
-def _detect_media_kind(photo: Any, master_record: dict[str, Any], asset_record: dict[str, Any]) -> tuple[str, str | None]:
-    """
-    识别媒体类型与 live_pair_id。
-
-    @returns (media_kind, live_pair_id)
-    """
-    versions = getattr(photo, "versions", None)
-    is_live = _has_live_indicator(master_record, asset_record, versions)
-    if is_live:
-        live_pair_id = str(getattr(photo, "id", "")).strip()
-        if not live_pair_id:
-            # UNVERIFIED P0：Live 强绑定优先使用 PhotoAsset.id/master recordName。
-            live_pair_id = str(master_record.get("recordName", "")).strip()
-        if not live_pair_id:
-            raise LiveBindMissingError("live indicator found but no bindable id")
-        return "live", live_pair_id
-
-    item_type = str(_master_field(master_record, "itemType") or "").lower()
-    filename = str(getattr(photo, "filename", "") or "").lower()
-    if item_type.startswith("public.movie") or filename.endswith((".mov", ".mp4", ".m4v", ".avi")):
-        return "video", None
-    return "photo", None
-
-
 def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
-    """将 pyicloud PhotoAsset 转换为 sidecar catalog item。"""
-    if _is_cloudkit_photo(photo):
-        capture_at = _to_iso8601(getattr(photo, "asset_date", None))
-        added_at = _to_iso8601(getattr(photo, "added_date", None))
-        media_kind, live_pair_id = _cloudkit_media_kind(photo)
-    else:
-        master_record, asset_record = _legacy_record_pair(photo)
-        capture_at = _to_iso8601(getattr(photo, "asset_date", None) or _asset_field(asset_record, "assetDate"))
-        added_at = _to_iso8601(getattr(photo, "added_date", None) or _asset_field(asset_record, "addedDate"))
-        media_kind, live_pair_id = _detect_media_kind(photo, master_record, asset_record)
+    """将 pyicloud_ipd PhotoAsset 转换为 sidecar catalog item。"""
+    if not ipd_photos.is_ipd_photo_asset(photo):
+        raise RuntimeError("unsupported photo asset type; expected pyicloud_ipd PhotoAsset")
+
+    capture_at = _to_iso8601(getattr(photo, "asset_date", None))
+    added_at = _to_iso8601(getattr(photo, "added_date", None))
+    media_kind, live_pair_id = ipd_photos.ipd_media_kind(photo)
 
     if view == "library" and not capture_at:
         raise CatalogSortMissingError("missing capture_at for library view")
@@ -456,18 +722,33 @@ def _ensure_api(apple_id: str = "", session_dir: str = "") -> Any:
     """
     获取已认证 pyicloud 客户端。
 
-    优先复用进程内 _AUTH_STATE；否则用 session_dir 中 cookie 恢复（password 为空）。
+    优先复用进程内 _AUTH_STATE（须 apple_id 一致）；否则用 session_dir 恢复。
     @note sidecar 进程重启后 catalog/download 仍可通过 session 文件续用登录态。
     """
-    if _AUTH_STATE.api is not None:
-        return _AUTH_STATE.api
-
     aid = (apple_id or _AUTH_STATE.apple_id).strip()
     sd = (session_dir or _AUTH_STATE.session_dir).strip()
     if not aid or not sd:
         raise RuntimeError("not authenticated")
 
-    api = _build_api(apple_id=aid, password="", session_dir=sd)
+    if (
+        _AUTH_STATE.api is not None
+        and _AUTH_STATE.apple_id.strip() == aid
+        and _AUTH_STATE.session_dir.strip() == sd
+        and not _AUTH_STATE.waiting_2fa
+    ):
+        return _AUTH_STATE.api
+
+    if _AUTH_STATE.api is not None and _AUTH_STATE.apple_id.strip() != aid:
+        _reset_auth_state()
+
+    api = _build_api(
+        apple_id=aid,
+        password="",
+        session_dir=sd,
+        icloud_domain=_AUTH_STATE.icloud_domain
+        or ipd_auth.load_domain_hint(sd, aid)
+        or ipd_auth.DEFAULT_ICLOUD_DOMAIN,
+    )
     _AUTH_STATE.api = api
     _AUTH_STATE.apple_id = aid
     _AUTH_STATE.session_dir = sd
@@ -475,10 +756,30 @@ def _ensure_api(apple_id: str = "", session_dir: str = "") -> Any:
     return api
 
 
-def _build_api(apple_id: str, password: str, session_dir: str) -> Any:
-    """创建 pyicloud API 客户端，session 复用目录由调用方传入。"""
-    PyiCloudService = _load_pycloud_service()
-    return PyiCloudService(apple_id, password or None, cookie_directory=session_dir)
+def _resolve_icloud_domain(cmd: dict[str, Any], session_dir: str, apple_id: str) -> str:
+    """从 auth 命令或落盘偏好解析 iCloud 根域（默认 com）。"""
+    explicit = ipd_auth.normalize_icloud_domain(cmd.get("icloud_domain"))
+    if explicit:
+        return explicit
+    return ipd_auth.load_domain_hint(session_dir, apple_id) or ipd_auth.DEFAULT_ICLOUD_DOMAIN
+
+
+def _build_api(
+    apple_id: str,
+    password: str,
+    session_dir: str,
+    *,
+    icloud_domain: str,
+    allow_domain_fallback: bool = False,
+) -> Any:
+    """创建 pyicloud_ipd API 客户端（icloudpd 同源）。"""
+    return ipd_auth.build_api(
+        apple_id,
+        password,
+        session_dir,
+        icloud_domain=icloud_domain,
+        allow_domain_fallback=allow_domain_fallback,
+    )
 
 
 def _write_stream_atomic(response: Any, dest_path: str) -> None:
@@ -514,101 +815,176 @@ def _write_stream_atomic(response: Any, dest_path: str) -> None:
         raise
 
 
+def _refresh_photo_cache(api: Any, view: str) -> None:
+    """
+    构建 asset_id → PhotoAsset 索引。
+
+    @note catalog 后复用；download 不再每次遍历 api.photos.all（大图库下 O(n²) 瓶颈）。
+    """
+    cache: dict[str, Any] = {}
+    for photo in _iter_view_assets(api, view):
+        asset_id = _photo_asset_id(photo)
+        if asset_id:
+            cache[asset_id] = photo
+    _AUTH_STATE.photo_cache = cache
+    _AUTH_STATE.photo_cache_view = view
+
+
 def _locate_photo_by_asset_id(api: Any, asset_id: str) -> Any | None:
-    """按 asset_id 在 all photos 中查找目标资产。"""
+    """按 asset_id 查找目标资产；优先走 catalog 后缓存。"""
+    cache = _AUTH_STATE.photo_cache
+    if isinstance(cache, dict):
+        hit = cache.get(asset_id)
+        if hit is not None:
+            return hit
     for photo in api.photos.all:
         if str(getattr(photo, "id", "")).strip() == asset_id:
+            if isinstance(cache, dict):
+                cache[asset_id] = photo
             return photo
     return None
 
 
-def _live_video_download_url(photo: Any) -> str | None:
-    """提取 Live MOV 下载链接（legacy dict 记录）。"""
-    if _is_cloudkit_photo(photo):
-        url = photo.download_url("original_video")
-        return str(url) if url else None
-    master_record, _ = _legacy_record_pair(photo)
-    fields = master_record.get("fields") or {}
-    for key in ("resOriginalVidComplRes", "resOriginalVidCompl"):
-        wrapped = fields.get(key)
-        value = wrapped.get("value") if isinstance(wrapped, dict) else None
-        if isinstance(value, dict):
-            url = value.get("downloadURL")
-            if url:
-                return str(url)
-    return None
-
-
-def _write_bytes_atomic(data: bytes, dest_path: str) -> None:
-    """字节内容原子落盘（CloudKit photo.download 返回 bytes）。"""
-    destination = Path(dest_path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    partial_path = destination.with_name(destination.name + ".partial")
-    try:
-        partial_path.write_bytes(data)
-        os.replace(str(partial_path), str(destination))
-    except Exception:
-        if partial_path.exists():
-            partial_path.unlink()
-        raise
-
-
-def _cloudkit_download_response(api: Any, photo: Any, part: str) -> Any:
-    """CloudKit PhotoAsset 下载：still/video 返回 bytes，live mov 返回 stream response。"""
-    if part == "still":
-        data = photo.download("original")
-        if not data:
-            raise RuntimeError("still download returned empty")
-        return data
-    if part == "video":
-        if getattr(photo, "item_type", "") != "movie":
-            raise ValueError("part=video only allowed for video assets")
-        data = photo.download("original")
-        if not data:
-            raise RuntimeError("video download returned empty")
-        return data
-    if part == "mov":
-        if not getattr(photo, "is_live_photo", False):
-            raise ValueError("part=mov only allowed for live assets")
-        url = photo.download_url("original_video")
-        if not url:
-            raise LiveBindMissingError("live asset has no video download URL")
-        response = api.session.get(url, stream=True, timeout=120)
-        if hasattr(response, "raise_for_status"):
-            response.raise_for_status()
-        return response
-    raise ValueError("part must be still, mov, or video")
-
-
 def _download_response(api: Any, photo: Any, part: str) -> Any:
-    """根据 part 拉取对应资源响应对象。"""
-    if _is_cloudkit_photo(photo):
-        return _cloudkit_download_response(api, photo, part)
+    """按 part 拉取 HTTP Response（stream）；含 P1 有限重试。"""
+    if not ipd_photos.is_ipd_photo_asset(photo):
+        raise RuntimeError("unsupported photo asset type; expected pyicloud_ipd PhotoAsset")
+    return ipd_photos.ipd_download_response_with_retry(api, photo, part)
 
-    if part == "still":
-        return photo.download()
 
-    if part == "video":
-        master_record, asset_record = _legacy_record_pair(photo)
-        media_kind, _ = _detect_media_kind(photo, master_record, asset_record)
-        if media_kind != "video":
-            raise ValueError("part=video only allowed for video assets")
-        return photo.download()
+def _execute_download_item(api: Any, item: dict[str, Any]) -> dict[str, Any]:
+    """
+    下载单条资产并落盘。
 
-    if part == "mov":
-        master_record, asset_record = _legacy_record_pair(photo)
-        media_kind, _ = _detect_media_kind(photo, master_record, asset_record)
-        if media_kind != "live":
-            raise ValueError("part=mov only allowed for live assets")
-        url = _live_video_download_url(photo)
-        if not url:
-            raise LiveBindMissingError("live asset has no video download URL")
-        response = api.session.get(url, stream=True, timeout=120)
-        if hasattr(response, "raise_for_status"):
-            response.raise_for_status()
-        return response
+    @returns 供 download_batch 聚合的结果 dict（不含敏感信息）
+    """
+    asset_id = str(item.get("asset_id", "")).strip()
+    part = str(item.get("part", "")).strip()
+    dest_path = str(item.get("dest_path", "")).strip()
+    row_id = item.get("row_id")
+    base: dict[str, Any] = {
+        "row_id": row_id,
+        "asset_id": asset_id,
+        "part": part,
+    }
+    if not asset_id or not part or not dest_path:
+        return {**base, "ok": False, "code": CODE_INVALID_REQUEST, "message": "asset_id, part and dest_path are required"}
 
-    raise ValueError("part must be still, mov, or video")
+    try:
+        photo = _locate_photo_by_asset_id(api, asset_id)
+        if photo is None:
+            return {
+                **base,
+                "ok": False,
+                "code": CODE_INVALID_REQUEST,
+                "message": f"asset not found: {asset_id}",
+            }
+        response = _download_response(api, photo, part)
+        _write_stream_atomic(response, dest_path)
+        return {**base, "ok": True}
+    except ValueError as exc:
+        return {**base, "ok": False, "code": CODE_INVALID_REQUEST, "message": str(exc)[:500]}
+    except LiveBindMissingError as exc:
+        return {**base, "ok": False, "code": CODE_LIVE_BIND_MISSING, "message": str(exc)[:500]}
+    except RuntimeError as exc:
+        if str(exc) == "not authenticated":
+            return {
+                **base,
+                "ok": False,
+                "code": CODE_AUTH_FAILED,
+                "message": "explicit auth is required before download",
+            }
+        return {**base, "ok": False, "code": CODE_DOWNLOAD_FAILED, "message": str(exc)[:500]}
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_exception(exc)
+        return {**base, "ok": False, "code": mapped, "message": str(exc)[:500]}
+
+
+def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
+    """处理 download 命令（单条；测试与 mock 用）。"""
+    asset_id = str(cmd.get("asset_id", "")).strip()
+    part = str(cmd.get("part", "")).strip()
+    dest_path = str(cmd.get("dest_path", "")).strip()
+
+    if _is_mock_mode():
+        return done_event("download", asset_id=asset_id, part=part, dest_path=dest_path, mock=True)
+    if not asset_id or not part or not dest_path:
+        return error_event("download", CODE_INVALID_REQUEST, "asset_id, part and dest_path are required")
+
+    try:
+        api = _ensure_api(
+            str(cmd.get("apple_id", "")).strip(),
+            str(cmd.get("session_dir", "")).strip(),
+        )
+        result = _execute_download_item(
+            api,
+            {"asset_id": asset_id, "part": part, "dest_path": dest_path},
+        )
+        if result.get("ok"):
+            return done_event("download", asset_id=asset_id, part=part, dest_path=dest_path)
+        code = str(result.get("code") or CODE_DOWNLOAD_FAILED)
+        message = str(result.get("message") or "")
+        if code in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _reset_auth_state()
+        return error_event("download", code, message)
+    except RuntimeError as exc:
+        if str(exc) == "not authenticated":
+            return error_event("download", CODE_AUTH_FAILED, "explicit auth is required before download")
+        return error_event("download", CODE_DOWNLOAD_FAILED, str(exc)[:500])
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_exception(exc)
+        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _reset_auth_state()
+        return error_event("download", mapped, str(exc)[:500])
+
+
+def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    批量并行 download（P1 并发）。
+
+    @note sidecar 内 ThreadPoolExecutor；Rust 仍单进程单 sidecar 会话。
+    """
+    raw_items = cmd.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        return error_event("download_batch", CODE_INVALID_REQUEST, "items must be a non-empty array")
+
+    concurrency = min(3, max(1, int(cmd.get("concurrency", 1))))
+    items = [item for item in raw_items if isinstance(item, dict)]
+
+    if _is_mock_mode():
+        mock_results = [
+            {
+                "row_id": item.get("row_id"),
+                "asset_id": item.get("asset_id"),
+                "part": item.get("part"),
+                "ok": True,
+                "mock": True,
+            }
+            for item in items
+        ]
+        return done_event("download_batch", results=mock_results)
+
+    try:
+        api = _ensure_api(
+            str(cmd.get("apple_id", "")).strip(),
+            str(cmd.get("session_dir", "")).strip(),
+        )
+    except RuntimeError as exc:
+        if str(exc) == "not authenticated":
+            return error_event("download_batch", CODE_AUTH_FAILED, "explicit auth is required before download")
+        return error_event("download_batch", CODE_DOWNLOAD_FAILED, str(exc)[:500])
+
+    results: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(_execute_download_item, api, item) for item in items]
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    if any(r.get("code") in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED) for r in results):
+        _reset_auth_state()
+
+    results.sort(key=lambda r: (r.get("row_id") is None, r.get("row_id") or 0))
+    return done_event("download_batch", results=results)
 
 
 def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
@@ -631,37 +1007,80 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
         _AUTH_STATE.api is not None
         and _AUTH_STATE.apple_id == apple_id
         and _AUTH_STATE.session_dir == session_dir
-        and not _AUTH_STATE.waiting_2fa
     ):
-        return done_event("auth", reused=True)
+        if _is_fully_authenticated(_AUTH_STATE.api):
+            _AUTH_STATE.waiting_2fa = False
+            return done_event("auth", reused=True)
+        if _AUTH_STATE.waiting_2fa:
+            # 已有 pending challenge：不再 request_2fa，避免 iPhone 重复弹窗
+            return _attach_challenge_diagnostic(
+                _need_2fa_response(_AUTH_STATE.api, "auth"),
+                _AUTH_STATE.api,
+                "auth",
+            )
+        return _finalize_auth_or_need_2fa(_AUTH_STATE.api, "auth")
+
+    if _AUTH_STATE.api is not None and _AUTH_STATE.apple_id.strip() != apple_id:
+        _reset_auth_state()
 
     Path(session_dir).mkdir(parents=True, exist_ok=True)
+    icloud_domain = _resolve_icloud_domain(cmd, session_dir, apple_id)
 
     api: Any | None = None
     try:
-        api = _build_api(apple_id=apple_id, password=password, session_dir=session_dir)
+        api = _build_api(
+            apple_id=apple_id,
+            password=password,
+            session_dir=session_dir,
+            icloud_domain=icloud_domain,
+        )
         _AUTH_STATE.api = api
         _AUTH_STATE.apple_id = apple_id
         _AUTH_STATE.session_dir = session_dir
-        _AUTH_STATE.waiting_2fa = bool(getattr(api, "requires_2fa", False) or getattr(api, "requires_2sa", False))
+        _AUTH_STATE.icloud_domain = ipd_auth.api_domain(api)
 
-        if _AUTH_STATE.waiting_2fa:
-            return need_2fa_event("auth", "2FA/2SA verification required")
+        if _is_fully_authenticated(api):
+            _AUTH_STATE.waiting_2fa = False
+            _AUTH_STATE.mfa_delivery_kicked_off = False
+            _AUTH_STATE.delivery_method = ""
+            return done_event("auth")
 
+        if _mfa_still_required(api) or not _has_webauth_token(api):
+            return _finalize_auth_or_need_2fa(api, "auth")
+
+        _AUTH_STATE.waiting_2fa = False
         return done_event("auth")
     except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, ipd_auth.IcloudIncompleteAuthError) or ipd_auth._is_dsinfo_key_error(exc):
+            if session_dir and apple_id:
+                ipd_auth.clear_session_artifacts(session_dir, apple_id)
+            _reset_auth_state()
+            return _auth_error(
+                "auth",
+                CODE_SESSION_EXPIRED,
+                "登录会话已损坏或不完整（旧版缓存不兼容），请退出登录后重新输入密码",
+                stage="auth",
+                exc=exc,
+            )
         if _is_2fa_required_exception(exc):
             # pyicloud 可能在构造/鉴权阶段直接抛 2SA 异常而非设置 requires_2fa 标志。
             if api is not None:
                 _AUTH_STATE.api = api
-            _AUTH_STATE.apple_id = apple_id
-            _AUTH_STATE.session_dir = session_dir
-            _AUTH_STATE.waiting_2fa = True
-            return need_2fa_event("auth", "2FA/2SA verification required")
+                _AUTH_STATE.apple_id = apple_id
+                _AUTH_STATE.session_dir = session_dir
+                return _finalize_auth_or_need_2fa(api, "auth")
 
         _reset_auth_state()
         code = _map_exception(exc)
-        return error_event("auth", code, str(exc)[:500])
+        message = str(exc)[:500]
+        if ipd_auth._is_dsinfo_key_error(exc) or isinstance(exc, ipd_auth.IcloudIncompleteAuthError):
+            message = "登录会话已损坏或不完整（旧版缓存不兼容），请退出登录后重新输入密码"
+        elif isinstance(exc, ipd_auth.IcloudDomainMismatchError):
+            message = str(exc)
+        elif ipd_auth.is_domain_mismatch_exception(exc):
+            required = ipd_auth.parse_required_domain(exc) or "cn"
+            message = ipd_auth.format_domain_mismatch_message(icloud_domain, required)
+        return _auth_error("auth", code, message, stage="auth", exc=exc)
 
 
 def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
@@ -669,26 +1088,140 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
     code = str(cmd.get("code", "")).strip()
     if _is_mock_mode():
         return done_event("auth_2fa", mock=True)
-    if not code:
-        return error_event("auth_2fa", CODE_INVALID_REQUEST, "2fa code is required")
     if _AUTH_STATE.api is None or not _AUTH_STATE.waiting_2fa:
-        return error_event("auth_2fa", CODE_AUTH_FAILED, "auth_2fa requested without pending challenge")
+        return _auth_error(
+            "auth_2fa",
+            CODE_AUTH_FAILED,
+            "auth_2fa requested without pending challenge",
+            stage="auth_2fa",
+        )
+
+    delivery_method = _AUTH_STATE.delivery_method or _two_factor_delivery_method(_AUTH_STATE.api)
 
     try:
-        valid = bool(_AUTH_STATE.api.validate_2fa_code(code))
-        if not valid:
-            return error_event("auth_2fa", CODE_AUTH_FAILED, "invalid 2fa code")
+        if code:
+            if not _submit_2fa_code(_AUTH_STATE.api, code, delivery_method):
+                _maybe_rekickoff_mfa_for_retry(_AUTH_STATE.api)
+                return _auth_error(
+                    "auth_2fa",
+                    CODE_AUTH_FAILED,
+                    _auth_2fa_failure_message(),
+                    stage="auth_2fa",
+                )
+        elif delivery_method == "trusted_device":
+            if not _poll_trusted_device_completion(_AUTH_STATE.api):
+                return _auth_error(
+                    "auth_2fa",
+                    CODE_AUTH_FAILED,
+                    "受信任设备确认超时；请在设备上点「允许」后重试",
+                    stage="auth_2fa",
+                )
+        else:
+            return _auth_error(
+                "auth_2fa",
+                CODE_INVALID_REQUEST,
+                "2fa code is required",
+                stage="auth_2fa",
+            )
 
-        trusted = False
-        if hasattr(_AUTH_STATE.api, "trust_session"):
-            trusted = bool(_AUTH_STATE.api.trust_session())
+        if not _is_fully_authenticated(_AUTH_STATE.api):
+            return _auth_error(
+                "auth_2fa",
+                CODE_AUTH_FAILED,
+                "验证码已接受但 Photos session 未就绪；请在 iPhone 上重新点「允许」并尽快输入新验证码",
+                stage="auth_2fa",
+            )
+
+        _persist_session_cookies(_AUTH_STATE.api)
         _AUTH_STATE.waiting_2fa = False
-        return done_event("auth_2fa", trusted=trusted)
+        _AUTH_STATE.mfa_delivery_kicked_off = False
+        _AUTH_STATE.delivery_method = ""
+        return done_event("auth_2fa", delivery_method=delivery_method)
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
         if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
             _reset_auth_state()
-        return error_event("auth_2fa", mapped, str(exc)[:500])
+        return _auth_error("auth_2fa", mapped, str(exc)[:500], stage="auth_2fa", exc=exc)
+
+
+def _handle_auth_diagnostic(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    返回最近一次认证诊断（无需再次登录、不触发 Apple API）。
+
+    @note 优先内存；sidecar 重启后读 session_dir/auth-diagnostic.json。
+    """
+    session_dir = str(cmd.get("session_dir", "")).strip() or _AUTH_STATE.session_dir
+    diagnostic = auth_diag.get_last_auth_diagnostic()
+    if diagnostic is None and session_dir:
+        diagnostic = auth_diag.load_auth_diagnostic_from_disk(session_dir)
+    if diagnostic is None:
+        diagnostic = _build_diagnostic(
+            stage="auth_diagnostic",
+            code="no_data",
+            message="尚无认证诊断记录；请先尝试登录或提交验证码",
+        )
+    return done_event("auth_diagnostic", diagnostic=diagnostic)
+
+
+def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    探测 session 是否可用于 catalog/download（不发送密码、不触发 SRP 重登）。
+
+    @note 供 start_job / resume 前置检查；符合设计铁律「之后全程靠 session」。
+    """
+    apple_id = str(cmd.get("apple_id", "")).strip()
+    session_dir = str(cmd.get("session_dir", "")).strip()
+
+    if _is_mock_mode():
+        return done_event("auth_probe", mock=True)
+
+    if not apple_id or not session_dir:
+        return error_event("auth_probe", CODE_INVALID_REQUEST, "apple_id and session_dir are required")
+
+    icloud_domain = _resolve_icloud_domain(cmd, session_dir, apple_id)
+
+    if (
+        _AUTH_STATE.api is not None
+        and _AUTH_STATE.apple_id == apple_id
+        and _AUTH_STATE.session_dir == session_dir
+    ):
+        api = _AUTH_STATE.api
+    else:
+        if _AUTH_STATE.api is not None and _AUTH_STATE.apple_id.strip() != apple_id:
+            _reset_auth_state()
+        try:
+            api = _build_api(
+                apple_id=apple_id,
+                password="",
+                session_dir=session_dir,
+                icloud_domain=icloud_domain,
+            )
+            _AUTH_STATE.api = api
+            _AUTH_STATE.apple_id = apple_id
+            _AUTH_STATE.session_dir = session_dir
+            _AUTH_STATE.icloud_domain = ipd_auth.api_domain(api)
+        except Exception as exc:  # noqa: BLE001
+            code = _map_exception(exc)
+            return error_event("auth_probe", code, str(exc)[:500])
+
+    if _is_fully_authenticated(api):
+        _AUTH_STATE.waiting_2fa = False
+        return done_event("auth_probe", has_webauth=True)
+
+    if _mfa_still_required(api) or _AUTH_STATE.waiting_2fa:
+        return _finalize_auth_or_need_2fa(api, "auth_probe", kickoff_delivery=False)
+
+    return error_event(
+        "auth_probe",
+        CODE_SESSION_EXPIRED,
+        "session invalid or expired; explicit login required",
+    )
+
+
+def _handle_logout(_cmd: dict[str, Any]) -> dict[str, Any]:
+    """清空进程内认证态；宿主换号 / 登出时调用。"""
+    _reset_auth_state()
+    return done_event("logout")
 
 
 def _validate_catalog_items(items: list[dict[str, Any]], view: str) -> tuple[bool, str]:
@@ -725,6 +1258,7 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
                 str(cmd.get("session_dir", "")).strip(),
             )
             items = [_catalog_item_from_photo(photo, view) for photo in _iter_view_assets(api, view)]
+            _refresh_photo_cache(api, view)
 
         ok, err_code = _validate_catalog_items(items, view)
         if not ok:
@@ -745,47 +1279,6 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("catalog", mapped, str(exc)[:500])
 
 
-def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
-    """处理 download 命令。"""
-    asset_id = str(cmd.get("asset_id", "")).strip()
-    part = str(cmd.get("part", "")).strip()
-    dest_path = str(cmd.get("dest_path", "")).strip()
-
-    if _is_mock_mode():
-        return done_event("download", asset_id=asset_id, part=part, dest_path=dest_path, mock=True)
-    if not asset_id or not part or not dest_path:
-        return error_event("download", CODE_INVALID_REQUEST, "asset_id, part and dest_path are required")
-
-    try:
-        api = _ensure_api(
-            str(cmd.get("apple_id", "")).strip(),
-            str(cmd.get("session_dir", "")).strip(),
-        )
-        photo = _locate_photo_by_asset_id(api, asset_id)
-        if photo is None:
-            return error_event("download", CODE_INVALID_REQUEST, f"asset not found: {asset_id}")
-        response = _download_response(api, photo, part)
-        if isinstance(response, (bytes, bytearray)):
-            _write_bytes_atomic(bytes(response), dest_path)
-        else:
-            _write_stream_atomic(response, dest_path)
-        return done_event("download", asset_id=asset_id, part=part, dest_path=dest_path)
-    except ValueError as exc:
-        return error_event("download", CODE_INVALID_REQUEST, str(exc))
-    except LiveBindMissingError as exc:
-        return error_event("download", CODE_LIVE_BIND_MISSING, str(exc))
-    except RuntimeError as exc:
-        if str(exc) == "not authenticated":
-            return error_event("download", CODE_AUTH_FAILED, "explicit auth is required before download")
-        return error_event("download", CODE_DOWNLOAD_FAILED, str(exc)[:500])
-    except Exception as exc:  # noqa: BLE001
-        mapped = _map_exception(exc)
-        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
-            _reset_auth_state()
-            return error_event("download", mapped, str(exc)[:500])
-        return error_event("download", CODE_DOWNLOAD_FAILED, str(exc)[:500])
-
-
 def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
     """按 cmd 路由到对应处理器。"""
     name = str(cmd.get("cmd", "")).strip()
@@ -793,12 +1286,20 @@ def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
         return version_event()
     if name == "auth":
         return _handle_auth(cmd)
+    if name == "auth_probe":
+        return _handle_auth_probe(cmd)
+    if name == "auth_diagnostic":
+        return _handle_auth_diagnostic(cmd)
     if name == "auth_2fa":
         return _handle_auth_2fa(cmd)
+    if name == "logout":
+        return _handle_logout(cmd)
     if name == "catalog":
         return _handle_catalog(cmd)
     if name == "download":
         return _handle_download(cmd)
+    if name == "download_batch":
+        return _handle_download_batch(cmd)
     return error_event(name or "unknown", CODE_INVALID_REQUEST, f"unknown cmd: {name}")
 
 

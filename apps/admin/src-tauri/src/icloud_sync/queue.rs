@@ -1,5 +1,5 @@
 //! iCloud 同步队列编排
-//! 职责：catalog 落库、index 分配、串行 download、进度事件与 session 暂停续传
+//! 职责：catalog 落库、index 分配、批量 download、进度事件与 session 暂停续传
 //! 适用：Task 6 start/resume/status 命令；mock sidecar 可离线跑通
 
 use std::path::{Path, PathBuf};
@@ -15,19 +15,25 @@ use tauri::{AppHandle, Emitter};
 
 use super::ensure_sidecar_authenticated;
 use super::db::{
-  count_assets_by_status, get_job, insert_assets, insert_job, job_has_assets, list_pending_assets,
-  mark_asset_status, open_db, reset_failed_to_pending, update_job_status,
+  count_assets_by_status, get_job, insert_assets, insert_job, job_has_assets, list_asset_tasks,
+  list_failed_assets, list_pending_assets, mark_asset_outcome, mark_asset_status, open_db,
+  reset_failed_to_pending, update_job_status,
 };
 use super::naming::format_asset_filename;
-use super::settings::{icloud_sync_dir, load_settings, resolve_default_output_dir};
+use super::settings::{
+  icloud_sync_dir, load_settings, normalize_concurrency, resolve_default_output_dir,
+};
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
 use super::types::{
-  error_codes, AssetPart, AssetRow, AssetStatus, JobStatus, JobView, MediaKind,
+  error_codes, AssetPart, AssetRow, AssetStatus, IcloudSyncFailedAssetRow,
+  IcloudSyncListAssetTasksResult, JobStatus, JobView, MediaKind,
 };
 
 const PROGRESS_EVENT: &str = "icloud-sync://progress";
 /// 任务状态变更事件；前端据此做 notify 门控与同步页 UI 刷新
 const JOB_STATUS_EVENT: &str = "icloud-sync://job-status";
+/// 批次之间最小间隔，降低 Apple 限流概率
+const MIN_BATCH_GAP_MS: u64 = 400;
 
 /// sidecar catalog 单条资产（与 Python mock 字段对齐）
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +66,8 @@ pub struct IcloudSyncStartJobResult {
 pub struct IcloudSyncJobStatusResult {
   pub job_id: i64,
   pub status: JobStatus,
+  /// 创建任务时的 Apple ID；与 settings 不一致时前端禁止续传
+  pub apple_id: String,
   pub total: u32,
   pub done: u32,
   pub failed: u32,
@@ -98,6 +106,25 @@ fn is_pause_requested() -> bool {
 
 fn state_db_path(app: &AppHandle) -> Result<PathBuf, String> {
   Ok(icloud_sync_dir(app)?.join("state.db"))
+}
+
+/// 任务所属 Apple ID 必须与 settings 当前账号一致（单账号换号后旧任务不可续传）
+fn ensure_job_matches_current_account(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  job_id: i64,
+) -> Result<(), String> {
+  let job = get_job(conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
+  let settings = load_settings(app)?;
+  let job_id_str = job.apple_id.trim();
+  let current = settings.apple_id.trim();
+  if job_id_str.is_empty() || current.is_empty() || job_id_str == current {
+    return Ok(());
+  }
+  Err(format!(
+    "{}: 任务属于 {job_id_str}，当前登录 {current}，请开始新同步",
+    error_codes::ACCOUNT_MISMATCH
+  ))
 }
 
 /// 按视图排序键升序排列 catalog 并校验字段
@@ -157,6 +184,8 @@ pub fn catalog_to_asset_rows(
         part: asset_part,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       });
     }
   }
@@ -291,7 +320,8 @@ fn emit_progress(app: &AppHandle, done: u32, total: u32, filename: &str) {
 }
 
 fn random_jitter_ms() -> u64 {
-  rand::thread_rng().gen_range(500..=2000)
+  // 成功下载后的短间隔：降 Apple 限流风险，又避免 0.5–2s 拖垮大图库全量同步
+  rand::thread_rng().gen_range(200..=800)
 }
 
 /// 输出目录中目标文件已存在且非空，视为该资产已完成。
@@ -349,6 +379,32 @@ fn event_error_code(event: &SidecarEvent) -> Option<&str> {
 
 fn is_fatal_job_error(code: &str) -> bool {
   code == error_codes::ACCOUNT_LOCKED || code == error_codes::RATE_LIMITED
+}
+
+/// 单文件可跳过错误：标 failed 后继续下一批
+fn is_skippable_download_error(code: &str) -> bool {
+  matches!(
+    code,
+    error_codes::DOWNLOAD_FAILED
+      | error_codes::LIVE_BIND_MISSING
+      | error_codes::CATALOG_SORT_MISSING
+      | "invalid_request"
+      | "io_error"
+      | "sidecar_io_error"
+  )
+}
+
+/// download_batch 超时：基础 120s + 每文件 180s，上限 600s
+fn batch_timeout_secs(batch_size: usize) -> u64 {
+  (120 + batch_size as u64 * 180).min(600)
+}
+
+#[derive(Debug, Clone)]
+struct BatchItemResult {
+  row_id: i64,
+  ok: bool,
+  code: String,
+  message: String,
 }
 
 /// 下载阶段 auth 类错误：暂停 job、保留 SQLite，待用户显式重认证后 resume（不自动重登）
@@ -416,45 +472,213 @@ fn release_job(job_id: i64) {
   }
 }
 
-fn download_one(
+fn download_batch(
   client: &Arc<SidecarClient>,
   app: &AppHandle,
-  asset: &AssetRow,
-  dest: &Path,
+  assets: &[AssetRow],
+  output_dir: &str,
   apple_id: &str,
   session_path: &Path,
-) -> Result<(), SidecarError> {
-  if let Some(parent) = dest.parent() {
-    std::fs::create_dir_all(parent).map_err(|e| SidecarError::new("io_error", e.to_string()))?;
+  concurrency: u32,
+) -> Result<Vec<BatchItemResult>, SidecarError> {
+  if assets.is_empty() {
+    return Ok(Vec::new());
   }
 
-  let event = client.request(
+  for asset in assets {
+    if let Some(parent) = dest_path_for_asset(output_dir, asset).parent() {
+      std::fs::create_dir_all(parent).map_err(|e| SidecarError::new("io_error", e.to_string()))?;
+    }
+  }
+
+  let items: Vec<Value> = assets
+    .iter()
+    .map(|asset| {
+      let dest = dest_path_for_asset(output_dir, asset);
+      serde_json::json!({
+        "row_id": asset.id,
+        "asset_id": asset.asset_id,
+        "part": sidecar_part_for_download(asset),
+        "dest_path": dest.to_string_lossy(),
+      })
+    })
+    .collect();
+
+  let timeout = Duration::from_secs(batch_timeout_secs(items.len()));
+  let event = client.request_with_timeout(
     app,
     serde_json::json!({
-      "cmd": "download",
-      "asset_id": asset.asset_id,
-      "part": sidecar_part_for_download(asset),
-      "dest_path": dest.to_string_lossy(),
+      "cmd": "download_batch",
+      "items": items,
+      "concurrency": concurrency,
       "apple_id": apple_id,
       "session_dir": session_path.to_string_lossy(),
     }),
+    timeout,
   )?;
 
-  if event.event_type == "done" {
-    return Ok(());
-  }
+  parse_download_batch_event(&event, assets)
+}
+
+fn parse_download_batch_event(
+  event: &SidecarEvent,
+  assets: &[AssetRow],
+) -> Result<Vec<BatchItemResult>, SidecarError> {
   if event.event_type == "error" {
-    let code = event_error_code(&event).unwrap_or(error_codes::DOWNLOAD_FAILED);
+    let code = event_error_code(event).unwrap_or(error_codes::DOWNLOAD_FAILED);
     let message = event.message.clone().unwrap_or_default();
     return Err(SidecarError::new(code, message));
   }
-  Err(SidecarError::new(
-    error_codes::DOWNLOAD_FAILED,
-    format!("download 意外响应: type={}", event.event_type),
-  ))
+  if event.event_type != "done" {
+    return Err(SidecarError::new(
+      error_codes::DOWNLOAD_FAILED,
+      format!("download_batch 意外响应: type={}", event.event_type),
+    ));
+  }
+
+  let raw_results = event
+    .extra
+    .get("results")
+    .and_then(|v| v.as_array())
+    .cloned()
+    .unwrap_or_default();
+
+  if raw_results.is_empty() && !assets.is_empty() {
+    return Err(SidecarError::new(
+      error_codes::DOWNLOAD_FAILED,
+      "download_batch 响应缺少 results",
+    ));
+  }
+
+  let mut parsed: Vec<BatchItemResult> = raw_results
+    .iter()
+    .filter_map(|value| {
+      let row_id = value.get("row_id").and_then(|v| v.as_i64())?;
+      let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+      let code = value
+        .get("code")
+        .and_then(|v| v.as_str())
+        .unwrap_or(error_codes::DOWNLOAD_FAILED)
+        .to_string();
+      let message = value
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      Some(BatchItemResult {
+        row_id,
+        ok,
+        code,
+        message,
+      })
+    })
+    .collect();
+
+  parsed.sort_by_key(|r| r.row_id);
+
+  if parsed.len() != assets.len() {
+    let mut by_id: std::collections::HashMap<i64, BatchItemResult> = parsed
+      .into_iter()
+      .map(|r| (r.row_id, r))
+      .collect();
+    parsed = assets
+      .iter()
+      .map(|asset| {
+        by_id.remove(&asset.id).unwrap_or(BatchItemResult {
+          row_id: asset.id,
+          ok: false,
+          code: error_codes::DOWNLOAD_FAILED.to_string(),
+          message: "missing batch result".to_string(),
+        })
+      })
+      .collect();
+  }
+
+  Ok(parsed)
 }
 
-/// 串行下载循环；在后台线程调用
+fn apply_batch_results(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  job_id: i64,
+  assets: &[AssetRow],
+  results: &[BatchItemResult],
+  output_dir: &str,
+  total: u32,
+) -> Result<Option<JobStatus>, String> {
+  let mut last_filename = String::new();
+  let mut terminal: Option<JobStatus> = None;
+
+  for (asset, result) in assets.iter().zip(results.iter()) {
+    last_filename = asset.original_filename.clone();
+    let dest = dest_path_for_asset(output_dir, asset);
+
+    if result.ok {
+      mark_asset_outcome(
+        conn,
+        asset.id,
+        AssetStatus::Done,
+        Some(&dest.to_string_lossy()),
+        None,
+        None,
+      )?;
+      continue;
+    }
+
+    if mark_asset_done_if_on_disk(conn, asset, output_dir)? {
+      continue;
+    }
+
+    let code = result.code.as_str();
+    let err_summary = if result.message.is_empty() {
+      code.to_string()
+    } else {
+      format!("{code}: {}", result.message)
+    };
+
+    if is_auth_pause_error(code) {
+      terminal = Some(JobStatus::PausedSession);
+      break;
+    }
+    if is_fatal_job_error(code) {
+      mark_asset_outcome(
+        conn,
+        asset.id,
+        AssetStatus::Failed,
+        None,
+        Some(&err_summary),
+        Some(1),
+      )?;
+      terminal = Some(JobStatus::Failed);
+      break;
+    }
+
+    mark_asset_outcome(
+      conn,
+      asset.id,
+      AssetStatus::Failed,
+      None,
+      Some(&err_summary),
+      Some(1),
+    )?;
+
+    if !is_skippable_download_error(code) {
+      terminal = Some(JobStatus::Failed);
+      break;
+    }
+  }
+
+  let (done, _, _) = count_assets_by_status(conn, job_id)?;
+  emit_progress(app, done, total, &last_filename);
+
+  if let Some(status) = terminal {
+    set_job_status(app, conn, job_id, status)?;
+    return Ok(Some(status));
+  }
+  Ok(None)
+}
+
+/// 批量下载循环；在后台线程调用
 fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
   let db_path = match state_db_path(&app) {
     Ok(p) => p,
@@ -485,8 +709,11 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
     let conn = open_db(&db_path)?;
     let job = get_job(&conn, job_id)?
       .ok_or_else(|| format!("job {job_id} 不存在"))?;
+    ensure_job_matches_current_account(&app, &conn, job_id)?;
     set_job_status(&app, &conn, job_id, JobStatus::Running)?;
 
+    let settings = load_settings(&app)?;
+    let concurrency = normalize_concurrency(settings.concurrency);
     let apple_id = job.apple_id.clone();
     let total = {
       let (d, f, p) = count_assets_by_status(&conn, job_id)?;
@@ -508,61 +735,115 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
         break;
       }
 
-      let asset = &pending[0];
+      let batch_size = usize::try_from(concurrency).unwrap_or(1);
+      let mut batch: Vec<AssetRow> = Vec::with_capacity(batch_size);
+      for asset in pending {
+        if mark_asset_done_if_on_disk(&conn, &asset, &job.output_dir)? {
+          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
+          emit_progress(&app, done, total, &asset.original_filename);
+          continue;
+        }
+        batch.push(asset);
+        if batch.len() >= batch_size {
+          break;
+        }
+      }
 
-      if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
-        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-        emit_progress(&app, done, total, &asset.original_filename);
+      if batch.is_empty() {
         continue;
       }
 
-      let dest = dest_path_for_asset(&job.output_dir, asset);
+      thread::sleep(Duration::from_millis(MIN_BATCH_GAP_MS));
 
-      match download_one(
+      match download_batch(
         &client,
         &app,
-        asset,
-        &dest,
+        &batch,
+        &job.output_dir,
         &apple_id,
         &session_path,
+        concurrency,
       ) {
-        Ok(()) => {
-          mark_asset_status(
-            &conn,
-            asset.id,
-            AssetStatus::Done,
-            Some(&dest.to_string_lossy()),
-          )?;
-          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-          emit_progress(&app, done, total, &asset.original_filename);
+        Ok(results) => {
+          if let Some(status) =
+            apply_batch_results(&app, &conn, job_id, &batch, &results, &job.output_dir, total)?
+          {
+            if status == JobStatus::PausedSession || status == JobStatus::Failed {
+              return Ok(());
+            }
+          }
         }
         Err(err) => {
           let code = err.code.as_str();
-          if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
-            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-            emit_progress(&app, done, total, &asset.original_filename);
-            continue;
-          }
           if is_auth_pause_error(code) {
             set_job_status(&app, &conn, job_id, JobStatus::PausedSession)?;
             let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-            emit_progress(&app, done, total, &asset.original_filename);
+            emit_progress(
+              &app,
+              done,
+              total,
+              batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
+            );
             return Ok(());
           }
           if is_fatal_job_error(code) {
+            for asset in &batch {
+              let summary = if err.message.is_empty() {
+                code.to_string()
+              } else {
+                format!("{code}: {}", err.message)
+              };
+              let _ = mark_asset_outcome(
+                &conn,
+                asset.id,
+                AssetStatus::Failed,
+                None,
+                Some(&summary),
+                Some(1),
+              );
+            }
             set_job_status(&app, &conn, job_id, JobStatus::Failed)?;
             let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-            emit_progress(&app, done, total, &asset.original_filename);
+            emit_progress(
+              &app,
+              done,
+              total,
+              batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
+            );
             return Err(err.message);
           }
-          // download_failed 或其它可继续错误：标记 failed 并继续
-          mark_asset_status(&conn, asset.id, AssetStatus::Failed, None)?;
+          for asset in &batch {
+            if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
+              continue;
+            }
+            let summary = if err.message.is_empty() {
+              code.to_string()
+            } else {
+              format!("{code}: {}", err.message)
+            };
+            let _ = mark_asset_outcome(
+              &conn,
+              asset.id,
+              AssetStatus::Failed,
+              None,
+              Some(&summary),
+              Some(1),
+            );
+          }
           let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-          emit_progress(&app, done, total, &asset.original_filename);
+          emit_progress(
+            &app,
+            done,
+            total,
+            batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
+          );
+          if !is_skippable_download_error(code) {
+            set_job_status(&app, &conn, job_id, JobStatus::Failed)?;
+            return Err(err.message);
+          }
         }
       }
 
-      // 每张之间随机间隔 0.5–2s（P0 降风险）；sleep 后再检查 pause，避免长等
       thread::sleep(Duration::from_millis(random_jitter_ms()));
       if is_pause_requested() {
         set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
@@ -589,6 +870,47 @@ fn spawn_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) 
   thread::spawn(move || run_download_loop(app, job_id, client));
 }
 
+/// 后台拉 catalog → 落库 → 启动下载；catalog 在独立线程，不阻塞 Tauri 命令/UI。
+fn spawn_catalog_then_download(
+  app: AppHandle,
+  job_id: i64,
+  view: JobView,
+  client: Arc<SidecarClient>,
+  db_path: PathBuf,
+  apple_id: String,
+  session_path: PathBuf,
+) {
+  thread::spawn(move || {
+    let outcome = (|| -> Result<(), String> {
+      client.ensure_started(&app).map_err(|e| e.to_string())?;
+      let catalog_items = fetch_catalog(
+        client.as_ref(),
+        &app,
+        view,
+        &apple_id,
+        &session_path,
+      )?;
+      if catalog_items.is_empty() {
+        return Err("catalog 为空".to_string());
+      }
+      let conn = open_db(&db_path)?;
+      let assets = catalog_to_asset_rows(job_id, view, &catalog_items)?;
+      insert_assets(&conn, &assets)?;
+      set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
+      spawn_download_loop(app.clone(), job_id, client.clone());
+      Ok(())
+    })();
+
+    if let Err(e) = outcome {
+      log::error!("icloud sync catalog job {job_id} failed: {e}");
+      if let Ok(conn) = open_db(&db_path) {
+        let _ = set_job_status(&app, &conn, job_id, JobStatus::Failed);
+      }
+      release_job(job_id);
+    }
+  });
+}
+
 fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
   let job = get_job(conn, job_id)?
     .ok_or_else(|| format!("job {job_id} 不存在"))?;
@@ -597,6 +919,7 @@ fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSy
   Ok(IcloudSyncJobStatusResult {
     job_id,
     status: job.status,
+    apple_id: job.apple_id,
     total,
     done,
     failed,
@@ -626,7 +949,7 @@ fn set_job_status(
   Ok(())
 }
 
-/// 新建任务：catalog 一次 → 分配 index → 落库 → 后台串行下载
+/// 新建任务：立即返回 job_id；catalog + 下载在后台线程执行
 #[tauri::command]
 pub fn icloud_sync_start_job(
   app: AppHandle,
@@ -643,11 +966,6 @@ pub fn icloud_sync_start_job(
   let apple_id = settings.apple_id.clone();
   let session_path = session_dir(&app)?;
 
-  let catalog_items = fetch_catalog(client.as_ref(), &app, view, &apple_id, &session_path)?;
-  if catalog_items.is_empty() {
-    return Err("catalog 为空".to_string());
-  }
-
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
   let created_at = chrono::Utc::now().timestamp();
@@ -656,15 +974,21 @@ pub fn icloud_sync_start_job(
     view,
     &output_dir,
     &apple_id,
-    JobStatus::Pending,
+    JobStatus::Cataloging,
     created_at,
   )?;
-
-  let assets = catalog_to_asset_rows(job_id, view, &catalog_items)?;
-  insert_assets(&conn, &assets)?;
+  emit_job_status(&app, &conn, job_id);
 
   try_claim_job(job_id)?;
-  spawn_download_loop(app, job_id, client.clone());
+  spawn_catalog_then_download(
+    app,
+    job_id,
+    view,
+    client.clone(),
+    db_path,
+    apple_id,
+    session_path,
+  );
 
   Ok(IcloudSyncStartJobResult { job_id })
 }
@@ -683,6 +1007,7 @@ pub fn icloud_sync_resume_job(
 
   match job.status {
     JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {}
+    JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
     JobStatus::Done => return Err("任务已完成".to_string()),
     JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
   }
@@ -690,6 +1015,8 @@ pub fn icloud_sync_resume_job(
   if !job_has_assets(&conn, job_id)? {
     return Err("任务无资产记录，请使用 start_job".to_string());
   }
+
+  ensure_job_matches_current_account(&app, &conn, job_id)?;
 
   if let Some(output_dir) = get_job(&conn, job_id)?.map(|j| j.output_dir) {
     if reconcile_job_with_disk(&conn, job_id, &output_dir)? {
@@ -715,6 +1042,7 @@ pub fn icloud_sync_pause_job(app: AppHandle, job_id: i64) -> Result<(), String> 
   let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
 
   match job.status {
+    JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
     JobStatus::Running | JobStatus::Pending => {}
     JobStatus::PausedUser => return Ok(()),
     JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
@@ -746,6 +1074,50 @@ pub fn icloud_sync_job_status(app: AppHandle, job_id: i64) -> Result<IcloudSyncJ
     }
   }
   build_job_status(&conn, job_id)
+}
+
+/// 列出失败资产摘要，供同步页失败表格展示
+#[tauri::command]
+pub fn icloud_sync_list_failed_assets(
+  app: AppHandle,
+  job_id: i64,
+  limit: Option<u32>,
+) -> Result<Vec<IcloudSyncFailedAssetRow>, String> {
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  list_failed_assets(&conn, job_id, limit.unwrap_or(50))
+}
+
+fn parse_asset_task_status_filter(raw: Option<&str>) -> Result<Option<AssetStatus>, String> {
+  match raw.map(str::trim).filter(|s| !s.is_empty()) {
+    None | Some("all") => Ok(None),
+    Some("pending") => Ok(Some(AssetStatus::Pending)),
+    Some("done") => Ok(Some(AssetStatus::Done)),
+    Some("failed") => Ok(Some(AssetStatus::Failed)),
+    Some(other) => Err(format!("无效 status 筛选: {other}")),
+  }
+}
+
+/// 分页列出任务下全部文件行（含 pending/done/failed）
+#[tauri::command]
+pub fn icloud_sync_list_asset_tasks(
+  app: AppHandle,
+  job_id: i64,
+  offset: Option<u32>,
+  limit: Option<u32>,
+  status: Option<String>,
+) -> Result<IcloudSyncListAssetTasksResult, String> {
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  let status_filter = parse_asset_task_status_filter(status.as_deref())?;
+  let (items, total) = list_asset_tasks(
+    &conn,
+    job_id,
+    offset.unwrap_or(0),
+    limit.unwrap_or(50),
+    status_filter,
+  )?;
+  Ok(IcloudSyncListAssetTasksResult { items, total })
 }
 
 /// 供 mod 注入的 SidecarClient 包装（Tauri State 需 'static + 后台线程 Clone）
@@ -922,6 +1294,8 @@ mod tests {
       part: AssetPart::Full,
       status: AssetStatus::Pending,
       dest_path: None,
+      last_error: None,
+      attempt_count: 0,
     };
     insert_assets(&conn, std::slice::from_ref(&asset)).expect("insert");
     asset.id = conn

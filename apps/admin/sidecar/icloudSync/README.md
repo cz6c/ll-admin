@@ -3,7 +3,16 @@
 Python 瘦 sidecar：`auth` / `catalog` / `download`，stdin/stdout 行式 JSON。  
 **终端用户不安装 Python**；发布包使用 PyInstaller 捆绑 exe，随 Tauri 安装包分发。
 
+| 模块 | 职责 |
+|------|------|
+| `agent.py` | 命令路由、认证态、catalog/download 编排 |
+| `icloudAuth.py` | pyicloud_ipd 登录 / 2FA / session（icloudpd 同源） |
+| `ipdPhotos.py` | PhotoAsset 分类与 `photo.download(session, url)`（icloudpd v1.32.3 对齐） |
+| `protocol.py` | line-JSON 事件与错误码 |
+
 ## 开发（源码调试）
+
+依赖 **icloudpd v1.32.3** 的 vendored `pyicloud_ipd`（见 `vendor/icloud_photos_downloader-1.32.3/src`）。`build.ps1` 会在缺失时自动下载官方 zip 解压。
 
 ```powershell
 cd apps/admin/sidecar/icloudSync
@@ -64,8 +73,10 @@ cd apps/admin/sidecar/icloudSync
 ```powershell
 cd apps/admin/sidecar/icloudSync
 py -3 -m pip install --user pytest
-py -3 -m pytest tests/test_protocol.py -v
+py -3 -m pytest tests/ -v
 ```
+
+**Git：** `__pycache__`、`.pytest_cache`、`vendor/icloud_photos_downloader-*`（构建时由 `build.ps1` 下载）、`spike/` 等已写入 `.gitignore`，勿提交。
 
 ## Spike / 设计文档
 

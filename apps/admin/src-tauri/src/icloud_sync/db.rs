@@ -7,10 +7,11 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::types::{
-  AssetPart, AssetRow, AssetStatus, JobRow, JobStatus, JobView, MediaKind,
+  AssetPart, AssetRow, AssetStatus, IcloudSyncAssetTaskRow, IcloudSyncFailedAssetRow, JobRow,
+  JobStatus, JobView, MediaKind,
 };
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 /// 打开或创建 state.db 并执行迁移
 pub fn open_db(db_path: &Path) -> Result<Connection, String> {
@@ -55,6 +56,8 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         part TEXT NOT NULL,
         status TEXT NOT NULL,
         dest_path TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
         UNIQUE(job_id, asset_id, part)
       );
 
@@ -77,11 +80,69 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     conn
       .execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('version', ?1)",
-        params![SCHEMA_VERSION.to_string()],
+        params!["1"],
       )
       .map_err(|e| format!("写入 schema 版本失败: {e}"))?;
   }
 
+  migrate_to_latest(&conn)?;
+  Ok(())
+}
+
+fn schema_version(conn: &Connection) -> Result<i32, String> {
+  let version: Option<i32> = conn
+    .query_row(
+      "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = 'version'",
+      [],
+      |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("读取 schema 版本失败: {e}"))?;
+  Ok(version.unwrap_or(1))
+}
+
+fn set_schema_version(conn: &Connection, version: i32) -> Result<(), String> {
+  conn
+    .execute(
+      "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('version', ?1)",
+      params![version.to_string()],
+    )
+    .map_err(|e| format!("写入 schema 版本失败: {e}"))?;
+  Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+  let mut stmt = conn
+    .prepare(&format!("PRAGMA table_info({table})"))
+    .map_err(|e| format!("读取表结构失败: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("解析表结构失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("读取列名失败: {e}"))?;
+  Ok(rows.iter().any(|name| name == column))
+}
+
+/// 幂等迁移至 SCHEMA_VERSION
+fn migrate_to_latest(conn: &Connection) -> Result<(), String> {
+  let mut version = schema_version(conn)?;
+  if version < 2 {
+    if !column_exists(conn, "assets", "last_error")? {
+      conn
+        .execute("ALTER TABLE assets ADD COLUMN last_error TEXT", [])
+        .map_err(|e| format!("添加 last_error 列失败: {e}"))?;
+    }
+    if !column_exists(conn, "assets", "attempt_count")? {
+      conn
+        .execute(
+          "ALTER TABLE assets ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+          [],
+        )
+        .map_err(|e| format!("添加 attempt_count 列失败: {e}"))?;
+    }
+    version = 2;
+    set_schema_version(conn, version)?;
+  }
   Ok(())
 }
 
@@ -119,8 +180,8 @@ pub fn insert_assets(conn: &Connection, assets: &[AssetRow]) -> Result<(), Strin
       r#"
       INSERT INTO assets(
         job_id, asset_id, sort_key, original_filename, media_kind,
-        live_pair_id, index_num, part, status, dest_path
-      ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        live_pair_id, index_num, part, status, dest_path, last_error, attempt_count
+      ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
       "#,
       params![
         asset.job_id,
@@ -133,6 +194,8 @@ pub fn insert_assets(conn: &Connection, assets: &[AssetRow]) -> Result<(), Strin
         asset.part.as_str(),
         asset.status.as_str(),
         asset.dest_path,
+        asset.last_error,
+        asset.attempt_count,
       ],
     )
     .map_err(|e| format!("插入 asset 失败: {e}"))?;
@@ -151,17 +214,44 @@ pub fn update_job_status(conn: &Connection, job_id: i64, status: JobStatus) -> R
     .map_err(|e| format!("更新 job 状态失败: {e}"))
 }
 
-/// 标记单资产状态；可选写入最终落盘路径
+/// 标记单资产状态；可选写入最终落盘路径与失败摘要
 pub fn mark_asset_status(
   conn: &Connection,
   asset_row_id: i64,
   status: AssetStatus,
   dest_path: Option<&str>,
 ) -> Result<(), String> {
+  mark_asset_outcome(conn, asset_row_id, status, dest_path, None, None)
+}
+
+/// 更新资产结果：done 清 last_error；failed 写入摘要并递增 attempt_count
+pub fn mark_asset_outcome(
+  conn: &Connection,
+  asset_row_id: i64,
+  status: AssetStatus,
+  dest_path: Option<&str>,
+  last_error: Option<&str>,
+  attempt_delta: Option<i32>,
+) -> Result<(), String> {
+  let clear_error = status == AssetStatus::Done;
   conn
     .execute(
-      "UPDATE assets SET status = ?1, dest_path = ?2 WHERE id = ?3",
-      params![status.as_str(), dest_path, asset_row_id],
+      r#"
+      UPDATE assets SET
+        status = ?1,
+        dest_path = ?2,
+        last_error = CASE WHEN ?3 = 1 THEN NULL ELSE COALESCE(?4, last_error) END,
+        attempt_count = attempt_count + COALESCE(?5, 0)
+      WHERE id = ?6
+      "#,
+      params![
+        status.as_str(),
+        dest_path,
+        if clear_error { 1 } else { 0 },
+        last_error,
+        attempt_delta.unwrap_or(0),
+        asset_row_id,
+      ],
     )
     .map(|_| ())
     .map_err(|e| format!("更新 asset 状态失败: {e}"))
@@ -199,7 +289,7 @@ pub fn list_pending_assets(conn: &Connection, job_id: i64) -> Result<Vec<AssetRo
 pub fn reset_failed_to_pending(conn: &Connection, job_id: i64) -> Result<u32, String> {
   let changed = conn
     .execute(
-      "UPDATE assets SET status = ?1 WHERE job_id = ?2 AND status = ?3",
+      "UPDATE assets SET status = ?1, last_error = NULL WHERE job_id = ?2 AND status = ?3",
       params![
         AssetStatus::Pending.as_str(),
         job_id,
@@ -208,6 +298,132 @@ pub fn reset_failed_to_pending(conn: &Connection, job_id: i64) -> Result<u32, St
     )
     .map_err(|e| format!("重置 failed 资产失败: {e}"))?;
   u32::try_from(changed).map_err(|_| "重置行数超出 u32".to_string())
+}
+
+/// 列出失败资产（按 index 升序，供同步页表格）
+pub fn list_failed_assets(
+  conn: &Connection,
+  job_id: i64,
+  limit: u32,
+) -> Result<Vec<IcloudSyncFailedAssetRow>, String> {
+  let lim = i64::from(limit.max(1));
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT index_num, part, original_filename, last_error, attempt_count
+      FROM assets
+      WHERE job_id = ?1 AND status = ?2
+      ORDER BY index_num ASC,
+               CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
+      LIMIT ?3
+      "#,
+    )
+    .map_err(|e| format!("准备 failed 查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(
+      params![job_id, AssetStatus::Failed.as_str(), lim],
+      |row| {
+        Ok(IcloudSyncFailedAssetRow {
+          index_num: row.get(0)?,
+          part: row.get(1)?,
+          original_filename: row.get(2)?,
+          last_error: row
+            .get::<_, Option<String>>(3)?
+            .unwrap_or_else(|| "download_failed".to_string()),
+          attempt_count: row.get(4)?,
+        })
+      },
+    )
+    .map_err(|e| format!("查询 failed 资产失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析 failed 资产失败: {e}"))?;
+  Ok(rows)
+}
+
+/// 分页列出任务下全部/指定状态的文件行（按 index 升序）
+pub fn list_asset_tasks(
+  conn: &Connection,
+  job_id: i64,
+  offset: u32,
+  limit: u32,
+  status_filter: Option<AssetStatus>,
+) -> Result<(Vec<IcloudSyncAssetTaskRow>, u32), String> {
+  let lim = i64::from(limit.clamp(1, 200));
+  let off = i64::from(offset);
+
+  let total: i64 = match status_filter {
+    Some(status) => conn.query_row(
+      "SELECT COUNT(*) FROM assets WHERE job_id = ?1 AND status = ?2",
+      params![job_id, status.as_str()],
+      |row| row.get(0),
+    ),
+    None => conn.query_row(
+      "SELECT COUNT(*) FROM assets WHERE job_id = ?1",
+      params![job_id],
+      |row| row.get(0),
+    ),
+  }
+  .map_err(|e| format!("统计 asset 任务失败: {e}"))?;
+
+  let rows = match status_filter {
+    Some(status) => {
+      let mut stmt = conn
+        .prepare(
+          r#"
+          SELECT index_num, part, original_filename, status, last_error, attempt_count
+          FROM assets
+          WHERE job_id = ?1 AND status = ?2
+          ORDER BY index_num ASC,
+                   CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
+          LIMIT ?3 OFFSET ?4
+          "#,
+        )
+        .map_err(|e| format!("准备 asset 任务查询失败: {e}"))?;
+      let mapped = stmt
+        .query_map(
+          params![job_id, status.as_str(), lim, off],
+          map_asset_task_row,
+        )
+        .map_err(|e| format!("查询 asset 任务失败: {e}"))?;
+      mapped
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("解析 asset 任务失败: {e}"))?
+    }
+    None => {
+      let mut stmt = conn
+        .prepare(
+          r#"
+          SELECT index_num, part, original_filename, status, last_error, attempt_count
+          FROM assets
+          WHERE job_id = ?1
+          ORDER BY index_num ASC,
+                   CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
+          LIMIT ?2 OFFSET ?3
+          "#,
+        )
+        .map_err(|e| format!("准备 asset 任务查询失败: {e}"))?;
+      let mapped = stmt
+        .query_map(params![job_id, lim, off], map_asset_task_row)
+        .map_err(|e| format!("查询 asset 任务失败: {e}"))?;
+      mapped
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("解析 asset 任务失败: {e}"))?
+    }
+  };
+
+  let total_u32 = u32::try_from(total).map_err(|_| "任务总数超出 u32".to_string())?;
+  Ok((rows, total_u32))
+}
+
+fn map_asset_task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IcloudSyncAssetTaskRow> {
+  Ok(IcloudSyncAssetTaskRow {
+    index_num: row.get(0)?,
+    part: row.get(1)?,
+    original_filename: row.get(2)?,
+    status: row.get(3)?,
+    last_error: row.get(4)?,
+    attempt_count: row.get(5)?,
+  })
 }
 
 /// 已完成资产（测试与后续 UI 统计用）
@@ -277,7 +493,7 @@ fn list_assets_by_statuses(
   let sql = format!(
     r#"
     SELECT id, job_id, asset_id, sort_key, original_filename, media_kind,
-           live_pair_id, index_num, part, status, dest_path
+           live_pair_id, index_num, part, status, dest_path, last_error, attempt_count
     FROM assets
     WHERE job_id = ?1 AND status IN ({placeholders})
     ORDER BY index_num ASC,
@@ -323,6 +539,8 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
       rusqlite::Error::InvalidColumnType(9, "status".into(), rusqlite::types::Type::Text)
     })?,
     dest_path: row.get(10)?,
+    last_error: row.get(11)?,
+    attempt_count: row.get(12)?,
   })
 }
 
@@ -378,6 +596,8 @@ mod tests {
         part: AssetPart::Still,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       },
       AssetRow {
         id: 0,
@@ -391,6 +611,8 @@ mod tests {
         part: AssetPart::Mov,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       },
     ];
     insert_assets(&conn, &assets).expect("insert");
@@ -440,6 +662,8 @@ mod tests {
         part: AssetPart::Full,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       },
       AssetRow {
         id: 0,
@@ -453,6 +677,8 @@ mod tests {
         part: AssetPart::Full,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       },
       AssetRow {
         id: 0,
@@ -466,6 +692,8 @@ mod tests {
         part: AssetPart::Full,
         status: AssetStatus::Pending,
         dest_path: None,
+        last_error: None,
+        attempt_count: 0,
       },
     ];
     insert_assets(&conn, &assets).expect("insert");

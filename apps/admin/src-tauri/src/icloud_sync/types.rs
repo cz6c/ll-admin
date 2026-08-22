@@ -15,7 +15,7 @@ pub struct IcloudSyncSettings {
   /// 同步落盘绝对路径；空时由 resolve_default_output_dir 推导
   #[serde(default)]
   pub output_dir: String,
-  /// 并发下载数；P0 固定默认 1，前端控件灰显
+  /// 并发下载数；P1 允许 1–3，由设置页配置
   #[serde(default = "default_concurrency")]
   pub concurrency: u32,
   /// 上次登录 Apple ID（日志脱敏由调用方负责）
@@ -30,6 +30,13 @@ pub struct IcloudSyncSettings {
   /// 已确认关闭 Advanced Data Protection
   #[serde(default)]
   pub checklist_adp_off: bool,
+  /// iCloud 根域：`com` 国际 / `cn` 中国大陆
+  #[serde(default = "default_icloud_domain")]
+  pub icloud_domain: String,
+}
+
+fn default_icloud_domain() -> String {
+  "cn".to_string()
 }
 
 impl Default for IcloudSyncSettings {
@@ -41,6 +48,7 @@ impl Default for IcloudSyncSettings {
       risk_accepted: false,
       checklist_web_access: false,
       checklist_adp_off: false,
+      icloud_domain: default_icloud_domain(),
     }
   }
 }
@@ -76,6 +84,8 @@ impl JobView {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum JobStatus {
+  /// 正在拉取 iCloud 图库目录（后台线程，不阻塞 UI）
+  Cataloging,
   /// 已建库、待下载
   Pending,
   /// 下载进行中
@@ -93,6 +103,7 @@ pub enum JobStatus {
 impl JobStatus {
   pub fn as_str(self) -> &'static str {
     match self {
+      Self::Cataloging => "cataloging",
       Self::Pending => "pending",
       Self::Running => "running",
       Self::PausedSession => "paused_session",
@@ -104,6 +115,7 @@ impl JobStatus {
 
   pub fn parse(s: &str) -> Option<Self> {
     match s {
+      "cataloging" => Some(Self::Cataloging),
       "pending" => Some(Self::Pending),
       "running" => Some(Self::Running),
       "paused_session" => Some(Self::PausedSession),
@@ -225,6 +237,42 @@ pub struct AssetRow {
   pub part: AssetPart,
   pub status: AssetStatus,
   pub dest_path: Option<String>,
+  /// 最近一次失败摘要（P1 排查用）
+  pub last_error: Option<String>,
+  /// 累计下载尝试次数（含 sidecar 内重试后的单次 Rust 批次）
+  pub attempt_count: i32,
+}
+
+/// 失败资产摘要（供同步页表格展示）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncFailedAssetRow {
+  pub index_num: i32,
+  pub part: String,
+  pub original_filename: String,
+  pub last_error: String,
+  pub attempt_count: i32,
+}
+
+/// 单文件任务行（同步页全量任务表格）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncAssetTaskRow {
+  pub index_num: i32,
+  pub part: String,
+  pub original_filename: String,
+  /// `pending` | `done` | `failed`
+  pub status: String,
+  pub last_error: Option<String>,
+  pub attempt_count: i32,
+}
+
+/// 分页查询文件任务列表
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncListAssetTasksResult {
+  pub items: Vec<IcloudSyncAssetTaskRow>,
+  pub total: u32,
 }
 
 /// sidecar / 队列机读错误码（与 Python protocol 对齐）
@@ -240,4 +288,10 @@ pub mod error_codes {
   pub const LIVE_BIND_MISSING: &str = "live_bind_missing";
   pub const DOWNLOAD_FAILED: &str = "download_failed";
   pub const SIDECAR_CRASHED: &str = "sidecar_crashed";
+  /// 任务 apple_id 与 settings 当前账号不一致
+  pub const ACCOUNT_MISMATCH: &str = "account_mismatch";
+  /// 已有有效 session，须先 logout 再 login
+  pub const ALREADY_LOGGED_IN: &str = "already_logged_in";
+  /// 所选 iCloud 区域与 Apple ID 不匹配
+  pub const DOMAIN_MISMATCH: &str = "domain_mismatch";
 }

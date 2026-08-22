@@ -1,4 +1,25 @@
+# Python venv / bytecode（不入库）
 .venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# PyInstaller 构建产物（发布走 cs:sidecar-build → src-tauri/resources/）
 dist/
 build/
 *.spec
+
+# 运行时落盘（用户 session 目录内的诊断快照，开发时也可能出现在本地）
+auth-diagnostic.json
+*.icloud-domain
+
+# icloudpd vendor：build.ps1 缺失时自动下载 v1.32.3 zip 解压，勿提交整包
+vendor/icloud_photos_downloader-*/
+vendor/icloudpd-src/
+
+# Spike / 一次性脚本（非生产路径）
+spike/

@@ -10,13 +10,16 @@ import { invoke } from "@tauri-apps/api/core";
 export type IcloudSyncJobView = "library" | "recents";
 
 /** 任务生命周期状态（与 Rust JobStatus 对齐） */
-export type IcloudSyncJobStatus = "pending" | "running" | "paused_session" | "paused_user" | "done" | "failed";
+export type IcloudSyncJobStatus =
+  | "cataloging"
+  | "pending"
+  | "running" | "paused_session" | "paused_user" | "done" | "failed";
 
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
   /** 同步落盘绝对路径；空时 Rust 侧推导 albumRoot/iCloudSync */
   outputDir: string;
-  /** 并发下载数；P0 固定 1，前端控件灰显 */
+  /** 并发下载数；P1 允许 1–3，由设置页配置 */
   concurrency: number;
   appleId: string;
   /** 已勾选锁号风险 ToS */
@@ -25,6 +28,8 @@ export interface IcloudSyncSettings {
   checklistWebAccess: boolean;
   /** 已确认关闭 Advanced Data Protection */
   checklistAdpOff: boolean;
+  /** iCloud 根域：`com` 国际 / `cn` 中国大陆 */
+  icloudDomain: "com" | "cn";
 }
 
 /** auth 页 consent / 凭据 / session 概况（不含密码明文） */
@@ -37,12 +42,44 @@ export interface IcloudSyncAuthState {
   consentReady: boolean;
   /** session 目录是否有落盘文件；不保证仍有效 */
   sessionPresent: boolean;
+  /** 当前 Apple ID 是否已有专属 session 文件 */
+  sessionForCurrentAppleId: boolean;
+  /** 已登录（须主动退出后才能再次登录） */
+  loggedIn: boolean;
+  /** 当前设置的 iCloud 根域 */
+  icloudDomain: "com" | "cn";
 }
 
-/** login / submit_2fa 成功时的状态 */
+/** login / submit_2fa / get_auth_diagnostic 返回的状态 */
 export interface IcloudSyncLoginResult {
-  /** `need_2fa`：待二次验证；`ok`：已登录 */
-  status: "need_2fa" | "ok" | string;
+  /** `need_2fa` / `ok` / `error` / `diagnostic` */
+  status: "need_2fa" | "ok" | "error" | "diagnostic" | string;
+  /** pyicloud 2FA 投递：`sms` / `trusted_device` 等 */
+  deliveryMethod?: string;
+  /** 2FA 引导或错误摘要 */
+  detail?: string;
+  /** 机读错误码（status=error 时） */
+  errorCode?: string;
+  /** sidecar 完整诊断（flags / hints / userActions） */
+  diagnostic?: IcloudSyncAuthDiagnostic;
+}
+
+/** sidecar authDiagnostic 落盘结构（camelCase 与 Rust 透传一致） */
+export interface IcloudSyncAuthDiagnostic {
+  /** ISO8601 UTC */
+  at?: string;
+  stage?: string;
+  code?: string;
+  message?: string;
+  appleIdMasked?: string;
+  sessionDir?: string;
+  hints?: string[];
+  userActions?: string[];
+  flags?: Record<string, unknown>;
+  validatePath?: string | null;
+  kickoffPath?: string | null;
+  exceptionType?: string | null;
+  exceptionDetail?: string | null;
 }
 
 export interface IcloudSyncStartJobResult {
@@ -52,6 +89,8 @@ export interface IcloudSyncStartJobResult {
 export interface IcloudSyncJobStatusResult {
   jobId: number;
   status: IcloudSyncJobStatus;
+  /** 创建任务时的 Apple ID */
+  appleId: string;
   total: number;
   done: number;
   failed: number;
@@ -64,6 +103,34 @@ export interface IcloudSyncProgressPayload {
   total: number;
   filename: string;
 }
+
+/** 失败资产摘要（同步页表格） */
+export interface IcloudSyncFailedAssetRow {
+  indexNum: number;
+  part: string;
+  originalFilename: string;
+  lastError: string;
+  attemptCount: number;
+}
+
+/** 单文件任务行（全量任务表格） */
+export interface IcloudSyncAssetTaskRow {
+  indexNum: number;
+  part: string;
+  originalFilename: string;
+  /** pending | done | failed */
+  status: "pending" | "done" | "failed" | string;
+  lastError?: string | null;
+  attemptCount: number;
+}
+
+export interface IcloudSyncListAssetTasksResult {
+  items: IcloudSyncAssetTaskRow[];
+  total: number;
+}
+
+/** 任务文件状态筛选 */
+export type IcloudSyncAssetTaskFilter = "all" | "pending" | "done" | "failed";
 
 export const ICLOUD_SYNC_PROGRESS_EVENT = "icloud-sync://progress";
 
@@ -85,7 +152,10 @@ export const ICLOUD_SYNC_ERROR_CODES = {
   CATALOG_SORT_MISSING: "catalog_sort_missing",
   LIVE_BIND_MISSING: "live_bind_missing",
   DOWNLOAD_FAILED: "download_failed",
-  SIDECAR_CRASHED: "sidecar_crashed"
+  SIDECAR_CRASHED: "sidecar_crashed",
+  ACCOUNT_MISMATCH: "account_mismatch",
+  ALREADY_LOGGED_IN: "already_logged_in",
+  DOMAIN_MISMATCH: "domain_mismatch"
 } as const;
 
 const ERROR_USER_MESSAGES: Record<string, string> = {
@@ -97,7 +167,10 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.RATE_LIMITED]: "请求过于频繁，请稍后再试；请勿在本工具内重复尝试登录",
   [ICLOUD_SYNC_ERROR_CODES.CATALOG_SORT_MISSING]: "目录缺少排序字段，无法创建同步任务；请稍后重试或更换视图",
   [ICLOUD_SYNC_ERROR_CODES.LIVE_BIND_MISSING]: "Live Photo 缺少强绑定字段，无法创建同步任务",
-  [ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED]: "同步引擎异常退出，请重新登录后继续"
+  [ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED]: "同步引擎异常退出，请重新登录后继续",
+  [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_MISMATCH]: "当前 Apple ID 与任务创建账号不一致，请开始新同步",
+  [ICLOUD_SYNC_ERROR_CODES.ALREADY_LOGGED_IN]: "已处于登录状态，请先退出后再登录",
+  [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "iCloud 区域与 Apple ID 不匹配，请切换区域后重新登录"
 };
 
 /**
@@ -118,6 +191,27 @@ export function formatIcloudSyncError(err: unknown): string {
   return raw;
 }
 
+/**
+ * 将 sidecar diagnostic JSON 转为 typed 对象
+ * @note invoke 已 camelCase；此处仅做空值过滤
+ */
+export function parseIcloudSyncAuthDiagnostic(
+  value: unknown
+): IcloudSyncAuthDiagnostic | null {
+  if (!value || typeof value !== "object") return null;
+  return value as IcloudSyncAuthDiagnostic;
+}
+
+/** 格式化诊断报告供复制（不含密码/验证码） */
+export function formatIcloudSyncAuthDiagnosticCopy(diag: IcloudSyncAuthDiagnostic): string {
+  return JSON.stringify(diag, null, 2);
+}
+
+/** 读取最近一次认证诊断（不触发登录、不消耗 Apple 配额） */
+export function getIcloudSyncAuthDiagnostic() {
+  return invoke<IcloudSyncLoginResult>("icloud_sync_get_auth_diagnostic");
+}
+
 /** 读取本机 iCloud 同步设置 */
 export function getIcloudSyncSettings() {
   return invoke<IcloudSyncSettings>("icloud_sync_get_settings");
@@ -128,9 +222,17 @@ export function saveIcloudSyncSettings(settings: IcloudSyncSettings) {
   return invoke<void>("icloud_sync_save_settings", { settings });
 }
 
-/** 保存 Apple ID 与密码（密码进 keyring，不进 settings.json） */
+/**
+ * 保存 Apple ID 与密码（密码进 keyring，不进 settings.json）
+ * @returns 是否变更了 Apple ID（换号时会清 sidecar 与旧 session）
+ */
 export function setIcloudSyncCredentials(appleId: string, password: string) {
-  return invoke<void>("icloud_sync_set_credentials", { appleId, password });
+  return invoke<boolean>("icloud_sync_set_credentials", { appleId, password });
+}
+
+/** 登出：清 sidecar 内存态与当前账号 session；保留 settings 中的 Apple ID */
+export function logoutIcloudSync(clearSession = true) {
+  return invoke<void>("icloud_sync_logout", { clearSession });
 }
 
 /** 读取 auth 页 consent / 凭据 / session 概况 */
@@ -171,6 +273,24 @@ export function pauseIcloudSyncJob(jobId: number) {
 /** 查询任务进度与状态 */
 export function getIcloudSyncJobStatus(jobId: number) {
   return invoke<IcloudSyncJobStatusResult>("icloud_sync_job_status", { jobId });
+}
+
+/** 列出失败资产摘要，供同步页失败表格 */
+export function listIcloudSyncFailedAssets(jobId: number, limit = 50) {
+  return invoke<IcloudSyncFailedAssetRow[]>("icloud_sync_list_failed_assets", { jobId, limit });
+}
+
+/** 分页列出任务下全部文件行 */
+export function listIcloudSyncAssetTasks(
+  jobId: number,
+  options: { offset?: number; limit?: number; status?: IcloudSyncAssetTaskFilter } = {}
+) {
+  return invoke<IcloudSyncListAssetTasksResult>("icloud_sync_list_asset_tasks", {
+    jobId,
+    offset: options.offset ?? 0,
+    limit: options.limit ?? 50,
+    status: options.status ?? "all"
+  });
 }
 
 /**

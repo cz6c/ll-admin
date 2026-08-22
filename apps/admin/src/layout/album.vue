@@ -38,15 +38,15 @@ const tabs = [
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #16181d;
+  background: var(--fill-color);
 }
 .shell-header {
   display: flex;
   align-items: center;
   height: 44px;
   padding: 0 12px;
-  background: #1f2329;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-color, #fff);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 .tabs {
@@ -55,27 +55,29 @@ const tabs = [
   flex: 1;
 }
 .tab {
+  position: relative;
   padding: 8px 16px;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(0, 0, 0, 0.65);
   text-decoration: none;
   font-size: 14px;
   transition:
     color 0.12s ease,
     background 0.12s ease;
   &:hover {
-    color: rgba(255, 255, 255, 0.88);
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-primary);
+    background: var(--color-primary-bg);
   }
   &.active {
-    color: #fff;
+    color: var(--color-primary);
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-primary-bg);
   }
 }
 .shell-main {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  padding: 12px;
   min-height: 0;
 }
 </style>

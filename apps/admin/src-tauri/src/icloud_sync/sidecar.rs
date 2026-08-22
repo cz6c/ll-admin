@@ -159,6 +159,7 @@ impl SidecarClient {
     let version_event = exchange_line(
       &mut process,
       &serde_json::json!({ "cmd": "version" }),
+      Duration::from_secs(120),
     )?;
     validate_version_event(&version_event)?;
     process.agent_version = version_event
@@ -170,8 +171,31 @@ impl SidecarClient {
     Ok(())
   }
 
+  /// 终止 sidecar 子进程；下次 request 会按 resolve_agent_launch 重新拉起
+  pub fn stop(&self) -> Result<(), SidecarError> {
+    let mut inner = self
+      .inner
+      .lock()
+      .map_err(|_| SidecarError::new("sidecar_lock_poisoned", "sidecar mutex poisoned"))?;
+    if let Some(mut process) = inner.process.take() {
+      let _ = process.child.kill();
+      let _ = process.child.wait();
+    }
+    Ok(())
+  }
+
   /// 向 sidecar 发送一条 JSON 命令并阻塞等待单行事件（P0 单飞）
   pub fn request(&self, app: &AppHandle, cmd: Value) -> Result<SidecarEvent, SidecarError> {
+    self.request_with_timeout(app, cmd, Duration::from_secs(120))
+  }
+
+  /// 带自定义超时的 sidecar 请求；download_batch 等长任务使用
+  pub fn request_with_timeout(
+    &self,
+    app: &AppHandle,
+    cmd: Value,
+    timeout: Duration,
+  ) -> Result<SidecarEvent, SidecarError> {
     let mut inner = self
       .inner
       .lock()
@@ -198,7 +222,7 @@ impl SidecarClient {
       .as_mut()
       .ok_or_else(|| SidecarError::sidecar_crashed("sidecar failed to start"))?;
 
-    exchange_line(process, &cmd)
+    exchange_line(process, &cmd, timeout)
   }
 }
 
@@ -232,6 +256,13 @@ fn resolve_agent_launch(app: &AppHandle) -> Result<AgentLaunch, SidecarError> {
     }
   }
 
+  // debug/dev：优先 repo 内 agent.py + sidecar .venv（含 pyicloud）；无 venv 时回退 bundled exe
+  #[cfg(debug_assertions)]
+  if let Some(launch) = try_repo_python_agent() {
+    log::info!("icloud sidecar: using repo agent.py with sidecar venv (debug build)");
+    return Ok(launch);
+  }
+
   let mut checked: Vec<PathBuf> = Vec::new();
   if let Ok(resource_dir) = app.path().resource_dir() {
     checked.push(resource_dir.join("icloud-sync-agent.exe"));
@@ -257,6 +288,32 @@ fn resolve_agent_launch(app: &AppHandle) -> Result<AgentLaunch, SidecarError> {
   Err(SidecarError::sidecar_missing(format!(
     "未找到 sidecar 可执行文件（已检查: {paths}）。请在 apps/admin 下运行: pnpm run cs:sidecar-build"
   )))
+}
+
+/// debug 构建：使用 sidecar/.venv 内的 Python 跑 agent.py（与 cs:sidecar-build 同源依赖）
+/// @note 无 .venv 时返回 None，回退 bundled exe，避免系统 `py -3` 缺 pyicloud
+fn try_repo_python_agent() -> Option<AgentLaunch> {
+  let sidecar_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sidecar/icloudSync");
+  let agent_py = sidecar_dir.join("agent.py");
+  if !agent_py.is_file() {
+    return None;
+  }
+  let venv_python = sidecar_dir.join(".venv").join("Scripts").join("python.exe");
+  if !venv_python.is_file() {
+    log::warn!(
+      "icloud sidecar: sidecar/.venv not found ({}) — fall back to bundled exe; run: pnpm run cs:sidecar-build",
+      venv_python.display()
+    );
+    return None;
+  }
+  let canonical_agent = agent_py.canonicalize().ok()?;
+  let work_dir = canonical_agent.parent().map(Path::to_path_buf);
+  let program = venv_python.canonicalize().unwrap_or(venv_python);
+  Some(AgentLaunch::Dev {
+    program: program.to_string_lossy().into_owned(),
+    args: vec![canonical_agent.to_string_lossy().into_owned()],
+    work_dir,
+  })
 }
 
 fn dev_working_dir_from_command(command_line: &str) -> Option<PathBuf> {
@@ -403,6 +460,7 @@ fn sidecar_disconnect_message(process: &mut RunningSidecar) -> String {
 fn exchange_line(
   process: &mut RunningSidecar,
   cmd: &Value,
+  timeout: Duration,
 ) -> Result<SidecarEvent, SidecarError> {
   let payload = serde_json::to_string(cmd)?;
   writeln!(process.stdin, "{payload}")?;
@@ -410,11 +468,12 @@ fn exchange_line(
 
   let line = process
     .line_rx
-    .recv_timeout(Duration::from_secs(120))
+    .recv_timeout(timeout)
     .map_err(|err| match err {
-      RecvTimeoutError::Timeout => {
-        SidecarError::sidecar_crashed("sidecar response timeout after 120s")
-      }
+      RecvTimeoutError::Timeout => SidecarError::sidecar_crashed(format!(
+        "sidecar response timeout after {}s",
+        timeout.as_secs()
+      )),
       RecvTimeoutError::Disconnected => {
         SidecarError::sidecar_crashed(sidecar_disconnect_message(process))
       }
@@ -489,6 +548,7 @@ mod tests {
     let event = exchange_line(
       &mut process,
       &serde_json::json!({ "cmd": "version" }),
+      Duration::from_secs(120),
     )
     .expect("version handshake");
     validate_version_event(&event).expect("protocol must match");

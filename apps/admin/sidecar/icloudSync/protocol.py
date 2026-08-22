@@ -28,6 +28,15 @@ CODE_NOT_IMPLEMENTED = "not_implemented"
 CODE_CATALOG_SORT_MISSING = "catalog_sort_missing"
 CODE_LIVE_BIND_MISSING = "live_bind_missing"
 CODE_DOWNLOAD_FAILED = "download_failed"
+CODE_DOMAIN_MISMATCH = "domain_mismatch"
+
+
+class CatalogSortMissingError(RuntimeError):
+    """catalog 条目缺少视图所需排序字段。"""
+
+
+class LiveBindMissingError(RuntimeError):
+    """Live Photo 缺少强绑定 id 或 mov 下载版本。"""
 
 
 def version_event() -> dict[str, Any]:
@@ -35,16 +44,23 @@ def version_event() -> dict[str, Any]:
     return {"type": "version", "protocol": PROTOCOL, "agent": AGENT_VERSION}
 
 
-def need_2fa_event(cmd: str = "auth", detail: str = "") -> dict[str, Any]:
+def need_2fa_event(
+    cmd: str = "auth",
+    detail: str = "",
+    delivery_method: str = "",
+) -> dict[str, Any]:
     """
     构造需要二次验证事件。
 
     @param cmd 触发该状态的命令名
     @param detail 可选补充说明（不含敏感信息）
+    @param delivery_method pyicloud 投递路径：`sms` / `trusted_device` / `security_key` 等
     """
     payload: dict[str, Any] = {"type": "need_2fa", "cmd": cmd, "code": CODE_NEED_2FA}
     if detail:
         payload["detail"] = detail
+    if delivery_method:
+        payload["delivery_method"] = delivery_method
     return payload
 
 

@@ -1,0 +1,7 @@
+# icloudpd vendor（pyicloud_ipd）
+# 构建时由 build.ps1 下载官方 v1.32.3 zip 并解压到 icloud_photos_downloader-1.32.3/
+# 仅保留本 .gitignore 入库；解压目录与 zip 均不入库
+
+icloudpd-v1.32.3.zip
+icloudpd-src/
+icloud_photos_downloader-*/

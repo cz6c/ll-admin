@@ -63,13 +63,17 @@ pub fn run() {
       icloud_sync::icloud_sync_get_settings,
       icloud_sync::icloud_sync_save_settings,
       icloud_sync::icloud_sync_set_credentials,
+      icloud_sync::icloud_sync_logout,
       icloud_sync::icloud_sync_login,
       icloud_sync::icloud_sync_submit_2fa,
+      icloud_sync::icloud_sync_get_auth_diagnostic,
       icloud_sync::icloud_sync_auth_state,
       icloud_sync::queue::icloud_sync_start_job,
       icloud_sync::queue::icloud_sync_pause_job,
       icloud_sync::queue::icloud_sync_resume_job,
       icloud_sync::queue::icloud_sync_job_status,
+      icloud_sync::queue::icloud_sync_list_failed_assets,
+      icloud_sync::queue::icloud_sync_list_asset_tasks,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

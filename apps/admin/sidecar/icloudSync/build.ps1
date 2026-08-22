@@ -32,6 +32,23 @@ if (-not (Test-Path $VenvPython)) {
     }
 }
 
+$VendorRoot = Join-Path $Root "vendor"
+$VendorZip = Join-Path $VendorRoot "icloudpd-v1.32.3.zip"
+$VendorExtract = Join-Path $VendorRoot "icloud_photos_downloader-1.32.3"
+$VendorSrc = Join-Path $VendorExtract "src"
+
+if (-not (Test-Path $VendorSrc)) {
+    Write-Host "Fetching icloudpd v1.32.3 vendor (pyicloud_ipd) ..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force $VendorRoot | Out-Null
+    if (-not (Test-Path $VendorZip)) {
+        Invoke-WebRequest -Uri "https://github.com/icloud-photos-downloader/icloud_photos_downloader/archive/refs/tags/v1.32.3.zip" -OutFile $VendorZip
+    }
+    Expand-Archive -Force -Path $VendorZip -DestinationPath $VendorRoot
+    if (-not (Test-Path $VendorSrc)) {
+        throw "Vendor extract failed: $VendorSrc missing"
+    }
+}
+
 Write-Host "Installing/updating sidecar dependencies + PyInstaller ..." -ForegroundColor Yellow
 & $VenvPython -m pip install -q -r $Requirements pyinstaller
 
@@ -42,8 +59,10 @@ Write-Host "Installing/updating sidecar dependencies + PyInstaller ..." -Foregro
     --distpath $Dist `
     --workpath (Join-Path $Root "build") `
     --specpath $Root `
-    --hidden-import pyicloud `
-    --collect-data fido2 `
+    --paths $VendorSrc `
+    --collect-submodules pyicloud_ipd `
+    --collect-submodules foundation `
+    --hidden-import pyicloud_ipd.base `
     --collect-data certifi `
     $AgentPy
 

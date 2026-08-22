@@ -60,9 +60,12 @@ Write-Host "Installing/updating sidecar dependencies + PyInstaller ..." -Foregro
     --workpath (Join-Path $Root "build") `
     --specpath $Root `
     --paths $VendorSrc `
+    --add-data "$(Join-Path $Root 'vendor');vendor" `
     --collect-submodules pyicloud_ipd `
     --collect-submodules foundation `
     --hidden-import pyicloud_ipd.base `
+    --hidden-import keyring `
+    --collect-submodules keyring.backends `
     --collect-data certifi `
     $AgentPy
 
@@ -92,3 +95,19 @@ if ($versionJson.type -ne "version" -or [int]$versionJson.protocol -ne 1) {
 }
 
 Write-Host "Smoke OK: type=version protocol=1" -ForegroundColor Green
+
+Write-Host "Smoke: vendor_probe (pyicloud_ipd in frozen exe) ..." -ForegroundColor Yellow
+$probeOut = ('{"cmd":"vendor_probe"}' | & $ResourceExe | Out-String).Trim()
+Write-Host $probeOut
+
+try {
+    $probeJson = $probeOut | ConvertFrom-Json
+} catch {
+    throw "vendor_probe failed: invalid JSON output: $probeOut"
+}
+
+if ($probeJson.type -ne "vendor_probe" -or -not $probeJson.ok) {
+    throw "vendor_probe failed: expected type=vendor_probe ok=true, got: $probeOut"
+}
+
+Write-Host "Smoke OK: vendor_probe" -ForegroundColor Green

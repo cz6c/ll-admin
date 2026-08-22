@@ -24,14 +24,31 @@ DEFAULT_ICLOUD_DOMAIN = "com"
 SUPPORTED_ICLOUD_DOMAINS = ("com", "cn")
 
 
+def _sidecar_root() -> Path:
+    """
+    sidecar 根目录：开发态为源码目录；PyInstaller onefile 为 _MEIPASS 解压目录。
+
+    @note frozen 时 __file__ 指向临时目录，vendor/ 未必存在；优先走已打入包的 pyicloud_ipd。
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass)
+    return Path(__file__).resolve().parent
+
+
 def _ensure_vendor_path() -> None:
     """
     将 vendored icloudpd src 加入 sys.path（含 pyicloud_ipd + foundation）。
 
-    @note 避免 pip git clone（国内网络不稳定）；build.ps1 可下载 zip 解压到 vendor/。
+    @note PyInstaller 已通过 collect-submodules 打入时直接 import；开发态回退 vendor/ 目录。
     """
-    root = Path(__file__).resolve().parent
-    vendor_src = root / "vendor" / ICLOUDPD_VENDOR_DIR / "src"
+    try:
+        import pyicloud_ipd.base  # type: ignore  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    vendor_src = _sidecar_root() / "vendor" / ICLOUDPD_VENDOR_DIR / "src"
     if not vendor_src.is_dir():
         raise RuntimeError(
             f"icloudpd vendor missing at {vendor_src}; run build.ps1 or extract v{ICLOUDPD_VENDOR_TAG} zip"

@@ -1279,11 +1279,21 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("catalog", mapped, str(exc)[:500])
 
 
+def _handle_vendor_probe(_cmd: dict[str, Any]) -> dict[str, Any]:
+    """验证 PyInstaller 包内 pyicloud_ipd / vendor 可被加载（构建冒烟用）。"""
+    from icloudAuth import load_service_class
+
+    service_cls = load_service_class()
+    return {"type": "vendor_probe", "ok": True, "service": service_cls.__name__}
+
+
 def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
     """按 cmd 路由到对应处理器。"""
     name = str(cmd.get("cmd", "")).strip()
     if name == "version":
         return version_event()
+    if name == "vendor_probe":
+        return _handle_vendor_probe(cmd)
     if name == "auth":
         return _handle_auth(cmd)
     if name == "auth_probe":

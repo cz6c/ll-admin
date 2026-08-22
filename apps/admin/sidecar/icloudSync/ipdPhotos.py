@@ -13,12 +13,10 @@ pyicloud_ipd PhotoAsset 适配（对齐 icloudpd v1.32.3）
 from __future__ import annotations
 
 import random
-import sys
 import time
-from pathlib import Path
 from typing import Any
 
-from icloudAuth import ICLOUDPD_VENDOR_DIR, ICLOUDPD_VENDOR_TAG
+from icloudAuth import _ensure_vendor_path
 from protocol import LiveBindMissingError
 
 _IPD_TYPES: tuple[type[Any], ...] | None = None
@@ -30,18 +28,6 @@ RETRY_BACKOFF_SEC = (1.0, 2.0, 4.0)
 # HTTP 超时：120s 起，按体积估算，上限 600s
 MIN_DOWNLOAD_TIMEOUT_SEC = 120
 MAX_DOWNLOAD_TIMEOUT_SEC = 600
-
-
-def _ensure_vendor_path() -> None:
-    root = Path(__file__).resolve().parent
-    vendor_src = root / "vendor" / ICLOUDPD_VENDOR_DIR / "src"
-    if not vendor_src.is_dir():
-        raise RuntimeError(
-            f"icloudpd vendor missing at {vendor_src}; extract v{ICLOUDPD_VENDOR_TAG} zip"
-        )
-    path = str(vendor_src)
-    if path not in sys.path:
-        sys.path.insert(0, path)
 
 
 def _load_ipd_types() -> tuple[Any, Any, Any, Any]:

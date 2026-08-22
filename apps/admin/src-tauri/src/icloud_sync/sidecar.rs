@@ -11,7 +11,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
+
+/// 与 `tauri.conf.json > bundle.resources` 中路径一致；须用 `resolve(..., Resource)` 解析
+const SIDECAR_BUNDLE_PATH: &str = "resources/icloud-sync-agent.exe";
 
 use super::settings::icloud_sync_dir;
 use super::types::error_codes;
@@ -264,15 +268,24 @@ fn resolve_agent_launch(app: &AppHandle) -> Result<AgentLaunch, SidecarError> {
   }
 
   let mut checked: Vec<PathBuf> = Vec::new();
-  if let Ok(resource_dir) = app.path().resource_dir() {
-    checked.push(resource_dir.join("icloud-sync-agent.exe"));
+
+  // 发布包：$RESOURCE/resources/icloud-sync-agent.exe（与 bundle.resources 路径一致）
+  if let Ok(resolved) = app
+    .path()
+    .resolve(SIDECAR_BUNDLE_PATH, BaseDirectory::Resource)
+  {
+    checked.push(resolved);
   }
-  // tauri dev 的 resource_dir 指向 target/debug，PyInstaller 产物在 src-tauri/resources/
-  checked.push(
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("resources")
-      .join("icloud-sync-agent.exe"),
-  );
+
+  // tauri dev：resource_dir 常指向 target/debug，产物在 src-tauri/resources/
+  #[cfg(debug_assertions)]
+  {
+    checked.push(
+      PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("icloud-sync-agent.exe"),
+    );
+  }
 
   for exe in &checked {
     if exe.is_file() {
@@ -285,8 +298,14 @@ fn resolve_agent_launch(app: &AppHandle) -> Result<AgentLaunch, SidecarError> {
     .map(|p| p.display().to_string())
     .collect::<Vec<_>>()
     .join("; ");
+
+  #[cfg(debug_assertions)]
+  let hint = "请在 apps/admin 下运行: pnpm run cs:sidecar-build";
+  #[cfg(not(debug_assertions))]
+  let hint = "请重新安装或更新应用";
+
   Err(SidecarError::sidecar_missing(format!(
-    "未找到 sidecar 可执行文件（已检查: {paths}）。请在 apps/admin 下运行: pnpm run cs:sidecar-build"
+    "未找到 sidecar 可执行文件（已检查: {paths}）。{hint}"
   )))
 }
 

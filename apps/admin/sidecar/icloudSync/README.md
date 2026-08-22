@@ -30,7 +30,7 @@ $env:ICLOUD_SYNC_AGENT_CMD = "py -3 E:\path\to\apps\admin\sidecar\icloudSync\age
 pnpm run cs:dev
 ```
 
-`ICLOUD_SYNC_AGENT_CMD` 为完整命令行（含解释器 + 脚本路径）；未设置时 Rust 从 `app.path().resource_dir()` 解析 `icloud-sync-agent.exe`。
+`ICLOUD_SYNC_AGENT_CMD` 为完整命令行（含解释器 + 脚本路径）；未设置时 Rust 通过 `app.path().resolve("resources/icloud-sync-agent.exe", BaseDirectory::Resource)` 定位捆绑 exe（与 `tauri.conf.json > bundle.resources` 路径一致）。
 
 ## 构建 exe（发布前必跑）
 

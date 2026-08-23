@@ -13,7 +13,8 @@ interface MediaFile {
   size: number;
   modified: number;
   ext: string;
-  thumbData?: string;
+  thumbPath?: string;
+  previewPath?: string;
   videoPath?: string;
 }
 
@@ -74,6 +75,18 @@ function getMediaSrc(path: string): string {
   return convertFileSrc(path);
 }
 
+function isHeifFile(file: MediaFile): boolean {
+  return file.ext === "heic" || file.ext === "heif";
+}
+
+/** 图片预览：HEIC/HEIF 用扫描阶段生成的全尺寸缓存 */
+function imagePreviewSrc(file: MediaFile): string {
+  if (isHeifFile(file) && file.previewPath) {
+    return getMediaSrc(file.previewPath);
+  }
+  return getMediaSrc(file.path);
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -121,11 +134,17 @@ onBeforeUnmount(() => {
 
     <div class="viewer-content" @click.stop>
       <!-- 普通图片 -->
-      <img v-if="current.file.kind === 'image'" :src="getMediaSrc(current.file.path)" class="viewer-media viewer-img" alt="" />
+      <img v-if="current.file.kind === 'image'" :src="imagePreviewSrc(current.file)" class="viewer-media viewer-img" alt="" />
 
       <!-- 实况照片（LivePhotosKit：长按/点击播放 MOV） -->
       <div v-else-if="current.file.kind === 'livephoto'" class="live-container">
-        <LivePhotoPlayer :key="current.file.path" :photo-path="current.file.path" :video-path="current.file.videoPath || ''" />
+        <LivePhotoPlayer
+          class="live-photo-player-host"
+          :key="current.file.path"
+          :photo-path="current.file.path"
+          :video-path="current.file.videoPath || ''"
+          :photo-preview-path="current.file.previewPath"
+        />
         <span class="live-badge-viewer">Live</span>
       </div>
 
@@ -195,7 +214,9 @@ onBeforeUnmount(() => {
   right: 16px;
 }
 .viewer-content {
+  width: 90vw;
   max-width: 90vw;
+  height: 85vh;
   max-height: 85vh;
   display: flex;
   align-items: center;
@@ -212,8 +233,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(90vw, 100%);
-  height: min(85vh, 100%);
+  width: 100%;
+  height: 100%;
+}
+.live-photo-player-host {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .live-badge-viewer {
   position: absolute;

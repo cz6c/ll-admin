@@ -1,27 +1,99 @@
 //! 缩略图生成
-//! 职责：批量生成缩略图并缓存到磁盘；读取为 base64 data URL 嵌入扫描结果
-//! 缓存位置：`<appData>/album/thumbs/`，以 path+modified+size 的哈希命名
+//! 职责：网格 WebP 缩略图；HEIC 扫描时同步生成全尺寸预览 JPEG
+//! 缓存位置：`<appData>/album/thumbs/v{version}/`
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use base64::{engine::general_purpose, Engine as _};
+use image::ImageFormat;
 
-/// 生成缩略图缓存文件名（path + modified + size 的哈希）
+use super::ffmpeg;
+use super::heic_decode;
+use super::types::ALBUM_CACHE_VERSION;
+
+/// 单张缩略图生成结果
+#[derive(Debug, Clone, Default)]
+pub struct ThumbnailOutcome {
+  pub thumb_path: Option<String>,
+  /// HEIC/HEIF 全尺寸预览 JPEG（扫描阶段生成，打开即可用）
+  pub preview_path: Option<String>,
+}
+
+pub fn is_heif_ext(ext: &str) -> bool {
+  ext == "heic" || ext == "heif"
+}
+
+fn is_video_ext(ext: &str) -> bool {
+  matches!(
+    ext,
+    "mp4" | "mov" | "avi" | "mkv" | "webm" | "flv" | "wmv" | "m4v" | "3gp" | "mpeg" | "mpg"
+  )
+}
+
+/// 全尺寸解码（HEIC 走 FFmpeg）
+fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<image::DynamicImage> {
+  if let Ok(img) = image::open(file_path) {
+    return Some(img);
+  }
+
+  let ext = file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase())
+    .unwrap_or_default();
+  if !is_heif_ext(&ext) {
+    return None;
+  }
+
+  heic_decode::decode_heif_file(file_path, ffmpeg_bin)
+}
+
 fn cache_key(path: &str, modified: i64, size: u32) -> String {
   let mut h = DefaultHasher::new();
+  ALBUM_CACHE_VERSION.hash(&mut h);
   path.hash(&mut h);
   modified.hash(&mut h);
   size.hash(&mut h);
   format!("{:016x}", h.finish())
 }
 
-/// 生成单张缩略图（同步）
-/// 成功返回缓存文件路径；失败返回 None（不回退原图，避免前端加载大文件）
-pub fn generate_thumbnail(path: &str, cache_dir: &Path, size: u32) -> Option<String> {
+pub fn preview_cache_file(cache_dir: &Path, path: &str, modified: i64) -> PathBuf {
+  let key = cache_key(path, modified, 0);
+  cache_dir.join(format!("{key}_full.jpg"))
+}
+
+/// 保存全尺寸 RGB JPEG 供预览
+pub fn save_preview_jpeg(img: &image::DynamicImage, preview_file: &Path) -> Option<String> {
+  let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
+  match rgb.save(preview_file) {
+    Ok(()) => Some(preview_file.to_string_lossy().into_owned()),
+    Err(_) => None,
+  }
+}
+
+fn thumb_cache_file(cache_dir: &Path, path: &str, modified: i64, target: u32) -> PathBuf {
+  let key = cache_key(path, modified, target);
+  cache_dir.join(format!("{key}.webp"))
+}
+
+fn save_thumb_webp(img: &image::DynamicImage, cache_file: &Path) -> Option<String> {
+  let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
+  match rgb.save_with_format(cache_file, ImageFormat::WebP) {
+    Ok(()) => Some(cache_file.to_string_lossy().into_owned()),
+    Err(_) => None,
+  }
+}
+
+/// 生成网格 WebP + HEIC 全尺寸预览（一次解码两用）
+pub fn generate_thumbnail(
+  path: &str,
+  cache_dir: &Path,
+  size: u32,
+  ffmpeg_bin: Option<&Path>,
+) -> ThumbnailOutcome {
   let _ = std::fs::create_dir_all(cache_dir);
   let file_path = Path::new(path);
 
@@ -33,52 +105,126 @@ pub fn generate_thumbnail(path: &str, cache_dir: &Path, size: u32) -> Option<Str
     .unwrap_or(0);
 
   let target = (size * 2).max(256);
-  let key = cache_key(path, modified, target);
-  let cache_file = cache_dir.join(format!("{key}.jpg"));
+  let cache_file = thumb_cache_file(cache_dir, path, modified, target);
+  let preview_file = preview_cache_file(cache_dir, path, modified);
 
-  if cache_file.exists() {
-    return Some(cache_file.to_string_lossy().into_owned());
+  let ext = file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase())
+    .unwrap_or_default();
+  let is_heif = is_heif_ext(&ext);
+
+  let thumb_ready = cache_file.is_file();
+  let preview_ready = !is_heif || preview_file.is_file();
+
+  if thumb_ready && preview_ready {
+    return ThumbnailOutcome {
+      thumb_path: Some(cache_file.to_string_lossy().into_owned()),
+      preview_path: if is_heif {
+        Some(preview_file.to_string_lossy().into_owned())
+      } else {
+        None
+      },
+    };
   }
 
-  let img = image::open(file_path).ok()?;
-  let thumb = img.thumbnail(target, target);
+  let need_decode = !thumb_ready || (is_heif && !preview_file.is_file());
 
-  // 显式转 RGB8，确保 JPEG 保存成功（PNG/WebP 可能带 alpha 通道导致保存失败）
-  let rgb_thumb = image::DynamicImage::ImageRgb8(thumb.to_rgb8());
+  let img = if need_decode {
+    if is_video_ext(&ext) {
+      let ffmpeg = match ffmpeg_bin {
+        Some(f) => f,
+        None => return ThumbnailOutcome::default(),
+      };
+      let tmp_jpg = std::env::temp_dir().join(format!(
+        "album_vid_thumb_{}.jpg",
+        std::time::SystemTime::now()
+          .duration_since(std::time::UNIX_EPOCH)
+          .map(|d| d.as_nanos())
+          .unwrap_or(0)
+      ));
+      if !ffmpeg::extract_video_poster(ffmpeg, file_path, &tmp_jpg) {
+        let _ = std::fs::remove_file(&tmp_jpg);
+        return ThumbnailOutcome::default();
+      }
+      let opened = image::open(&tmp_jpg).ok();
+      let _ = std::fs::remove_file(&tmp_jpg);
+      opened
+    } else {
+      open_raster_image(file_path, ffmpeg_bin)
+    }
+  } else {
+    None
+  };
 
-  match rgb_thumb.save(&cache_file) {
-    Ok(()) => Some(cache_file.to_string_lossy().into_owned()),
-    Err(_) => None,
+  let preview_path = if is_heif {
+    if preview_file.is_file() {
+      Some(preview_file.to_string_lossy().into_owned())
+    } else if let Some(ref full) = img {
+      save_preview_jpeg(full, &preview_file)
+    } else if let Some(full) = open_raster_image(file_path, ffmpeg_bin) {
+      save_preview_jpeg(&full, &preview_file)
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+
+  let thumb_path = if thumb_ready {
+    Some(cache_file.to_string_lossy().into_owned())
+  } else if let Some(ref decoded) = img {
+    let thumb = decoded.thumbnail(target, target);
+    save_thumb_webp(&thumb, &cache_file)
+  } else {
+    None
+  };
+
+  ThumbnailOutcome {
+    thumb_path,
+    preview_path,
   }
 }
 
-/// 带进度回调的批量缩略图生成（每完成一张回调 done/total）
+/// 带进度回调的批量缩略图生成（并行）
 pub fn generate_thumbnails_batch_with_progress(
   paths: &[String],
   cache_dir: &Path,
   size: u32,
+  ffmpeg_bin: Option<&Path>,
   on_progress: Arc<dyn Fn(u32, u32) + Send + Sync>,
   done_counter: &AtomicU32,
-) -> Vec<Option<String>> {
+  cancel: &super::scan_state::ScanCancelToken,
+) -> Vec<ThumbnailOutcome> {
   if paths.is_empty() {
     return vec![];
   }
-  let total = u32::try_from(paths.len()).unwrap_or(u32::MAX);
-  let n_threads = 4.min(paths.len());
-  let chunk_size = paths.len().div_ceil(n_threads);
 
-  let mut results: Vec<Vec<Option<String>>> = Vec::with_capacity(n_threads);
+  let total = u32::try_from(paths.len()).unwrap_or(u32::MAX);
+  let parallelism = std::thread::available_parallelism()
+    .map(|n| n.get())
+    .unwrap_or(4)
+    .clamp(2, 8)
+    .min(paths.len());
+  let chunk_size = paths.len().div_ceil(parallelism);
+
+  let mut results: Vec<Vec<ThumbnailOutcome>> = Vec::with_capacity(parallelism);
 
   std::thread::scope(|s| {
     let handles: Vec<_> = paths
       .chunks(chunk_size)
       .map(|chunk| {
         let progress = Arc::clone(&on_progress);
+        let token = cancel.clone();
         s.spawn(move || {
           chunk
             .iter()
             .map(|p| {
-              let result = generate_thumbnail(p, cache_dir, size);
+              if token.is_cancelled() {
+                return ThumbnailOutcome::default();
+              }
+              let result = generate_thumbnail(p, cache_dir, size, ffmpeg_bin);
               let done = done_counter.fetch_add(1, Ordering::Relaxed) + 1;
               progress(done, total);
               result
@@ -94,12 +240,4 @@ pub fn generate_thumbnails_batch_with_progress(
   });
 
   results.into_iter().flatten().collect()
-}
-
-/// 读取缩略图文件为 base64 data URL
-/// 前端直接用 `<img :src="thumbData">` 渲染，零 asset 协议开销
-pub fn read_as_data_url(path: &str) -> Option<String> {
-  let data = std::fs::read(path).ok()?;
-  let encoded = general_purpose::STANDARD.encode(&data);
-  Some(format!("data:image/jpeg;base64,{encoded}"))
 }

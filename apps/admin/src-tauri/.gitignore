@@ -5,3 +5,6 @@
 
 # PyInstaller sidecar (built via pnpm run cs:sidecar-build; do not commit large binary)
 /resources/icloud-sync-agent.exe
+/resources/ffmpeg.exe
+/resources/ffprobe.exe
+/vendor/ffmpeg/

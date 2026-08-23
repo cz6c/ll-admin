@@ -3,6 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 缩略图缓存逻辑版本；变更解码/命名规则时递增，并清空 `album/thumbs`
+pub const ALBUM_CACHE_VERSION: u32 = 3;
+
 /// 相册设置（持久化到 `<appData>/album/settings.json`）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,8 +58,10 @@ pub struct MediaFile {
   pub modified: i64,
   /// 扩展名（小写，不含点）
   pub ext: String,
-  /// 缩略图 base64 data URL（扫描时生成，前端直接渲染，零 asset 协议开销）
-  pub thumb_data: Option<String>,
+  /// 网格缩略图缓存绝对路径（前端 `convertFileSrc`）
+  pub thumb_path: Option<String>,
+  /// HEIC/HEIF 全尺寸预览缓存路径（懒加载，打开查看器时生成）
+  pub preview_path: Option<String>,
   /// 实况照片配对的视频路径（仅 LivePhoto 有值）
   pub video_path: Option<String>,
 }
@@ -83,4 +88,13 @@ pub struct AlbumScanProgressPayload {
   pub phase: String,
   pub done: u32,
   pub total: u32,
+}
+
+/// 单张缩略图就绪事件（`album://thumb-ready`）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumThumbReadyPayload {
+  pub path: String,
+  pub thumb_path: Option<String>,
+  pub preview_path: Option<String>,
 }

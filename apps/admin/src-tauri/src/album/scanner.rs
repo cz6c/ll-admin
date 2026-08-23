@@ -1,6 +1,5 @@
 //! 目录扫描器
-//! 职责：递归扫描根目录，按子目录分组，识别实况照片（JPG+MOV 配对）
-//! 扫描完成后批量生成缩略图并读取为 base64 data URL，嵌入 MediaFile.thumbData
+//! 职责：递归扫描、实况配对、增量索引、后台缩略图与事件推送
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -11,10 +10,17 @@ use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
+use super::db;
+use super::scan_state::ScanCancelToken;
 use super::thumbnail;
-use super::types::{AlbumScanProgressPayload, MediaFile, MediaGroup, MediaKind};
+use super::types::{
+  AlbumScanProgressPayload, AlbumThumbReadyPayload, MediaFile, MediaGroup, MediaKind,
+  ALBUM_CACHE_VERSION,
+};
 
 pub const ALBUM_SCAN_PROGRESS_EVENT: &str = "album://scan-progress";
+pub const ALBUM_THUMB_READY_EVENT: &str = "album://thumb-ready";
+pub const ALBUM_FILES_CHANGED_EVENT: &str = "album://files-changed";
 
 fn emit_scan_progress(app: &AppHandle, phase: &str, done: u32, total: u32) {
   let _ = app.emit(
@@ -27,38 +33,32 @@ fn emit_scan_progress(app: &AppHandle, phase: &str, done: u32, total: u32) {
   );
 }
 
+fn emit_thumb_ready(
+  app: &AppHandle,
+  path: &str,
+  thumb_path: Option<String>,
+  preview_path: Option<String>,
+) {
+  let _ = app.emit(
+    ALBUM_THUMB_READY_EVENT,
+    AlbumThumbReadyPayload {
+      path: path.to_string(),
+      thumb_path,
+      preview_path,
+    },
+  );
+}
+
 /// 支持的图片扩展名
 const IMAGE_EXTS: &[&str] = &[
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "bmp",
-  "heic",
-  "heif",
-  "tiff",
-  "tif",
-  "svg",
-  "avif",
+  "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "tiff", "tif", "svg", "avif",
 ];
 
 /// 支持的视频扩展名
 const VIDEO_EXTS: &[&str] = &[
-  "mp4",
-  "mov",
-  "avi",
-  "mkv",
-  "webm",
-  "flv",
-  "wmv",
-  "m4v",
-  "3gp",
-  "mpeg",
-  "mpg",
+  "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// 跳过的目录名（性能 + 系统目录）
 const SKIP_DIRS: &[&str] = &[
   ".git",
   "node_modules",
@@ -108,13 +108,94 @@ fn file_stem_lower(name: &str) -> String {
     .to_lowercase()
 }
 
-/// 扫描根目录，返回按子目录分组的媒体文件列表
-/// 扫描完成后批量生成缩略图并读取为 base64，thumbData 字段已填充
-pub fn scan_directory(
+fn icloud_index_prefix(stem: &str) -> Option<String> {
+  if stem.len() >= 6
+    && stem.as_bytes().get(5) == Some(&b'_')
+    && stem[..5].chars().all(|c| c.is_ascii_digit())
+  {
+    Some(stem[..5].to_string())
+  } else {
+    None
+  }
+}
+
+const LIVE_MOV_STEM_SUFFIXES: &[&str] = &["_hevc", "_heic", "_mov"];
+
+fn mov_stem_to_image_stem(mov_stem: &str) -> String {
+  let lower = mov_stem.to_lowercase();
+  for suffix in LIVE_MOV_STEM_SUFFIXES {
+    if lower.ends_with(suffix) && lower.len() > suffix.len() {
+      return lower[..lower.len() - suffix.len()].to_string();
+    }
+  }
+  lower
+}
+
+struct MovCandidate {
+  path: String,
+  stem: String,
+  index_prefix: Option<String>,
+}
+
+fn mov_matches_image_stem(mov: &MovCandidate, image_stem: &str) -> bool {
+  mov.stem == image_stem || mov_stem_to_image_stem(&mov.stem) == image_stem
+}
+
+fn pair_live_photos(files: &mut Vec<MediaFile>) {
+  let mov_candidates: Vec<MovCandidate> = files
+    .iter()
+    .filter(|f| f.ext == "mov")
+    .map(|f| {
+      let stem = file_stem_lower(&f.name);
+      let index_prefix = icloud_index_prefix(&stem);
+      MovCandidate {
+        path: f.path.clone(),
+        stem,
+        index_prefix,
+      }
+    })
+    .collect();
+
+  let mut consumed_movs: HashSet<String> = HashSet::new();
+
+  for file in files.iter_mut() {
+    if file.kind != MediaKind::Image {
+      continue;
+    }
+    let image_stem = file_stem_lower(&file.name);
+    let image_index = icloud_index_prefix(&image_stem);
+
+    let matched_mov = mov_candidates
+      .iter()
+      .filter(|m| !consumed_movs.contains(&m.path))
+      .find(|m| {
+        mov_matches_image_stem(m, &image_stem)
+          || (image_index.is_some()
+            && m.index_prefix.is_some()
+            && image_index == m.index_prefix)
+      });
+
+    if let Some(mov) = matched_mov {
+      file.kind = MediaKind::LivePhoto;
+      file.video_path = Some(mov.path.clone());
+      consumed_movs.insert(mov.path.clone());
+    }
+  }
+
+  files.retain(|f| !(f.ext == "mov" && consumed_movs.contains(&f.path)));
+}
+
+fn cache_dir_for(album_dir: &Path) -> PathBuf {
+  album_dir
+    .join("thumbs")
+    .join(format!("v{ALBUM_CACHE_VERSION}"))
+}
+
+/// 第一阶段：发现文件并构建分组（含索引命中缓存路径）
+pub fn discover_groups(
   app: &AppHandle,
   root: &str,
-  cache_dir: &Path,
-  thumb_size: u32,
+  album_dir: &Path,
 ) -> Result<Vec<MediaGroup>, String> {
   let root_path = PathBuf::from(root);
   if !root_path.exists() {
@@ -124,7 +205,9 @@ pub fn scan_directory(
     return Err(format!("不是目录: {}", root));
   }
 
-  // 第一轮：收集每个目录下的媒体文件
+  let conn = db::open_db(album_dir)?;
+  let indexed = db::load_indexed_paths(&conn, root)?;
+
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
   let mut discovered = 0u32;
   emit_scan_progress(app, "discover", 0, 0);
@@ -151,11 +234,7 @@ pub fn scan_directory(
       continue;
     }
 
-    let parent = entry
-      .path()
-      .parent()
-      .unwrap_or(&root_path)
-      .to_path_buf();
+    let parent = entry.path().parent().unwrap_or(&root_path).to_path_buf();
     let dir_files = dir_map.entry(parent).or_default();
 
     let name = path
@@ -164,106 +243,73 @@ pub fn scan_directory(
       .unwrap_or_default()
       .to_string();
 
+    let file_path = path.to_string_lossy().to_string();
+    let size = get_size(path);
+    let modified = get_modified(path);
+
+    let mut thumb_path = None;
+    let mut preview_path = None;
+    if let Some(row) = indexed.get(&file_path) {
+      if row.size == size && row.modified == modified {
+        if row
+          .thumb_path
+          .as_ref()
+          .is_some_and(|p| Path::new(p).is_file())
+        {
+          thumb_path = row.thumb_path.clone();
+        }
+        if row
+          .preview_path
+          .as_ref()
+          .is_some_and(|p| Path::new(p).is_file())
+        {
+          preview_path = row.preview_path.clone();
+        }
+      }
+    }
+
     dir_files.push(MediaFile {
-      path: path.to_string_lossy().to_string(),
+      path: file_path,
       name,
       kind: if is_image(&ext) {
         MediaKind::Image
       } else {
         MediaKind::Video
       },
-      size: get_size(path),
-      modified: get_modified(path),
+      size,
+      modified,
       ext,
-      thumb_data: None,
+      thumb_path,
+      preview_path,
       video_path: None,
     });
     discovered += 1;
-    if discovered == 1 || discovered % 10 == 0 {
+    if discovered == 1 || discovered % 20 == 0 {
       emit_scan_progress(app, "discover", discovered, 0);
     }
   }
 
   emit_scan_progress(app, "discover", discovered, discovered);
 
-  // 第二轮：检测实况照片（同名 image + .mov 配对）
   for files in dir_map.values_mut() {
-    let video_map: HashMap<String, String> = files
-      .iter()
-      .filter(|f| f.ext == "mov")
-      .map(|f| (file_stem_lower(&f.name), f.path.clone()))
-      .collect();
-
-    let mut consumed_movs: HashSet<String> = HashSet::new();
-
-    for file in files.iter_mut() {
-      if file.kind == MediaKind::Image {
-        let stem = file_stem_lower(&file.name);
-        if let Some(video_path) = video_map.get(&stem) {
-          file.kind = MediaKind::LivePhoto;
-          file.video_path = Some(video_path.clone());
-          consumed_movs.insert(video_path.clone());
-        }
-      }
-    }
-
-    files.retain(|f| !(f.ext == "mov" && consumed_movs.contains(&f.path)));
-    // iCloud 同步落盘为 {index:05d}_{stem}.{ext}，按文件名升序即按图库顺序
+    pair_live_photos(files);
     files.sort_by(|a, b| a.name.cmp(&b.name));
   }
 
-  // 第三轮：批量生成缩略图（4 线程并行），然后读取为 base64 data URL
-  let image_paths: Vec<String> = dir_map
-    .values()
-    .flat_map(|files| files.iter())
-    .filter(|f| f.kind == MediaKind::Image || f.kind == MediaKind::LivePhoto)
-    .map(|f| f.path.clone())
-    .collect();
-
-  let thumb_total = u32::try_from(image_paths.len()).unwrap_or(u32::MAX);
-  emit_scan_progress(app, "thumbnails", 0, thumb_total);
-
-  let done_counter = AtomicU32::new(0);
-  let app_for_thumbs = app.clone();
-  let on_thumb_progress = Arc::new(move |done: u32, total: u32| {
-    emit_scan_progress(&app_for_thumbs, "thumbnails", done, total);
-  });
-  let thumb_paths = thumbnail::generate_thumbnails_batch_with_progress(
-    &image_paths,
-    cache_dir,
-    thumb_size,
-    on_thumb_progress,
-    &done_counter,
-  );
-
-  // path → thumbData 映射（生成成功的才有值）
-  let mut path_to_thumb: HashMap<String, String> = HashMap::new();
-  for (orig_path, thumb_result) in image_paths.into_iter().zip(thumb_paths.into_iter()) {
-    if let Some(thumb_path) = thumb_result {
-      if let Some(data_url) = thumbnail::read_as_data_url(&thumb_path) {
-        path_to_thumb.insert(orig_path, data_url);
-      }
-    }
-  }
-
-  for files in dir_map.values_mut() {
-    for file in files.iter_mut() {
-      if file.kind == MediaKind::Image || file.kind == MediaKind::LivePhoto {
-        file.thumb_data = path_to_thumb.remove(&file.path);
-      }
-    }
-  }
-
-  // 构建分组，按目录路径排序
   let root_basename = root_path
     .file_name()
     .and_then(|n| n.to_str())
     .unwrap_or(root)
     .to_string();
 
+  let mut alive_paths: Vec<String> = Vec::new();
+
   let mut groups: Vec<MediaGroup> = dir_map
     .into_iter()
     .map(|(dir_path, files)| {
+      for f in &files {
+        alive_paths.push(f.path.clone());
+      }
       let rel_path = dir_path
         .strip_prefix(&root_path)
         .map(|p| p.to_string_lossy().to_string())
@@ -296,5 +342,160 @@ pub fn scan_directory(
     }
   });
 
+  db::delete_stale_paths(&conn, root, &alive_paths)?;
+
+  for group in &groups {
+    for file in &group.files {
+      db::upsert_media(
+        &conn,
+        root,
+        &group.rel_path,
+        file,
+        file.thumb_path.as_deref(),
+        file.preview_path.as_deref(),
+      )?;
+    }
+  }
+
   Ok(groups)
+}
+
+/// 第二阶段：后台生成缺失缩略图，逐条推送事件
+pub fn run_thumbnail_pipeline(
+  app: AppHandle,
+  _root: String,
+  album_dir: PathBuf,
+  thumb_size: u32,
+  ffmpeg_bin: Option<PathBuf>,
+  groups: Vec<MediaGroup>,
+  cancel: ScanCancelToken,
+) {
+  let cache_dir = cache_dir_for(&album_dir);
+  let conn = db::open_db(&album_dir).ok();
+
+  let mut pending: Vec<(String, String)> = Vec::new();
+  for group in &groups {
+    for file in &group.files {
+      let needs_thumb = file.thumb_path.is_none();
+      let needs_preview =
+        thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
+      if needs_thumb || needs_preview {
+        pending.push((group.rel_path.clone(), file.path.clone()));
+      }
+    }
+  }
+
+  let thumb_total = u32::try_from(pending.len()).unwrap_or(u32::MAX);
+  emit_scan_progress(&app, "thumbnails", 0, thumb_total);
+
+  if pending.is_empty() {
+    return;
+  }
+
+  let done_counter = AtomicU32::new(0);
+  let app_progress = app.clone();
+  let on_progress = Arc::new(move |done: u32, total: u32| {
+    emit_scan_progress(&app_progress, "thumbnails", done, total);
+  });
+
+  let paths: Vec<String> = pending.iter().map(|(_, p)| p.clone()).collect();
+  let outcomes = thumbnail::generate_thumbnails_batch_with_progress(
+    &paths,
+    &cache_dir,
+    thumb_size,
+    ffmpeg_bin.as_deref(),
+    on_progress,
+    &done_counter,
+    &cancel,
+  );
+
+  for (path, outcome) in paths.into_iter().zip(outcomes.into_iter()) {
+    let thumb_path = outcome.thumb_path;
+    let preview_path = outcome.preview_path;
+    if let Some(conn) = &conn {
+      let _ = db::update_cache_paths(
+        conn,
+        &path,
+        thumb_path.as_deref(),
+        preview_path.as_deref(),
+      );
+    }
+    emit_thumb_ready(&app, &path, thumb_path.clone(), preview_path.clone());
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn image_file(name: &str) -> MediaFile {
+    MediaFile {
+      path: format!("/tmp/{name}"),
+      name: name.to_string(),
+      kind: MediaKind::Image,
+      size: 1,
+      modified: 0,
+      ext: name.rsplit('.').next().unwrap_or("jpg").to_lowercase(),
+      thumb_path: None,
+      preview_path: None,
+      video_path: None,
+    }
+  }
+
+  fn mov_file(name: &str) -> MediaFile {
+    MediaFile {
+      path: format!("/tmp/{name}"),
+      name: name.to_string(),
+      kind: MediaKind::Video,
+      size: 1,
+      modified: 0,
+      ext: "mov".to_string(),
+      thumb_path: None,
+      preview_path: None,
+      video_path: None,
+    }
+  }
+
+  #[test]
+  fn pair_same_stem_heic_mov() {
+    let mut files = vec![image_file("IMG_1234.HEIC"), mov_file("IMG_1234.MOV")];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn pair_icloudpd_hevc_suffix_mov() {
+    let mut files = vec![image_file("IMG_1234.HEIC"), mov_file("IMG_1234_HEVC.MOV")];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn pair_icloudpd_heic_suffix_mov() {
+    let mut files = vec![image_file("IMG_5678.HEIC"), mov_file("IMG_5678_HEIC.MOV")];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn pair_icloud_sync_index_prefix_when_stems_differ() {
+    let mut files = vec![
+      image_file("00003_IMG_0027.HEIC"),
+      mov_file("00003_IMG_0027_HEVC.MOV"),
+    ];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn standalone_mov_stays_as_video() {
+    let mut files = vec![mov_file("00004_clip.MOV")];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::Video);
+  }
 }

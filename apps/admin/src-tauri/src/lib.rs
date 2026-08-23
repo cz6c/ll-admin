@@ -45,6 +45,7 @@ pub fn run() {
     ))
     .manage(Mutex::new(daily_report::ScheduleState::default()))
     .manage(icloud_sync::SidecarClientHandle::new())
+    .manage(Mutex::new(album::AlbumState::new()))
     .invoke_handler(tauri::generate_handler![
       app_settings::app_settings_get,
       app_settings::app_settings_save,
@@ -59,6 +60,8 @@ pub fn run() {
       album::album_get_settings,
       album::album_save_settings,
       album::album_scan,
+      album::album_cancel_scan,
+      album::album_ensure_preview,
       icloud_sync::icloud_sync_ping,
       icloud_sync::icloud_sync_get_settings,
       icloud_sync::icloud_sync_save_settings,

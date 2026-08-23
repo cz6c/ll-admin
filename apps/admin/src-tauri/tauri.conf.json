@@ -51,7 +51,9 @@
       }
     },
     "resources": [
-      "resources/icloud-sync-agent.exe"
+      "resources/icloud-sync-agent.exe",
+      "resources/ffmpeg.exe",
+      "resources/ffprobe.exe"
     ]
   }
 }

@@ -7,5 +7,7 @@ fn main() {
   println!("cargo:rerun-if-changed=icons/128x128@2x.png");
   println!("cargo:rerun-if-changed=icons/ccode-icon-b.png");
   println!("cargo:rerun-if-changed=resources/icloud-sync-agent.exe");
+  println!("cargo:rerun-if-changed=resources/ffmpeg.exe");
+  println!("cargo:rerun-if-changed=resources/ffprobe.exe");
   tauri_build::build()
 }

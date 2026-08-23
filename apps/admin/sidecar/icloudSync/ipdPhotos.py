@@ -144,7 +144,7 @@ def is_retryable_download_error(exc: BaseException) -> bool:
         return False
     if isinstance(exc, RuntimeError):
         msg = str(exc).lower()
-        if "http 401" in msg or "http 403" in msg or "http 404" in msg:
+        if "http 401" in msg or "http 403" in msg or "http 404" in msg or "http 410" in msg:
             return False
         if "http 5" in msg or "timeout" in msg or "connection" in msg:
             return True

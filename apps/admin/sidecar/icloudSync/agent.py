@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -91,12 +93,21 @@ class AuthState:
     # catalog 后 asset_id → PhotoAsset 索引，避免每次 download 全库 O(n) 扫描
     photo_cache: dict[str, Any] | None = None
     photo_cache_view: str = ""
+    # photo_cache 全量构建时刻（monotonic）；CDN 签名 URL 会批量过期，需周期性重建
+    photo_cache_built_at: float = 0.0
+    # 因 410 触发全量刷新的最近时刻，避免并发 download 重复扫库
+    last_stale_url_full_refresh_at: float = 0.0
 
 
 _AUTH_STATE = AuthState()
 
 # 2FA 收尾：单次 trust_session（社区 icloudpd 标准）；establish 阶段不再循环打 Apple API
 _WEBAUTH_SETTLE_SEC = 1.0
+# CDN 签名 URL 约 10–20min 批量失效；早于实测 ~16min 误暂停，proactive 全量刷新
+PHOTO_CACHE_TTL_SEC = 600
+# 同批多文件并发 410 时，全量刷新最短间隔（秒）
+PHOTO_CACHE_STALE_REFRESH_COOLDOWN_SEC = 60
+_PHOTO_CACHE_REFRESH_LOCK = threading.Lock()
 
 
 def _configure_stdio_utf8() -> None:
@@ -214,7 +225,11 @@ def _map_exception(exc: BaseException) -> str:
         return CODE_DOMAIN_MISMATCH
     if exc_type in ("PyiCloudFailedLoginException",):
         return CODE_AUTH_FAILED
+    if _is_stale_download_url_error(exc):
+        return CODE_DOWNLOAD_FAILED
     if exc_type in ("PyiCloudAPIResponseException",):
+        if code in ("410", "404", "GONE") or "gone (410)" in lowered_msg:
+            return CODE_DOWNLOAD_FAILED
         if code in ("AUTHENTICATION_FAILED", "421", "450", "500"):
             return CODE_SESSION_EXPIRED
         if code == "ACCESS_DENIED":
@@ -241,6 +256,50 @@ def _map_exception(exc: BaseException) -> str:
     if "401" in msg:
         return CODE_SESSION_EXPIRED
     return CODE_AUTH_FAILED
+
+
+def _is_stale_download_url_error(exc: BaseException) -> bool:
+    """
+    iCloud Photos CDN 签名 URL 过期（HTTP 410/404 或 Gone）。
+
+    @note 与 session_expired 不同：此时 WEBAUTH / trustedSession 往往仍有效。
+    """
+    msg = str(exc).lower()
+    code = _code_to_str(getattr(exc, "code", None))
+    if code in ("410", "404", "GONE"):
+        return True
+    if "gone (410)" in msg or "http 410" in msg or "http 404" in msg:
+        return True
+    return False
+
+
+def _map_download_exception(exc: BaseException) -> str:
+    """下载阶段异常映射，避免 CDN 410 误判为 session_expired 导致整 job 暂停。"""
+    if _is_stale_download_url_error(exc):
+        return CODE_DOWNLOAD_FAILED
+    return _map_exception(exc)
+
+
+def _photo_cache_is_expired() -> bool:
+    """photo_cache 是否已超过 TTL（CDN 签名 URL 批量过期）。"""
+    if _AUTH_STATE.photo_cache_built_at <= 0:
+        return True
+    return (time.monotonic() - _AUTH_STATE.photo_cache_built_at) > PHOTO_CACHE_TTL_SEC
+
+
+def _refresh_photo_cache_on_stale_url(api: Any, view: str) -> None:
+    """
+    遇 410/404 时全量重建 photo_cache，避免逐条 pop 后各自扫库。
+
+    @note 同批并发 download 用锁 + cooldown，只扫库一次。
+    """
+    normalized = view if view in CATALOG_VIEWS else "library"
+    now = time.monotonic()
+    with _PHOTO_CACHE_REFRESH_LOCK:
+        if now - _AUTH_STATE.last_stale_url_full_refresh_at < PHOTO_CACHE_STALE_REFRESH_COOLDOWN_SEC:
+            return
+        _refresh_photo_cache(api, normalized)
+        _AUTH_STATE.last_stale_url_full_refresh_at = now
 
 
 def _session_files_present(session_dir: str, apple_id: str) -> bool:
@@ -359,6 +418,8 @@ def _reset_auth_state() -> None:
     _AUTH_STATE.icloud_domain = ""
     _AUTH_STATE.photo_cache = None
     _AUTH_STATE.photo_cache_view = ""
+    _AUTH_STATE.photo_cache_built_at = 0.0
+    _AUTH_STATE.last_stale_url_full_refresh_at = 0.0
 
 
 def _has_webauth_token(api: Any) -> bool:
@@ -871,9 +932,9 @@ def _write_stream_atomic(response: Any, dest_path: str) -> None:
 
 def _refresh_photo_cache(api: Any, view: str) -> None:
     """
-    构建 asset_id → PhotoAsset 索引。
+    构建 asset_id → PhotoAsset 索引（全量）。
 
-    @note catalog 后复用；download 不再每次遍历 api.photos.all（大图库下 O(n²) 瓶颈）。
+    @note catalog 后复用；CDN 签名 URL 批量过期，需周期性整表重建而非单条刷新。
     """
     cache: dict[str, Any] = {}
     for photo in _iter_view_assets(api, view):
@@ -882,18 +943,24 @@ def _refresh_photo_cache(api: Any, view: str) -> None:
             cache[asset_id] = photo
     _AUTH_STATE.photo_cache = cache
     _AUTH_STATE.photo_cache_view = view
+    _AUTH_STATE.photo_cache_built_at = time.monotonic()
 
 
 def _ensure_photo_cache(api: Any, view: str) -> None:
     """
-    download 前确保 asset_id 索引可用。
+    download 前确保 asset_id 索引可用且 CDN URL 未过期。
 
-    @note session_expired 会清空 photo_cache；resume 不复扫 catalog，空缓存下并发
-          download 会各自 fallback 扫 api.photos.all，极易触发 session_expired（表现为续传几张即停）。
+    @note 空缓存或超过 PHOTO_CACHE_TTL_SEC 时全量 _refresh_photo_cache；
+          session_expired 会清空缓存，resume 后首批 download 会重建。
     """
     normalized = view if view in CATALOG_VIEWS else "library"
     cache = _AUTH_STATE.photo_cache
-    if isinstance(cache, dict) and cache and _AUTH_STATE.photo_cache_view == normalized:
+    if (
+        isinstance(cache, dict)
+        and cache
+        and _AUTH_STATE.photo_cache_view == normalized
+        and not _photo_cache_is_expired()
+    ):
         return
     _refresh_photo_cache(api, normalized)
 
@@ -938,34 +1005,50 @@ def _execute_download_item(api: Any, item: dict[str, Any]) -> dict[str, Any]:
     if not asset_id or not part or not dest_path:
         return {**base, "ok": False, "code": CODE_INVALID_REQUEST, "message": "asset_id, part and dest_path are required"}
 
-    try:
-        photo = _locate_photo_by_asset_id(api, asset_id)
-        if photo is None:
-            return {
-                **base,
-                "ok": False,
-                "code": CODE_INVALID_REQUEST,
-                "message": f"asset not found: {asset_id}",
-            }
-        response = _download_response(api, photo, part)
-        _write_stream_atomic(response, dest_path)
-        return {**base, "ok": True}
-    except ValueError as exc:
-        return {**base, "ok": False, "code": CODE_INVALID_REQUEST, "message": str(exc)[:500]}
-    except LiveBindMissingError as exc:
-        return {**base, "ok": False, "code": CODE_LIVE_BIND_MISSING, "message": str(exc)[:500]}
-    except RuntimeError as exc:
-        if str(exc) == "not authenticated":
-            return {
-                **base,
-                "ok": False,
-                "code": CODE_AUTH_FAILED,
-                "message": "explicit auth is required before download",
-            }
-        return {**base, "ok": False, "code": CODE_DOWNLOAD_FAILED, "message": str(exc)[:500]}
-    except Exception as exc:  # noqa: BLE001
-        mapped = _map_exception(exc)
-        return {**base, "ok": False, "code": mapped, "message": str(exc)[:500]}
+    refreshed_url = False
+    while True:
+        try:
+            photo = _locate_photo_by_asset_id(api, asset_id)
+            if photo is None:
+                return {
+                    **base,
+                    "ok": False,
+                    "code": CODE_INVALID_REQUEST,
+                    "message": f"asset not found: {asset_id}",
+                }
+            response = _download_response(api, photo, part)
+            _write_stream_atomic(response, dest_path)
+            return {**base, "ok": True}
+        except ValueError as exc:
+            return {**base, "ok": False, "code": CODE_INVALID_REQUEST, "message": str(exc)[:500]}
+        except LiveBindMissingError as exc:
+            return {**base, "ok": False, "code": CODE_LIVE_BIND_MISSING, "message": str(exc)[:500]}
+        except RuntimeError as exc:
+            if str(exc) == "not authenticated":
+                return {
+                    **base,
+                    "ok": False,
+                    "code": CODE_AUTH_FAILED,
+                    "message": "explicit auth is required before download",
+                }
+            if not refreshed_url and _is_stale_download_url_error(exc):
+                _refresh_photo_cache_on_stale_url(
+                    api,
+                    _AUTH_STATE.photo_cache_view or "library",
+                )
+                refreshed_url = True
+                continue
+            return {**base, "ok": False, "code": CODE_DOWNLOAD_FAILED, "message": str(exc)[:500]}
+        except Exception as exc:  # noqa: BLE001
+            if not refreshed_url and _is_stale_download_url_error(exc):
+                _refresh_photo_cache_on_stale_url(
+                    api,
+                    _AUTH_STATE.photo_cache_view or "library",
+                )
+                refreshed_url = True
+                continue
+            mapped = _map_download_exception(exc)
+            return {**base, "ok": False, "code": mapped, "message": str(exc)[:500]}
 
 
 def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:

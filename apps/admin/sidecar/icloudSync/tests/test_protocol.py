@@ -399,3 +399,26 @@ def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypat
 
     assert trust_calls == ["trust"]
     assert agent._AUTH_STATE.last_validate_path == "validate_2fa_code:trust_retry"
+
+
+def test_photo_cache_ttl_triggers_refresh(monkeypatch) -> None:
+    agent = _load_agent(mock=True)
+    agent._reset_auth_state()
+    agent._AUTH_STATE.photo_cache = {"asset-1": object()}
+    agent._AUTH_STATE.photo_cache_view = "library"
+    agent._AUTH_STATE.photo_cache_built_at = 0.0
+
+    assert agent._photo_cache_is_expired() is True
+
+    refreshed: list[str] = []
+
+    def _fake_refresh(_api: object, view: str) -> None:
+        refreshed.append(view)
+        agent._AUTH_STATE.photo_cache = {"asset-1": object()}
+        agent._AUTH_STATE.photo_cache_built_at = __import__("time").monotonic()
+
+    monkeypatch.setattr(agent, "_refresh_photo_cache", _fake_refresh)
+    agent._ensure_photo_cache(object(), "library")
+
+    assert refreshed == ["library"]
+    assert agent._photo_cache_is_expired() is False

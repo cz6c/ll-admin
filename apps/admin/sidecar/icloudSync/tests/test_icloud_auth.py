@@ -65,6 +65,16 @@ def test_map_api_exception_dsinfo_keyerror_is_session_expired() -> None:
     assert code == CODE_SESSION_EXPIRED
 
 
+def test_map_api_exception_gone_410_is_download_failed() -> None:
+    GoneExc = type("PyiCloudAPIResponseException", (Exception,), {})
+    exc = GoneExc("Gone (410)")
+    exc.code = "410"  # type: ignore[attr-defined]
+    code = ipd_auth.map_api_exception(exc, is_2fa_required=lambda _e: False)
+    from protocol import CODE_DOWNLOAD_FAILED
+
+    assert code == CODE_DOWNLOAD_FAILED
+
+
 def test_parse_required_domain_cn() -> None:
     exc = RuntimeError("Apple insists on using iCloud.com.cn for your request. Please use --domain parameter")
     assert ipd_auth.parse_required_domain(exc) == "cn"

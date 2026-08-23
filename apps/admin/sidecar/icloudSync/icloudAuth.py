@@ -520,6 +520,7 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
         CODE_ACCOUNT_LOCKED,
         CODE_AUTH_FAILED,
         CODE_DOMAIN_MISMATCH,
+        CODE_DOWNLOAD_FAILED,
         CODE_NEED_2FA,
         CODE_RATE_LIMITED,
         CODE_SESSION_EXPIRED,
@@ -543,6 +544,8 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
     if exc_type in ("PyiCloudFailedMFAException",):
         return CODE_AUTH_FAILED
     if exc_type in ("PyiCloudAPIResponseException",):
+        if code in ("410", "404", "GONE") or "gone (410)" in msg.lower():
+            return CODE_DOWNLOAD_FAILED
         if code in ("AUTHENTICATION_FAILED", "421", "450", "500"):
             return CODE_SESSION_EXPIRED
         if code == "ACCESS_DENIED":

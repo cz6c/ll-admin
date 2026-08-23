@@ -67,6 +67,7 @@ Write-Host "Installing/updating sidecar dependencies + PyInstaller ..." -Foregro
     --hidden-import keyring `
     --collect-submodules keyring.backends `
     --collect-data certifi `
+    --noconsole `
     $AgentPy
 
 $BuiltExe = Join-Path $Dist $ExeName

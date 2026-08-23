@@ -66,7 +66,6 @@ pub fn run() {
       icloud_sync::icloud_sync_logout,
       icloud_sync::icloud_sync_login,
       icloud_sync::icloud_sync_submit_2fa,
-      icloud_sync::icloud_sync_get_auth_diagnostic,
       icloud_sync::icloud_sync_auth_state,
       icloud_sync::queue::icloud_sync_start_job,
       icloud_sync::queue::icloud_sync_pause_job,

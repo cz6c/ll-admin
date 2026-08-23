@@ -394,7 +394,7 @@ A：dev 需重启 `pnpm run cs:dev`；sidecar Python 改动需重启进程；发
 | `<appData>/icloud-sync/settings.json` | outputDir、appleId、icloudDomain 等 |
 | `<appData>/icloud-sync/session/` | pyicloud session（按 Apple ID） |
 | `<appData>/icloud-sync/state.db` | jobs + assets 进度 |
-| `<appData>/icloud-sync/session/auth-diagnostic.json` | 最近一次**登录**诊断（非下载） |
+| `<appData>/icloud-sync/session/auth-diagnostic.json` | 最近一次认证/同步诊断（登录成功、probe、catalog、下载鉴权失败、登出均覆盖） |
 | `{outputDir}/` | 下载结果，如 `00002_IMG_0027.mov` |
 | keyring | Apple ID 密码（不经 settings） |
 

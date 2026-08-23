@@ -393,6 +393,14 @@ fn spawn_sidecar(launch: AgentLaunch) -> Result<RunningSidecar, SidecarError> {
     }
   };
 
+  // sidecar 通过 stdin/stdout 通信，不应弹出控制台；旧版 PyInstaller 未 --noconsole 时此处兜底
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+  }
+
   // 继承宿主环境，便于 ICLOUD_SYNC_MOCK=1 等开发开关传入子进程
   command.envs(std::env::vars());
   command.env("PYTHONIOENCODING", "utf-8");

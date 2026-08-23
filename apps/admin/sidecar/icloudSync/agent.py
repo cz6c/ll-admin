@@ -258,24 +258,77 @@ def _build_diagnostic(
     code: str,
     message: str,
     exc: Exception | None = None,
+    apple_id: str | None = None,
+    session_dir: str | None = None,
+    api: Any | None = None,
 ) -> dict[str, Any]:
     """封装 authDiagnostic.build_auth_diagnostic，注入 agent 侧依赖。"""
+    resolved_apple = (apple_id if apple_id is not None else _AUTH_STATE.apple_id).strip()
+    resolved_session = (session_dir if session_dir is not None else _AUTH_STATE.session_dir).strip()
+    resolved_api = _AUTH_STATE.api if api is None else api
     return auth_diag.build_auth_diagnostic(
         stage=stage,
         code=code,
         message=message,
-        apple_id=_AUTH_STATE.apple_id,
-        session_dir=_AUTH_STATE.session_dir,
-        api=_AUTH_STATE.api,
+        apple_id=resolved_apple,
+        session_dir=resolved_session,
+        api=resolved_api,
         auth_state=_AUTH_STATE,
         has_webauth=_has_webauth_token,
         session_auth_snapshot=_session_auth_snapshot,
         supports_bridge=_supports_trusted_device_bridge,
         delivery_method=_two_factor_delivery_method,
-        session_files_present=_session_files_present(_AUTH_STATE.session_dir, _AUTH_STATE.apple_id),
+        session_files_present=_session_files_present(resolved_session, resolved_apple),
         validate_path=_AUTH_STATE.last_validate_path,
         kickoff_path=_AUTH_STATE.last_kickoff_path,
         exc=exc,
+    )
+
+
+def _record_diagnostic(
+    stage: str,
+    code: str,
+    message: str,
+    *,
+    exc: Exception | None = None,
+    apple_id: str | None = None,
+    session_dir: str | None = None,
+    api: Any | None = None,
+) -> dict[str, Any]:
+    """
+    全流程诊断落盘；成功 / 挑战 / 失败均覆盖 auth-diagnostic.json。
+
+    @returns 诊断 dict；session_dir 为空时跳过落盘并返回空 dict
+    """
+    resolved_session = (session_dir if session_dir is not None else _AUTH_STATE.session_dir).strip()
+    if not resolved_session:
+        return {}
+    return _build_diagnostic(
+        stage=stage,
+        code=code,
+        message=message,
+        exc=exc,
+        apple_id=apple_id,
+        session_dir=session_dir,
+        api=api,
+    )
+
+
+def _record_auth_success(stage: str, message: str, *, api: Any | None = None) -> dict[str, Any]:
+    """登录 / probe / catalog 成功节点落盘，覆盖先前的 need_2fa 快照。"""
+    if not _AUTH_STATE.session_dir.strip():
+        return {}
+    return auth_diag.record_success_snapshot(
+        stage=stage,
+        message=message,
+        apple_id=_AUTH_STATE.apple_id,
+        session_dir=_AUTH_STATE.session_dir,
+        api=_AUTH_STATE.api if api is None else api,
+        auth_state=_AUTH_STATE,
+        has_webauth=_has_webauth_token,
+        session_auth_snapshot=_session_auth_snapshot,
+        supports_bridge=_supports_trusted_device_bridge,
+        delivery_method=_two_factor_delivery_method,
     )
 
 
@@ -602,6 +655,7 @@ def _finalize_auth_or_need_2fa(api: Any, cmd: str, *, kickoff_delivery: bool = T
         _AUTH_STATE.waiting_2fa = False
         _AUTH_STATE.mfa_delivery_kicked_off = False
         _AUTH_STATE.delivery_method = ""
+        _record_auth_success(cmd, f"{cmd} completed; session ready", api=api)
         return done_event(cmd)
 
     _AUTH_STATE.waiting_2fa = True
@@ -830,6 +884,20 @@ def _refresh_photo_cache(api: Any, view: str) -> None:
     _AUTH_STATE.photo_cache_view = view
 
 
+def _ensure_photo_cache(api: Any, view: str) -> None:
+    """
+    download 前确保 asset_id 索引可用。
+
+    @note session_expired 会清空 photo_cache；resume 不复扫 catalog，空缓存下并发
+          download 会各自 fallback 扫 api.photos.all，极易触发 session_expired（表现为续传几张即停）。
+    """
+    normalized = view if view in CATALOG_VIEWS else "library"
+    cache = _AUTH_STATE.photo_cache
+    if isinstance(cache, dict) and cache and _AUTH_STATE.photo_cache_view == normalized:
+        return
+    _refresh_photo_cache(api, normalized)
+
+
 def _locate_photo_by_asset_id(api: Any, asset_id: str) -> Any | None:
     """按 asset_id 查找目标资产；优先走 catalog 后缓存。"""
     cache = _AUTH_STATE.photo_cache
@@ -925,6 +993,7 @@ def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
         code = str(result.get("code") or CODE_DOWNLOAD_FAILED)
         message = str(result.get("message") or "")
         if code in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _record_diagnostic("download", code, message)
             _reset_auth_state()
         return error_event("download", code, message)
     except RuntimeError as exc:
@@ -934,6 +1003,7 @@ def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
         if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _record_diagnostic("download", mapped, str(exc)[:500], exc=exc)
             _reset_auth_state()
         return error_event("download", mapped, str(exc)[:500])
 
@@ -974,6 +1044,16 @@ def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
             return error_event("download_batch", CODE_AUTH_FAILED, "explicit auth is required before download")
         return error_event("download_batch", CODE_DOWNLOAD_FAILED, str(exc)[:500])
 
+    view = str(cmd.get("view", "library")).strip()
+    try:
+        _ensure_photo_cache(api, view)
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_exception(exc)
+        diagnostic = _record_diagnostic("download_batch", mapped, str(exc)[:500], exc=exc)
+        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _reset_auth_state()
+        return error_event("download_batch", mapped, str(exc)[:500], diagnostic=diagnostic or None)
+
     results: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = [pool.submit(_execute_download_item, api, item) for item in items]
@@ -981,6 +1061,14 @@ def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
             results.append(future.result())
 
     if any(r.get("code") in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED) for r in results):
+        auth_hit = next(
+            r for r in results if r.get("code") in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED)
+        )
+        _record_diagnostic(
+            "download_batch",
+            str(auth_hit.get("code") or CODE_SESSION_EXPIRED),
+            str(auth_hit.get("message") or "download auth failure"),
+        )
         _reset_auth_state()
 
     results.sort(key=lambda r: (r.get("row_id") is None, r.get("row_id") or 0))
@@ -1010,6 +1098,7 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
     ):
         if _is_fully_authenticated(_AUTH_STATE.api):
             _AUTH_STATE.waiting_2fa = False
+            _record_auth_success("auth", "auth session reused")
             return done_event("auth", reused=True)
         if _AUTH_STATE.waiting_2fa:
             # 已有 pending challenge：不再 request_2fa，避免 iPhone 重复弹窗
@@ -1043,12 +1132,14 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
             _AUTH_STATE.waiting_2fa = False
             _AUTH_STATE.mfa_delivery_kicked_off = False
             _AUTH_STATE.delivery_method = ""
+            _record_auth_success("auth", "password login completed; session ready", api=api)
             return done_event("auth")
 
         if _mfa_still_required(api) or not _has_webauth_token(api):
             return _finalize_auth_or_need_2fa(api, "auth")
 
         _AUTH_STATE.waiting_2fa = False
+        _record_auth_success("auth", "auth completed without additional 2FA", api=api)
         return done_event("auth")
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, ipd_auth.IcloudIncompleteAuthError) or ipd_auth._is_dsinfo_key_error(exc):
@@ -1136,6 +1227,7 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
         _AUTH_STATE.waiting_2fa = False
         _AUTH_STATE.mfa_delivery_kicked_off = False
         _AUTH_STATE.delivery_method = ""
+        _record_auth_success("auth_2fa", "2FA completed; session ready")
         return done_event("auth_2fa", delivery_method=delivery_method)
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
@@ -1148,18 +1240,22 @@ def _handle_auth_diagnostic(cmd: dict[str, Any]) -> dict[str, Any]:
     """
     返回最近一次认证诊断（无需再次登录、不触发 Apple API）。
 
-    @note 优先内存；sidecar 重启后读 session_dir/auth-diagnostic.json。
+    @note 优先读请求 session_dir 落盘文件；内存态仅在同目录时 fallback。
     """
     session_dir = str(cmd.get("session_dir", "")).strip() or _AUTH_STATE.session_dir
-    diagnostic = auth_diag.get_last_auth_diagnostic()
-    if diagnostic is None and session_dir:
+    diagnostic: dict[str, Any] | None = None
+    if session_dir:
         diagnostic = auth_diag.load_auth_diagnostic_from_disk(session_dir)
+    if diagnostic is None and (
+        not session_dir or session_dir == _AUTH_STATE.session_dir.strip()
+    ):
+        diagnostic = auth_diag.get_last_auth_diagnostic()
     if diagnostic is None:
-        diagnostic = _build_diagnostic(
-            stage="auth_diagnostic",
-            code="no_data",
-            message="尚无认证诊断记录；请先尝试登录或提交验证码",
-        )
+        diagnostic = {
+            "stage": "auth_diagnostic",
+            "code": "no_data",
+            "message": "尚无认证诊断记录；请先尝试登录或提交验证码",
+        }
     return done_event("auth_diagnostic", diagnostic=diagnostic)
 
 
@@ -1202,24 +1298,48 @@ def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
             _AUTH_STATE.icloud_domain = ipd_auth.api_domain(api)
         except Exception as exc:  # noqa: BLE001
             code = _map_exception(exc)
-            return error_event("auth_probe", code, str(exc)[:500])
+            diagnostic = _record_diagnostic(
+                "auth_probe",
+                code,
+                str(exc)[:500],
+                exc=exc,
+                apple_id=apple_id,
+                session_dir=session_dir,
+            )
+            return error_event(
+                "auth_probe",
+                code,
+                str(exc)[:500],
+                diagnostic=diagnostic or None,
+            )
 
     if _is_fully_authenticated(api):
         _AUTH_STATE.waiting_2fa = False
+        _record_auth_success("auth_probe", "session valid for catalog/download", api=api)
         return done_event("auth_probe", has_webauth=True)
 
     if _mfa_still_required(api) or _AUTH_STATE.waiting_2fa:
         return _finalize_auth_or_need_2fa(api, "auth_probe", kickoff_delivery=False)
 
+    diagnostic = _record_diagnostic(
+        "auth_probe",
+        CODE_SESSION_EXPIRED,
+        "session invalid or expired; explicit login required",
+        apple_id=apple_id,
+        session_dir=session_dir,
+        api=api,
+    )
     return error_event(
         "auth_probe",
         CODE_SESSION_EXPIRED,
         "session invalid or expired; explicit login required",
+        diagnostic=diagnostic or None,
     )
 
 
 def _handle_logout(_cmd: dict[str, Any]) -> dict[str, Any]:
     """清空进程内认证态；宿主换号 / 登出时调用。"""
+    _record_diagnostic("logout", "logout", "sidecar auth state cleared")
     _reset_auth_state()
     return done_event("logout")
 
@@ -1263,6 +1383,8 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
         ok, err_code = _validate_catalog_items(items, view)
         if not ok:
             return error_event("catalog", err_code, "catalog validation failed")
+        if not _is_mock_mode():
+            _record_auth_success("catalog", f"catalog completed: {len(items)} items (view={view})")
         return done_event("catalog", items=items)
     except CatalogSortMissingError as exc:
         return error_event("catalog", CODE_CATALOG_SORT_MISSING, str(exc))
@@ -1274,9 +1396,10 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("catalog", CODE_AUTH_FAILED, str(exc)[:500])
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
+        diagnostic = _record_diagnostic("catalog", mapped, str(exc)[:500], exc=exc)
         if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
             _reset_auth_state()
-        return error_event("catalog", mapped, str(exc)[:500])
+        return error_event("catalog", mapped, str(exc)[:500], diagnostic=diagnostic or None)
 
 
 def _handle_vendor_probe(_cmd: dict[str, Any]) -> dict[str, Any]:

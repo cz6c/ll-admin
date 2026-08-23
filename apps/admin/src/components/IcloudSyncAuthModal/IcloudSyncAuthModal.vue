@@ -6,17 +6,13 @@
 <script setup lang="ts">
 import {
   formatIcloudSyncError,
-  formatIcloudSyncAuthDiagnosticCopy,
-  getIcloudSyncAuthDiagnostic,
   getIcloudSyncAuthState,
   getIcloudSyncSettings,
   loginIcloudSync,
   logoutIcloudSync,
-  parseIcloudSyncAuthDiagnostic,
   saveIcloudSyncSettings,
   setIcloudSyncCredentials,
   submitIcloudSync2fa,
-  type IcloudSyncAuthDiagnostic,
   type IcloudSyncLoginResult,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
@@ -43,59 +39,6 @@ const need2fa = ref(false);
 const twoFaCode = ref("");
 const twoFaDeliveryMethod = ref("");
 const twoFaDetail = ref("");
-const authDiagnostic = ref<IcloudSyncAuthDiagnostic | null>(null);
-const diagnosticExpanded = ref<string[]>([]);
-const copyingDiagnostic = ref(false);
-
-const diagnosticJson = computed(() =>
-  authDiagnostic.value ? formatIcloudSyncAuthDiagnosticCopy(authDiagnostic.value) : ""
-);
-
-/** 将 sidecar 结构化 error 转为 UI 文案并展开诊断面板 */
-function applyAuthFailure(result: IcloudSyncLoginResult) {
-  const code = result.errorCode?.trim() || "auth_failed";
-  const detail = result.detail?.trim() ?? "";
-  errorMsg.value = formatIcloudSyncError(detail ? `${code}: ${detail}` : code);
-  const parsed = parseIcloudSyncAuthDiagnostic(result.diagnostic);
-  if (parsed) {
-    authDiagnostic.value = parsed;
-    diagnosticExpanded.value = ["diag"];
-  }
-}
-
-function storeDiagnosticFromResult(result: IcloudSyncLoginResult) {
-  const parsed = parseIcloudSyncAuthDiagnostic(result.diagnostic);
-  if (parsed) authDiagnostic.value = parsed;
-}
-
-async function loadStoredDiagnostic() {
-  if (!isTauri()) return;
-  try {
-    const result = await getIcloudSyncAuthDiagnostic();
-    if (result.status === "diagnostic") {
-      const parsed = parseIcloudSyncAuthDiagnostic(result.diagnostic);
-      if (parsed?.hints?.length || parsed?.userActions?.length) {
-        authDiagnostic.value = parsed;
-        diagnosticExpanded.value = ["diag"];
-      }
-    }
-  } catch {
-    /* 无历史诊断时忽略 */
-  }
-}
-
-async function copyDiagnosticReport() {
-  if (!authDiagnostic.value) return;
-  copyingDiagnostic.value = true;
-  try {
-    await navigator.clipboard.writeText(diagnosticJson.value);
-    successMsg.value = "诊断报告已复制到剪贴板";
-  } catch {
-    errorMsg.value = "复制失败，请手动选中下方 JSON 复制";
-  } finally {
-    copyingDiagnostic.value = false;
-  }
-}
 
 const appleId = ref("");
 const password = ref("");
@@ -141,6 +84,13 @@ const deviceVerificationSteps = [
   "点击「提交验证码」"
 ] as const;
 
+/** 将 sidecar 登录错误转为 UI 文案；详细诊断见本机 auth-diagnostic.json */
+function applyAuthFailure(result: IcloudSyncLoginResult) {
+  const code = result.errorCode?.trim() || "auth_failed";
+  const detail = result.detail?.trim() ?? "";
+  errorMsg.value = formatIcloudSyncError(detail ? `${code}: ${detail}` : code);
+}
+
 function applyNeed2faResult(result: IcloudSyncLoginResult) {
   need2fa.value = true;
   twoFaDeliveryMethod.value = result.deliveryMethod?.trim() ?? "";
@@ -151,7 +101,6 @@ function applyNeed2faResult(result: IcloudSyncLoginResult) {
       ? "请输入发送到受信任设备或手机的 6 位验证码"
       : "iPhone 将弹出「设备验证」：请先在手机上点「允许」，再将设备上显示的 6 位验证码输入下方");
   successMsg.value = "";
-  storeDiagnosticFromResult(result);
 }
 
 const canSubmit2fa = computed(
@@ -211,7 +160,6 @@ async function loadState() {
           ? "com"
           : "cn";
     isLoggedIn.value = authState.loggedIn;
-    await loadStoredDiagnostic();
   } catch (e) {
     errorMsg.value = formatIcloudSyncError(e);
   } finally {
@@ -453,29 +401,6 @@ watch(open, value => {
 
           <a-alert v-if="errorMsg" type="error" :message="errorMsg" show-icon class="mb-12px" />
 
-          <a-collapse
-            v-if="authDiagnostic"
-            v-model:activeKey="diagnosticExpanded"
-            class="mb-12px diag-collapse"
-          >
-            <a-collapse-panel key="diag" header="认证诊断（失败时展开查看，可复制完整报告）">
-              <ul v-if="authDiagnostic.userActions?.length" class="diag-actions">
-                <li v-for="(action, idx) in authDiagnostic.userActions" :key="idx">{{ action }}</li>
-              </ul>
-              <div v-if="authDiagnostic.hints?.length" class="diag-hints mb-8px">
-                <span class="diag-label">检测信号：</span>
-                <a-tag v-for="hint in authDiagnostic.hints" :key="hint" class="diag-tag">{{ hint }}</a-tag>
-              </div>
-              <p v-if="authDiagnostic.message" class="diag-meta">
-                {{ authDiagnostic.stage }} · {{ authDiagnostic.at ?? "—" }}
-              </p>
-              <pre class="diag-json">{{ diagnosticJson }}</pre>
-              <a-button size="small" :loading="copyingDiagnostic" @click="copyDiagnosticReport">
-                复制诊断报告
-              </a-button>
-            </a-collapse-panel>
-          </a-collapse>
-
           <a-alert v-if="successMsg && !need2fa" type="success" :message="successMsg" show-icon class="mb-12px" />
 
           <div v-if="!need2fa" class="form-actions">
@@ -569,46 +494,5 @@ watch(open, value => {
 .section-2fa {
   padding-top: 4px;
   border-top: 1px solid var(--border-color);
-}
-.diag-collapse {
-  :deep(.ant-collapse-header) {
-    font-size: 12px;
-    font-weight: 600;
-  }
-}
-.diag-actions {
-  margin: 0 0 10px;
-  padding-left: 18px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-}
-.diag-hints {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.diag-label {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-}
-.diag-tag {
-  margin: 0;
-}
-.diag-meta {
-  margin: 0 0 8px;
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-}
-.diag-json {
-  max-height: 160px;
-  overflow: auto;
-  margin: 0 0 8px;
-  padding: 8px;
-  font-size: 11px;
-  line-height: 1.4;
-  background: var(--color-fill-quaternary, #f5f5f5);
-  border-radius: 4px;
 }
 </style>

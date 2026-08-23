@@ -479,6 +479,7 @@ fn download_batch(
   output_dir: &str,
   apple_id: &str,
   session_path: &Path,
+  view: JobView,
   concurrency: u32,
 ) -> Result<Vec<BatchItemResult>, SidecarError> {
   if assets.is_empty() {
@@ -511,6 +512,7 @@ fn download_batch(
       "cmd": "download_batch",
       "items": items,
       "concurrency": concurrency,
+      "view": view.as_str(),
       "apple_id": apple_id,
       "session_dir": session_path.to_string_lossy(),
     }),
@@ -762,6 +764,7 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
         &job.output_dir,
         &apple_id,
         &session_path,
+        job.view,
         concurrency,
       ) {
         Ok(results) => {

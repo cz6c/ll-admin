@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-iCloud Sync 认证诊断：采集 auth/2FA 全链路状态，供一次定位多类失败根因。
+iCloud Sync 认证诊断：采集 auth / 同步全链路状态，供一次定位多类失败根因。
 
 职责：
-- 在 auth / auth_2fa / need_2fa 关键节点快照 session、WEBAUTH、bridge、delivery 等。
+- 在登录、2FA、auth_probe、catalog、download 鉴权失败、登出等节点快照 session 状态。
 - 规则引擎输出 hints / userActions（对齐社区已知问题码）。
-- 落盘 session_dir/auth-diagnostic.json，宿主无需再次登录即可读取。
+- 每次快照覆盖落盘 session_dir/auth-diagnostic.json（以 at 时间戳区分先后）。
 
 适用：sidecar agent.py；禁止写入密码、验证码明文。
 """
@@ -40,6 +40,11 @@ _HINT_ACTIONS: dict[str, str] = {
     "VALIDATE_RETURNED_FALSE": "Apple 拒绝了验证码：确认码未过期且与当前「允许」弹窗对应",
     "VALIDATE_OK_WEBAUTH_PENDING": "验证码已被 Apple 接受，但 trust/accountLogin 未完成；请重新点「允许」换码",
     "EXCEPTION_DURING_VALIDATE": "校验过程异常：查看 exceptionDetail，通常需新 challenge（退出后重登）",
+    "AUTH_SESSION_READY": "登录 session 已就绪，可开始或继续同步",
+    "AUTH_PROBE_OK": "session 探测通过，可 catalog / download",
+    "AUTH_LOGGED_OUT": "sidecar 内存态已清空；若需彻底登出请同时在应用内点「退出登录」",
+    "CATALOG_OK": "图库扫描完成，可进入下载阶段",
+    "DOWNLOAD_AUTH_FAILED": "下载阶段鉴权失败：请退出登录后重新登录，再续传",
 }
 
 
@@ -169,7 +174,22 @@ def _infer_hints(
             hints.insert(0, "ICLOUD_CN_DOMAIN_REQUIRED")
     if code in ("account_locked", "rate_limited"):
         hints.append("ACCOUNT_MAY_BE_RATE_LIMITED")
-    if stage in ("auth", "auth_2fa") and flags.get("hasSessionToken"):
+    if code == "ok" and flags.get("authenticated"):
+        if stage == "auth_probe":
+            hints.append("AUTH_PROBE_OK")
+        elif stage in ("auth", "auth_2fa"):
+            hints.append("AUTH_SESSION_READY")
+        elif stage == "catalog":
+            hints.append("CATALOG_OK")
+    if code == "logout":
+        hints.append("AUTH_LOGGED_OUT")
+    if stage in ("download", "download_batch") and code in (
+        "session_expired",
+        "auth_failed",
+        "account_locked",
+    ):
+        hints.append("DOWNLOAD_AUTH_FAILED")
+    if stage in ("auth", "auth_2fa") and code == "need_2fa" and flags.get("hasSessionToken"):
         hints.append("SRP_ALREADY_RAN")
 
     # 去重保序
@@ -227,8 +247,18 @@ def build_auth_diagnostic(
 
     user_actions = [_HINT_ACTIONS[h] for h in hints if h in _HINT_ACTIONS]
 
+    if code == "ok":
+        outcome = "success"
+    elif code == "need_2fa":
+        outcome = "challenge"
+    elif code == "logout":
+        outcome = "info"
+    else:
+        outcome = "failure"
+
     report: dict[str, Any] = {
         "at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "outcome": outcome,
         "stage": stage,
         "code": code,
         "message": message[:500],
@@ -255,6 +285,35 @@ def build_auth_diagnostic(
         except Exception:
             pass
     return report
+
+
+def record_success_snapshot(
+    *,
+    stage: str,
+    message: str,
+    apple_id: str,
+    session_dir: str,
+    api: Any | None,
+    auth_state: Any,
+    has_webauth: Callable[[Any], bool],
+    session_auth_snapshot: Callable[[Any], dict[str, Any]],
+    supports_bridge: Callable[[Any], bool],
+    delivery_method: Callable[[Any], str],
+) -> dict[str, Any]:
+    """登录 / probe / catalog 等成功节点落盘诊断，覆盖先前的 need_2fa 快照。"""
+    return build_auth_diagnostic(
+        stage=stage,
+        code="ok",
+        message=message,
+        apple_id=apple_id,
+        session_dir=session_dir,
+        api=api,
+        auth_state=auth_state,
+        has_webauth=has_webauth,
+        session_auth_snapshot=session_auth_snapshot,
+        supports_bridge=supports_bridge,
+        delivery_method=delivery_method,
+    )
 
 
 def record_challenge_snapshot(

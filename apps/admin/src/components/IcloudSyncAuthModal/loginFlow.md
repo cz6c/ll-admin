@@ -288,13 +288,25 @@ stateDiagram-v2
 |------|------|
 | keyring | 密码 |
 | `{session_dir}/{appleId}.session` | pyicloud session |
-| `{session_dir}/auth-diagnostic.json` | **最近一次认证诊断**（失败后可读，不含密码/验证码） |
+| `{session_dir}/auth-diagnostic.json` | **最近一次认证/同步诊断**（登录、probe、catalog、下载鉴权失败、登出均会覆盖写入；不含密码/验证码） |
 
 ---
 
-## 11. 认证诊断（一次失败定位多类问题）
+## 11. 认证诊断（排查请读落盘文件）
 
-登录或 2FA 失败时，sidecar 会写入 `auth-diagnostic.json`，并在 error 事件里附带 `diagnostic` 字段。前端登录弹窗会**自动展开「认证诊断」面板**，无需再次登录即可读取上次报告。
+登录、2FA、auth_probe、catalog、下载鉴权失败或登出时，sidecar 会**覆盖写入** `{session_dir}/auth-diagnostic.json`（`outcome`：`success` / `challenge` / `failure`）。**应用内不展示诊断面板**，出问题直接打开该文件（Windows：`%APPDATA%\com.ll.admin\icloud-sync\session\auth-diagnostic.json`）。
+
+**建议流程：**
+
+1. 失败后**不要立刻重试登录**；打开上述 JSON，看 `at` / `outcome` / `code` / `stage`  
+2. 对照 `hints` / `userActions` 按提示操作  
+3. 仍无法解决：将 JSON 发给开发者一次性排查  
+
+```mermaid
+flowchart LR
+  Node["auth / probe / catalog / download / logout"] --> Build["build_auth_diagnostic"]
+  Build --> Disk["auth-diagnostic.json"]
+```
 
 ### 采集项（flags）
 
@@ -319,22 +331,6 @@ stateDiagram-v2
 | `PARTIAL_SESSION_ON_DISK` | 磁盘有半成品 session，先 logout |
 | `VALIDATE_RETURNED_FALSE` | Apple 拒绝验证码 |
 | `VALIDATE_OK_WEBAUTH_PENDING` | 验证码已被 Apple 接受，但 trust/accountLogin 未写出 WEBAUTH |
-
-### 使用方式
-
-1. 失败后**不要立刻重试登录**；打开登录弹窗查看「认证诊断」  
-2. 按 `userActions` 列表操作（与 hints 一一对应）  
-3. 仍无法解决：点「复制诊断报告」，把 JSON 发给开发者一次性排查  
-
-```mermaid
-flowchart LR
-  Fail["login / auth_2fa 失败"] --> Build["build_auth_diagnostic"]
-  Build --> Disk["auth-diagnostic.json"]
-  Build --> Event["error.diagnostic"]
-  Event --> UI["弹窗诊断面板"]
-  Disk --> Cmd["auth_diagnostic 命令"]
-  Cmd --> UI
-```
 
 | `session/*.cookiejar` | `X-APPLE-WWEBAUTH-*` 等 cookie |
 

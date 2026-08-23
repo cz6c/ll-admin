@@ -39,6 +39,53 @@ def test_infer_webauth_missing_hint() -> None:
     assert "KICKOFF_IPD_PUT" in hints
 
 
+def test_success_snapshot_overwrites_challenge(tmp_path: Path) -> None:
+    """成功节点应覆盖先前的 need_2fa 快照，避免排查误判为未完成 2FA。"""
+    session_dir = str(tmp_path)
+    auth_state = SimpleNamespace(
+        waiting_2fa=False,
+        mfa_delivery_kicked_off=False,
+        delivery_method="",
+        last_validate_path="validate_2fa_code",
+        last_kickoff_path="ipd_put",
+    )
+
+    diag.record_challenge_snapshot(
+        stage="auth",
+        apple_id="test@icloud.com",
+        session_dir=session_dir,
+        api=None,
+        auth_state=auth_state,
+        has_webauth=lambda _api: True,
+        session_auth_snapshot=lambda _api: {"authenticated": False, "requires_2fa": True},
+        supports_bridge=lambda _api: False,
+        delivery_method=lambda _api: "trusted_device",
+        kickoff_path="ipd_put",
+    )
+    assert json.loads((tmp_path / "auth-diagnostic.json").read_text(encoding="utf-8"))["code"] == "need_2fa"
+
+    class _Api:
+        session = type("S", (), {"cookies": type("C", (), {"get": lambda _s, _k: None})()})()
+
+    diag.record_success_snapshot(
+        stage="auth_2fa",
+        message="2FA completed; session ready",
+        apple_id="test@icloud.com",
+        session_dir=session_dir,
+        api=_Api(),
+        auth_state=auth_state,
+        has_webauth=lambda _api: True,
+        session_auth_snapshot=lambda _api: {"authenticated": True, "trusted_session": True},
+        supports_bridge=lambda _api: False,
+        delivery_method=lambda _api: "trusted_device",
+    )
+    loaded = json.loads((tmp_path / "auth-diagnostic.json").read_text(encoding="utf-8"))
+    assert loaded["code"] == "ok"
+    assert loaded["outcome"] == "success"
+    assert loaded["stage"] == "auth_2fa"
+    assert "AUTH_SESSION_READY" in loaded["hints"]
+
+
 def test_build_auth_diagnostic_persists(tmp_path: Path) -> None:
     session_dir = str(tmp_path)
     auth_state = SimpleNamespace(

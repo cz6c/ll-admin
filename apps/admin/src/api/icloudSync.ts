@@ -50,21 +50,19 @@ export interface IcloudSyncAuthState {
   icloudDomain: "com" | "cn";
 }
 
-/** login / submit_2fa / get_auth_diagnostic 返回的状态 */
+/** login / submit_2fa 返回的状态 */
 export interface IcloudSyncLoginResult {
-  /** `need_2fa` / `ok` / `error` / `diagnostic` */
-  status: "need_2fa" | "ok" | "error" | "diagnostic" | string;
+  /** `need_2fa` / `ok` / `error` */
+  status: "need_2fa" | "ok" | "error" | string;
   /** pyicloud 2FA 投递：`sms` / `trusted_device` 等 */
   deliveryMethod?: string;
   /** 2FA 引导或错误摘要 */
   detail?: string;
   /** 机读错误码（status=error 时） */
   errorCode?: string;
-  /** sidecar 完整诊断（flags / hints / userActions） */
-  diagnostic?: IcloudSyncAuthDiagnostic;
 }
 
-/** sidecar authDiagnostic 落盘结构（camelCase 与 Rust 透传一致） */
+/** sidecar auth-diagnostic.json 落盘结构（仅文件排查用，页面不展示） */
 export interface IcloudSyncAuthDiagnostic {
   /** ISO8601 UTC */
   at?: string;
@@ -189,27 +187,6 @@ export function formatIcloudSyncError(err: unknown): string {
     return ERROR_USER_MESSAGES[code];
   }
   return raw;
-}
-
-/**
- * 将 sidecar diagnostic JSON 转为 typed 对象
- * @note invoke 已 camelCase；此处仅做空值过滤
- */
-export function parseIcloudSyncAuthDiagnostic(
-  value: unknown
-): IcloudSyncAuthDiagnostic | null {
-  if (!value || typeof value !== "object") return null;
-  return value as IcloudSyncAuthDiagnostic;
-}
-
-/** 格式化诊断报告供复制（不含密码/验证码） */
-export function formatIcloudSyncAuthDiagnosticCopy(diag: IcloudSyncAuthDiagnostic): string {
-  return JSON.stringify(diag, null, 2);
-}
-
-/** 读取最近一次认证诊断（不触发登录、不消耗 Apple 配额） */
-export function getIcloudSyncAuthDiagnostic() {
-  return invoke<IcloudSyncLoginResult>("icloud_sync_get_auth_diagnostic");
 }
 
 /** 读取本机 iCloud 同步设置 */

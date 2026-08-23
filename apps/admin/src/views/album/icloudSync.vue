@@ -77,7 +77,17 @@ const isCataloging = computed(() => jobStatus.value === "cataloging");
 const isPausedSession = computed(() => jobStatus.value === "paused_session");
 const isPausedUser = computed(() => jobStatus.value === "paused_user");
 const isPaused = computed(() => isPausedSession.value || isPausedUser.value);
-const canResume = computed(() => !jobAccountMismatch.value && (isPausedSession.value || isPausedUser.value) && !resuming.value);
+/**
+ * session 失效续传门禁：paused_session 后须在本页完成一次新登录才允许继续同步。
+ * @note authState.loggedIn 仅表示磁盘有 session 文件，失效后仍可能为 true，不能单独作为依据。
+ */
+const sessionReauthReady = ref(false);
+const showSessionExpiredAlert = computed(() => isPausedSession.value && !sessionReauthReady.value);
+const canResume = computed(() => {
+  if (jobAccountMismatch.value || resuming.value || !isPaused.value) return false;
+  if (isPausedSession.value) return sessionReauthReady.value;
+  return isPausedUser.value;
+});
 const isRunning = computed(() => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value);
 const canPause = computed(() => jobStatus.value === "running" && !pausing.value);
 const isDone = computed(() => jobStatus.value === "done");
@@ -290,6 +300,9 @@ function applyJobStatus(status: IcloudSyncJobStatusResult) {
   jobStatus.value = status.status;
   jobFailed.value = status.failed ?? 0;
   jobPending.value = status.pending ?? 0;
+  if (status.status === "paused_session") {
+    sessionReauthReady.value = false;
+  }
   progress.value = {
     done: status.done,
     total: status.total,
@@ -390,10 +403,16 @@ function onLoggedIn(payload: { accountChanged: boolean }) {
   if (payload.accountChanged) {
     clearActiveJob();
     errorMsg.value = "";
+    sessionReauthReady.value = false;
+    return;
+  }
+  if (isPausedSession.value) {
+    sessionReauthReady.value = true;
   }
 }
 
 function onLoggedOut() {
+  sessionReauthReady.value = false;
   void loadAccountContext();
 }
 
@@ -402,6 +421,7 @@ async function onLogout() {
   errorMsg.value = "";
   try {
     await logoutIcloudSync(true);
+    sessionReauthReady.value = false;
     await loadAccountContext();
   } catch (e) {
     errorMsg.value = formatIcloudSyncError(e);
@@ -479,12 +499,12 @@ onUnmounted(() => {
       />
 
       <a-alert
-        v-else-if="isPausedSession"
+        v-else-if="showSessionExpiredAlert"
         type="warning"
         show-icon
         class="mb-16px"
         message="同步已暂停（登录失效）"
-        description="登录状态已失效，已完成文件的进度已保留。请先退出登录，再重新登录后继续同步。"
+        description="登录状态已失效，已完成文件的进度已保留。请先退出登录并重新登录，登录成功后可继续同步。"
       />
 
       <a-alert v-if="isDone" type="success" show-icon class="mb-16px" message="同步已完成" />

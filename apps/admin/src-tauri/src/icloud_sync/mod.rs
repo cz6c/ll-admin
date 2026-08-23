@@ -293,46 +293,6 @@ pub fn icloud_sync_submit_2fa(
   map_login_event(event)
 }
 
-/// 读取 sidecar 最近一次认证诊断（不触发登录、不消耗 Apple 配额）
-#[tauri::command]
-pub fn icloud_sync_get_auth_diagnostic(
-  app: AppHandle,
-  sidecar: State<'_, SidecarClientHandle>,
-) -> Result<IcloudSyncLoginResult, String> {
-  let settings = load_settings(&app)?;
-  let session_path = session_dir(&app)?;
-  let client = sidecar.client();
-  client.ensure_started(&app).map_err(|e| e.to_string())?;
-
-  let event = client
-    .request(
-      &app,
-      serde_json::json!({
-        "cmd": "auth_diagnostic",
-        "session_dir": session_path.to_string_lossy(),
-        "apple_id": settings.apple_id.trim(),
-      }),
-    )
-    .map_err(|e| e.to_string())?;
-
-  match event.event_type.as_str() {
-    "done" => Ok(IcloudSyncLoginResult {
-      status: "diagnostic".to_string(),
-      delivery_method: None,
-      detail: None,
-      error_code: None,
-      diagnostic: diagnostic_from_event(&event),
-    }),
-    "error" => {
-      let code = event
-        .code
-        .unwrap_or_else(|| types::error_codes::AUTH_FAILED.to_string());
-      Err(format!("{code}: {}", event.message.unwrap_or_default()))
-    }
-    other => Err(format!("auth_diagnostic 意外响应: type={other}")),
-  }
-}
-
 /// 读取 auth 页所需 consent / 凭据 / session 概况（不含密码明文）
 #[tauri::command]
 pub fn icloud_sync_auth_state(app: AppHandle) -> Result<IcloudSyncAuthStateResult, String> {

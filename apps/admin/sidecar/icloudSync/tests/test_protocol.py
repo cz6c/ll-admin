@@ -302,8 +302,9 @@ def test_auth_diagnostic_cmd_returns_report(tmp_path: Path) -> None:
     assert ev["cmd"] == "auth_diagnostic"
     diagnostic = ev.get("diagnostic")
     assert isinstance(diagnostic, dict)
-    assert diagnostic.get("stage") in ("auth_diagnostic", "auth_probe")
-    assert "hints" in diagnostic
+    assert diagnostic.get("code") == "no_data"
+    assert diagnostic.get("hints") in (None, [])
+    assert not (tmp_path / "auth-diagnostic.json").is_file()
 
 
 def test_auth_error_includes_diagnostic() -> None:

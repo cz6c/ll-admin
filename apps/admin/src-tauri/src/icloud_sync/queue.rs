@@ -52,6 +52,8 @@ pub struct CatalogItem {
 pub struct IcloudSyncProgressPayload {
   pub done: u32,
   pub total: u32,
+  pub failed: u32,
+  pub pending: u32,
   pub filename: String,
 }
 
@@ -310,13 +312,33 @@ fn filename_stem_ext(filename: &str) -> (String, String) {
   (stem, ext)
 }
 
-fn emit_progress(app: &AppHandle, done: u32, total: u32, filename: &str) {
+fn emit_progress(
+  app: &AppHandle,
+  done: u32,
+  total: u32,
+  failed: u32,
+  pending: u32,
+  filename: &str,
+) {
   let payload = IcloudSyncProgressPayload {
     done,
     total,
+    failed,
+    pending,
     filename: filename.to_string(),
   };
   let _ = app.emit(PROGRESS_EVENT, &payload);
+}
+
+fn emit_progress_from_db(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  job_id: i64,
+  total: u32,
+  filename: &str,
+) {
+  let (done, failed, pending) = count_assets_by_status(conn, job_id).unwrap_or((0, 0, 0));
+  emit_progress(app, done, total, failed, pending, filename);
 }
 
 fn random_jitter_ms() -> u64 {
@@ -670,8 +692,8 @@ fn apply_batch_results(
     }
   }
 
-  let (done, _, _) = count_assets_by_status(conn, job_id)?;
-  emit_progress(app, done, total, &last_filename);
+  let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
+  emit_progress(app, done, total, failed, pending, &last_filename);
 
   if let Some(status) = terminal {
     set_job_status(app, conn, job_id, status)?;
@@ -725,15 +747,14 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
     loop {
       if is_pause_requested() {
         set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
-        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-        emit_progress(&app, done, total, "");
+        emit_progress_from_db(&app, &conn, job_id, total, "");
         return Ok(());
       }
 
       let pending = list_pending_assets(&conn, job_id)?;
       if pending.is_empty() {
         set_job_status(&app, &conn, job_id, JobStatus::Done)?;
-        emit_progress(&app, total, total, "");
+        emit_progress(&app, total, total, 0, 0, "");
         break;
       }
 
@@ -741,8 +762,7 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
       let mut batch: Vec<AssetRow> = Vec::with_capacity(batch_size);
       for asset in pending {
         if mark_asset_done_if_on_disk(&conn, &asset, &job.output_dir)? {
-          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-          emit_progress(&app, done, total, &asset.original_filename);
+          emit_progress_from_db(&app, &conn, job_id, total, &asset.original_filename);
           continue;
         }
         batch.push(asset);
@@ -780,10 +800,10 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
           let code = err.code.as_str();
           if is_auth_pause_error(code) {
             set_job_status(&app, &conn, job_id, JobStatus::PausedSession)?;
-            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-            emit_progress(
+            emit_progress_from_db(
               &app,
-              done,
+              &conn,
+              job_id,
               total,
               batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
             );
@@ -806,10 +826,10 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
               );
             }
             set_job_status(&app, &conn, job_id, JobStatus::Failed)?;
-            let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-            emit_progress(
+            emit_progress_from_db(
               &app,
-              done,
+              &conn,
+              job_id,
               total,
               batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
             );
@@ -833,10 +853,10 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
               Some(1),
             );
           }
-          let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-          emit_progress(
+          emit_progress_from_db(
             &app,
-            done,
+            &conn,
+            job_id,
             total,
             batch.last().map(|a| a.original_filename.as_str()).unwrap_or(""),
           );
@@ -850,8 +870,7 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
       thread::sleep(Duration::from_millis(random_jitter_ms()));
       if is_pause_requested() {
         set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
-        let (done, _, _) = count_assets_by_status(&conn, job_id)?;
-        emit_progress(&app, done, total, "");
+        emit_progress_from_db(&app, &conn, job_id, total, "");
         return Ok(());
       }
     }
@@ -1220,6 +1239,7 @@ mod tests {
     assert!(!is_auth_pause_error(error_codes::DOWNLOAD_FAILED));
     assert!(!is_auth_pause_error(error_codes::ACCOUNT_LOCKED));
     assert!(!is_auth_pause_error(error_codes::RATE_LIMITED));
+    assert!(!is_auth_pause_error(error_codes::DOMAIN_MISMATCH));
   }
 
   #[test]

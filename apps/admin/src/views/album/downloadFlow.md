@@ -3,7 +3,7 @@
 **适用页面：** `icloudSync.vue`（相册 → iCloud 同步）  
 **关联实现：** `apps/admin/src-tauri/src/icloud_sync/queue.rs`、`naming.rs`、`db.rs`；`apps/admin/sidecar/icloudSync/agent.py`  
 **前置条件：** 已完成 Apple ID 登录（见 [`loginFlow.md`](../../components/IcloudSyncAuthModal/loginFlow.md)）  
-**最后对齐：** 2026-08-22
+**最后对齐：** 2026-08-23
 
 ---
 
@@ -13,17 +13,19 @@
 |--------|------|----------|
 | P0 | **catalog 一次、下载可续** | 首次 `start_job` 全量枚举图库写入 SQLite；`resume` 不 re-catalog（除非任务无 assets） |
 | P0 | **下载不携带密码** | 循环前 `auth_probe`（无密码）；session 失效 → `paused_session`，等用户显式重登 |
-| P0 | **串行下载 concurrency=1** | ~~Rust 单线程循环~~ → **P1**：Rust 批量 `download_batch` + sidecar 内 ThreadPoolExecutor（1–3） |
-| P1 | **单文件重试** | sidecar `ipdPhotos` 内 HTTP 3 次退避 + 自适应超时 |
+| P0 | **批量下载 concurrency 1–3** | Rust 按 `settings.concurrency` 组批 → sidecar `download_batch` + ThreadPoolExecutor |
+| P1 | **单文件重试** | sidecar `ipdPhotos` 内 HTTP 3 次退避 + 自适应超时；**410/404 自动 invalidate + 强制 lookup 重试 1 次** |
 | P1 | **失败可追溯** | SQLite `last_error` / `attempt_count`；同步页失败表格 + `icloud_sync_list_failed_assets` |
 | P1 | **降限流风险** | 批次间 ≥400ms + 每批成功后随机 sleep **200–800 ms** |
-| P1 | **大图库性能** | catalog 后 sidecar 建 `asset_id → PhotoAsset` 缓存；download 不再每次 `photos.all` 全扫 |
+| P1 | **CDN URL 按需刷新** | catalog **不**建全库 photo_cache；`download_batch` 前对本批去重 `asset_id` 做 `records/lookup`；**10 min** 内同 asset 复用进程内 cache |
 | P1 | **断点与磁盘对齐** | 目标文件已存在且非空 → 补记 `done`；resume 时 `reconcile_job_with_disk` |
 | P2 | **失败可跳过** | 单文件 `download_failed` 标 `failed` 并继续；`account_locked` / `rate_limited` 整 job `failed` |
 
-### 0.1 进度计数说明（排查「序号不连续」）
+### 0.1 进度计数说明（排查「序号不连续」/ 概览数字不对）
 
 - **`done / total` 统计的是资产行（part）**，不是「照片张数」。
+- **`total` = done + failed + pending**（三者互斥，同一 job 内恒等）。
+- **概览「待下载 / 失败」** 读 `icloud-sync://progress` 与 `job-status` 的 **`pending` / `failed`**（Rust 每次 `emit_progress` 从 SQLite 实时统计）；**勿**用 `total - done` 推算 pending（会重复计入 failed）。
 - **Live Photo** 同一 `index_num` 对应两行：`still` + `mov`，落盘两个文件。
 - **失败行** 标为 `failed`，`list_pending` 跳过，故输出目录可能出现 `00002.mov`、`00004.mov` 而缺 `00001.jpg`。
 - 文件名规则：`{index:05d}_{sanitized_stem}.{ext}`（见 `naming.rs`）；MOV 部件扩展名强制 `.mov`。
@@ -46,9 +48,9 @@
 └───────────────────────────┬─────────────────────────────────┘
                             │ stdin/stdout line-JSON (protocol=1)
 ┌───────────────────────────▼─────────────────────────────────┐
-│  Python sidecar agent.py                                     │
-│  catalog：枚举图库 → items[] · 建 photo_cache                  │
-│  download：download_batch 并行拉流 → 原子落盘（单条 download 保留给测试）│
+│  Python sidecar agent.py + ipdPhotos.py                      │
+│  catalog：枚举图库 → items[]（仅索引，不缓存 downloadURL）      │
+│  download_batch：本批 records/lookup → 并行拉流 → 原子落盘    │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
                      iCloud Photos API（pyicloud_ipd）
@@ -76,16 +78,14 @@ flowchart TD
   L --> M[auth_probe]
   M -->|session 失效| N[paused_session]
   M -->|ok| O[job status=running]
-  O --> P[取 pending 队首]
+  O --> P[取 pending 队首组批]
   P --> Q{磁盘已有文件?}
   Q -->|是| R[补记 done · 下一项]
-  Q -->|否| S[sidecar download]
-  S -->|ok| T[mark done · emit progress]
+  Q -->|否| S[sidecar download_batch]
+  S -->|lookup + 并行下载| T[mark done/failed · emit progress]
   S -->|auth 错误| N
   S -->|fatal| I
-  S -->|download_failed| U[mark failed · 继续]
   T --> V[sleep 200-800ms]
-  U --> V
   R --> P
   V --> W{pause 请求?}
   W -->|是| X[paused_user]
@@ -128,7 +128,7 @@ stateDiagram-v2
 |--------|------|----------|
 | `cataloging` | 后台扫描 iCloud 图库 | 等待；可正常操作窗口 |
 | `pending` | 已建库，下载线程即将/正在启动 | — |
-| `running` | 串行下载中 | 可「暂停同步」 |
+| `running` | 批量下载中（1–3 并发） | 可「暂停同步」 |
 | `paused_user` | 用户手动暂停 | 「继续同步」 |
 | `paused_session` | 登录/session 失效 | 重新登录 → 「继续同步」 |
 | `done` | 全部 pending 处理完（含磁盘 reconcile） | 可新建任务 |
@@ -197,7 +197,7 @@ stateDiagram-v2
 2. 每条 catalog 校验：排序字段非空；`live` 必须有 `live_pair_id`。
 3. 顺序分配 `index_num` = 1, 2, 3…（**按 catalog 条目**，Live 两行共享同一 index）。
 4. 写入 `assets` 表，初始 `status=pending`。
-5. catalog 完成后 sidecar 调用 `_refresh_photo_cache`，供后续 download O(1) 定位。
+5. **catalog 结束即返回**；不在此阶段建 `photo_cache` 或预拉 downloadURL（大图库全量缓存成本高且 URL 会过期）。
 
 ### 4.5 耗时预期
 
@@ -217,24 +217,49 @@ stateDiagram-v2
      a. 检查 pause 标志 → paused_user
      b. list_pending（ORDER BY index_num, still<mov）
      c. 队首：磁盘已有有效文件 → mark done，continue
-     d. sidecar download → dest_path
-     e. 成功 → mark done；auth 错 → paused_session；fatal → failed；其它 → mark failed 继续
-     f. sleep 200–800ms
+     d. 组批：最多 concurrency 行（1–3，来自 settings.concurrency）
+     e. sleep ≥400ms（批次间隔）
+     f. sidecar download_batch：
+          - 本批去重 asset_id → records/lookup（10min 内已 lookup 的跳过）
+          - ThreadPoolExecutor 并行拉流落盘
+     g. 逐行 apply 结果：ok → done；auth 错 → paused_session；fatal → failed job；其它 → mark failed 继续
+     h. sleep 200–800ms（批次成功后抖动）
 4. pending 空 → done
 ```
 
-### 5.2 Sidecar 命令
+### 5.2 Sidecar 命令（`download_batch`）
 
 ```json
 {
-  "cmd": "download",
-  "asset_id": "<icloud asset id>",
-  "part": "still | mov | video",
-  "dest_path": "E:\\testFiles\\iCloudSync\\00001_IMG_0027.heic",
+  "cmd": "download_batch",
+  "items": [
+    {
+      "row_id": 42,
+      "asset_id": "<icloud asset id>",
+      "part": "still",
+      "dest_path": "E:\\testFiles\\iCloudSync\\00001_IMG_0027.heic"
+    }
+  ],
+  "concurrency": 2,
+  "view": "library",
   "apple_id": "user@example.com",
   "session_dir": "<appData>/icloud-sync/session"
 }
 ```
+
+**成功响应（节选）：**
+
+```json
+{
+  "type": "done",
+  "cmd": "download_batch",
+  "results": [
+    { "row_id": 42, "asset_id": "…", "part": "still", "ok": true }
+  ]
+}
+```
+
+单条 `download` 命令仍保留（**仅测试 / mock**）；生产路径一律 `download_batch`。
 
 **part 映射（Rust → sidecar）：**
 
@@ -245,16 +270,29 @@ stateDiagram-v2
 | Full | Photo | `still` |
 | Full | Video | `video` |
 
-### 5.3 落盘与命名
+### 5.3 CDN URL 刷新（`records/lookup`）
+
+大图库长跑时 iCloud CDN 签名 URL 会过期（HTTP **410/404**）。**这不是 Apple ID session 失效**，不得映射为 `session_expired` 暂停整 job。
+
+| 环节 | 行为 |
+|------|------|
+| **批次预取** | `download_batch` 开始前 `_ensure_batch_download_assets`：对本批 **去重** `asset_id` 调用 CloudKit `records/lookup`（`ipdPhotos.fetch_photo_assets_by_ids`） |
+| **进程内 cache** | lookup 结果写入 `photo_cache`；同 asset **10 min**（`PHOTO_URL_CACHE_TTL_SEC=600`）内复用，不重复 lookup |
+| **410/404 兜底** | 单文件下载遇 stale URL → `_invalidate_asset_lookup` + **强制 lookup 重试 1 次**；仍失败标 `download_failed` |
+| **刻意不做** | catalog 后全库 `photos.all` 重扫；仅清 `_versions` 而不重拉 master record（社区证实无效） |
+
+对齐参考：[mandarons/icloud-docker #492](https://github.com/mandarons/icloud-docker/issues/492)（CPLMaster 不可 `records/query`，须 `records/lookup`）。
+
+### 5.4 落盘与命名
 
 - **目标路径：** `{output_dir}/{index:05d}_{stem}.{ext}`
 - **stem：** iCloud 原文件名去扩展名，经 Windows 非法字符清洗（`naming.rs`）。
 - **Live mov：** 扩展名强制 `mov`，与 still 的 heic/jpg 无关。
 - **下载 API（2026-08-22 对齐 icloudpd）：** sidecar 经 `ipdPhotos.py` 使用 `photo.versions_with_raw_policy(AS_IS)` + `photo.download(api.photos.session, version.url)`；**不再**使用 picklepete/pyicloud 的 `photo.download()` 无参或 `download_url("original_video")` 手写路径。
 - **原子写入：** sidecar 先写 `*.partial`，再 `os.replace`；失败删 partial。
-- **超时：** Rust 等 sidecar 响应 timeout **120s**。
+- **超时：** Rust `download_batch` 动态超时 **120s + 每文件 180s，上限 600s**（单条 `download` 测试路径仍为 120s）。
 
-### 5.4 输出目录
+### 5.5 输出目录
 
 优先级：
 
@@ -292,8 +330,10 @@ stateDiagram-v2
 
 | 事件 | 常量 | 负载 |
 |------|------|------|
-| 进度 | `icloud-sync://progress` | `{ done, total, filename }` |
+| 进度 | `icloud-sync://progress` | `{ done, total, failed, pending, filename }` |
 | 任务状态 | `icloud-sync://job-status` | `{ jobId, status, appleId, total, done, failed, pending }` |
+
+**UI 概览：** `icloudSync.vue` 的「已完成 / 待下载 / 失败」分别绑定 `progress.done` / `progress.pending` / `progress.failed`（与 `job-status` 同源统计）。
 
 ### 7.2 localStorage
 
@@ -358,10 +398,11 @@ SELECT status, COUNT(*) FROM assets WHERE job_id = ? GROUP BY status;
 |------|------|------|----------|
 | `catalog_sort_missing` | catalog | 缺 capture_at/added_at | 换视图或稍后重试；查 sidecar 日志 |
 | `live_bind_missing` | catalog/download | Live 缺绑定字段 | 升级 sidecar；若单张资产问题会 skip failed |
-| `session_expired` | download | session 失效 | 重登 → resume |
+| `session_expired` | download | **WEBAUTH / trustedSession 失效**（401/421 等） | 重登 → resume |
 | `auth_failed` | catalog/download | 未 auth 或 probe 失败 | 确认已登录；logout 后重登 |
 | `need_2fa` | download | 待 2FA | 打开登录弹窗提交验证码 |
-| `download_failed` | download | 单文件 IO/API 失败 | 看 sidecar stderr；resume 会重试 failed |
+| `download_failed` | download | 单文件 IO/API 失败；**含 CDN 410/404 刷新后仍失败** | 看 sidecar stderr / `auth-diagnostic.json`；resume 会重试 failed |
+| `domain_mismatch` | catalog/download | 设置页 iCloud 区域（com/cn）与 Apple ID 实际区域不符 | 相册设置切换区域 → logout → 重登（见 loginFlow §8） |
 | `account_locked` | 任意 | 账号锁定 | **停止**；iforgot.apple.com |
 | `rate_limited` | 任意 | 限流 | 等待数小时；勿连点同步 |
 | `sidecar_crashed` | 任意 | sidecar 无响应/退出 | 重启应用；dev 下重启 `cs:dev` |
@@ -381,6 +422,12 @@ A：检查 `dest_path` 是否与命名规则一致；非空文件应被 `mark_as
 
 **Q：中文路径乱码/写错目录？**  
 A：sidecar 已强制 stdin UTF-8；若仍异常，检查 `ICLOUD_SYNC_AGENT_CMD` 与 Windows 区域设置。
+
+**Q：同步中途误报「登录失效」/ `session_expired` 但网页 iCloud 仍正常？**  
+A：先查 `auth-diagnostic.json` 的 `stage` 与 HTTP 细节。若为 **410/404 Gone**，属 **CDN 签名 URL 过期**，应走 lookup 刷新 + 单文件 `download_failed` 重试，**不会**因 410 暂停整 job（2026-08-23 已修复误判）。
+
+**Q：概览「待下载」+「已完成」> 总数，或待下载长时间不变？**  
+A：旧版 progress 未带 `pending`/`failed`，UI 曾用 `total - done` 推算。升级后读事件内 `pending`/`failed`；三者应满足 `done + pending + failed = total`。
 
 **Q：改 Rust/agent 后行为未变？**  
 A：dev 需重启 `pnpm run cs:dev`；sidecar Python 改动需重启进程；发布版需 `pnpm run cs:sidecar-build`。
@@ -423,21 +470,22 @@ A：dev 需重启 `pnpm run cs:dev`；sidecar Python 改动需重启进程；发
 
 ---
 
-## 13. icloudpd API 对齐审查（2026-08-22）
+## 13. icloudpd API 对齐审查（2026-08-23）
 
 | 能力 | icloudpd 标准 | sidecar 现状 | 说明 |
 |------|---------------|--------------|------|
 | 认证 / 2FA / session | `PyiCloudService` + `icloudAuth.py` | ✅ 已对齐 | 见 loginFlow.md |
-| 图库枚举 | `api.photos.all` | ✅ 已对齐 | library 视图 |
+| 图库枚举 | `api.photos.all` | ✅ 已对齐 | **仅 catalog**；download 不再全扫 |
 | 媒体分类 | `item_type` + `LivePhotoVersionSize.ORIGINAL in versions` | ✅ 已对齐 | `ipdPhotos.ipd_media_kind` |
 | still / video 下载 | `photo.download(session, version.url)` | ✅ 已对齐 | `AssetVersionSize.ORIGINAL` |
-| Live mov 下载 | 同上，`LivePhotoVersionSize.ORIGINAL` | ✅ 已修复 | 不再手写 `resOriginalVidCompl` URL |
+| Live mov 下载 | 同上，`LivePhotoVersionSize.ORIGINAL` | ✅ 已对齐 | 不再手写 `resOriginalVidCompl` URL |
+| CDN URL 刷新 | 社区 `records/lookup` CPLMaster | ✅ 已对齐 | 按批 lookup + 10min cache + 410 invalidate |
 | RAW 策略 | `--align-raw as-is` 默认 | ✅ AS_IS | `versions_with_raw_policy` |
-| Recents 视图 | icloudpd 多通过 album / list | ⚠️ 部分对齐 | `_iter_view_assets` 有多级 fallback，未逐条对照 icloudpd CLI |
+| Recents 视图 | icloudpd 多通过 album / list | ⚠️ 部分对齐 | `_iter_view_assets` 有多级 fallback |
 | 断点续传下载 | checksum + `.part` 追加 | ❌ 未实现 | sidecar 单次拉流；大图库弱网可能重下 |
-| 下载重试 | icloudpd `constants.WAIT_SECONDS` 循环 | ❌ 未实现 | 失败标 `failed`，靠 resume 重试 |
-| Live mov 文件名 `_HEVC` | `--live-photo-mov-filename-policy suffix` | ❌ 未采用 | Rust 命名 `{index}_{stem}.mov`，与 icloudpd 文件名策略不同（序号体系独立） |
+| 下载重试 | icloudpd `constants.WAIT_SECONDS` 循环 | ⚠️ 部分 | HTTP 层 3 次退避 + 410 单次 lookup 重试；整 job 靠 resume reset failed |
+| Live mov 文件名 `_HEVC` | `--live-photo-mov-filename-policy suffix` | ❌ 未采用 | Rust 命名 `{index}_{stem}.mov` |
 | XMP sidecar / EXIF 时间 | `--xmp-sidecar` / `--set-exif-datetime` | ❌ 未实现 | 产品未要求 |
-| 并发下载 | icloudpd 线程池 | ❌ P0 固定 1 | Rust 串行 + sidecar Mutex |
+| 并发下载 | icloudpd 线程池 | ✅ P1 | Rust 组批 1–3 + sidecar ThreadPoolExecutor |
 
-**已删除的误用 API（picklepete/pyicloud 遗留）：** `is_live_photo`、`download_url("original_video")`、`photo.download("original")`、无参 `photo.download()`、`_has_live_indicator` 启发式分类。
+**已删除的误用 API（picklepete/pyicloud 遗留）：** `is_live_photo`、`download_url("original_video")`、`photo.download("original")`、无参 `photo.download()`、catalog 后全库 `photos.all` 刷新 URL、`_has_live_indicator` 启发式分类。

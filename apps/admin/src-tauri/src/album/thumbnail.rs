@@ -52,14 +52,6 @@ pub fn generate_thumbnail(path: &str, cache_dir: &Path, size: u32) -> Option<Str
   }
 }
 
-/// 批量生成缩略图（4 线程并行，结果顺序与输入一致）
-/// 返回 Vec<Option<String>>：成功为缓存路径，失败为 None
-pub fn generate_thumbnails_batch(paths: &[String], cache_dir: &Path, size: u32) -> Vec<Option<String>> {
-  let counter = AtomicU32::new(0);
-  let noop = Arc::new(|_done: u32, _total: u32| {});
-  generate_thumbnails_batch_with_progress(paths, cache_dir, size, noop, &counter)
-}
-
 /// 带进度回调的批量缩略图生成（每完成一张回调 done/total）
 pub fn generate_thumbnails_batch_with_progress(
   paths: &[String],

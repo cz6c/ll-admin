@@ -5,6 +5,7 @@ pyicloud_ipd PhotoAsset 适配（对齐 icloudpd v1.32.3）
 职责：
 - 用 PhotoAsset.item_type + versions 识别 photo / video / live（与 icloudpd 一致）
 - 通过 photo.download(session, version.url) 拉取 still / video / Live mov
+- records/lookup 按 asset_id 拉新鲜 CPLMaster（CDN URL 刷新，对齐 mandarons/icloud-docker #492）
 - P1：单文件重试、自适应 HTTP 超时
 
 适用：sidecar agent catalog/download；Mock 模式不 import 本模块。
@@ -12,9 +13,11 @@ pyicloud_ipd PhotoAsset 适配（对齐 icloudpd v1.32.3）
 
 from __future__ import annotations
 
+import json
 import random
 import time
-from typing import Any
+from typing import Any, Sequence
+from urllib.parse import urlencode
 
 from icloudAuth import _ensure_vendor_path
 from protocol import LiveBindMissingError
@@ -28,6 +31,110 @@ RETRY_BACKOFF_SEC = (1.0, 2.0, 4.0)
 # HTTP 超时：120s 起，按体积估算，上限 600s
 MIN_DOWNLOAD_TIMEOUT_SEC = 120
 MAX_DOWNLOAD_TIMEOUT_SEC = 600
+
+# CloudKit records/lookup 单批 recordName 上限（过大易触发 Apple 限流）
+PHOTO_LOOKUP_BATCH_SIZE = 32
+
+# lookup 请求的 desiredKeys（与 pyicloud_ipd PhotoAlbum._list_query_gen / icloud-docker 对齐）
+LOOKUP_DESIRED_KEYS: list[str] = [
+    "resJPEGFullWidth",
+    "resJPEGFullHeight",
+    "resJPEGFullFileType",
+    "resJPEGFullFingerprint",
+    "resJPEGFullRes",
+    "resJPEGLargeWidth",
+    "resJPEGLargeHeight",
+    "resJPEGLargeFileType",
+    "resJPEGLargeFingerprint",
+    "resJPEGLargeRes",
+    "resJPEGMedWidth",
+    "resJPEGMedHeight",
+    "resJPEGMedFileType",
+    "resJPEGMedFingerprint",
+    "resJPEGMedRes",
+    "resJPEGThumbWidth",
+    "resJPEGThumbHeight",
+    "resJPEGThumbFileType",
+    "resJPEGThumbFingerprint",
+    "resJPEGThumbRes",
+    "resVidFullWidth",
+    "resVidFullHeight",
+    "resVidFullFileType",
+    "resVidFullFingerprint",
+    "resVidFullRes",
+    "resVidMedWidth",
+    "resVidMedHeight",
+    "resVidMedFileType",
+    "resVidMedFingerprint",
+    "resVidMedRes",
+    "resVidSmallWidth",
+    "resVidSmallHeight",
+    "resVidSmallFileType",
+    "resVidSmallFingerprint",
+    "resVidSmallRes",
+    "resSidecarWidth",
+    "resSidecarHeight",
+    "resSidecarFileType",
+    "resSidecarFingerprint",
+    "resSidecarRes",
+    "itemType",
+    "dataClassType",
+    "filenameEnc",
+    "originalOrientation",
+    "resOriginalWidth",
+    "resOriginalHeight",
+    "resOriginalFileType",
+    "resOriginalFingerprint",
+    "resOriginalRes",
+    "resOriginalAltWidth",
+    "resOriginalAltHeight",
+    "resOriginalAltFileType",
+    "resOriginalAltFingerprint",
+    "resOriginalAltRes",
+    "resOriginalVidComplWidth",
+    "resOriginalVidComplHeight",
+    "resOriginalVidComplFileType",
+    "resOriginalVidComplFingerprint",
+    "resOriginalVidComplRes",
+    "isDeleted",
+    "isExpunged",
+    "dateExpunged",
+    "remappedRef",
+    "recordName",
+    "recordType",
+    "recordChangeTag",
+    "masterRef",
+    "adjustmentRenderType",
+    "assetDate",
+    "addedDate",
+    "isFavorite",
+    "isHidden",
+    "orientation",
+    "duration",
+    "assetSubtype",
+    "assetSubtypeV2",
+    "assetHDRType",
+    "burstFlags",
+    "burstFlagsExt",
+    "burstId",
+    "captionEnc",
+    "locationEnc",
+    "locationV2Enc",
+    "locationLatitude",
+    "locationLongitude",
+    "adjustmentType",
+    "timeZoneOffset",
+    "vidComplDurValue",
+    "vidComplDurScale",
+    "vidComplDispValue",
+    "vidComplDispScale",
+    "vidComplVisibilityState",
+    "customRenderedValue",
+    "containerId",
+    "itemId",
+    "position",
+    "isKeyAsset",
+]
 
 
 def _load_ipd_types() -> tuple[Any, Any, Any, Any]:
@@ -227,3 +334,111 @@ def _ensure_response_ok(response: Any, label: str) -> None:
         raise RuntimeError(f"{label} download HTTP {status}")
     if ok is None and not hasattr(response, "iter_content"):
         raise RuntimeError(f"{label} download returned unsupported payload")
+
+
+def _load_photo_asset_class() -> Any:
+    """延迟加载 pyicloud_ipd PhotoAsset（构造 lookup 结果）。"""
+    _ensure_vendor_path()
+    from pyicloud_ipd.services.photos import PhotoAsset  # type: ignore
+
+    return PhotoAsset
+
+
+def _stub_asset_record(master_record: dict[str, Any]) -> dict[str, Any]:
+    """
+    lookup 仅返回 CPLMaster 时的 CPLAsset 占位。
+
+    @note 下载 URL 在 master 的 res*Res 字段；versions 会回退读 master。
+    """
+    record_name = str(master_record.get("recordName", "")).strip()
+    return {
+        "recordType": "CPLAsset",
+        "recordName": f"{record_name}-lookup-stub" if record_name else "lookup-stub",
+        "fields": {},
+    }
+
+
+def _lookup_master_records(photos_service: Any, record_names: Sequence[str]) -> dict[str, Any]:
+    """
+    通过 CloudKit records/lookup 按 recordName 拉 CPLMaster。
+
+    @note CPLMaster 不可 records/query（非 indexable）；lookup 是社区验证路径（icloud-docker #492）。
+    @raises RuntimeError lookup 失败或响应不可解析
+    """
+    names = [str(name).strip() for name in record_names if str(name).strip()]
+    if not names:
+        return {}
+
+    service_endpoint = getattr(photos_service, "service_endpoint", None)
+    params = getattr(photos_service, "params", None)
+    session = getattr(photos_service, "session", None)
+    zone_id = getattr(photos_service, "zone_id", None)
+    if not service_endpoint or not isinstance(params, dict) or session is None or not zone_id:
+        raise RuntimeError("photos service missing lookup context")
+
+    url = f"{service_endpoint}/records/lookup?{urlencode(params)}"
+    payload = {
+        "records": [{"recordName": name} for name in names],
+        "desiredKeys": LOOKUP_DESIRED_KEYS,
+        "zoneID": zone_id,
+    }
+    response = session.post(
+        url,
+        data=json.dumps(payload),
+        headers={"Content-type": "text/plain"},
+    )
+    status = getattr(response, "status_code", None)
+    if status is not None and int(status) >= 400:
+        raise RuntimeError(f"photo lookup HTTP {status}")
+
+    body = response.json() if hasattr(response, "json") else {}
+    records = body.get("records") if isinstance(body, dict) else None
+    if not isinstance(records, list):
+        raise RuntimeError("photo lookup response missing records")
+
+    photo_asset_cls = _load_photo_asset_class()
+    found: dict[str, Any] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("reason"):
+            continue
+        if record.get("recordType") != "CPLMaster":
+            continue
+        record_name = str(record.get("recordName", "")).strip()
+        if not record_name:
+            continue
+        photo = photo_asset_cls(record, _stub_asset_record(record))
+        if hasattr(photo, "_versions"):
+            photo._versions = None  # noqa: SLF001
+        found[record_name] = photo
+    return found
+
+
+def fetch_photo_assets_by_ids(api: Any, asset_ids: Sequence[str]) -> dict[str, Any]:
+    """
+    按 asset_id（CPLMaster recordName）经 records/lookup 获取带新 downloadURL 的 PhotoAsset。
+
+    @returns asset_id → PhotoAsset；任一 ID 缺失则抛 RuntimeError
+  """
+    normalized = [str(asset_id).strip() for asset_id in asset_ids if str(asset_id).strip()]
+    if not normalized:
+        return {}
+
+    unique = list(dict.fromkeys(normalized))
+    photos_service = getattr(api, "photos", None)
+    if photos_service is None:
+        raise RuntimeError("photos service unavailable")
+
+    found: dict[str, Any] = {}
+    for offset in range(0, len(unique), PHOTO_LOOKUP_BATCH_SIZE):
+        chunk = unique[offset : offset + PHOTO_LOOKUP_BATCH_SIZE]
+        batch = _lookup_master_records(photos_service, chunk)
+        found.update(batch)
+
+    missing = [asset_id for asset_id in unique if asset_id not in found]
+    if missing:
+        sample = ", ".join(missing[:3])
+        raise RuntimeError(f"photo lookup missing records: {sample}")
+
+    return {asset_id: found[asset_id] for asset_id in unique}

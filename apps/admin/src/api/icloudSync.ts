@@ -99,6 +99,8 @@ export interface IcloudSyncJobStatusResult {
 export interface IcloudSyncProgressPayload {
   done: number;
   total: number;
+  failed: number;
+  pending: number;
   filename: string;
 }
 

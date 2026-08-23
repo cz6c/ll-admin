@@ -401,24 +401,64 @@ def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypat
     assert agent._AUTH_STATE.last_validate_path == "validate_2fa_code:trust_retry"
 
 
-def test_photo_cache_ttl_triggers_refresh(monkeypatch) -> None:
+def test_batch_download_lookups_uncached_asset_ids(monkeypatch) -> None:
     agent = _load_agent(mock=True)
     agent._reset_auth_state()
-    agent._AUTH_STATE.photo_cache = {"asset-1": object()}
-    agent._AUTH_STATE.photo_cache_view = "library"
-    agent._AUTH_STATE.photo_cache_built_at = 0.0
 
-    assert agent._photo_cache_is_expired() is True
+    refreshed: list[list[str]] = []
 
-    refreshed: list[str] = []
+    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+        refreshed.append(list(asset_ids))
+        return {asset_id: object() for asset_id in asset_ids}
 
-    def _fake_refresh(_api: object, view: str) -> None:
-        refreshed.append(view)
-        agent._AUTH_STATE.photo_cache = {"asset-1": object()}
-        agent._AUTH_STATE.photo_cache_built_at = __import__("time").monotonic()
+    monkeypatch.setattr(agent.ipd_photos, "fetch_photo_assets_by_ids", _fake_fetch)
+    agent._ensure_batch_download_assets(
+        object(),
+        [
+            {"asset_id": "asset-a", "part": "still"},
+            {"asset_id": "asset-b", "part": "still"},
+        ],
+    )
 
-    monkeypatch.setattr(agent, "_refresh_photo_cache", _fake_refresh)
-    agent._ensure_photo_cache(object(), "library")
+    assert refreshed == [["asset-a", "asset-b"]]
+    cache = agent._AUTH_STATE.photo_cache
+    assert cache is not None
+    assert set(cache.keys()) == {"asset-a", "asset-b"}
 
-    assert refreshed == ["library"]
-    assert agent._photo_cache_is_expired() is False
+
+def test_batch_download_skips_fresh_lookup_within_ttl(monkeypatch) -> None:
+    agent = _load_agent(mock=True)
+    agent._reset_auth_state()
+    agent._merge_photos_into_cache({"asset-a": object()})
+    agent._AUTH_STATE.photo_url_fetched_at["asset-a"] = __import__("time").monotonic()
+
+    refreshed: list[list[str]] = []
+
+    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+        refreshed.append(list(asset_ids))
+        return {asset_id: object() for asset_id in asset_ids}
+
+    monkeypatch.setattr(agent.ipd_photos, "fetch_photo_assets_by_ids", _fake_fetch)
+    agent._ensure_batch_download_assets(object(), [{"asset_id": "asset-a", "part": "still"}])
+    assert refreshed == []
+
+    agent._ensure_batch_download_assets(object(), [{"asset_id": "asset-b", "part": "mov"}])
+    assert refreshed == [["asset-b"]]
+
+
+def test_stale_url_forces_lookup_even_when_fresh(monkeypatch) -> None:
+    agent = _load_agent(mock=True)
+    agent._reset_auth_state()
+    agent._merge_photos_into_cache({"asset-a": object()})
+    agent._AUTH_STATE.photo_url_fetched_at["asset-a"] = __import__("time").monotonic()
+
+    refreshed: list[list[str]] = []
+
+    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+        refreshed.append(list(asset_ids))
+        return {asset_id: object() for asset_id in asset_ids}
+
+    monkeypatch.setattr(agent.ipd_photos, "fetch_photo_assets_by_ids", _fake_fetch)
+    agent._refresh_photo_cache_on_stale_url(object(), ["asset-a"])
+
+    assert refreshed == [["asset-a"]]

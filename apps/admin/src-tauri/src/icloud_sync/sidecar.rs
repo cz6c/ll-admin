@@ -311,6 +311,7 @@ fn resolve_agent_launch(app: &AppHandle) -> Result<AgentLaunch, SidecarError> {
 
 /// debug 构建：使用 sidecar/.venv 内的 Python 跑 agent.py（与 cs:sidecar-build 同源依赖）
 /// @note 无 .venv 时返回 None，回退 bundled exe，避免系统 `py -3` 缺 pyicloud
+#[cfg(debug_assertions)]
 fn try_repo_python_agent() -> Option<AgentLaunch> {
   let sidecar_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sidecar/icloudSync");
   let agent_py = sidecar_dir.join("agent.py");

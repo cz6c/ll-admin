@@ -126,21 +126,23 @@ fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, S
 /// 幂等迁移至 SCHEMA_VERSION
 fn migrate_to_latest(conn: &Connection) -> Result<(), String> {
   let mut version = schema_version(conn)?;
-  if version < 2 {
-    if !column_exists(conn, "assets", "last_error")? {
-      conn
-        .execute("ALTER TABLE assets ADD COLUMN last_error TEXT", [])
-        .map_err(|e| format!("添加 last_error 列失败: {e}"))?;
+  if version < SCHEMA_VERSION {
+    if version < 2 {
+      if !column_exists(conn, "assets", "last_error")? {
+        conn
+          .execute("ALTER TABLE assets ADD COLUMN last_error TEXT", [])
+          .map_err(|e| format!("添加 last_error 列失败: {e}"))?;
+      }
+      if !column_exists(conn, "assets", "attempt_count")? {
+        conn
+          .execute(
+            "ALTER TABLE assets ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+            [],
+          )
+          .map_err(|e| format!("添加 attempt_count 列失败: {e}"))?;
+      }
     }
-    if !column_exists(conn, "assets", "attempt_count")? {
-      conn
-        .execute(
-          "ALTER TABLE assets ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
-          [],
-        )
-        .map_err(|e| format!("添加 attempt_count 列失败: {e}"))?;
-    }
-    version = 2;
+    version = SCHEMA_VERSION;
     set_schema_version(conn, version)?;
   }
   Ok(())

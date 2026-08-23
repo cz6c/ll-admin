@@ -125,6 +125,39 @@ def test_ipd_download_still_and_mov() -> None:
     assert mov.ok is True
 
 
+def test_fetch_photo_assets_by_ids_uses_lookup(monkeypatch) -> None:
+    api = MagicMock()
+    api.photos.service_endpoint = "https://photos.example/db"
+    api.photos.params = {"remapEnums": True}
+    api.photos.session = MagicMock()
+    api.photos.zone_id = {"zoneName": "PrimarySync"}
+
+    class _Photo:
+        def __init__(self, asset_id: str) -> None:
+            self._id = asset_id
+            self._master_record = {"recordName": asset_id, "fields": {}}
+            self._asset_record = {"fields": {}}
+
+        @property
+        def id(self) -> str:
+            return self._id
+
+    monkeypatch.setattr(
+        ipd_photos,
+        "_load_photo_asset_class",
+        lambda: _Photo,
+    )
+    monkeypatch.setattr(
+        ipd_photos,
+        "_lookup_master_records",
+        lambda _svc, names: {name: _Photo(name) for name in names},
+    )
+
+    found = ipd_photos.fetch_photo_assets_by_ids(api, ["A1", "A2"])
+    assert set(found.keys()) == {"A1", "A2"}
+    assert found["A1"].id == "A1"
+
+
 def test_ipd_download_video() -> None:
     api = MagicMock()
     api.photos.session = MagicMock()

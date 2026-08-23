@@ -20,10 +20,10 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 from protocol import (
     CODE_ACCOUNT_LOCKED,
@@ -90,24 +90,19 @@ class AuthState:
     sms_device_id: int | None = None
     # 当前会话使用的 iCloud 根域（com / cn）
     icloud_domain: str = ""
-    # catalog 后 asset_id → PhotoAsset 索引，避免每次 download 全库 O(n) 扫描
+    # download 前 records/lookup 写入的 asset_id → PhotoAsset（仅进程内缓存）
     photo_cache: dict[str, Any] | None = None
-    photo_cache_view: str = ""
-    # photo_cache 全量构建时刻（monotonic）；CDN 签名 URL 会批量过期，需周期性重建
-    photo_cache_built_at: float = 0.0
-    # 因 410 触发全量刷新的最近时刻，避免并发 download 重复扫库
-    last_stale_url_full_refresh_at: float = 0.0
+    # 每个 asset_id 最近一次 lookup 时刻（monotonic）；10min 内复用，410 后 invalidate
+    photo_url_fetched_at: dict[str, float] = field(default_factory=dict)
 
 
 _AUTH_STATE = AuthState()
 
 # 2FA 收尾：单次 trust_session（社区 icloudpd 标准）；establish 阶段不再循环打 Apple API
 _WEBAUTH_SETTLE_SEC = 1.0
-# CDN 签名 URL 约 10–20min 批量失效；早于实测 ~16min 误暂停，proactive 全量刷新
-PHOTO_CACHE_TTL_SEC = 600
-# 同批多文件并发 410 时，全量刷新最短间隔（秒）
-PHOTO_CACHE_STALE_REFRESH_COOLDOWN_SEC = 60
-_PHOTO_CACHE_REFRESH_LOCK = threading.Lock()
+# 同 asset 在窗口内不重复 records/lookup，降 Apple API 压力；410 会强制刷新
+PHOTO_URL_CACHE_TTL_SEC = 600
+_PHOTO_URL_REFRESH_LOCK = threading.Lock()
 
 
 def _configure_stdio_utf8() -> None:
@@ -280,26 +275,102 @@ def _map_download_exception(exc: BaseException) -> str:
     return _map_exception(exc)
 
 
-def _photo_cache_is_expired() -> bool:
-    """photo_cache 是否已超过 TTL（CDN 签名 URL 批量过期）。"""
-    if _AUTH_STATE.photo_cache_built_at <= 0:
-        return True
-    return (time.monotonic() - _AUTH_STATE.photo_cache_built_at) > PHOTO_CACHE_TTL_SEC
+def _photo_cache_bucket() -> dict[str, Any]:
+    """获取可写的 asset_id → PhotoAsset 缓存桶。"""
+    cache = _AUTH_STATE.photo_cache
+    if not isinstance(cache, dict):
+        cache = {}
+        _AUTH_STATE.photo_cache = cache
+    return cache
 
 
-def _refresh_photo_cache_on_stale_url(api: Any, view: str) -> None:
-    """
-    遇 410/404 时全量重建 photo_cache，避免逐条 pop 后各自扫库。
-
-    @note 同批并发 download 用锁 + cooldown，只扫库一次。
-    """
-    normalized = view if view in CATALOG_VIEWS else "library"
+def _merge_photos_into_cache(photos: dict[str, Any]) -> None:
+    """将 lookup 得到的 PhotoAsset 写入进程内 cache 并记录 lookup 时刻。"""
+    if not photos:
+        return
+    cache = _photo_cache_bucket()
     now = time.monotonic()
-    with _PHOTO_CACHE_REFRESH_LOCK:
-        if now - _AUTH_STATE.last_stale_url_full_refresh_at < PHOTO_CACHE_STALE_REFRESH_COOLDOWN_SEC:
+    for asset_id, photo in photos.items():
+        normalized = str(asset_id).strip()
+        if normalized:
+            cache[normalized] = photo
+            _AUTH_STATE.photo_url_fetched_at[normalized] = now
+
+
+def _asset_lookup_is_fresh(asset_id: str) -> bool:
+    """cache 中已有且 lookup 未超过 PHOTO_URL_CACHE_TTL_SEC。"""
+    normalized = str(asset_id).strip()
+    if not normalized:
+        return False
+    cache = _AUTH_STATE.photo_cache
+    if not isinstance(cache, dict) or normalized not in cache:
+        return False
+    fetched_at = _AUTH_STATE.photo_url_fetched_at.get(normalized, 0.0)
+    if fetched_at <= 0:
+        return False
+    return (time.monotonic() - fetched_at) <= PHOTO_URL_CACHE_TTL_SEC
+
+
+def _lookup_needed_asset_ids(asset_ids: Sequence[str], *, force: bool = False) -> list[str]:
+    """筛选需要 records/lookup 的 asset_id（缺失、过期或 force）。"""
+    needed: list[str] = []
+    seen: set[str] = set()
+    for asset_id in asset_ids:
+        normalized = str(asset_id).strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        if force or not _asset_lookup_is_fresh(normalized):
+            needed.append(normalized)
+    return needed
+
+
+def _invalidate_asset_lookup(asset_id: str) -> None:
+    """410/404 后清除 lookup 时间戳，强制下次 refresh。"""
+    normalized = str(asset_id).strip()
+    if normalized:
+        _AUTH_STATE.photo_url_fetched_at.pop(normalized, None)
+
+
+def _unique_asset_ids_from_items(items: Iterable[dict[str, Any]]) -> list[str]:
+    """从 download_batch items 提取去重后的 asset_id 列表（保持首次出现顺序）。"""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        asset_id = str(item.get("asset_id", "")).strip()
+        if asset_id and asset_id not in seen:
+            seen.add(asset_id)
+            ordered.append(asset_id)
+    return ordered
+
+
+def _refresh_asset_urls(api: Any, asset_ids: Sequence[str], *, force: bool = False) -> None:
+    """
+    经 records/lookup 拉取 downloadURL。
+
+    @note 10min 内同 asset 复用 cache；force=True 或 410 invalidate 后必 lookup。
+    """
+    unique = list(dict.fromkeys(str(asset_id).strip() for asset_id in asset_ids if str(asset_id).strip()))
+    if not unique:
+        return
+    with _PHOTO_URL_REFRESH_LOCK:
+        needed = _lookup_needed_asset_ids(unique, force=force)
+        if not needed:
             return
-        _refresh_photo_cache(api, normalized)
-        _AUTH_STATE.last_stale_url_full_refresh_at = now
+        photos = ipd_photos.fetch_photo_assets_by_ids(api, needed)
+        _merge_photos_into_cache(photos)
+
+
+def _ensure_batch_download_assets(api: Any, items: list[dict[str, Any]]) -> None:
+    """download_batch 开始前：对本批去重 asset_id 做 records/lookup（10min 内跳过已缓存）。"""
+    _refresh_asset_urls(api, _unique_asset_ids_from_items(items))
+
+
+def _refresh_photo_cache_on_stale_url(api: Any, asset_ids: Sequence[str]) -> None:
+    """遇 410/404 时 invalidate 并强制重新 lookup。"""
+    for asset_id in asset_ids:
+        _invalidate_asset_lookup(asset_id)
+    _refresh_asset_urls(api, asset_ids, force=True)
 
 
 def _session_files_present(session_dir: str, apple_id: str) -> bool:
@@ -417,9 +488,7 @@ def _reset_auth_state() -> None:
     _AUTH_STATE.sms_device_id = None
     _AUTH_STATE.icloud_domain = ""
     _AUTH_STATE.photo_cache = None
-    _AUTH_STATE.photo_cache_view = ""
-    _AUTH_STATE.photo_cache_built_at = 0.0
-    _AUTH_STATE.last_stale_url_full_refresh_at = 0.0
+    _AUTH_STATE.photo_url_fetched_at = {}
 
 
 def _has_webauth_token(api: Any) -> bool:
@@ -930,53 +999,11 @@ def _write_stream_atomic(response: Any, dest_path: str) -> None:
         raise
 
 
-def _refresh_photo_cache(api: Any, view: str) -> None:
-    """
-    构建 asset_id → PhotoAsset 索引（全量）。
-
-    @note catalog 后复用；CDN 签名 URL 批量过期，需周期性整表重建而非单条刷新。
-    """
-    cache: dict[str, Any] = {}
-    for photo in _iter_view_assets(api, view):
-        asset_id = _photo_asset_id(photo)
-        if asset_id:
-            cache[asset_id] = photo
-    _AUTH_STATE.photo_cache = cache
-    _AUTH_STATE.photo_cache_view = view
-    _AUTH_STATE.photo_cache_built_at = time.monotonic()
-
-
-def _ensure_photo_cache(api: Any, view: str) -> None:
-    """
-    download 前确保 asset_id 索引可用且 CDN URL 未过期。
-
-    @note 空缓存或超过 PHOTO_CACHE_TTL_SEC 时全量 _refresh_photo_cache；
-          session_expired 会清空缓存，resume 后首批 download 会重建。
-    """
-    normalized = view if view in CATALOG_VIEWS else "library"
-    cache = _AUTH_STATE.photo_cache
-    if (
-        isinstance(cache, dict)
-        and cache
-        and _AUTH_STATE.photo_cache_view == normalized
-        and not _photo_cache_is_expired()
-    ):
-        return
-    _refresh_photo_cache(api, normalized)
-
-
 def _locate_photo_by_asset_id(api: Any, asset_id: str) -> Any | None:
-    """按 asset_id 查找目标资产；优先走 catalog 后缓存。"""
+    """按 asset_id 从 cache 取 PhotoAsset；缺失由 download_batch 预取负责。"""
     cache = _AUTH_STATE.photo_cache
     if isinstance(cache, dict):
-        hit = cache.get(asset_id)
-        if hit is not None:
-            return hit
-    for photo in api.photos.all:
-        if str(getattr(photo, "id", "")).strip() == asset_id:
-            if isinstance(cache, dict):
-                cache[asset_id] = photo
-            return photo
+        return cache.get(asset_id)
     return None
 
 
@@ -1032,19 +1059,13 @@ def _execute_download_item(api: Any, item: dict[str, Any]) -> dict[str, Any]:
                     "message": "explicit auth is required before download",
                 }
             if not refreshed_url and _is_stale_download_url_error(exc):
-                _refresh_photo_cache_on_stale_url(
-                    api,
-                    _AUTH_STATE.photo_cache_view or "library",
-                )
+                _refresh_photo_cache_on_stale_url(api, [asset_id])
                 refreshed_url = True
                 continue
             return {**base, "ok": False, "code": CODE_DOWNLOAD_FAILED, "message": str(exc)[:500]}
         except Exception as exc:  # noqa: BLE001
             if not refreshed_url and _is_stale_download_url_error(exc):
-                _refresh_photo_cache_on_stale_url(
-                    api,
-                    _AUTH_STATE.photo_cache_view or "library",
-                )
+                _refresh_photo_cache_on_stale_url(api, [asset_id])
                 refreshed_url = True
                 continue
             mapped = _map_download_exception(exc)
@@ -1067,10 +1088,9 @@ def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
             str(cmd.get("apple_id", "")).strip(),
             str(cmd.get("session_dir", "")).strip(),
         )
-        result = _execute_download_item(
-            api,
-            {"asset_id": asset_id, "part": part, "dest_path": dest_path},
-        )
+        item = {"asset_id": asset_id, "part": part, "dest_path": dest_path}
+        _ensure_batch_download_assets(api, [item])
+        result = _execute_download_item(api, item)
         if result.get("ok"):
             return done_event("download", asset_id=asset_id, part=part, dest_path=dest_path)
         code = str(result.get("code") or CODE_DOWNLOAD_FAILED)
@@ -1129,7 +1149,7 @@ def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
 
     view = str(cmd.get("view", "library")).strip()
     try:
-        _ensure_photo_cache(api, view)
+        _ensure_batch_download_assets(api, items)
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
         diagnostic = _record_diagnostic("download_batch", mapped, str(exc)[:500], exc=exc)
@@ -1461,7 +1481,6 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
                 str(cmd.get("session_dir", "")).strip(),
             )
             items = [_catalog_item_from_photo(photo, view) for photo in _iter_view_assets(api, view)]
-            _refresh_photo_cache(api, view)
 
         ok, err_code = _validate_catalog_items(items, view)
         if not ok:

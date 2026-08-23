@@ -3,7 +3,7 @@
 **适用组件：** `IcloudSyncAuthModal.vue`  
 **关联实现：** `apps/admin/src-tauri/src/icloud_sync/mod.rs`、`apps/admin/sidecar/icloudSync/agent.py`  
 **设计原则：** **锁号风险最低** 为第一优先级；实现细节对齐 **icloud-photos-downloader / icloudpy / rclone** 社区已验证方案  
-**最后对齐：** 2026-08-22
+**最后对齐：** 2026-08-23
 
 ---
 
@@ -223,7 +223,18 @@ flowchart LR
   C -->|是| D[继续同步]
   C -->|待 2FA| E[回登录弹窗]
   C -->|失效| F[session_expired · 用户显式重登]
+  C -->|区域不符| G[domain_mismatch · 切换 com/cn 后重登]
 ```
+
+### 5.1 session 失效 vs CDN URL 过期（勿混淆）
+
+| 现象 | 典型 HTTP / code | 含义 | 是否暂停整 job |
+|------|------------------|------|----------------|
+| **session_expired** | 401 / 421 / `AUTHENTICATION_FAILED`；`auth_probe` 失败 | WEBAUTH / trustedSession 不可用 | ✅ `paused_session` |
+| **download_failed（410/404）** | Gone / HTTP 410/404 拉 CDN | **签名 downloadURL 过期**；登录态往往仍有效 | ❌ 单文件 failed，lookup 刷新后重试 |
+| **domain_mismatch** | Photos 区域与设置 `icloudDomain` 不符 | 须切换 com/cn 后 **logout → 重登** | ❌ 标错码，不当作 session 失效 |
+
+下载阶段 410 映射与重试细节见 [downloadFlow.md §5.3](../../views/album/downloadFlow.md)。
 
 ---
 
@@ -267,8 +278,11 @@ stateDiagram-v2
 |------|------|------|
 | `need_2fa` | 待 2FA | 输入验证码 |
 | `auth_failed` | 码错或未就绪 | 同弹窗换新码；**勿**再点登录 |
-| `session_expired` | session 失效 | logout → 隔几小时再登一轮 |
+| `session_expired` | **WEBAUTH / trustedSession 失效** | logout → 隔几小时再登一轮 |
+| `domain_mismatch` | 设置页 iCloud 区域（com/cn）与 Apple ID 实际不符 | 相册 **同步设置** 切换区域 → logout → 完整重登 |
 | `account_locked` / `rate_limited` | 锁定/限流 | **立即停止**；iForgot / 官方网页 |
+
+> **注意：** 下载中 HTTP **410/404**（CDN URL 过期）映射为 `download_failed`，**不是** `session_expired`。若 UI 曾误报登录失效，先查 `auth-diagnostic.json` 的 `stage` 是否为 `download` / `download_batch` 且 message 含 410。
 
 ---
 
@@ -294,7 +308,7 @@ stateDiagram-v2
 
 ## 11. 认证诊断（排查请读落盘文件）
 
-登录、2FA、auth_probe、catalog、下载鉴权失败或登出时，sidecar 会**覆盖写入** `{session_dir}/auth-diagnostic.json`（`outcome`：`success` / `challenge` / `failure`）。**应用内不展示诊断面板**，出问题直接打开该文件（Windows：`%APPDATA%\com.ll.admin\icloud-sync\session\auth-diagnostic.json`）。
+登录、2FA、auth_probe、catalog、**download / download_batch**、下载鉴权失败或登出时，sidecar 会**覆盖写入** `{session_dir}/auth-diagnostic.json`（`outcome`：`success` / `challenge` / `failure`）。**应用内不展示诊断面板**，出问题直接打开该文件（Windows：`%APPDATA%\com.ll.admin\icloud-sync\session\auth-diagnostic.json`）。
 
 **建议流程：**
 
@@ -331,7 +345,15 @@ flowchart LR
 | `PARTIAL_SESSION_ON_DISK` | 磁盘有半成品 session，先 logout |
 | `VALIDATE_RETURNED_FALSE` | Apple 拒绝验证码 |
 | `VALIDATE_OK_WEBAUTH_PENDING` | 验证码已被 Apple 接受，但 trust/accountLogin 未写出 WEBAUTH |
+| `stage=download*` + HTTP 410/404 | CDN 签名 URL 过期；**非** session 失效，见 downloadFlow §5.3 |
 
 | `session/*.cookiejar` | `X-APPLE-WWEBAUTH-*` 等 cookie |
 
 UI `loggedIn` 仅表示 session 文件存在；**同步以 `auth_probe` + WEBAUTH 为准**。
+
+---
+
+## 12. 相关文档
+
+- [文件下载流程](../../views/album/downloadFlow.md) — catalog / download_batch / records/lookup / 进度与错误码
+- [Sidecar README](../../../sidecar/icloudSync/README.md) — 构建、协议版本、依赖

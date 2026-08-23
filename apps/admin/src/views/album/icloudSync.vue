@@ -47,7 +47,7 @@ const activeJobId = ref<number | null>(null);
 const jobStatus = ref<IcloudSyncJobStatus | null>(null);
 const jobAppleId = ref("");
 const currentAppleId = ref("");
-const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, filename: "" });
+const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, failed: 0, pending: 0, filename: "" });
 const jobFailed = ref(0);
 const jobPending = ref(0);
 const assetTasks = ref<(IcloudSyncAssetTaskRow & { rowKey: string })[]>([]);
@@ -131,8 +131,8 @@ const summaryRows = computed(() => {
     rows.push(
       { label: "总文件数", value: String(progress.value.total || "—") },
       { label: "已完成", value: String(progress.value.done) },
-      { label: "待下载", value: String(jobPending.value) },
-      { label: "失败", value: String(jobFailed.value) },
+      { label: "待下载", value: String(progress.value.pending) },
+      { label: "失败", value: String(progress.value.failed) },
       { label: "完成率", value: progress.value.total ? `${progressPercent.value}%` : "—" }
     );
   }
@@ -284,7 +284,7 @@ function clearActiveJob() {
   storeJobId(null);
   jobStatus.value = null;
   jobAppleId.value = "";
-  progress.value = { done: 0, total: 0, filename: "" };
+  progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
   jobFailed.value = 0;
   jobPending.value = 0;
   assetTasks.value = [];
@@ -306,11 +306,13 @@ function applyJobStatus(status: IcloudSyncJobStatusResult) {
   progress.value = {
     done: status.done,
     total: status.total,
+    failed: status.failed ?? 0,
+    pending: status.pending ?? 0,
     filename: progress.value.filename
   };
   syncCatalogTimer();
   if (status.status === "done") {
-    progress.value = { done: status.total, total: status.total, filename: "" };
+    progress.value = { done: status.total, total: status.total, failed: 0, pending: 0, filename: "" };
     try {
       localStorage.removeItem(ICLOUD_SYNC_ACTIVE_JOB_KEY);
     } catch {
@@ -353,7 +355,7 @@ async function onStart() {
     jobStatus.value = "cataloging";
     catalogStartedAt.value = Date.now();
     syncCatalogTimer();
-    progress.value = { done: 0, total: 0, filename: "" };
+    progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
     jobFailed.value = 0;
     jobPending.value = 0;
     assetTasks.value = [];
@@ -448,6 +450,8 @@ onMounted(async () => {
   unlistenProgress = await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
     if (event.payload) {
       progress.value = event.payload;
+      jobFailed.value = event.payload.failed ?? 0;
+      jobPending.value = event.payload.pending ?? 0;
       const jobId = activeJobId.value;
       if (jobId != null) scheduleRefreshAssetTasks(jobId);
     }

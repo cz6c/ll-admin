@@ -23,6 +23,23 @@ use settings::{
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
 use types::IcloudSyncSettings;
 
+/// 将 sidecar error 事件格式化为 `code` 或 `code: message` 供上层展示。
+fn format_sidecar_error_event(event: &SidecarEvent, default_code: &str) -> String {
+  let code = event.code.as_deref().unwrap_or(default_code);
+  let message = event.message.as_deref().unwrap_or("");
+  if code == types::error_codes::DOMAIN_MISMATCH && message.is_empty() {
+    return format!(
+      "{}: iCloud 区域与 Apple ID 不匹配，请在相册设置中切换",
+      types::error_codes::DOMAIN_MISMATCH
+    );
+  }
+  if message.is_empty() {
+    code.to_string()
+  } else {
+    format!("{code}: {message}")
+  }
+}
+
 static SIDECAR_PING: Mutex<()> = Mutex::new(());
 
 /// 确保 sidecar 已认证（内存态或 session 目录恢复）。
@@ -62,17 +79,10 @@ pub(crate) fn ensure_sidecar_authenticated(
       "{}: 需要二次验证，请前往登录页完成验证",
       types::error_codes::NEED_2FA
     )),
-    "error" => {
-      let code = event
-        .code
-        .unwrap_or_else(|| types::error_codes::SESSION_EXPIRED.to_string());
-      let message = event.message.unwrap_or_default();
-      if message.is_empty() {
-        Err(code)
-      } else {
-        Err(format!("{code}: {message}"))
-      }
-    }
+    "error" => Err(format_sidecar_error_event(
+      &event,
+      types::error_codes::SESSION_EXPIRED,
+    )),
     other => Err(format!("auth_probe 意外响应: type={other}")),
   }
 }
@@ -153,17 +163,10 @@ pub(crate) fn reset_sidecar_auth(app: &AppHandle, client: &SidecarClient) -> Res
 
     match event.event_type.as_str() {
       "done" => Ok(()),
-      "error" => {
-        let code = event
-          .code
-          .unwrap_or_else(|| types::error_codes::AUTH_FAILED.to_string());
-        let message = event.message.unwrap_or_default();
-        if message.is_empty() {
-          Err(code)
-        } else {
-          Err(format!("{code}: {message}"))
-        }
-      }
+      "error" => Err(format_sidecar_error_event(
+        &event,
+        types::error_codes::AUTH_FAILED,
+      )),
       other => Err(format!("logout 意外响应: type={other}")),
     }
   }

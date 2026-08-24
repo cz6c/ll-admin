@@ -10,10 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type IcloudSyncJobView = "library" | "recents";
 
 /** 任务生命周期状态（与 Rust JobStatus 对齐） */
-export type IcloudSyncJobStatus =
-  | "cataloging"
-  | "pending"
-  | "running" | "paused_session" | "paused_user" | "done" | "failed";
+export type IcloudSyncJobStatus = "cataloging" | "pending" | "running" | "paused_session" | "paused_user" | "done" | "failed";
 
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
@@ -89,6 +86,8 @@ export interface IcloudSyncJobStatusResult {
   status: IcloudSyncJobStatus;
   /** 创建任务时的 Apple ID */
   appleId: string;
+  /** 任务落盘目录（完成态展示与打开文件夹） */
+  outputDir: string;
   total: number;
   done: number;
   failed: number;
@@ -131,6 +130,15 @@ export interface IcloudSyncListAssetTasksResult {
 
 /** 任务文件状态筛选 */
 export type IcloudSyncAssetTaskFilter = "all" | "pending" | "done" | "failed";
+
+/** 并发档位（设置页展示为慢/标准/快） */
+export const ICLOUD_SYNC_CONCURRENCY_TIERS = [
+  { label: "慢", value: 1, hint: "最稳妥，适合首次同步或大图库" },
+  { label: "标准", value: 2, hint: "推荐；速度与稳定性平衡" },
+  { label: "快", value: 3, hint: "最快，可能触发 Apple 限流" }
+] as const;
+
+export type IcloudSyncConcurrencyTier = (typeof ICLOUD_SYNC_CONCURRENCY_TIERS)[number]["value"];
 
 export const ICLOUD_SYNC_PROGRESS_EVENT = "icloud-sync://progress";
 
@@ -189,6 +197,49 @@ export function formatIcloudSyncError(err: unknown): string {
     return ERROR_USER_MESSAGES[code];
   }
   return raw;
+}
+
+/**
+ * 将单文件任务的 lastError 转为表格可读备注
+ * @note 优先匹配机读错误码；CDN/超时等常见模式单独简化
+ */
+export function formatAssetTaskError(raw: string | null | undefined): string {
+  if (!raw?.trim()) return "—";
+  const trimmed = raw.trim();
+  const code = trimmed.split(":")[0]?.trim() ?? trimmed;
+  if (ERROR_USER_MESSAGES[code]) {
+    return ERROR_USER_MESSAGES[code];
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("410") || lower.includes("404")) {
+    return "CDN 链接失效（已自动重试）";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "下载超时";
+  }
+  if (trimmed.length > 72) {
+    return `${trimmed.slice(0, 72)}…`;
+  }
+  return trimmed;
+}
+
+/** 开始同步前校验：相册根目录、落盘路径、登录与 consent */
+export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const [albumRoot, settings, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncSettings(), getIcloudSyncAuthState()]);
+  if (!albumRoot.trim()) {
+    return { ok: false, message: "请先在「设置」中配置相册根目录" };
+  }
+  const output = settings.outputDir.trim() || buildDefaultOutputDir(albumRoot);
+  if (!output.trim()) {
+    return { ok: false, message: "请配置 iCloud 同步落盘目录" };
+  }
+  if (!auth.loggedIn) {
+    return { ok: false, message: "请先登录 Apple ID" };
+  }
+  if (!auth.consentReady) {
+    return { ok: false, message: "请完成 iCloud 同步授权确认（登录弹窗内勾选）" };
+  }
+  return { ok: true };
 }
 
 /** 读取本机 iCloud 同步设置 */
@@ -262,14 +313,20 @@ export function listIcloudSyncFailedAssets(jobId: number, limit = 50) {
 /** 分页列出任务下全部文件行 */
 export function listIcloudSyncAssetTasks(
   jobId: number,
-  options: { offset?: number; limit?: number; status?: IcloudSyncAssetTaskFilter } = {}
+  options: { offset?: number; limit?: number; status?: IcloudSyncAssetTaskFilter; keyword?: string } = {}
 ) {
   return invoke<IcloudSyncListAssetTasksResult>("icloud_sync_list_asset_tasks", {
     jobId,
     offset: options.offset ?? 0,
     limit: options.limit ?? 50,
-    status: options.status ?? "all"
+    status: options.status ?? "all",
+    keyword: options.keyword?.trim() || null
   });
+}
+
+/** 丢弃本地同步任务（运行中会先请求暂停）；用于账号不一致或「开始新同步」 */
+export function discardIcloudSyncJob(jobId: number) {
+  return invoke<void>("icloud_sync_discard_job", { jobId });
 }
 
 /**

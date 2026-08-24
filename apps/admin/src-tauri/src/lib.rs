@@ -76,6 +76,7 @@ pub fn run() {
       icloud_sync::queue::icloud_sync_job_status,
       icloud_sync::queue::icloud_sync_list_failed_assets,
       icloud_sync::queue::icloud_sync_list_asset_tasks,
+      icloud_sync::queue::icloud_sync_discard_job,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

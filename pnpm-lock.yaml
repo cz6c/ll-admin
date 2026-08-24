@@ -89,9 +89,6 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
-      livephotoskit:
-        specifier: ^1.5.6
-        version: 1.5.6
       lodash-es:
         specifier: ^4.17.21
         version: 4.18.1
@@ -9676,9 +9673,6 @@ packages:
   listenercount@1.0.1:
     resolution: {integrity: sha512-3mk/Zag0+IJxeDrxSgaDPy4zZ3w05PRZeJNnlWhzFz5OkX49J4krc+A8X2d2M69vGMBEX0uyl8M+W+8gH+kBqQ==}
 
-  livephotoskit@1.5.6:
-    resolution: {integrity: sha512-dsD6EzQnExuYfYvBSxf3t1bdl2Juw7NnlpWZrsGxdYq2x4pnxyOYrkOG6LGHmklytdFdxaru86GvviLpUhaIBQ==}
-
   load-bmfont@1.4.2:
     resolution: {integrity: sha512-qElWkmjW9Oq1F9EI5Gt7aD9zcdHb9spJCW1L/dmPf7KzCCEJxq8nhHz5eCgI9aMf7vrG/wyaCqdsI+Iy9ZTlog==}
 
@@ -15484,7 +15478,7 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.29.7
-      '@babel/types': 7.29.0
+      '@babel/types': 7.29.7
       esutils: 2.0.3
 
   '@babel/regjsgen@0.8.0': {}
@@ -24642,8 +24636,6 @@ snapshots:
   lines-and-columns@2.0.4: {}
 
   listenercount@1.0.1: {}
-
-  livephotoskit@1.5.6: {}
 
   load-bmfont@1.4.2:
     dependencies:

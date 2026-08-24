@@ -15,9 +15,9 @@ use tauri::{AppHandle, Emitter};
 
 use super::ensure_sidecar_authenticated;
 use super::db::{
-  count_assets_by_status, get_job, insert_assets, insert_job, job_has_assets, list_asset_tasks,
-  list_failed_assets, list_pending_assets, mark_asset_outcome, mark_asset_status, open_db,
-  reset_failed_to_pending, update_job_status,
+  count_assets_by_status, discard_job, get_job, insert_assets, insert_job, job_has_assets,
+  list_asset_tasks, list_failed_assets, list_pending_assets, mark_asset_outcome, mark_asset_status,
+  open_db, reset_failed_to_pending, update_job_status,
 };
 use super::naming::format_asset_filename;
 use super::settings::{
@@ -70,6 +70,8 @@ pub struct IcloudSyncJobStatusResult {
   pub status: JobStatus,
   /// 创建任务时的 Apple ID；与 settings 不一致时前端禁止续传
   pub apple_id: String,
+  /// 任务落盘目录（供完成态展示与打开文件夹）
+  pub output_dir: String,
   pub total: u32,
   pub done: u32,
   pub failed: u32,
@@ -942,6 +944,7 @@ fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSy
     job_id,
     status: job.status,
     apple_id: job.apple_id,
+    output_dir: job.output_dir,
     total,
     done,
     failed,
@@ -1128,6 +1131,7 @@ pub fn icloud_sync_list_asset_tasks(
   offset: Option<u32>,
   limit: Option<u32>,
   status: Option<String>,
+  keyword: Option<String>,
 ) -> Result<IcloudSyncListAssetTasksResult, String> {
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
@@ -1138,8 +1142,31 @@ pub fn icloud_sync_list_asset_tasks(
     offset.unwrap_or(0),
     limit.unwrap_or(50),
     status_filter,
+    keyword.as_deref(),
   )?;
   Ok(IcloudSyncListAssetTasksResult { items, total })
+}
+
+/// 丢弃本地同步任务（删除 SQLite job/assets）；运行中任务会先请求暂停
+#[tauri::command]
+pub fn icloud_sync_discard_job(app: AppHandle, job_id: i64) -> Result<(), String> {
+  let db_path = state_db_path(&app)?;
+  let conn = open_db(&db_path)?;
+  if get_job(&conn, job_id)?.is_none() {
+    return Ok(());
+  }
+
+  let runner = queue_runner()
+    .lock()
+    .map_err(|_| "queue lock poisoned".to_string())?;
+  if runner.active_job_id == Some(job_id) {
+    runner.pause_requested.store(true, Ordering::SeqCst);
+  }
+  drop(runner);
+
+  discard_job(&conn, job_id)?;
+  release_job(job_id);
+  Ok(())
 }
 
 /// 供 mod 注入的 SidecarClient 包装（Tauri State 需 'static + 后台线程 Clone）

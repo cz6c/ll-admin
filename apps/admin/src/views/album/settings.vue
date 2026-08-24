@@ -11,6 +11,7 @@ import {
   formatIcloudSyncError,
   getAlbumRootForDefault,
   getIcloudSyncSettings,
+  ICLOUD_SYNC_CONCURRENCY_TIERS,
   saveIcloudSyncSettings,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
@@ -18,6 +19,10 @@ import CsSaveBar from "@/components/CsSaveBar/index.vue";
 import { isTauri } from "@/utils/tauri";
 
 defineOptions({ name: "AlbumSettings" });
+
+const route = useRoute();
+const router = useRouter();
+const fromSync = computed(() => route.query.from === "sync");
 
 const rootDir = ref("");
 const outputDir = ref("");
@@ -85,6 +90,13 @@ async function save() {
     message.warning("请先选择相册根目录");
     return;
   }
+  if (isTauri() && !outputDir.value.trim()) {
+    const suggested = buildDefaultOutputDir(rootDir.value);
+    if (!suggested) {
+      message.warning("请填写 iCloud 同步落盘目录");
+      return;
+    }
+  }
   saving.value = true;
   errorMsg.value = "";
   try {
@@ -108,6 +120,9 @@ async function save() {
     }
 
     message.success("设置已保存");
+    if (fromSync.value) {
+      router.push("/album/icloudSync");
+    }
   } catch (e: unknown) {
     const msg = isTauri() ? formatIcloudSyncError(e) : typeof e === "string" ? e : "保存失败";
     errorMsg.value = msg;
@@ -123,6 +138,14 @@ onMounted(loadSettings);
 <template>
   <a-spin :spinning="loading">
     <a-card class="settings-card card-rounded" :bordered="true" title="相册设置">
+      <a-alert
+        v-if="fromSync"
+        type="info"
+        show-icon
+        class="mb-16px"
+        message="从 iCloud 同步页跳转而来"
+        description="确认相册根目录与落盘路径后保存，将自动返回同步页。"
+      />
       <a-form :label-col="{ style: { width: '120px' } }" label-align="right">
         <a-form-item label="相册根目录" required>
           <div class="dir-input-row">
@@ -143,9 +166,15 @@ onMounted(loadSettings);
             <p class="form-hint">{{ defaultHint }}</p>
           </a-form-item>
 
-          <a-form-item label="并发下载数">
-            <a-input-number v-model:value="concurrency" :min="1" :max="3" :disabled="loading" />
-            <p class="form-hint">建议 1–2；并发过高可能触发 Apple 限流</p>
+          <a-form-item label="下载速度">
+            <a-radio-group v-model:value="concurrency" :disabled="loading">
+              <a-radio v-for="tier in ICLOUD_SYNC_CONCURRENCY_TIERS" :key="tier.value" :value="tier.value">
+                {{ tier.label }}（{{ tier.value }}）
+              </a-radio>
+            </a-radio-group>
+            <p class="form-hint">
+              {{ ICLOUD_SYNC_CONCURRENCY_TIERS.find(t => t.value === concurrency)?.hint ?? "建议标准档" }}
+            </p>
           </a-form-item>
         </template>
       </a-form>
@@ -168,6 +197,9 @@ onMounted(loadSettings);
   display: flex;
   gap: 8px;
   width: 100%;
+}
+.mb-16px {
+  margin-bottom: 16px;
 }
 .form-hint {
   margin: 6px 0 0;

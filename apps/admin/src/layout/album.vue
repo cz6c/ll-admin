@@ -4,14 +4,23 @@
   适用：CS 顶栏「本地相册」进入后的子导航
 -->
 <script setup lang="ts">
+import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
+import { isTauri } from "@/utils/tauri";
+
 defineOptions({ name: "AlbumLayout" });
 
 const route = useRoute();
+const { syncTabBadge, hydrateFromStorage } = useIcloudSyncJob();
+
 const tabs = [
   { path: "/album/gallery", title: "相册", hint: "浏览照片和视频" },
-  { path: "/album/icloudSync", title: "iCloud同步", hint: "从 iCloud 图库下载到本地" },
+  { path: "/album/icloudSync", title: "iCloud同步", hint: "从 iCloud 图库下载到本地", showBadge: true },
   { path: "/album/settings", title: "设置", hint: "相册根目录与 iCloud 落盘路径" }
 ];
+
+onMounted(() => {
+  if (isTauri()) void hydrateFromStorage();
+});
 </script>
 
 <template>
@@ -19,7 +28,10 @@ const tabs = [
     <header class="shell-header">
       <nav class="tabs" aria-label="相册分区">
         <router-link v-for="tab in tabs" :key="tab.path" :to="tab.path" class="tab" :class="{ active: route.path === tab.path }" :title="tab.hint">
-          {{ tab.title }}
+          <span class="tab-label">{{ tab.title }}</span>
+          <span v-if="tab.showBadge && syncTabBadge" class="sync-badge" :class="`sync-badge--${syncTabBadge.color}`">
+            {{ syncTabBadge.text }}
+          </span>
         </router-link>
       </nav>
     </header>
@@ -56,6 +68,9 @@ const tabs = [
 }
 .tab {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 16px;
   border-radius: 6px;
   color: rgba(0, 0, 0, 0.65);
@@ -72,6 +87,29 @@ const tabs = [
     color: var(--color-primary);
     font-weight: 600;
     background: var(--color-primary-bg);
+  }
+}
+.sync-badge {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 10px;
+  line-height: 18px;
+  font-weight: 500;
+  &--processing {
+    color: var(--color-primary);
+    background: var(--color-primary-bg);
+  }
+  &--warning {
+    color: #d48806;
+    background: #fffbe6;
+  }
+  &--error {
+    color: #cf1322;
+    background: #fff1f0;
+  }
+  &--default {
+    color: rgba(0, 0, 0, 0.65);
+    background: rgba(0, 0, 0, 0.06);
   }
 }
 .shell-main {

@@ -470,7 +470,27 @@ A：dev 需重启 `pnpm run cs:dev`；sidecar Python 改动需重启进程；发
 
 ---
 
-## 13. icloudpd API 对齐审查（2026-08-23）
+## 14. P2 同步页 UX（2026-08-24）
+
+**目标：** 一屏看清状态 + 一个主按钮；明细默认折叠。
+
+| 能力 | 实现 |
+|------|------|
+| 状态卡片 | `IcloudSyncStatusCard`：告警/标题 + 进度条 + 已完成/待下载/失败三数 |
+| 主按钮 | `useIcloudSyncJob.primaryAction`：登录 → 开始 → 暂停/继续 → 完成看相册 / 失败或换号重新开始 |
+| 任务表 | `a-collapse` 默认收起；`failed > 0` 自动展开；列精简为序号/部件/文件名/状态/备注 |
+| 错误备注 | `formatAssetTaskError()` 映射机读码与 CDN/超时 |
+| 空态引导 | Steps：登录 → 设置 → 开始；开始前 `validateIcloudSyncReady()` 校验根目录与落盘 |
+| Tab 角标 | `album.vue` 读 `syncTabBadge`：同步中 / 需登录 / 已暂停 / 失败数 |
+| 丢弃任务 | `icloud_sync_discard_job` +「开始新同步」处理账号不一致 |
+| 设置回流 | `?from=sync` 保存后跳回同步页；并发展示为慢/标准/快 |
+| 关键词搜索 | `list_asset_tasks` 支持 `keyword` 文件名子串 |
+| 预计剩余 | 下载阶段按已完成速率估算 ETA（`useIcloudSyncJob.etaText`） |
+| 打开文件夹 | 完成态或 `outputDir` 只读展示；`openPath` 打开落盘目录 |
+
+**共享状态：** `useIcloudSyncJob`（`@vueuse/core` `createSharedComposable`）供同步页与相册壳复用事件监听。
+
+---
 
 | 能力 | icloudpd 标准 | sidecar 现状 | 说明 |
 |------|---------------|--------------|------|

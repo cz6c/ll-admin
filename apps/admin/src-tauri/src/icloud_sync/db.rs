@@ -342,76 +342,82 @@ pub fn list_failed_assets(
   Ok(rows)
 }
 
-/// 分页列出任务下全部/指定状态的文件行（按 index 升序）
+/// 删除任务及其 assets（用户「重新开始」或账号不一致时）
+pub fn discard_job(conn: &Connection, job_id: i64) -> Result<(), String> {
+  conn
+    .execute("DELETE FROM jobs WHERE id = ?1", params![job_id])
+    .map_err(|e| format!("删除 job 失败: {e}"))?;
+  Ok(())
+}
+
+/// 分页列出任务下全部/指定状态的文件行（按 index 升序）；可选文件名 keyword 子串匹配
 pub fn list_asset_tasks(
   conn: &Connection,
   job_id: i64,
   offset: u32,
   limit: u32,
   status_filter: Option<AssetStatus>,
+  keyword: Option<&str>,
 ) -> Result<(Vec<IcloudSyncAssetTaskRow>, u32), String> {
   let lim = i64::from(limit.clamp(1, 200));
   let off = i64::from(offset);
+  let keyword_trimmed = keyword.map(str::trim).filter(|s| !s.is_empty());
 
-  let total: i64 = match status_filter {
-    Some(status) => conn.query_row(
-      "SELECT COUNT(*) FROM assets WHERE job_id = ?1 AND status = ?2",
-      params![job_id, status.as_str()],
-      |row| row.get(0),
-    ),
-    None => conn.query_row(
-      "SELECT COUNT(*) FROM assets WHERE job_id = ?1",
-      params![job_id],
-      |row| row.get(0),
-    ),
+  let mut where_parts = vec!["job_id = ?"];
+  if status_filter.is_some() {
+    where_parts.push("status = ?");
   }
-  .map_err(|e| format!("统计 asset 任务失败: {e}"))?;
+  if keyword_trimmed.is_some() {
+    where_parts.push("instr(lower(original_filename), lower(?)) > 0");
+  }
+  let where_clause = where_parts.join(" AND ");
+  let order = "ORDER BY index_num ASC, CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC";
 
-  let rows = match status_filter {
-    Some(status) => {
-      let mut stmt = conn
-        .prepare(
-          r#"
-          SELECT index_num, part, original_filename, status, last_error, attempt_count
-          FROM assets
-          WHERE job_id = ?1 AND status = ?2
-          ORDER BY index_num ASC,
-                   CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
-          LIMIT ?3 OFFSET ?4
-          "#,
-        )
-        .map_err(|e| format!("准备 asset 任务查询失败: {e}"))?;
-      let mapped = stmt
-        .query_map(
-          params![job_id, status.as_str(), lim, off],
-          map_asset_task_row,
-        )
-        .map_err(|e| format!("查询 asset 任务失败: {e}"))?;
-      mapped
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("解析 asset 任务失败: {e}"))?
+  let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
+  let list_sql = format!(
+    r#"
+    SELECT index_num, part, original_filename, status, last_error, attempt_count
+    FROM assets
+    WHERE {where_clause}
+    {order}
+    LIMIT ? OFFSET ?
+    "#
+  );
+
+  fn bind_asset_task_filters<'a>(
+    job_id: i64,
+    status_filter: Option<AssetStatus>,
+    keyword: Option<&'a str>,
+  ) -> Vec<Box<dyn rusqlite::ToSql + 'a>> {
+    let mut params: Vec<Box<dyn rusqlite::ToSql + 'a>> = vec![Box::new(job_id)];
+    if let Some(status) = status_filter {
+      params.push(Box::new(status.as_str().to_string()));
     }
-    None => {
-      let mut stmt = conn
-        .prepare(
-          r#"
-          SELECT index_num, part, original_filename, status, last_error, attempt_count
-          FROM assets
-          WHERE job_id = ?1
-          ORDER BY index_num ASC,
-                   CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
-          LIMIT ?2 OFFSET ?3
-          "#,
-        )
-        .map_err(|e| format!("准备 asset 任务查询失败: {e}"))?;
-      let mapped = stmt
-        .query_map(params![job_id, lim, off], map_asset_task_row)
-        .map_err(|e| format!("查询 asset 任务失败: {e}"))?;
-      mapped
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("解析 asset 任务失败: {e}"))?
+    if let Some(kw) = keyword {
+      params.push(Box::new(kw.to_string()));
     }
-  };
+    params
+  }
+
+  let filter_params = bind_asset_task_filters(job_id, status_filter, keyword_trimmed);
+  let count_param_refs: Vec<&dyn rusqlite::ToSql> = filter_params.iter().map(|p| p.as_ref()).collect();
+  let total: i64 = conn
+    .query_row(&count_sql, count_param_refs.as_slice(), |row| row.get(0))
+    .map_err(|e| format!("统计 asset 任务失败: {e}"))?;
+
+  let mut list_params = bind_asset_task_filters(job_id, status_filter, keyword_trimmed);
+  list_params.push(Box::new(lim));
+  list_params.push(Box::new(off));
+  let list_param_refs: Vec<&dyn rusqlite::ToSql> = list_params.iter().map(|p| p.as_ref()).collect();
+
+  let mut stmt = conn
+    .prepare(&list_sql)
+    .map_err(|e| format!("准备 asset 任务查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(list_param_refs.as_slice(), map_asset_task_row)
+    .map_err(|e| format!("查询 asset 任务失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析 asset 任务失败: {e}"))?;
 
   let total_u32 = u32::try_from(total).map_err(|_| "任务总数超出 u32".to_string())?;
   Ok((rows, total_u32))

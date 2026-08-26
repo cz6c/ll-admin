@@ -20,13 +20,15 @@ pub struct ThumbnailOutcome {
   pub thumb_path: Option<String>,
   /// HEIC/HEIF 全尺寸预览 JPEG（扫描阶段生成，打开即可用）
   pub preview_path: Option<String>,
+  /// 因扫描取消提前返回；勿计入 fail_count，否则重扫几次会误杀健康文件
+  pub cancelled: bool,
 }
 
 pub fn is_heif_ext(ext: &str) -> bool {
   ext == "heic" || ext == "heif"
 }
 
-fn is_video_ext(ext: &str) -> bool {
+pub fn is_video_ext(ext: &str) -> bool {
   matches!(
     ext,
     "mp4" | "mov" | "avi" | "mkv" | "webm" | "flv" | "wmv" | "m4v" | "3gp" | "mpeg" | "mpg"
@@ -51,10 +53,18 @@ fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<imag
   heic_decode::decode_heif_file(file_path, ffmpeg_bin)
 }
 
+/// 缩略图唯一标识：用 file_stem（不含扩展名的小写文件名）替代完整 path
+/// 解决"文件移动到不同目录后 path 变化导致缓存失效重新生成"的问题
+/// iCloud 文件名含索引前缀（如 00003_IMG_0027）本身有唯一性，移动不改名时复用缓存
 fn cache_key(path: &str, modified: i64, size: u32) -> String {
+  let stem = Path::new(path)
+    .file_stem()
+    .and_then(|s| s.to_str())
+    .unwrap_or("")
+    .to_lowercase();
   let mut h = DefaultHasher::new();
   ALBUM_CACHE_VERSION.hash(&mut h);
-  path.hash(&mut h);
+  stem.hash(&mut h);
   modified.hash(&mut h);
   size.hash(&mut h);
   format!("{:016x}", h.finish())
@@ -126,6 +136,7 @@ pub fn generate_thumbnail(
       } else {
         None
       },
+      ..Default::default()
     };
   }
 
@@ -135,7 +146,10 @@ pub fn generate_thumbnail(
     if is_video_ext(&ext) {
       let ffmpeg = match ffmpeg_bin {
         Some(f) => f,
-        None => return ThumbnailOutcome::default(),
+        None => {
+          log::warn!("album: ffmpeg 未找到，无法生成视频缩略图 ({})", file_path.display());
+          return ThumbnailOutcome::default();
+        }
       };
       let tmp_jpg = std::env::temp_dir().join(format!(
         "album_vid_thumb_{}.jpg",
@@ -145,12 +159,21 @@ pub fn generate_thumbnail(
           .unwrap_or(0)
       ));
       if !ffmpeg::extract_video_poster(ffmpeg, file_path, &tmp_jpg) {
+        log::warn!("album: 视频首帧提取失败 ({})", file_path.display());
         let _ = std::fs::remove_file(&tmp_jpg);
         return ThumbnailOutcome::default();
       }
-      let opened = image::open(&tmp_jpg).ok();
-      let _ = std::fs::remove_file(&tmp_jpg);
-      opened
+      match image::open(&tmp_jpg) {
+        Ok(img) => {
+          let _ = std::fs::remove_file(&tmp_jpg);
+          Some(img)
+        }
+        Err(e) => {
+          log::warn!("album: 视频缩略图解码失败 ({}, {})", file_path.display(), e);
+          let _ = std::fs::remove_file(&tmp_jpg);
+          return ThumbnailOutcome::default();
+        }
+      }
     } else {
       open_raster_image(file_path, ffmpeg_bin)
     }
@@ -184,6 +207,7 @@ pub fn generate_thumbnail(
   ThumbnailOutcome {
     thumb_path,
     preview_path,
+    ..Default::default()
   }
 }
 
@@ -222,7 +246,10 @@ pub fn generate_thumbnails_batch_with_progress(
             .iter()
             .map(|p| {
               if token.is_cancelled() {
-                return ThumbnailOutcome::default();
+                return ThumbnailOutcome {
+                  cancelled: true,
+                  ..Default::default()
+                };
               }
               let result = generate_thumbnail(p, cache_dir, size, ffmpeg_bin);
               let done = done_counter.fetch_add(1, Ordering::Relaxed) + 1;

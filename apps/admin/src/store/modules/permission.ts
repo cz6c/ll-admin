@@ -30,7 +30,7 @@ export const usePermissionStore = defineStore("permission", {
         const res = await getRouters();
         data = res.data;
       }
-      // 本地路由每次以最新为准（含 CS 条件菜单），避免 persist 锁死旧菜单或缺日报入口
+      // 本地路由每次以最新为准（含 CS 条件菜单），避免 persist 锁死旧菜单或缺 CS 入口
       const localPaths = new Set(constRoutes.map(r => r.path));
       data = data.filter(r => !localPaths.has(r.path)).concat(constRoutes);
       this.generateRoutes(data);

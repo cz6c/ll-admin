@@ -4,7 +4,8 @@
 use serde::{Deserialize, Serialize};
 
 /// 缩略图缓存逻辑版本；变更解码/命名规则时递增，并清空 `album/thumbs`
-pub const ALBUM_CACHE_VERSION: u32 = 3;
+/// v4: cache_key 用 file_stem 替代 path，移动文件后复用缓存
+pub const ALBUM_CACHE_VERSION: u32 = 4;
 
 /// 相册设置（持久化到 `<appData>/album/settings.json`）
 #[derive(Debug, Clone, Serialize, Deserialize)]

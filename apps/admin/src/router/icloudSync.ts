@@ -9,22 +9,22 @@ import type { AppRouteRecordRaw } from "#/utils";
 export const icloudSyncConstantRoutes: AppRouteRecordRaw[] = [
   {
     path: "/icloudSync",
-    redirect: "/album/icloudSync",
+    redirect: "/album/gallery",
     hidden: true
   },
   {
     path: "/icloudSync/sync",
-    redirect: "/album/icloudSync",
+    redirect: "/album/gallery",
     hidden: true
   },
   {
     path: "/icloudSync/auth",
-    redirect: "/album/icloudSync",
+    redirect: "/album/gallery",
     hidden: true
   },
   {
     path: "/icloudSync/settings",
-    redirect: "/album/settings",
+    redirect: "/cs-settings",
     hidden: true
   }
 ];

@@ -9,7 +9,7 @@ import $feedback from "@/utils/feedback";
 import { getPlatFormUUID } from "@/utils/auth";
 import LoginSvgCom from "@/assets/svg/login.svg?component";
 import { RouterEnum } from "@/router";
-import { sanitizePostLoginRedirect } from "@/router/dailyReport";
+import { sanitizePostLoginRedirect } from "@/router/csPublic";
 import { usePermissionStore } from "@/store/modules/permission";
 
 defineOptions({

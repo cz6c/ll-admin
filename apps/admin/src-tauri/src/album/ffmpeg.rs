@@ -4,8 +4,10 @@
 //!
 //! Apple HEIC 为 512×512 瓦片网格；`-map 0:v:0` 只会解出单块瓦片，必须让 demuxer 自行拼合全图。
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager};
 
@@ -75,47 +77,39 @@ pub fn decode_heif_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::Dyna
   img
 }
 
-/// HEIC/HEIF → JPEG 全尺寸落盘（不做缩放、不 `-map` 单路流）
+/// HEIC/HEIF → JPEG 全尺寸落盘（不 `-map`，Apple HEIC 多路 512 瓦片需 demuxer 自拼完整画布）
 pub fn convert_heif_to_jpeg(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
-    "-nostdin",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-i",
+    "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
   ]);
   cmd.arg(input);
-  // 禁止 -map：Apple HEIC 多路 512 瓦片需由 demuxer 拼成完整画布
   cmd.args(["-frames:v", "1", "-q:v", "3"]);
   cmd.arg(output);
-
-  #[cfg(windows)]
-  {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    cmd.creation_flags(CREATE_NO_WINDOW);
-  }
-
-  cmd.status().map(|s| s.success()).unwrap_or(false)
+  run_ffmpeg(cmd)
 }
 
 /// 视频首帧海报图（网格缩略图用）
 pub fn extract_video_poster(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
-    "-nostdin",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-i",
+    "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
   ]);
   cmd.arg(input);
-  cmd.args(["-frames:v", "1", "-q:v", "5"]);
+  cmd.args([
+    "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "-q:v", "3",
+  ]);
   cmd.arg(output);
+  run_ffmpeg(cmd)
+}
 
+/// ffmpeg 子进程超时上限（秒）：大视频首帧 / 大 HEIC 解码通常数秒内完成，60s 兜底损坏文件卡死
+pub const FFMPEG_TIMEOUT_SECS: u64 = 60;
+const FFMPEG_TIMEOUT: Duration = Duration::from_secs(FFMPEG_TIMEOUT_SECS);
+
+/// 运行 ffmpeg 子进程：带超时与 stderr 捕获，返回是否成功
+/// 失败 / 超时均记录日志，便于定位损坏文件与环境问题
+fn run_ffmpeg(mut cmd: Command) -> bool {
   #[cfg(windows)]
   {
     use std::os::windows::process::CommandExt;
@@ -123,7 +117,76 @@ pub fn extract_video_poster(ffmpeg: &Path, input: &Path, output: &Path) -> bool 
     cmd.creation_flags(CREATE_NO_WINDOW);
   }
 
-  cmd.status().map(|s| s.success()).unwrap_or(false)
+  cmd.stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+  let mut child = match cmd.spawn() {
+    Ok(c) => c,
+    Err(e) => {
+      log::warn!("album: ffmpeg 启动失败: {e}");
+      return false;
+    }
+  };
+
+  let mut stderr = child.stderr.take();
+  let mut stdout = child.stdout.take();
+  // 读 stdout/stderr 的线程：管道写满会阻塞子进程，必须持续 drain
+  let stderr_handle = std::thread::spawn(move || {
+    let mut buf = Vec::new();
+    if let Some(s) = stderr.as_mut() {
+      let _ = s.read_to_end(&mut buf);
+    }
+    buf
+  });
+  let stdout_handle = std::thread::spawn(move || {
+    let mut buf = Vec::new();
+    if let Some(s) = stdout.as_mut() {
+      let _ = s.read_to_end(&mut buf);
+    }
+  });
+
+  let start = Instant::now();
+  let status = loop {
+    match child.try_wait() {
+      Ok(Some(status)) => break status,
+      Ok(None) => {
+        if start.elapsed() >= FFMPEG_TIMEOUT {
+          let _ = child.kill();
+          let _ = stdout_handle.join();
+          let err = stderr_handle.join().unwrap_or_default();
+          log::warn!(
+            "album: ffmpeg 超时({}s) 已终止；stderr: {}",
+            FFMPEG_TIMEOUT.as_secs(),
+            String::from_utf8_lossy(&err).trim()
+          );
+          return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+      }
+      Err(e) => {
+        let _ = child.kill();
+        let _ = stdout_handle.join();
+        let err = stderr_handle.join().unwrap_or_default();
+        log::warn!(
+          "album: ffmpeg 等待失败: {e}；stderr: {}",
+          String::from_utf8_lossy(&err).trim()
+        );
+        return false;
+      }
+    }
+  };
+
+  let _ = stdout_handle.join();
+  let err = stderr_handle.join().unwrap_or_default();
+  if !status.success() {
+    log::warn!(
+      "album: ffmpeg 退出码 {:?}；stderr: {}",
+      status.code(),
+      String::from_utf8_lossy(&err).trim()
+    );
+  }
+  status.success()
 }
 
 fn temp_jpeg_path() -> PathBuf {

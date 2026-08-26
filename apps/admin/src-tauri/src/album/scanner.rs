@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
@@ -20,7 +20,6 @@ use super::types::{
 
 pub const ALBUM_SCAN_PROGRESS_EVENT: &str = "album://scan-progress";
 pub const ALBUM_THUMB_READY_EVENT: &str = "album://thumb-ready";
-pub const ALBUM_FILES_CHANGED_EVENT: &str = "album://files-changed";
 
 fn emit_scan_progress(app: &AppHandle, phase: &str, done: u32, total: u32) {
   let _ = app.emit(
@@ -87,17 +86,19 @@ fn is_video(ext: &str) -> bool {
   VIDEO_EXTS.contains(&ext)
 }
 
-fn get_modified(path: &Path) -> i64 {
-  std::fs::metadata(path)
-    .ok()
-    .and_then(|m| m.modified().ok())
-    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-    .map(|d| d.as_secs() as i64)
-    .unwrap_or(0)
-}
-
-fn get_size(path: &Path) -> u64 {
-  std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+/// 一次性读取文件大小与修改时间（合并单次 metadata 系统调用，避免每文件两次 syscall）
+fn file_meta(path: &Path) -> (u64, i64) {
+  match std::fs::metadata(path) {
+    Ok(m) => (
+      m.len(),
+      m.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0),
+    ),
+    Err(_) => (0, 0),
+  }
 }
 
 fn file_stem_lower(name: &str) -> String {
@@ -244,8 +245,7 @@ pub fn discover_groups(
       .to_string();
 
     let file_path = path.to_string_lossy().to_string();
-    let size = get_size(path);
-    let modified = get_modified(path);
+    let (size, modified) = file_meta(path);
 
     let mut thumb_path = None;
     let mut preview_path = None;
@@ -266,6 +266,17 @@ pub fn discover_groups(
           preview_path = row.preview_path.clone();
         }
       }
+    }
+
+    // 小图优化：< 100KB 且浏览器可原生显示的栅格图片，直接用原图当缩略图
+    // 跳过 webp 编码开销；HEIC 浏览器不支持必须转码；视频无法当缩略图必须抽帧
+    const SMALL_FILE_BYTES: u64 = 100 * 1024;
+    if thumb_path.is_none()
+      && size < SMALL_FILE_BYTES
+      && is_image(&ext)
+      && !matches!(ext.as_str(), "heic" | "heif")
+    {
+      thumb_path = Some(file_path.clone());
     }
 
     dir_files.push(MediaFile {
@@ -344,38 +355,41 @@ pub fn discover_groups(
 
   db::delete_stale_paths(&conn, root, &alive_paths)?;
 
-  for group in &groups {
-    for file in &group.files {
-      db::upsert_media(
-        &conn,
-        root,
-        &group.rel_path,
-        file,
-        file.thumb_path.as_deref(),
-        file.preview_path.as_deref(),
-      )?;
-    }
-  }
+  // 批量 upsert（事务内），避免逐条自动提交
+  db::upsert_media_batch(&conn, root, &groups)?;
 
   Ok(groups)
 }
 
 /// 第二阶段：后台生成缺失缩略图，逐条推送事件
+/// `pipeline_epoch` / `my_epoch`：被新扫描取代后立刻停止写库与 emit，避免超时残留任务污染
 pub fn run_thumbnail_pipeline(
   app: AppHandle,
-  _root: String,
+  root: String,
   album_dir: PathBuf,
   thumb_size: u32,
   ffmpeg_bin: Option<PathBuf>,
   groups: Vec<MediaGroup>,
   cancel: ScanCancelToken,
+  pipeline_epoch: Arc<AtomicU64>,
+  my_epoch: u64,
 ) {
+  let still_current = || pipeline_epoch.load(Ordering::SeqCst) == my_epoch;
+
   let cache_dir = cache_dir_for(&album_dir);
   let conn = db::open_db(&album_dir).ok();
+  let fail_counts = conn
+    .as_ref()
+    .and_then(|c| db::load_fail_counts(c, &root).ok())
+    .unwrap_or_default();
 
   let mut pending: Vec<(String, String)> = Vec::new();
   for group in &groups {
     for file in &group.files {
+      // 跳过反复失败的坏文件，避免对同一损坏文件反复解码
+      if *fail_counts.get(&file.path).unwrap_or(&0) >= db::FAIL_THRESHOLD {
+        continue;
+      }
       let needs_thumb = file.thumb_path.is_none();
       let needs_preview =
         thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
@@ -386,7 +400,9 @@ pub fn run_thumbnail_pipeline(
   }
 
   let thumb_total = u32::try_from(pending.len()).unwrap_or(u32::MAX);
-  emit_scan_progress(&app, "thumbnails", 0, thumb_total);
+  if still_current() {
+    emit_scan_progress(&app, "thumbnails", 0, thumb_total);
+  }
 
   if pending.is_empty() {
     return;
@@ -394,8 +410,11 @@ pub fn run_thumbnail_pipeline(
 
   let done_counter = AtomicU32::new(0);
   let app_progress = app.clone();
+  let epoch_for_progress = Arc::clone(&pipeline_epoch);
   let on_progress = Arc::new(move |done: u32, total: u32| {
-    emit_scan_progress(&app_progress, "thumbnails", done, total);
+    if epoch_for_progress.load(Ordering::SeqCst) == my_epoch {
+      emit_scan_progress(&app_progress, "thumbnails", done, total);
+    }
   });
 
   let paths: Vec<String> = pending.iter().map(|(_, p)| p.clone()).collect();
@@ -409,18 +428,73 @@ pub fn run_thumbnail_pipeline(
     &cancel,
   );
 
+  // 分批提交缓存更新与失败标记，减少事务次数
+  const BATCH: usize = 64;
+  let mut update_buf: Vec<(String, Option<String>, Option<String>)> = Vec::with_capacity(BATCH);
+  let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
+
   for (path, outcome) in paths.into_iter().zip(outcomes.into_iter()) {
-    let thumb_path = outcome.thumb_path;
-    let preview_path = outcome.preview_path;
-    if let Some(conn) = &conn {
-      let _ = db::update_cache_paths(
-        conn,
-        &path,
-        thumb_path.as_deref(),
-        preview_path.as_deref(),
-      );
+    // 已被新扫描取代：丢弃全部写副作用（含取消前已在飞的成功结果）
+    if !still_current() {
+      return;
     }
-    emit_thumb_ready(&app, &path, thumb_path.clone(), preview_path.clone());
+    // 取消中止 ≠ 解码失败：跳过写库/计失败，避免重扫叠取消把健康文件推到 FAIL_THRESHOLD
+    if outcome.cancelled {
+      continue;
+    }
+    // 写副作用前再次确认世代：循环开头校验后可能已被新扫描 bump
+    // push 与 emit 原子化——要么都做要么都不做，避免「push 了不 emit」中间态污染缓冲
+    if !still_current() {
+      return;
+    }
+    // thumb 或 preview 任一成功都落库+通知（HEIC 可能只写出 preview）
+    if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
+      let thumb_path = outcome.thumb_path.clone();
+      let preview_path = outcome.preview_path.clone();
+      update_buf.push((path.clone(), thumb_path.clone(), preview_path.clone()));
+      emit_thumb_ready(&app, &path, thumb_path, preview_path);
+    } else {
+      // 真实生成失败：标记失败计数，下次扫描按阈值跳过
+      fail_buf.push(path.clone());
+      emit_thumb_ready(&app, &path, None, None);
+    }
+
+    if update_buf.len() >= BATCH {
+      if !still_current() {
+        return;
+      }
+      if let Some(conn) = &conn {
+        let _ = db::update_cache_paths_batch(conn, &update_buf);
+      }
+      update_buf.clear();
+    }
+    if fail_buf.len() >= BATCH {
+      if !still_current() {
+        return;
+      }
+      if let Some(conn) = &conn {
+        for p in &fail_buf {
+          let _ = db::mark_thumb_failed(conn, p);
+        }
+      }
+      fail_buf.clear();
+    }
+  }
+  if !still_current() {
+    return;
+  }
+  // 提交剩余批次
+  if !update_buf.is_empty() {
+    if let Some(conn) = &conn {
+      let _ = db::update_cache_paths_batch(conn, &update_buf);
+    }
+  }
+  if !fail_buf.is_empty() {
+    if let Some(conn) = &conn {
+      for p in &fail_buf {
+        let _ = db::mark_thumb_failed(conn, p);
+      }
+    }
   }
 }
 

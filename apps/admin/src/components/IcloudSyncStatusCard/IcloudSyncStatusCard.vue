@@ -8,10 +8,6 @@ import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 
 defineOptions({ name: "IcloudSyncStatusCard" });
 
-const emit = defineEmits<{
-  settings: [];
-}>();
-
 const {
   jobAccountMismatch,
   showSessionExpiredAlert,
@@ -72,7 +68,7 @@ const showProgressBar = computed(() => hasActiveJob.value && (progress.value.tot
     </div>
 
     <div v-if="showEmptyGuide" class="empty-steps">
-      <a-steps size="small" :current="isLoggedIn ? 1 : 0" :items="[{ title: '登录' }, { title: '设置' }, { title: '开始同步' }]" />
+      <a-steps size="small" :current="isLoggedIn ? 1 : 0" :items="[{ title: '登录' }, { title: '开始同步' }]" />
     </div>
 
     <div class="action-row">
@@ -87,7 +83,6 @@ const showProgressBar = computed(() => hasActiveJob.value && (progress.value.tot
         {{ primaryAction.label }}
       </a-button>
       <a-button v-if="canPause && primaryAction?.label !== '暂停同步'" danger :loading="pausing" @click="onPause">暂停</a-button>
-      <a-button @click="emit('settings')">同步设置</a-button>
       <a-button v-if="outputDir && isDone" @click="openOutputFolder">打开文件夹</a-button>
     </div>
 

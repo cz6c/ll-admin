@@ -43,8 +43,19 @@ fn decode_heif_windows(path: &Path) -> Option<image::DynamicImage> {
     WICDecodeMetadataCacheOnLoad,
   };
   use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+    COINIT_MULTITHREADED,
   };
+
+  /// RAII：确保任何返回路径都配对 CoUninitialize，避免 COM 引用计数泄漏
+  struct ComGuard;
+  impl Drop for ComGuard {
+    fn drop(&mut self) {
+      unsafe {
+        CoUninitialize();
+      }
+    }
+  }
 
   fn wide_path(path: &Path) -> Vec<u16> {
     OsStr::new(path)
@@ -53,64 +64,82 @@ fn decode_heif_windows(path: &Path) -> Option<image::DynamicImage> {
       .collect()
   }
 
+  /// windows::core::Result 失败转 None 并记录日志，替代散落的 `.ok()?`
+  fn w<T>(r: windows::core::Result<T>, ctx: &str) -> Option<T> {
+    match r {
+      Ok(v) => Some(v),
+      Err(e) => {
+        log::warn!("album: WIC {ctx}: {e}");
+        None
+      }
+    }
+  }
+
   unsafe {
+    let _com = ComGuard;
     let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
-    let factory: IWICImagingFactory =
-      CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
+    let factory: IWICImagingFactory = w(
+      CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER),
+      "CoCreateInstance",
+    )?;
 
     let wide = wide_path(path);
-    let decoder = factory
-      .CreateDecoderFromFilename(
+    let decoder = w(
+      factory.CreateDecoderFromFilename(
         PCWSTR(wide.as_ptr()),
         None,
         GENERIC_READ,
         WICDecodeMetadataCacheOnLoad,
-      )
-      .ok()?;
+      ),
+      "CreateDecoderFromFilename",
+    )?;
 
-    let frame_count = decoder.GetFrameCount().ok()?;
+    let frame_count = w(decoder.GetFrameCount(), "GetFrameCount")?;
     let mut best_frame_idx = 0u32;
     let mut best_area = 0u64;
     for frame_idx in 0..frame_count {
-      let frame = decoder.GetFrame(frame_idx).ok()?;
-      let mut w = 0u32;
-      let mut h = 0u32;
-      if frame.GetSize(&mut w, &mut h).is_err() || w == 0 || h == 0 {
+      let frame = match w(decoder.GetFrame(frame_idx), "GetFrame") {
+        Some(f) => f,
+        None => continue,
+      };
+      let mut fw = 0u32;
+      let mut fh = 0u32;
+      if frame.GetSize(&mut fw, &mut fh).is_err() || fw == 0 || fh == 0 {
         continue;
       }
-      let area = u64::from(w) * u64::from(h);
+      let area = u64::from(fw) * u64::from(fh);
       if area > best_area {
         best_area = area;
         best_frame_idx = frame_idx;
       }
     }
-    let frame = decoder.GetFrame(best_frame_idx).ok()?;
+    let frame = w(decoder.GetFrame(best_frame_idx), "GetFrame(best)")?;
 
-    let converter = factory.CreateFormatConverter().ok()?;
-    converter
-      .Initialize(
+    let converter = w(factory.CreateFormatConverter(), "CreateFormatConverter")?;
+    w(
+      converter.Initialize(
         &frame,
         &GUID_WICPixelFormat32bppBGRA,
         WICBitmapDitherTypeNone,
         None,
         0.0,
         WICBitmapPaletteTypeCustom,
-      )
-      .ok()?;
+      ),
+      "Initialize",
+    )?;
 
     let mut width = 0u32;
     let mut height = 0u32;
-    converter.GetSize(&mut width, &mut height).ok()?;
+    w(converter.GetSize(&mut width, &mut height), "GetSize")?;
     if width == 0 || height == 0 {
+      log::warn!("album: WIC 解码尺寸为 0: {width}x{height}");
       return None;
     }
 
     let stride = width * 4;
     let mut bytes = vec![0u8; stride as usize * height as usize];
-    converter
-      .CopyPixels(std::ptr::null(), stride, &mut bytes)
-      .ok()?;
+    w(converter.CopyPixels(std::ptr::null(), stride, &mut bytes), "CopyPixels")?;
 
     let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
     for i in (0..bytes.len()).step_by(4) {

@@ -15,7 +15,6 @@ import { message, notification } from "ant-design-vue";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import CsToolsBar from "@/components/CsToolsBar/index.vue";
-import { useDailyReportBackgroundNotify } from "@/composables/useDailyReportBackgroundNotify";
 import { useIcloudSyncBackgroundNotify } from "@/composables/useIcloudSyncBackgroundAlert";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
@@ -32,7 +31,6 @@ const isCs = isTauri();
 const settingsStore = useSettingsStore();
 
 useIcloudSyncBackgroundNotify();
-useDailyReportBackgroundNotify();
 
 /** Ant Design 主题 token：跟随 settings.theme；字族/字色与 theme.scss 统一 */
 const antdTheme = computed(() => ({
@@ -50,12 +48,6 @@ const antdTheme = computed(() => ({
 /** 托盘等壳层事件 → 主窗内路由（不新开窗口） */
 function resolveAppNavigate(raw: string): string {
   switch (raw) {
-    case "today":
-      return "/daily-report/today";
-    case "history":
-      return "/daily-report/history";
-    case "settings":
-      return "/daily-report/settings";
     case "app-settings":
       return "/cs-settings";
     case "admin":
@@ -65,7 +57,7 @@ function resolveAppNavigate(raw: string): string {
     case "icloudSync":
       return "/album/icloudSync";
     default:
-      return raw.startsWith("/") ? raw : "/daily-report/today";
+      return raw.startsWith("/") ? raw : "/index";
   }
 }
 
@@ -88,7 +80,7 @@ onMounted(async () => {
   await ensureCsWindowMinInnerSize();
   const { listen } = await import("@tauri-apps/api/event");
   listen<string>("app:navigate", event => {
-    router.push(resolveAppNavigate(String(event.payload || "today")));
+    router.push(resolveAppNavigate(String(event.payload || "admin")));
   });
 });
 

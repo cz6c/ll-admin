@@ -28,37 +28,6 @@
   transform: translateY(6px);
 }
 
-/* 日报 empty↔详情、历史详情桥接 */
-.panel-fade-enter-active {
-  transition:
-    opacity var(--dur-panel) var(--ease-out),
-    transform var(--dur-panel) var(--ease-out);
-}
-
-.panel-fade-leave-active {
-  transition: opacity var(--dur-fade) var(--ease-out);
-}
-
-.panel-fade-enter-from {
-  opacity: 0;
-  transform: scale(0.97);
-}
-
-.panel-fade-leave-to {
-  opacity: 0;
-}
-
-/* 日报 Tab 切页：比主路由更短，避免 Tab 感觉迟钝 */
-.tab-fade-enter-active,
-.tab-fade-leave-active {
-  transition: opacity var(--dur-fade) var(--ease-out);
-}
-
-.tab-fade-enter-from,
-.tab-fade-leave-to {
-  opacity: 0;
-}
-
 /* breadcrumb transition */
 .breadcrumb-enter-active {
   transition:
@@ -84,10 +53,6 @@
   .fade-leave-active,
   .fade-transform-leave-active,
   .fade-transform-enter-active,
-  .panel-fade-enter-active,
-  .panel-fade-leave-active,
-  .tab-fade-enter-active,
-  .tab-fade-leave-active,
   .breadcrumb-enter-active,
   .breadcrumb-leave-active {
     transition: opacity 120ms ease !important;
@@ -95,7 +60,6 @@
 
   .fade-transform-enter-from,
   .fade-transform-leave-to,
-  .panel-fade-enter-from,
   .breadcrumb-enter-from,
   .breadcrumb-leave-to {
     transform: none !important;

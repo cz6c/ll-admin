@@ -7,7 +7,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { productConfig } from "@/config";
-import { isCsSettingsPath, isDailyReportPath } from "@/router/dailyReport";
+import { isCsSettingsPath } from "@/router/csPublic";
 import { isAlbumPath } from "@/router/album";
 import logo from "@/assets/images/logo.png";
 
@@ -18,14 +18,10 @@ const route = useRoute();
 const appWindow = getCurrentWindow();
 const appTitle = productConfig.title || "Ccode";
 
-const isDailyActive = computed(() => isDailyReportPath(route.path));
 const isAlbumActive = computed(() => isAlbumPath(route.path));
 const isSettingsActive = computed(() => isCsSettingsPath(route.path));
 const isAdminActive = computed(
-  () =>
-    !isDailyReportPath(route.path) &&
-    !isCsSettingsPath(route.path) &&
-    !isAlbumPath(route.path)
+  () => !isCsSettingsPath(route.path) && !isAlbumPath(route.path)
 );
 /** 最大化态：切换还原图标，并随窗口尺寸变化同步 */
 const isMaximized = ref(false);
@@ -41,10 +37,6 @@ async function syncMaximized() {
   } catch {
     /* Web 预览无 window API 时忽略 */
   }
-}
-
-function openDailyReport() {
-  router.push("/daily-report/today");
 }
 
 function openAdmin() {
@@ -128,7 +120,6 @@ onBeforeUnmount(() => {
       </div>
       <nav class="menu" aria-label="主入口">
         <button type="button" class="menu-item" :class="{ active: isAdminActive }" @click="openAdmin">管理后台</button>
-        <button type="button" class="menu-item" :class="{ active: isDailyActive }" @click="openDailyReport">工作日报</button>
         <button type="button" class="menu-item" :class="{ active: isAlbumActive }" @click="openAlbum">本地相册</button>
       </nav>
     </div>

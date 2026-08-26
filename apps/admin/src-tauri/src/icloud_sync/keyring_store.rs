@@ -3,7 +3,7 @@
 //! 适用：iCloud 登录前读取、auth 命令写入
 //!
 //! @note 密码仅在此模块与 sidecar 内存传输；不进 SQLite、不进 settings.json、禁止写入日志
-//! @note SERVICE 与 daily-report API Key 隔离，避免凭据混用
+//! @note SERVICE 与 AI API Key 隔离，避免凭据混用
 
 use std::fs;
 use std::path::PathBuf;

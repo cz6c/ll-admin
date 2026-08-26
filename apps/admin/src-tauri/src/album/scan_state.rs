@@ -11,10 +11,6 @@ pub struct ScanCancelToken {
 }
 
 impl ScanCancelToken {
-  pub fn reset(&self) {
-    self.cancelled.store(false, Ordering::SeqCst);
-  }
-
   pub fn cancel(&self) {
     self.cancelled.store(true, Ordering::SeqCst);
   }

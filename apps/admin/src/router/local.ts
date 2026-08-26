@@ -1,6 +1,6 @@
 /**
  * 本地侧栏菜单（Web / CS 均可）
- * 与 getRouters 按 path 去重后合并；工作日报不走侧栏，见 Navbar 操作栏
+ * 与 getRouters 按 path 去重后合并；CS 工具页不走侧栏，见 CsToolsBar
  * 系统监控 / 外部文档：非业务权限树，固定写死本地，不再走 sys_menu
  */
 export default [

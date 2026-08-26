@@ -1,5 +1,5 @@
 import { RouterEnum } from "@/router";
-import { isCsPublicPath, sanitizePostLoginRedirect } from "@/router/dailyReport";
+import { isCsPublicPath, sanitizePostLoginRedirect } from "@/router/csPublic";
 import { useAuthStore } from "@/store/modules/auth";
 import { usePermissionStore } from "@/store/modules/permission";
 import { getToken } from "@/utils/auth";
@@ -16,10 +16,11 @@ function setupPermissionGuard(router: Router) {
   // 不需要token的白名单
   const whitePathList: string[] = ["/login", "/test"];
 
-  router.beforeEach(async (to, from, next) => {
-    // 工作日报 / 应用设置为 CS 本机工具：不校验登录 / 服务端菜单权限
+  // Vue Router 4：用 return 导航，不要同时声明 next 参数（否则 return false 会触发 “next never called”）
+  router.beforeEach(async to => {
+    // 应用设置为 CS 本机工具：不校验登录 / 服务端菜单权限
     if (isCsPublicPath(to.path)) {
-      return next();
+      return true;
     }
 
     const authStore = useAuthStore();
@@ -30,40 +31,38 @@ function setupPermissionGuard(router: Router) {
       if (to.name === RouterEnum.BASE_LOGIN_NAME) {
         const raw = to.query?.redirect ? decodeURIComponent(to.query.redirect as string) : "/";
         const path = sanitizePostLoginRedirect(raw);
-        return next({ path });
+        return { path };
       }
       // 验证用户权限
       if (!authStore.userId) {
         try {
           await authStore.getLoginUserInfo();
           await usePermissionStore().initRouter();
-          // 这里不能直接 `next({ ...to })`，因为首次刷新动态路由页面时，`to`
+          // 这里不能直接 `return { ...to }`，因为首次刷新动态路由页面时，`to`
           // 可能已经被解析成 404 路由对象，继续展开会把 `name: NOT_FOUND`
           // 一并带上，导致注入完成后仍然命中 404。显式使用原始 path/query/hash
           // 重新匹配，才能让新注入的动态路由生效。
-          return next({
+          return {
             path: to.path,
             query: to.query,
             hash: to.hash,
             replace: true
-          });
+          };
         } catch {
           // 登录过期或登录无效，前端登出
           useAuthStore().webLogout();
           return false;
         }
-      } else {
-        return next();
       }
-    } else {
-      if (whitePathList.includes(to.path)) {
-        return next();
-      } else {
-        // 传入目标 path：避免 currentRoute 仍停在日报时把 redirect 写成日报地址
-        useAuthStore().webLogout(to.fullPath);
-        return false;
-      }
+      return true;
     }
+
+    if (whitePathList.includes(to.path)) {
+      return true;
+    }
+    // 传入目标 path：避免 currentRoute 仍停在工具页时把 redirect 写成工具页地址
+    useAuthStore().webLogout(to.fullPath);
+    return false;
   });
 }
 

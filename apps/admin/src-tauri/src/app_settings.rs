@@ -1,10 +1,11 @@
 //! 应用级本机配置
-//! 职责：开机自启、关闭到托盘、AI 接入（Base URL / Model / Key）；与日报业务设置隔离
-//! 适用：admin CS（Tauri）应用设置页与关窗/自启/总结流水线
+//! 职责：开机自启、关闭到托盘、AI 接入（Base URL / Model / Key）
+//! 适用：admin CS（Tauri）应用设置页与关窗/自启
 
 use std::fs;
 use std::path::PathBuf;
 
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -22,7 +23,7 @@ pub struct AppSettings {
   /// 模型名
   #[serde(default = "default_model_name")]
   pub model_name: String,
-  /// 无提交时是否仍调 AI（当前流水线固定不调；字段保留便于后续开关）
+  /// 无提交时是否仍调 AI（字段保留便于后续开关）
   #[serde(default)]
   pub call_ai_when_empty: bool,
 }
@@ -56,42 +57,18 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
   Ok(base.join("app-settings.json"))
 }
 
-fn migrate_from_daily(app: &AppHandle) -> AppSettings {
-  crate::daily_report::load_settings(app)
-    .map(|s| AppSettings {
-      minimize_to_tray_on_close: s.minimize_to_tray_on_close,
-      autostart: s.autostart,
-      model_base_url: s.model_base_url,
-      model_name: s.model_name,
-      call_ai_when_empty: s.call_ai_when_empty,
-    })
-    .unwrap_or_default()
-}
-
-/// 读取应用设置；文件不存在或缺少 AI 字段时从旧版日报设置迁移
+/// 读取应用设置；文件不存在时返回默认值并落盘
 pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
   let path = settings_path(app)?;
   if !path.exists() {
-    let migrated = migrate_from_daily(app);
-    let _ = save_settings(app, &migrated);
-    return Ok(migrated);
+    let default = AppSettings::default();
+    let _ = save_settings(app, &default);
+    return Ok(default);
   }
 
   let raw = fs::read_to_string(&path).map_err(|e| format!("读取应用设置失败: {e}"))?;
-  let value: serde_json::Value =
+  let settings: AppSettings =
     serde_json::from_str(&raw).map_err(|e| format!("解析应用设置失败: {e}"))?;
-  // 旧版 app-settings 仅有托盘/自启时补迁 AI 字段
-  let needs_ai_migrate = value.get("modelBaseUrl").is_none();
-  let mut settings: AppSettings =
-    serde_json::from_value(value).map_err(|e| format!("解析应用设置失败: {e}"))?;
-  if needs_ai_migrate {
-    if let Ok(daily) = crate::daily_report::load_settings(app) {
-      settings.model_base_url = daily.model_base_url;
-      settings.model_name = daily.model_name;
-      settings.call_ai_when_empty = daily.call_ai_when_empty;
-    }
-    let _ = save_settings(app, &settings);
-  }
   Ok(settings)
 }
 
@@ -118,6 +95,129 @@ fn sync_autostart(app: &AppHandle, want: bool) {
   }
 }
 
+// ===== AI API Key 钥匙串存取 =====
+//
+// 优先 OS keyring；Windows 等环境下 keyring 不可用时回退到应用数据目录文件。
+// keyring 3 须启用 windows-native 等 feature，否则无真实凭据后端，会出现
+// 「保存后本页显示已配置、切走再回来又未配置」——因从未真正落盘。
+//
+// @note service/user 名沿用日报历史命名，避免升级后老用户已配置的 Key 读不回。
+
+const KEYRING_SERVICE: &str = "com.ll.admin.daily-report";
+const KEYRING_USER: &str = "api-key";
+/// 回退文件名（仅本机 app_data，权限随用户目录）
+const KEY_FALLBACK_FILE: &str = "ai-api-key.local";
+
+fn keyring_entry() -> Result<Entry, String> {
+  Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| format!("打开凭据库失败: {e}"))
+}
+
+fn key_fallback_path(app: &AppHandle) -> Result<PathBuf, String> {
+  let base = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("无法解析应用数据目录: {e}"))?;
+  fs::create_dir_all(&base).map_err(|e| format!("创建应用数据目录失败: {e}"))?;
+  Ok(base.join(KEY_FALLBACK_FILE))
+}
+
+fn read_key_fallback(app: &AppHandle) -> Result<Option<String>, String> {
+  let path = key_fallback_path(app)?;
+  if !path.exists() {
+    return Ok(None);
+  }
+  let raw = fs::read_to_string(&path).map_err(|e| format!("读取本地 Key 回退文件失败: {e}"))?;
+  let key = raw.trim().to_string();
+  if key.is_empty() {
+    Ok(None)
+  } else {
+    Ok(Some(key))
+  }
+}
+
+fn write_key_fallback(app: &AppHandle, key: &str) -> Result<(), String> {
+  let path = key_fallback_path(app)?;
+  if key.is_empty() {
+    match fs::remove_file(&path) {
+      Ok(()) => Ok(()),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+      Err(e) => Err(format!("删除本地 Key 回退文件失败: {e}")),
+    }
+  } else {
+    fs::write(&path, key).map_err(|e| format!("写入本地 Key 回退文件失败: {e}"))
+  }
+}
+
+/// 读取 AI Key；未设置时返回 None
+pub fn get_ai_api_key(app: &AppHandle) -> Result<Option<String>, String> {
+  match keyring_entry() {
+    Ok(entry) => match entry.get_password() {
+      Ok(p) if !p.is_empty() => return Ok(Some(p)),
+      Ok(_) | Err(keyring::Error::NoEntry) => {}
+      Err(e) => {
+        log::warn!("keyring 读取失败，尝试回退文件: {e}");
+      }
+    },
+    Err(e) => {
+      log::warn!("打开 keyring 失败，尝试回退文件: {e}");
+    }
+  }
+  read_key_fallback(app)
+}
+
+/// 是否已配置非空 AI Key（钥匙串或回退文件）
+pub fn has_ai_api_key(app: &AppHandle) -> Result<bool, String> {
+  Ok(get_ai_api_key(app)?.is_some())
+}
+
+/// 写入或清空 AI Key（空字符串时删除）
+/// @note 同时写钥匙串与回退文件；钥匙串失败不阻断回退文件，保证切页后仍可读回
+pub fn set_ai_api_key(app: &AppHandle, key: &str) -> Result<(), String> {
+  let key = key.trim();
+  let mut keyring_err: Option<String> = None;
+
+  match keyring_entry() {
+    Ok(entry) => {
+      let kr = if key.is_empty() {
+        match entry.delete_credential() {
+          Ok(()) => Ok(()),
+          Err(keyring::Error::NoEntry) => Ok(()),
+          Err(e) => Err(format!("删除 API Key 失败: {e}")),
+        }
+      } else {
+        entry
+          .set_password(key)
+          .map_err(|e| format!("写入 API Key 失败: {e}"))
+      };
+      if let Err(e) = kr {
+        keyring_err = Some(e);
+      }
+    }
+    Err(e) => {
+      keyring_err = Some(e);
+    }
+  }
+
+  write_key_fallback(app, key)?;
+
+  // 读回校验，避免「写成功假象」
+  let stored = get_ai_api_key(app)?;
+  if key.is_empty() {
+    if stored.is_some() {
+      return Err("清空 API Key 后仍能读到旧值".into());
+    }
+  } else if stored.as_deref() != Some(key) {
+    let hint = keyring_err
+      .map(|e| format!("（钥匙串: {e}）"))
+      .unwrap_or_default();
+    return Err(format!("API Key 写入后无法读回{hint}"));
+  } else if let Some(e) = keyring_err {
+    log::warn!("API Key 已写入回退文件，钥匙串不可用: {e}");
+  }
+
+  Ok(())
+}
+
 #[tauri::command]
 pub fn app_settings_get(app: AppHandle) -> Result<AppSettings, String> {
   load_settings(&app)
@@ -128,4 +228,14 @@ pub fn app_settings_save(app: AppHandle, settings: AppSettings) -> Result<(), St
   save_settings(&app, &settings)?;
   sync_autostart(&app, settings.autostart);
   Ok(())
+}
+
+#[tauri::command]
+pub fn app_settings_set_ai_api_key(app: AppHandle, key: String) -> Result<(), String> {
+  set_ai_api_key(&app, &key)
+}
+
+#[tauri::command]
+pub fn app_settings_has_ai_api_key(app: AppHandle) -> Result<bool, String> {
+  has_ai_api_key(&app)
 }

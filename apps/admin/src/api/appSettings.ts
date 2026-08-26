@@ -1,7 +1,7 @@
 /**
  * CS 应用级设置 API
  * 职责：开机自启、关闭到托盘、AI 接入（Base URL / Model / Key）的 Tauri invoke
- * 适用：顶栏应用设置页；Key 仍走日报钥匙串命令
+ * 适用：顶栏应用设置页
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -32,13 +32,12 @@ export function saveAppSettings(settings: AppSettings) {
 
 /**
  * 写入 AI API Key（OS 钥匙串）
- * @note 复用 daily_report_set_api_key，避免拆两套钥匙串
  */
 export function setAppAiApiKey(key: string) {
-  return invoke<void>("daily_report_set_api_key", { key });
+  return invoke<void>("app_settings_set_ai_api_key", { key });
 }
 
 /** 是否已配置 AI API Key */
 export function hasAppAiApiKey() {
-  return invoke<boolean>("daily_report_has_api_key");
+  return invoke<boolean>("app_settings_has_ai_api_key");
 }

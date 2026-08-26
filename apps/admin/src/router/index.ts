@@ -2,7 +2,7 @@ import { createRouter, createWebHistory, createWebHashHistory } from "vue-router
 import type { RouteRecordRaw, RouterHistory } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
-import { dailyReportConstantRoutes } from "@/router/dailyReport";
+import { csPublicConstantRoutes } from "@/router/csPublic";
 import { albumConstantRoutes } from "@/router/album";
 import { icloudSyncConstantRoutes } from "@/router/icloudSync";
 import { staticRoutes } from "@/router/staticRoutes";
@@ -22,7 +22,7 @@ export enum RouterEnum {
   BASE_NOT_FOUND_NAME = "NOT_FOUND"
 }
 
-// 公共菜单（404 必须最后；CS 日报插在 404 前）
+// 公共菜单（404 必须最后；CS 应用设置插在 404 前）
 const routesList: AppRouteRecordRaw[] = [
   // 根路由
   {
@@ -76,8 +76,8 @@ const routesList: AppRouteRecordRaw[] = [
       }
     ]
   },
-  // CS 工作日报：静态路由、免登录；入口在 Navbar 操作栏
-  ...(isTauri() ? dailyReportConstantRoutes : []),
+  // CS 应用设置：静态路由、免登录；入口在 CsToolsBar 设置按钮
+  ...(isTauri() ? csPublicConstantRoutes : []),
   // CS 本地相册（含 iCloud 同步）：静态路由、免登录；入口在 CsToolsBar
   ...(isTauri() ? albumConstantRoutes : []),
   // CS iCloud 同步旧路径重定向

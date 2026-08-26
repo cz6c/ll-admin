@@ -5,30 +5,7 @@
 <script setup lang="ts">
 import LivePhotoPlayer from "@/components/LivePhotoPlayer/LivePhotoPlayer.vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-
-interface MediaFile {
-  path: string;
-  name: string;
-  kind: "image" | "video" | "livephoto";
-  size: number;
-  modified: number;
-  ext: string;
-  thumbPath?: string;
-  previewPath?: string;
-  videoPath?: string;
-}
-
-interface MediaGroup {
-  dirName: string;
-  dirPath: string;
-  relPath: string;
-  files: MediaFile[];
-}
-
-interface FlatFile {
-  file: MediaFile;
-  groupName: string;
-}
+import type { FlatFile, MediaFile, MediaGroup } from "./types";
 
 const props = defineProps<{
   groups: MediaGroup[];
@@ -41,6 +18,8 @@ const emit = defineEmits<{ close: [] }>();
 defineOptions({ name: "MediaViewer" });
 
 const currentIndex = ref(0);
+// 加载失败占位：切换时重置，避免上一张的失败态延续到下一张
+const loadFailed = ref(false);
 
 const flatFiles = computed<FlatFile[]>(() => {
   const result: FlatFile[] = [];
@@ -52,7 +31,7 @@ const flatFiles = computed<FlatFile[]>(() => {
   return result;
 });
 
-const current = computed(() => flatFiles.value[currentIndex.value]);
+const current = computed<FlatFile | null>(() => flatFiles.value[currentIndex.value] ?? null);
 
 function calcInitialIndex(): number {
   let idx = 0;
@@ -60,7 +39,7 @@ function calcInitialIndex(): number {
     idx += props.groups[g].files.length;
   }
   idx += props.initialFileIdx;
-  return Math.min(Math.max(0, idx), flatFiles.value.length - 1);
+  return Math.min(Math.max(0, idx), Math.max(0, flatFiles.value.length - 1));
 }
 
 function prev() {
@@ -93,6 +72,15 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
   return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
 }
+
+function onMediaError() {
+  loadFailed.value = true;
+}
+
+// 切换媒体时重置失败态
+watch(currentIndex, () => {
+  loadFailed.value = false;
+});
 
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
@@ -133,26 +121,52 @@ onBeforeUnmount(() => {
     </button>
 
     <div class="viewer-content" @click.stop>
-      <!-- 普通图片 -->
-      <img v-if="current.file.kind === 'image'" :src="imagePreviewSrc(current.file)" class="viewer-media viewer-img" alt="" />
+      <template v-if="current">
+        <!-- 加载失败占位 -->
+        <div v-if="loadFailed" class="viewer-failed">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.2">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+          <p class="failed-text">无法加载该文件</p>
+          <p class="failed-name">{{ current.file.name }}</p>
+        </div>
 
-      <!-- 实况照片（LivePhotosKit：长按/点击播放 MOV） -->
-      <div v-else-if="current.file.kind === 'livephoto'" class="live-container">
-        <LivePhotoPlayer
-          class="live-photo-player-host"
-          :key="current.file.path"
-          :photo-path="current.file.path"
-          :video-path="current.file.videoPath || ''"
-          :photo-preview-path="current.file.previewPath"
+        <!-- 普通图片 -->
+        <img
+          v-else-if="current.file.kind === 'image'"
+          :src="imagePreviewSrc(current.file)"
+          class="viewer-media viewer-img"
+          alt=""
+          @error="onMediaError"
         />
-        <span class="live-badge-viewer">Live</span>
-      </div>
 
-      <!-- 普通视频 -->
-      <video v-else :key="current.file.path" :src="getMediaSrc(current.file.path)" controls autoplay class="viewer-media viewer-video" />
+        <!-- 实况照片（LivePhotosKit：长按/点击播放 MOV） -->
+        <div v-else-if="current.file.kind === 'livephoto'" class="live-container">
+          <LivePhotoPlayer
+            class="live-photo-player-host"
+            :key="current.file.path"
+            :photo-path="current.file.path"
+            :video-path="current.file.videoPath || ''"
+            :photo-preview-path="current.file.previewPath"
+          />
+          <span class="live-badge-viewer">Live</span>
+        </div>
+
+        <!-- 普通视频 -->
+        <video
+          v-else
+          :key="current.file.path"
+          :src="getMediaSrc(current.file.path)"
+          controls
+          autoplay
+          class="viewer-media viewer-video"
+          @error="onMediaError"
+        />
+      </template>
     </div>
 
-    <div class="viewer-info">
+    <div v-if="current" class="viewer-info">
       <span class="info-name">{{ current.file.name }}</span>
       <span class="info-meta"> {{ current.groupName }} · {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }} </span>
     </div>
@@ -167,7 +181,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.95);
+  background: rgba(255, 255, 255, 0.96);
 }
 .viewer-close {
   position: absolute;
@@ -177,15 +191,15 @@ onBeforeUnmount(() => {
   height: 40px;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
   font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   &:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.12);
   }
 }
 .viewer-nav {
@@ -196,15 +210,15 @@ onBeforeUnmount(() => {
   height: 48px;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
   font-size: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   &:hover {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.12);
   }
 }
 .viewer-prev {
@@ -227,6 +241,26 @@ onBeforeUnmount(() => {
   max-height: 85vh;
   object-fit: contain;
   border-radius: 4px;
+}
+.viewer-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+}
+.failed-text {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.failed-name {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  word-break: break-all;
+  text-align: center;
+  max-width: 60vw;
 }
 .live-container {
   position: relative;
@@ -260,19 +294,19 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   padding: 12px 20px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.92));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
 }
 .info-name {
-  color: #fff;
+  color: var(--color-text);
   font-size: 13px;
   font-weight: 500;
 }
 .info-meta {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 </style>

@@ -1,7 +1,7 @@
 /**
- * CS 本机工具静态路由（本地相册 + iCloud 同步）
+ * CS 本机工具静态路由（本地相册）
  * 职责：免登录；独立壳布局与 admin Layout 隔离；主窗内路由
- * 适用：CS 顶栏「本地相册」入口（含 iCloud 同步 Tab）
+ * 适用：CS 顶栏「本地相册」入口（iCloud 同步已合并进相册页浮动触发区）
  */
 
 import type { AppRouteRecordRaw } from "#/utils";
@@ -26,18 +26,6 @@ export const albumConstantRoutes: AppRouteRecordRaw[] = [
         name: "AlbumGallery",
         component: () => import("@/views/album/index.vue"),
         meta: { title: "相册", noCache: true }
-      },
-      {
-        path: "/album/icloudSync",
-        name: "AlbumIcloudSync",
-        component: () => import("@/views/album/icloudSync.vue"),
-        meta: { title: "iCloud同步", noCache: true }
-      },
-      {
-        path: "/album/settings",
-        name: "AlbumSettings",
-        component: () => import("@/views/album/settings.vue"),
-        meta: { title: "设置", noCache: true }
       }
     ]
   }

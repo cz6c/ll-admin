@@ -208,7 +208,7 @@ function _useIcloudSyncJob() {
       return `文件已保存至：${outputDir.value}`;
     }
     if (showEmptyGuide.value) {
-      return "流程：登录 Apple ID → 在设置中确认落盘路径 → 点击开始同步。";
+      return "流程：登录 Apple ID → 点击开始同步。";
     }
     if (jobStatus.value === "running" && progress.value.filename) {
       return `当前：${progress.value.filename}${etaText.value ? ` · 预计剩余 ${etaText.value}` : ""}`;
@@ -227,6 +227,35 @@ function _useIcloudSyncJob() {
       return { color: "error", text: progress.value.failed > 0 ? String(progress.value.failed) : "失败" };
     }
     return null;
+  });
+
+  /** FAB 浮动触发区派生状态：图标/颜色/标签/进度/旋转 */
+  const fabState = computed(() => {
+    if (!isLoggedIn.value) {
+      return { icon: "cloud" as const, color: "default" as const, label: "登录", percent: 0, spin: false };
+    }
+    if (isCataloging.value) {
+      return { icon: "cloud" as const, color: "processing" as const, label: "扫描中", percent: 0, spin: true };
+    }
+    if (isRunning.value) {
+      return { icon: "cloud" as const, color: "processing" as const, label: `${progressPercent.value}%`, percent: progressPercent.value, spin: false };
+    }
+    if (isPaused.value) {
+      return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: progressPercent.value, spin: false };
+    }
+    if (isFailed.value) {
+      return {
+        icon: "warning" as const,
+        color: "error" as const,
+        label: progress.value.failed > 0 ? `失败 ${progress.value.failed}` : "失败",
+        percent: 0,
+        spin: false
+      };
+    }
+    if (isDone.value) {
+      return { icon: "check" as const, color: "success" as const, label: `${progress.value.done} 张`, percent: 100, spin: false };
+    }
+    return { icon: "cloud" as const, color: "default" as const, label: "同步", percent: 0, spin: false };
   });
 
   function syncCatalogTimer() {
@@ -446,7 +475,7 @@ function _useIcloudSyncJob() {
   }
 
   function goSettings(fromSync = true) {
-    router.push(fromSync ? { path: "/album/settings", query: { from: "sync" } } : "/album/settings");
+    router.push(fromSync ? { path: "/cs-settings", query: { from: "sync" } } : "/cs-settings");
   }
 
   async function openOutputFolder() {
@@ -671,6 +700,7 @@ function _useIcloudSyncJob() {
     statusHeadline,
     statusDescription,
     syncTabBadge,
+    fabState,
     primaryAction,
     hydrateFromStorage,
     loadAccountContext,

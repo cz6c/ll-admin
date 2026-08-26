@@ -227,7 +227,7 @@ export function formatAssetTaskError(raw: string | null | undefined): string {
 export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: false; message: string }> {
   const [albumRoot, settings, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncSettings(), getIcloudSyncAuthState()]);
   if (!albumRoot.trim()) {
-    return { ok: false, message: "请先在「设置」中配置相册根目录" };
+    return { ok: false, message: "请先在应用设置中配置相册根目录" };
   }
   const output = settings.outputDir.trim() || buildDefaultOutputDir(albumRoot);
   if (!output.trim()) {

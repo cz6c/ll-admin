@@ -1,6 +1,6 @@
 <!--
   CS 设置页底部保存条
-  职责：固定底栏「重新加载 / 保存」，供日报设置与应用设置复用
+  职责：固定底栏「重新加载 / 保存」，供应用设置页复用
 -->
 <script setup lang="ts">
 defineOptions({ name: "CsSaveBar" });

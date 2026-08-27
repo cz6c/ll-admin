@@ -5,6 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { adjustCloudListTotal, prepareCloudListRows } from "@/utils/icloudSyncCloudList";
 
 /** 同步任务视图：Library 与 Recents 互斥 */
 export type IcloudSyncJobView = "library" | "recents";
@@ -128,6 +129,56 @@ export interface IcloudSyncListAssetTasksResult {
   total: number;
 }
 
+/** 抽屉云注册表行（cloud_state 含派生 local_missing） */
+export interface IcloudSyncSyncAssetRow {
+  assetId: string;
+  part: string;
+  /** catalog 全局序号（Live still+mov 共享；与落盘 `{index:05d}_` 一致） */
+  indexNum: number;
+  /**
+   * catalog 排序键：Library≈拍摄时间，Recents≈加入图库时间（ISO8601）
+   * 列表「拍摄时间」列直接展示此字段
+   */
+  sortKey: string;
+  originalFilename: string;
+  /** Live Photo 配对 mov 文件名（catalog 同名时会推导 .MOV） */
+  liveMovFilename?: string | null;
+  /** Live Photo 配对 mov 的 job 内 download_status */
+  liveMovDownloadStatus?: string | null;
+  mediaKind: string;
+  livePairId?: string | null;
+  destPath?: string | null;
+  cloudState: string;
+  downloadStatus?: string | null;
+  lastSyncedAt?: number | null;
+  lastCatalogAt?: number | null;
+}
+
+export interface IcloudSyncLoadAssetsResult {
+  items: IcloudSyncSyncAssetRow[];
+  total: number;
+}
+
+export interface IcloudSyncCloudStateSummary {
+  cloudOnly: number;
+  synced: number;
+  modifiedCloud: number;
+  deletedCloudPending: number;
+  cloudDeleteQueued: number;
+  failedDelete: number;
+  localMissing: number;
+}
+
+export type IcloudSyncCloudStateFilter =
+  | "all"
+  | "cloud_only"
+  | "synced"
+  | "modified_cloud"
+  | "deleted_cloud_pending"
+  | "cloud_delete_queued"
+  | "local_missing"
+  | "failed_delete";
+
 /** 任务文件状态筛选 */
 export type IcloudSyncAssetTaskFilter = "all" | "pending" | "done" | "failed";
 
@@ -144,6 +195,32 @@ export const ICLOUD_SYNC_PROGRESS_EVENT = "icloud-sync://progress";
 
 /** Rust 推送的任务状态变更（done / failed / paused 等） */
 export const ICLOUD_SYNC_JOB_STATUS_EVENT = "icloud-sync://job-status";
+
+/** 云删入队单项 */
+export interface IcloudSyncDeleteAssetItem {
+  assetId: string;
+  part: string;
+}
+
+export interface IcloudSyncDeleteAssetsResult {
+  accepted: number;
+  rejected: number;
+  /** 缺 catalog CPL 元数据 */
+  rejectedMissingCpl: number;
+  /** 本地 dest_path 缺失或磁盘无文件 */
+  rejectedLocalMissing: number;
+}
+
+export interface IcloudSyncCancelCloudDeleteResult {
+  cancelled: number;
+}
+
+export interface IcloudSyncRetryCloudDeletesResult {
+  retried: number;
+}
+
+/** 云态变更后刷新 summary / 列表（catalog、下载完成等） */
+export const ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT = "icloud-sync://cloud-state-changed";
 
 /** 前端持久化当前任务 id，供断点续传与 paused_session 检测 */
 export const ICLOUD_SYNC_ACTIVE_JOB_KEY = "icloud-sync.activeJobId";
@@ -163,7 +240,8 @@ export const ICLOUD_SYNC_ERROR_CODES = {
   SIDECAR_CRASHED: "sidecar_crashed",
   ACCOUNT_MISMATCH: "account_mismatch",
   ALREADY_LOGGED_IN: "already_logged_in",
-  DOMAIN_MISMATCH: "domain_mismatch"
+  DOMAIN_MISMATCH: "domain_mismatch",
+  DELETE_FAILED: "delete_failed"
 } as const;
 
 const ERROR_USER_MESSAGES: Record<string, string> = {
@@ -178,7 +256,8 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED]: "同步引擎异常退出，请重新登录后继续",
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_MISMATCH]: "当前 Apple ID 与任务创建账号不一致，请开始新同步",
   [ICLOUD_SYNC_ERROR_CODES.ALREADY_LOGGED_IN]: "已处于登录状态，请先退出后再登录",
-  [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "iCloud 区域与 Apple ID 不匹配，请切换区域后重新登录"
+  [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "iCloud 区域与 Apple ID 不匹配，请切换区域后重新登录",
+  [ICLOUD_SYNC_ERROR_CODES.DELETE_FAILED]: "删除云端照片失败，请稍后重试"
 };
 
 /**
@@ -285,9 +364,12 @@ export function pingIcloudSync() {
   return invoke<{ protocol: number; agent: string }>("icloud_sync_ping");
 }
 
+/** 同步任务模式：全量首次 / 增量检查新照片 */
+export type IcloudSyncJobMode = "full" | "incremental";
+
 /** 新建同步任务：catalog 一次 → 后台串行下载（固定图库视图） */
-export function startIcloudSyncJob(view: IcloudSyncJobView = "library") {
-  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view });
+export function startIcloudSyncJob(view: IcloudSyncJobView = "library", mode: IcloudSyncJobMode = "full") {
+  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view, mode });
 }
 
 /** 从断点续传（paused_session / paused_user 等）；session 失效时需用户已重新登录 */
@@ -327,6 +409,92 @@ export function listIcloudSyncAssetTasks(
 /** 丢弃本地同步任务（运行中会先请求暂停）；用于账号不一致或「开始新同步」 */
 export function discardIcloudSyncJob(jobId: number) {
   return invoke<void>("icloud_sync_discard_job", { jobId });
+}
+
+/** 分页加载跨 job 云资产列表（抽屉主列表；Live 在应用层合并展示） */
+export function loadIcloudSyncAssets(
+  options: {
+    offset?: number;
+    limit?: number;
+    cloudState?: IcloudSyncCloudStateFilter;
+    /** YYYY-MM-DD，按 sortKey 前缀筛选拍摄/加入时间 */
+    dateFrom?: string;
+    dateTo?: string;
+  } = {}
+) {
+  return invoke<IcloudSyncLoadAssetsResult>("icloud_sync_load_assets", {
+    offset: options.offset ?? 0,
+    limit: options.limit ?? 50,
+    cloudState: options.cloudState && options.cloudState !== "all" ? options.cloudState : null,
+    dateFrom: options.dateFrom?.trim() || null,
+    dateTo: options.dateTo?.trim() || null
+  });
+}
+
+/** 抽屉列表：合并 Live 行 + 展示用 rowKey；raw 中 mov 行兜底并入 liveMovFilename */
+export async function loadIcloudSyncCloudList(options: Parameters<typeof loadIcloudSyncAssets>[0] = {}) {
+  const raw = await loadIcloudSyncAssets(options);
+  const movFilenameByAsset = new Map<string, string>();
+  const movDownloadByAsset = new Map<string, string>();
+  for (const row of raw.items) {
+    if (row.part === "mov") {
+      movFilenameByAsset.set(row.assetId, row.originalFilename);
+      if (row.downloadStatus) movDownloadByAsset.set(row.assetId, row.downloadStatus);
+    }
+  }
+  const items = prepareCloudListRows(raw.items).map(row => {
+    const movName = movFilenameByAsset.get(row.assetId);
+    const movDl = movDownloadByAsset.get(row.assetId);
+    return {
+      ...row,
+      liveMovFilename: row.liveMovFilename?.trim() || movName || row.liveMovFilename,
+      liveMovDownloadStatus: row.liveMovDownloadStatus ?? movDl ?? row.liveMovDownloadStatus
+    };
+  });
+  return {
+    items,
+    total: adjustCloudListTotal(raw.total, raw.items)
+  };
+}
+
+/** cloud_state 汇总；checkDisk=true 时懒算 local_missing */
+export function getIcloudSyncCloudStateSummary(checkDisk = false) {
+  return invoke<IcloudSyncCloudStateSummary>("icloud_sync_get_cloud_state_summary", { checkDisk });
+}
+
+/** 批量删云入队（Modal 确认后调用；Live still 会自动带上 mov） */
+export function deleteIcloudSyncAssets(items: IcloudSyncDeleteAssetItem[], reason = "user_batch") {
+  return invoke<IcloudSyncDeleteAssetsResult>("icloud_sync_delete_assets", {
+    items: items.map(item => ({ assetId: item.assetId, part: item.part })),
+    reason
+  });
+}
+
+/** 已同步全部入队删云（跨页；仍校验本地文件） */
+export function deleteAllSyncedIcloudAssets(reason = "user_all_synced") {
+  return invoke<IcloudSyncDeleteAssetsResult>("icloud_sync_delete_all_synced", { reason });
+}
+
+/** 撤销 pending 云删 */
+export function cancelIcloudSyncCloudDelete(items: IcloudSyncDeleteAssetItem[]) {
+  return invoke<IcloudSyncCancelCloudDeleteResult>("icloud_sync_cancel_cloud_delete", {
+    items: items.map(item => ({ assetId: item.assetId, part: item.part }))
+  });
+}
+
+/** 将 failed_delete 重新入队 */
+export function retryIcloudSyncCloudDeletes() {
+  return invoke<IcloudSyncRetryCloudDeletesResult>("icloud_sync_retry_cloud_deletes");
+}
+
+/** 移除本地绑定（不删盘、不删云） */
+export function clearIcloudSyncLocalBinding(assetId: string, part: string) {
+  return invoke<boolean>("icloud_sync_clear_local_binding", { assetId, part });
+}
+
+/** 删除本地文件及 media.db 索引（不触碰 iCloud sync） */
+export function deleteAlbumLocal(paths: string[]) {
+  return invoke<number>("album_delete_local", { paths });
 }
 
 /**

@@ -1,12 +1,12 @@
 # iCloud 同步 — Apple ID 登录流程
 
 > **职责：** 用户显式登录一次 → 拿到 WEBAUTH → 同步只用 `auth_probe`（无密码）。  
-> **组件：** `IcloudSyncAuthModal.vue`  
+> **组件：** `components/IcloudSyncAuthModal.vue`  
 > **实现：** `icloud_sync/mod.rs` · sidecar `agent.py` / `icloudAuth.py`（pyicloud_ipd @ icloudpd v1.32.3）  
 > **第一优先级：锁号风险最低**（少打 Apple 登录 API）  
-> **对齐：** 2026-08-26
+> **对齐：** 2026-08-27
 
-姊妹文档：[下载](../../views/album/downloadFlow.md) · [本地扫描](../../views/album/loadingFlow.md)
+姊妹文档：[云同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
 
 ---
 
@@ -74,7 +74,7 @@ Need2FA 时：**禁止再点「登录」**；先换码，连续失败则 logout 
 | `domain_mismatch` | 设置切 com/cn → logout → 完整重登 |
 | `account_locked` / `rate_limited` | **立即停止** |
 
-> 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [downloadFlow](../../views/album/downloadFlow.md)。
+> 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [cloudSyncFlow](./cloudSyncFlow.md)。
 
 ### session 探测（同步入口）
 

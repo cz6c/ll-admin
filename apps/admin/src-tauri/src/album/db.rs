@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::types::{MediaFile, MediaGroup, MediaKind};
 
@@ -344,6 +344,33 @@ pub fn clear_all_cache_paths(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("清空缓存路径失败: {e}"))?;
   Ok(())
+}
+
+/// 读取单条 media 的伴生路径（Live Photo 的 mov 等）
+pub fn get_media_companion_paths(
+  conn: &Connection,
+  path: &str,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+  match conn
+    .query_row(
+      "SELECT thumb_path, preview_path, video_path FROM media WHERE path = ?1",
+      params![path],
+      |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )
+    .optional()
+    .map_err(|e| format!("读取媒体索引失败: {e}"))?
+  {
+    Some(row) => Ok(row),
+    None => Ok((None, None, None)),
+  }
+}
+
+/// 删除 media 索引行；返回是否删到行
+pub fn delete_media_by_path(conn: &Connection, path: &str) -> Result<bool, String> {
+  let n = conn
+    .execute("DELETE FROM media WHERE path = ?1", params![path])
+    .map_err(|e| format!("删除媒体索引失败: {e}"))?;
+  Ok(n > 0)
 }
 
 /// 读取某根目录下所有 path → fail_count（供 pipeline 跳过反复失败的坏文件）

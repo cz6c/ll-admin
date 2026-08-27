@@ -28,6 +28,7 @@ CODE_NOT_IMPLEMENTED = "not_implemented"
 CODE_CATALOG_SORT_MISSING = "catalog_sort_missing"
 CODE_LIVE_BIND_MISSING = "live_bind_missing"
 CODE_DOWNLOAD_FAILED = "download_failed"
+CODE_DELETE_FAILED = "delete_failed"
 CODE_DOMAIN_MISMATCH = "domain_mismatch"
 
 

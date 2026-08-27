@@ -14,14 +14,16 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use super::ensure_sidecar_authenticated;
+use super::catalog_diff::classify_catalog_rows;
 use super::db::{
-  count_assets_by_status, discard_job, get_job, insert_assets, insert_job, job_has_assets,
-  list_asset_tasks, list_failed_assets, list_pending_assets, mark_asset_outcome, mark_asset_status,
-  open_db, reset_failed_to_pending, update_job_status,
+  apply_catalog_delta, count_assets_by_status, discard_job, finalize_job_download, get_job,
+  insert_job, job_has_assets, list_asset_tasks, list_failed_assets, list_pending_assets,
+  load_existing_baselines, mark_asset_outcome, mark_asset_status, mark_catalog_deletions,
+  open_db, reset_failed_to_pending, set_job_catalog_counts, state_db_path, update_job_status,
 };
 use super::naming::format_asset_filename;
 use super::settings::{
-  icloud_sync_dir, load_settings, normalize_concurrency, resolve_default_output_dir,
+  load_settings, normalize_concurrency, resolve_default_output_dir,
 };
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
 use super::types::{
@@ -32,6 +34,8 @@ use super::types::{
 const PROGRESS_EVENT: &str = "icloud-sync://progress";
 /// 任务状态变更事件；前端据此做 notify 门控与同步页 UI 刷新
 const JOB_STATUS_EVENT: &str = "icloud-sync://job-status";
+/// catalog / 下载完成 cloud_state 变更后刷新抽屉 summary
+pub const CLOUD_STATE_CHANGED_EVENT: &str = "icloud-sync://cloud-state-changed";
 /// 批次之间最小间隔，降低 Apple 限流概率
 const MIN_BATCH_GAP_MS: u64 = 400;
 
@@ -45,6 +49,10 @@ pub struct CatalogItem {
   pub capture_at: Option<String>,
   pub added_at: Option<String>,
   pub parts: Vec<String>,
+  /// CloudKit CPLAsset.recordName；catalog 时落库，删云只读库
+  pub cpl_asset_record_name: Option<String>,
+  /// catalog 时的 recordChangeTag；可按 recordName 定点刷新
+  pub cpl_asset_change_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,8 +116,12 @@ fn is_pause_requested() -> bool {
     .unwrap_or(false)
 }
 
-fn state_db_path(app: &AppHandle) -> Result<PathBuf, String> {
-  Ok(icloud_sync_dir(app)?.join("state.db"))
+/// 下载 worker 是否占用全局槽位（云删 worker 需让路）
+pub fn is_download_worker_active() -> bool {
+  queue_runner()
+    .lock()
+    .map(|r| r.active_job_id.is_some())
+    .unwrap_or(false)
 }
 
 /// 任务所属 Apple ID 必须与 settings 当前账号一致（单账号换号后旧任务不可续传）
@@ -164,7 +176,6 @@ fn validate_catalog_item(item: &CatalogItem, view: JobView) -> Result<(), String
 
 /// 将已排序 catalog 转为 SQLite 资产行；Live still+mov 共享 index_num
 pub fn catalog_to_asset_rows(
-  job_id: i64,
   view: JobView,
   items: &[CatalogItem],
 ) -> Result<Vec<AssetRow>, String> {
@@ -178,7 +189,7 @@ pub fn catalog_to_asset_rows(
       let asset_part = map_catalog_part(item.media_kind, part)?;
       rows.push(AssetRow {
         id: 0,
-        job_id,
+        apple_id: String::new(),
         asset_id: item.asset_id.clone(),
         sort_key: sort_key(item, view),
         original_filename: item.filename.clone(),
@@ -186,10 +197,16 @@ pub fn catalog_to_asset_rows(
         live_pair_id: item.live_pair_id.clone(),
         index_num,
         part: asset_part,
-        status: AssetStatus::Pending,
+        download_status: Some(AssetStatus::Pending),
+        active_job_id: None,
         dest_path: None,
+        cloud_state: super::types::CloudState::CloudOnly,
+        last_synced_at: None,
+        last_catalog_at: None,
         last_error: None,
         attempt_count: 0,
+        cpl_asset_record_name: item.cpl_asset_record_name.clone(),
+        cpl_asset_change_tag: item.cpl_asset_change_tag.clone(),
       });
     }
   }
@@ -251,6 +268,16 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
             .collect()
         })
         .unwrap_or_default();
+      let cpl_asset_record_name = value
+        .get("cpl_asset_record_name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+      let cpl_asset_change_tag = value
+        .get("cpl_asset_change_tag")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
       Ok(CatalogItem {
         asset_id,
@@ -260,6 +287,8 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         capture_at,
         added_at,
         parts,
+        cpl_asset_record_name,
+        cpl_asset_change_tag,
       })
     })
     .collect()
@@ -392,6 +421,7 @@ fn reconcile_job_with_disk(
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
   if pending == 0 && failed == 0 && done > 0 {
     update_job_status(conn, job_id, JobStatus::Done)?;
+    finalize_job_download(conn, job_id)?;
     return Ok(true);
   }
   Ok(false)
@@ -475,6 +505,37 @@ fn fetch_catalog(
 
   let raw_items = event.items.ok_or_else(|| "catalog 响应缺少 items".to_string())?;
   parse_catalog_items(&raw_items)
+}
+
+fn emit_cloud_state_changed(app: &AppHandle) {
+  let _ = app.emit(CLOUD_STATE_CHANGED_EVENT, ());
+}
+
+/// catalog 落库：降级 B diff → apply_catalog_delta + 标记删除
+fn persist_catalog_delta(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  job_id: i64,
+  apple_id: &str,
+  view: JobView,
+  catalog_items: &[CatalogItem],
+) -> Result<(), String> {
+  let rows = catalog_to_asset_rows(view, catalog_items)?;
+  let existing = load_existing_baselines(conn, apple_id)?;
+  let (classified, catalog_keys) = classify_catalog_rows(&rows, &existing);
+  let mut summary = apply_catalog_delta(conn, job_id, apple_id, &classified)?;
+  summary.deleted = mark_catalog_deletions(conn, apple_id, &catalog_keys)?;
+  set_job_catalog_counts(conn, job_id)?;
+  log::info!(
+    "icloud catalog delta job {job_id}: added={} modified={} unchanged={} deleted={} enqueued={}",
+    summary.added,
+    summary.modified,
+    summary.unchanged,
+    summary.deleted,
+    summary.enqueued
+  );
+  emit_cloud_state_changed(app);
+  Ok(())
 }
 
 fn try_claim_job(job_id: i64) -> Result<(), String> {
@@ -918,8 +979,7 @@ fn spawn_catalog_then_download(
         return Err("catalog 为空".to_string());
       }
       let conn = open_db(&db_path)?;
-      let assets = catalog_to_asset_rows(job_id, view, &catalog_items)?;
-      insert_assets(&conn, &assets)?;
+      persist_catalog_delta(&app, &conn, job_id, &apple_id, view, &catalog_items)?;
       set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
       spawn_download_loop(app.clone(), job_id, client.clone());
       Ok(())
@@ -938,8 +998,17 @@ fn spawn_catalog_then_download(
 fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
   let job = get_job(conn, job_id)?
     .ok_or_else(|| format!("job {job_id} 不存在"))?;
-  let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
-  let total = done + failed + pending;
+  let (done, failed, pending, total) = if job.status == JobStatus::Done {
+    (
+      job.done_count,
+      job.failed_count,
+      job.pending_count,
+      job.total_count,
+    )
+  } else {
+    let (d, f, p) = count_assets_by_status(conn, job_id)?;
+    (d, f, p, d + f + p)
+  };
   Ok(IcloudSyncJobStatusResult {
     job_id,
     status: job.status,
@@ -970,6 +1039,10 @@ fn set_job_status(
   status: JobStatus,
 ) -> Result<(), String> {
   update_job_status(conn, job_id, status)?;
+  if status == JobStatus::Done {
+    finalize_job_download(conn, job_id)?;
+    emit_cloud_state_changed(app);
+  }
   emit_job_status(app, conn, job_id);
   Ok(())
 }
@@ -979,6 +1052,7 @@ fn set_job_status(
 pub fn icloud_sync_start_job(
   app: AppHandle,
   view: JobView,
+  mode: Option<String>,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncStartJobResult, String> {
   let client = sidecar.client();
@@ -994,6 +1068,14 @@ pub fn icloud_sync_start_job(
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
   let created_at = chrono::Utc::now().timestamp();
+  let job_mode = mode
+    .as_deref()
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .unwrap_or("full");
+  if job_mode != "full" && job_mode != "incremental" {
+    return Err(format!("无效 sync mode: {job_mode}"));
+  }
   let job_id = insert_job(
     &conn,
     view,
@@ -1001,6 +1083,7 @@ pub fn icloud_sync_start_job(
     &apple_id,
     JobStatus::Cataloging,
     created_at,
+    job_mode,
   )?;
   emit_job_status(&app, &conn, job_id);
 
@@ -1205,6 +1288,8 @@ mod tests {
       capture_at: Some(capture.into()),
       added_at: Some(added.into()),
       parts: vec!["still".into()],
+      cpl_asset_record_name: Some(format!("CPL-{id}")),
+      cpl_asset_change_tag: Some("t".into()),
     }
   }
 
@@ -1217,6 +1302,8 @@ mod tests {
       capture_at: Some(capture.into()),
       added_at: Some(added.into()),
       parts: vec!["still".into(), "mov".into()],
+      cpl_asset_record_name: Some(format!("CPL-{id}")),
+      cpl_asset_change_tag: Some("t".into()),
     }
   }
 
@@ -1229,7 +1316,7 @@ mod tests {
       live("L1", "LP1", "2024-01-03T00:00:00Z", "2024-01-04T00:00:00Z"),
     ];
 
-    let rows = catalog_to_asset_rows(1, JobView::Library, &items).expect("rows");
+    let rows = catalog_to_asset_rows(JobView::Library, &items).expect("rows");
     assert_eq!(rows.len(), 4);
 
     let p1: Vec<_> = rows.iter().filter(|r| r.asset_id == "P1").collect();
@@ -1252,7 +1339,7 @@ mod tests {
   fn live_without_pair_id_fails_catalog() {
     let mut item = live("L1", "LP1", "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z");
     item.live_pair_id = None;
-    let err = catalog_to_asset_rows(1, JobView::Library, std::slice::from_ref(&item))
+    let err = catalog_to_asset_rows(JobView::Library, std::slice::from_ref(&item))
       .expect_err("must fail");
     assert_eq!(err, error_codes::LIVE_BIND_MISSING);
   }
@@ -1275,7 +1362,7 @@ mod tests {
       photo("P2", "2024-01-05T00:00:00Z", "2024-01-02T00:00:00Z"),
       photo("P1", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
     ];
-    let rows = catalog_to_asset_rows(1, JobView::Recents, &items).expect("rows");
+    let rows = catalog_to_asset_rows(JobView::Recents, &items).expect("rows");
     let p1 = rows.iter().find(|r| r.asset_id == "P1").expect("p1");
     let p2 = rows.iter().find(|r| r.asset_id == "P2").expect("p2");
     assert_eq!(p1.index_num, 1);
@@ -1304,7 +1391,7 @@ mod tests {
 
   #[test]
   fn mark_asset_done_if_on_disk_requires_exact_dest_path() {
-    use super::super::db::{insert_assets, insert_job, open_db};
+    use super::super::db::{insert_job, open_db, upsert_catalog_assets};
     use rusqlite::params;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1329,12 +1416,13 @@ mod tests {
       "user@icloud.com",
       JobStatus::Pending,
       1,
+      "full",
     )
     .expect("job");
 
     let mut asset = AssetRow {
       id: 0,
-      job_id,
+      apple_id: String::new(),
       asset_id: "A31".into(),
       sort_key: "2026-01-01".into(),
       original_filename: "微信图片_20260821145301_14_2.jpg".into(),
@@ -1342,14 +1430,24 @@ mod tests {
       live_pair_id: None,
       index_num: 31,
       part: AssetPart::Full,
-      status: AssetStatus::Pending,
+      download_status: Some(AssetStatus::Pending),
+      active_job_id: None,
       dest_path: None,
+      cloud_state: super::super::types::CloudState::CloudOnly,
+      last_synced_at: None,
+      last_catalog_at: None,
       last_error: None,
       attempt_count: 0,
+      cpl_asset_record_name: None,
+      cpl_asset_change_tag: None,
     };
-    insert_assets(&conn, std::slice::from_ref(&asset)).expect("insert");
+    upsert_catalog_assets(&conn, job_id, "user@icloud.com", std::slice::from_ref(&asset)).expect("insert");
     asset.id = conn
-      .query_row("SELECT id FROM assets WHERE job_id = ?1", params![job_id], |r| r.get(0))
+      .query_row(
+        "SELECT id FROM assets WHERE active_job_id = ?1",
+        params![job_id],
+        |r| r.get(0),
+      )
       .expect("asset id");
 
     assert!(

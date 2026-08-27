@@ -53,6 +53,7 @@ pub fn run() {
       album::album_save_settings,
       album::album_scan,
       album::album_cancel_scan,
+      album::album_delete_local,
       icloud_sync::icloud_sync_ping,
       icloud_sync::icloud_sync_get_settings,
       icloud_sync::icloud_sync_save_settings,
@@ -68,6 +69,13 @@ pub fn run() {
       icloud_sync::queue::icloud_sync_list_failed_assets,
       icloud_sync::queue::icloud_sync_list_asset_tasks,
       icloud_sync::queue::icloud_sync_discard_job,
+      icloud_sync::cloud_assets::icloud_sync_load_assets,
+      icloud_sync::cloud_assets::icloud_sync_get_cloud_state_summary,
+      icloud_sync::cloud_delete::icloud_sync_delete_assets,
+      icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
+      icloud_sync::cloud_delete::icloud_sync_cancel_cloud_delete,
+      icloud_sync::cloud_delete::icloud_sync_retry_cloud_deletes,
+      icloud_sync::cloud_delete::icloud_sync_clear_local_binding,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -114,6 +122,11 @@ pub fn run() {
           }
         })
         .build(app)?;
+
+      icloud_sync::init_cloud_delete_worker(
+        handle.clone(),
+        handle.state::<icloud_sync::SidecarClientHandle>().client(),
+      );
 
       Ok(())
     })

@@ -401,7 +401,64 @@ def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypat
     assert agent._AUTH_STATE.last_validate_path == "validate_2fa_code:trust_retry"
 
 
-def test_batch_download_lookups_uncached_asset_ids(monkeypatch) -> None:
+def test_delete_assets_mock_returns_ok_per_item() -> None:
+    agent = _load_agent(mock=True)
+    ev = agent._dispatch(
+        {
+            "cmd": "delete_assets",
+            "items": [
+                {"asset_id": "A1", "part": "still"},
+                {"asset_id": "A1", "part": "mov"},
+            ],
+        }
+    )
+    assert ev["type"] == "done"
+    assert ev["cmd"] == "delete_assets"
+    assert len(ev["results"]) == 2
+    assert all(row.get("ok") is True for row in ev["results"])
+
+
+def test_delete_assets_live_dedupes_and_maps_parts(monkeypatch) -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    agent._AUTH_STATE.api = object()
+    agent._AUTH_STATE.apple_id = "a@b.com"
+    agent._AUTH_STATE.session_dir = "/tmp/s"
+    agent._AUTH_STATE.waiting_2fa = False
+
+    calls: list[tuple[str, str | None]] = []
+
+    def _fake_delete(_api: object, record_name: str, change_tag: str | None = None) -> None:
+        calls.append((record_name, change_tag))
+
+    monkeypatch.setattr(agent.ipd_photos, "delete_cpl_asset_by_record", _fake_delete)
+    monkeypatch.setattr(agent, "_ensure_api", lambda *_a, **_k: object())
+
+    ev = agent._dispatch(
+        {
+            "cmd": "delete_assets",
+            "apple_id": "a@b.com",
+            "session_dir": "/tmp/s",
+            "items": [
+                {
+                    "asset_id": "A1",
+                    "part": "still",
+                    "cpl_asset_record_name": "CPL-A1",
+                    "cpl_asset_change_tag": "t1",
+                },
+                {
+                    "asset_id": "A1",
+                    "part": "mov",
+                    "cpl_asset_record_name": "CPL-A1",
+                    "cpl_asset_change_tag": "t1",
+                },
+            ],
+        }
+    )
+    assert ev["type"] == "done"
+    assert [r["ok"] for r in ev["results"]] == [True, True]
+    assert calls == [("CPL-A1", "t1")]
+
     agent = _load_agent(mock=True)
     agent._reset_auth_state()
 

@@ -145,7 +145,8 @@ pub fn resolve_default_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, St
   Ok(Some(Path::new(root_dir.trim()).join("iCloudSync")))
 }
 
-fn load_album_root_dir(app: &AppHandle) -> Result<String, String> {
+/// 读取相册根目录（用于 audit 路径等）
+pub fn load_album_root_dir(app: &AppHandle) -> Result<String, String> {
   let base = app
     .path()
     .app_data_dir()

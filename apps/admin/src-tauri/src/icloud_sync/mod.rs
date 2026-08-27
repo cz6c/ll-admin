@@ -2,6 +2,9 @@
 //! 职责：设置、凭据、SQLite 断点、命名规则、sidecar 队列与 Tauri 命令
 //! 适用：admin CS（Tauri）个人工具，不进 Web / server
 
+mod catalog_diff;
+pub mod cloud_assets;
+pub mod cloud_delete;
 mod db;
 mod keyring_store;
 mod naming;
@@ -15,6 +18,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
+pub use cloud_delete::init_cloud_delete_worker;
 pub use queue::SidecarClientHandle;
 use settings::{
   clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain, require_consent,

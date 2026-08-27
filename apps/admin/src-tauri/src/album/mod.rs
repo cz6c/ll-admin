@@ -243,3 +243,51 @@ pub async fn album_scan(
 
   Ok(groups)
 }
+
+/// 删除本地媒体文件及 media.db 索引（不触碰 iCloud sync assets）
+/// @param paths 主文件绝对路径；Live Photo 会一并删除 video_path
+#[tauri::command]
+pub fn album_delete_local(
+  app: AppHandle,
+  state: State<'_, Mutex<AlbumState>>,
+  paths: Vec<String>,
+) -> Result<u32, String> {
+  if paths.is_empty() {
+    return Ok(0);
+  }
+  let album_data_dir = album_dir(&app)?;
+  let mut deleted = 0u32;
+  let conn = db::open_db(&album_data_dir)?;
+
+  for path in paths {
+    let path = path.trim();
+    if path.is_empty() {
+      continue;
+    }
+    let (thumb, preview, video) = db::get_media_companion_paths(&conn, path)?;
+    let mut to_remove: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
+    if let Some(v) = video.filter(|s| !s.is_empty() && s != path) {
+      to_remove.push(std::path::PathBuf::from(v));
+    }
+    for p in [thumb, preview].into_iter().flatten() {
+      if !p.is_empty() {
+        to_remove.push(std::path::PathBuf::from(p));
+      }
+    }
+    for p in &to_remove {
+      if p.is_file() {
+        std::fs::remove_file(p).map_err(|e| format!("删除文件失败 {}: {e}", p.display()))?;
+      }
+    }
+    if db::delete_media_by_path(&conn, path)? {
+      deleted += 1;
+    }
+  }
+
+  if deleted > 0 {
+    if let Ok(guard) = state.lock() {
+      guard.dirty.store(true, Ordering::SeqCst);
+    }
+  }
+  Ok(deleted)
+}

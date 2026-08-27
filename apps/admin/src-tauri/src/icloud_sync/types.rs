@@ -220,14 +220,101 @@ pub struct JobRow {
   pub output_dir: String,
   pub apple_id: String,
   pub status: JobStatus,
+  pub mode: String,
   pub created_at: i64,
+  pub finished_at: Option<i64>,
+  pub total_count: u32,
+  pub done_count: u32,
+  pub failed_count: u32,
+  pub pending_count: u32,
+}
+
+/// 云端资产持久态（写入 assets.cloud_state）
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudState {
+  CloudOnly,
+  Synced,
+  ModifiedCloud,
+  DeletedCloudPending,
+  CloudDeleteQueued,
+  FailedDelete,
+}
+
+impl CloudState {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::CloudOnly => "cloud_only",
+      Self::Synced => "synced",
+      Self::ModifiedCloud => "modified_cloud",
+      Self::DeletedCloudPending => "deleted_cloud_pending",
+      Self::CloudDeleteQueued => "cloud_delete_queued",
+      Self::FailedDelete => "failed_delete",
+    }
+  }
+
+  pub fn parse(s: &str) -> Option<Self> {
+    match s {
+      "cloud_only" => Some(Self::CloudOnly),
+      "synced" => Some(Self::Synced),
+      "modified_cloud" => Some(Self::ModifiedCloud),
+      "deleted_cloud_pending" => Some(Self::DeletedCloudPending),
+      "cloud_delete_queued" => Some(Self::CloudDeleteQueued),
+      "failed_delete" => Some(Self::FailedDelete),
+      _ => None,
+    }
+  }
+}
+
+/// 抽屉云管理列表行（含派生 local_missing）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncAssetRow {
+  pub asset_id: String,
+  pub part: String,
+  /// catalog 全局序号（Live still+mov 共享；与落盘 `{index:05d}_` 一致）
+  pub index_num: i32,
+  /// catalog 排序键：Library=拍摄时间(capture_at)，Recents=加入时间(added_at)
+  pub sort_key: String,
+  pub original_filename: String,
+  /// Live Photo 配对 mov 文件名；catalog 常 still/mov 同名，展示时会推导 .MOV
+  pub live_mov_filename: Option<String>,
+  /// Live Photo 配对 mov 的 job 内 download_status（合并行展示取 still+mov 更差一侧）
+  pub live_mov_download_status: Option<String>,
+  pub media_kind: String,
+  pub live_pair_id: Option<String>,
+  pub dest_path: Option<String>,
+  pub cloud_state: String,
+  pub download_status: Option<String>,
+  pub last_synced_at: Option<i64>,
+  pub last_catalog_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncLoadAssetsResult {
+  pub items: Vec<SyncAssetRow>,
+  pub total: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IcloudSyncCloudStateSummary {
+  pub cloud_only: u32,
+  pub synced: u32,
+  pub modified_cloud: u32,
+  pub deleted_cloud_pending: u32,
+  pub cloud_delete_queued: u32,
+  pub failed_delete: u32,
+  /// 懒算：check_disk=true 时对 sort_key 前缀 ≤2000 候选 is_file()；否则为 0
+  pub local_missing: u32,
 }
 
 /// SQLite assets 行（Rust 内部）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetRow {
   pub id: i64,
-  pub job_id: i64,
+  pub apple_id: String,
   pub asset_id: String,
   pub sort_key: String,
   pub original_filename: String,
@@ -235,12 +322,18 @@ pub struct AssetRow {
   pub live_pair_id: Option<String>,
   pub index_num: i32,
   pub part: AssetPart,
-  pub status: AssetStatus,
+  pub download_status: Option<AssetStatus>,
+  pub active_job_id: Option<i64>,
   pub dest_path: Option<String>,
-  /// 最近一次失败摘要（P1 排查用）
+  pub cloud_state: CloudState,
+  pub last_synced_at: Option<i64>,
+  pub last_catalog_at: Option<i64>,
   pub last_error: Option<String>,
-  /// 累计下载尝试次数（含 sidecar 内重试后的单次 Rust 批次）
   pub attempt_count: i32,
+  /// CloudKit CPLAsset.recordName；catalog 落库，删云必填
+  pub cpl_asset_record_name: Option<String>,
+  /// 最近一次 catalog 看到的 recordChangeTag；删前可按 recordName 定点刷新
+  pub cpl_asset_change_tag: Option<String>,
 }
 
 /// 失败资产摘要（供同步页表格展示）
@@ -294,4 +387,5 @@ pub mod error_codes {
   pub const ALREADY_LOGGED_IN: &str = "already_logged_in";
   /// 所选 iCloud 区域与 Apple ID 不匹配
   pub const DOMAIN_MISMATCH: &str = "domain_mismatch";
+  pub const DELETE_FAILED: &str = "delete_failed";
 }

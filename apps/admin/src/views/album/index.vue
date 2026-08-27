@@ -4,10 +4,13 @@
 -->
 <script setup lang="ts">
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Modal, message } from "ant-design-vue";
+import { deleteAlbumLocal } from "@/api/icloudSync";
+import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
-import MediaViewer from "./MediaViewer.vue";
-import IcloudSyncFab from "./IcloudSyncFab.vue";
+import MediaViewer from "./components/MediaViewer.vue";
+import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
   ALBUM_THUMB_READY_EVENT,
@@ -114,9 +117,7 @@ function buildAlbumTree(list: MediaGroup[]): AlbumTreeNode[] {
   }
 
   function toNode(n: Mutable): AlbumTreeNode {
-    const kids = [...n.children.values()]
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-      .map(toNode);
+    const kids = [...n.children.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map(toNode);
     const count = fileCount.get(n.key) ?? 0;
     return {
       key: n.key,
@@ -182,9 +183,7 @@ const scanProgressLabel = computed(() => {
   return "扫描中...";
 });
 
-const thumbsGenerating = computed(
-  () => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > scanProgress.value.done
-);
+const thumbsGenerating = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > scanProgress.value.done);
 
 function thumbSrc(file: MediaFile): string | undefined {
   if (!file.thumbPath) return undefined;
@@ -275,25 +274,41 @@ function openViewer(file: MediaFile) {
   }
 }
 
+/** 右键删除本地文件（不触碰 iCloud sync assets） */
+function onDeleteLocal(file: MediaFile) {
+  if (!isTauri()) return;
+  Modal.confirm({
+    title: "删除本地文件？",
+    content: `将从磁盘删除「${file.name}」，不影响 iCloud 云端。`,
+    okText: "删除",
+    okType: "danger",
+    cancelText: "取消",
+    async onOk() {
+      const paths = [file.path];
+      if (file.videoPath?.trim()) paths.push(file.videoPath);
+      await deleteAlbumLocal(paths);
+      message.success("已删除本地文件");
+      groups.value = groups.value.map(g => ({
+        ...g,
+        files: g.files.filter(f => f.path !== file.path)
+      }));
+    }
+  });
+}
+
 // ===== 虚拟滚动：仅渲染可视区 + 上下缓冲的卡片，大相册不爆 DOM =====
 const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
 const { y: scrollTop } = useScroll(scrollEl, { throttle: 60 });
 
-const cols = computed(() =>
-  Math.max(1, Math.floor((containerWidth.value + GAP) / (THUMB_SIZE + GAP)))
-);
+const cols = computed(() => Math.max(1, Math.floor((containerWidth.value + GAP) / (THUMB_SIZE + GAP))));
 const allFiles = computed<MediaFile[]>(() => displayGroups.value[0]?.files ?? []);
 const rowHeight = THUMB_SIZE + GAP;
 const totalRows = computed(() => Math.ceil(allFiles.value.length / cols.value));
 const totalHeight = computed(() => totalRows.value * rowHeight);
 
-const startRow = computed(() =>
-  Math.max(0, Math.floor(scrollTop.value / rowHeight) - BUFFER_ROWS)
-);
-const endRow = computed(() =>
-  Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight) + BUFFER_ROWS)
-);
+const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight) - BUFFER_ROWS));
+const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight) + BUFFER_ROWS));
 const startIdx = computed(() => startRow.value * cols.value);
 const endIdx = computed(() => endRow.value * cols.value);
 const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
@@ -384,13 +399,7 @@ onBeforeUnmount(() => {
       <aside class="album-sidebar">
         <div class="sidebar-header">
           <span>目录</span>
-          <button
-            class="refresh-btn"
-            :class="{ spinning: loading }"
-            :disabled="loading"
-            title="刷新相册（强制重扫磁盘）"
-            @click="scan(true)"
-          >
+          <button class="refresh-btn" :class="{ spinning: loading }" :disabled="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
               <path d="M21 3v5h-5" />
@@ -417,43 +426,37 @@ onBeforeUnmount(() => {
         <div ref="scrollEl" class="album-scroll">
           <div v-if="displayGroups.length === 0" class="state-empty-inline">该目录下无媒体文件</div>
           <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
-            <div
-              v-for="(file, i) in visibleFiles"
-              :key="file.path"
-              class="thumb-card"
-              :style="cardStyle(startIdx + i)"
-              @click="openViewer(file)"
-            >
-              <img
-                v-if="thumbSrc(file)"
-                :src="thumbSrc(file)"
-                class="thumb-img"
-                loading="lazy"
-                decoding="async"
-                alt=""
-              />
-              <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-video-placeholder">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="9" cy="9" r="2" />
-                  <path d="M21 15l-5-5L5 21" />
-                </svg>
-                <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+            <a-dropdown v-for="(file, i) in visibleFiles" :key="file.path" :trigger="['contextmenu']">
+              <div class="thumb-card" :style="cardStyle(startIdx + i)" @click="openViewer(file)">
+                <img v-if="thumbSrc(file)" :src="thumbSrc(file)" class="thumb-img" loading="lazy" decoding="async" alt="" />
+                <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-video-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+                </div>
+                <div v-else class="thumb-video-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="rgba(0,0,0,0.5)">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+                </div>
+                <span v-if="file.kind === 'livephoto'" class="badge-live">Live</span>
+                <span v-if="file.kind === 'video'" class="badge-video">{{ file.ext.toUpperCase() }}</span>
+                <div v-if="file.kind === 'video' && thumbSrc(file)" class="video-play-overlay">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
               </div>
-              <div v-else class="thumb-video-placeholder">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="rgba(0,0,0,0.5)">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
-              </div>
-              <span v-if="file.kind === 'livephoto'" class="badge-live">Live</span>
-              <span v-if="file.kind === 'video'" class="badge-video">{{ file.ext.toUpperCase() }}</span>
-              <div v-if="file.kind === 'video' && thumbSrc(file)" class="video-play-overlay">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-            </div>
+              <template #overlay>
+                <a-menu>
+                  <a-menu-item key="delete-local" danger @click="onDeleteLocal(file)">删除本地</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </div>
         </div>
       </main>

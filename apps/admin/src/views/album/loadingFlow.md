@@ -4,9 +4,10 @@
 > **页面：** `index.vue` · `MediaViewer.vue` · `LivePhotoPlayer.vue`  
 > **实现：** `src-tauri/src/album/`（mod / scanner / thumbnail / db / watcher / ffmpeg …）  
 > **前置：** 设置页已配 `rootDir`；HEIC 建议有捆绑 `ffmpeg`  
-> **对齐：** 2026-08-26
+> **对齐：** 2026-08-27
 
-姊妹文档：[下载](./downloadFlow.md) · [登录](../../components/IcloudSyncAuthModal/loginFlow.md)
+姊妹文档：[云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
+
 
 ---
 

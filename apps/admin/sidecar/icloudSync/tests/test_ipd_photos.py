@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from enum import Enum
 from typing import Any
 from unittest.mock import MagicMock
@@ -168,3 +169,48 @@ def test_ipd_download_video() -> None:
     )
     response = ipd_photos.ipd_download_response(api, photo, "video")
     assert response.ok is True
+
+
+def test_has_real_cpl_asset_record_rejects_stub() -> None:
+    stub = _FakePhoto(
+        item_type=AssetItemType.IMAGE,
+        versions={AssetVersionSize.ORIGINAL: _FakeVersion("https://x")},
+    )
+    stub._asset_record = {"recordName": "A1-lookup-stub", "recordChangeTag": "1"}  # noqa: SLF001
+    assert ipd_photos.has_real_cpl_asset_record(stub) is False
+
+    real = _FakePhoto(
+        item_type=AssetItemType.IMAGE,
+        versions={AssetVersionSize.ORIGINAL: _FakeVersion("https://x")},
+    )
+    real._asset_record = {  # noqa: SLF001
+        "recordName": "CPLAsset-UUID",
+        "recordType": "CPLAsset",
+        "recordChangeTag": "abc",
+    }
+    assert ipd_photos.has_real_cpl_asset_record(real) is True
+    meta = ipd_photos.cpl_asset_meta_from_photo(real)
+    assert meta["cpl_asset_record_name"] == "CPLAsset-UUID"
+    assert meta["cpl_asset_change_tag"] == "abc"
+
+
+def test_delete_cpl_asset_by_record_posts_is_deleted() -> None:
+    api = MagicMock()
+    api.photos.service_endpoint = "https://photos.example/db"
+    api.photos.params = {"ck": "1"}
+    api.photos.zone_id = {"zoneName": "PrimarySync"}
+    api.photos.session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"records": [{"recordName": "ASSET-A1"}]}
+    api.photos.session.post.return_value = response
+
+    ipd_photos.delete_cpl_asset_by_record(api, "ASSET-A1", "tag1")
+
+    assert api.photos.session.post.called
+    _args, kwargs = api.photos.session.post.call_args
+    assert "records/modify" in _args[0]
+    body = json.loads(kwargs["data"])
+    assert body["operations"][0]["record"]["fields"]["isDeleted"]["value"] == 1
+    assert body["operations"][0]["record"]["recordName"] == "ASSET-A1"
+    assert body["operations"][0]["record"]["recordChangeTag"] == "tag1"

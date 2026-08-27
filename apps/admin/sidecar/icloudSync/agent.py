@@ -29,6 +29,7 @@ from protocol import (
     CODE_ACCOUNT_LOCKED,
     CODE_AUTH_FAILED,
     CODE_CATALOG_SORT_MISSING,
+    CODE_DELETE_FAILED,
     CODE_DOMAIN_MISMATCH,
     CODE_INVALID_REQUEST,
     CODE_LIVE_BIND_MISSING,
@@ -59,6 +60,8 @@ MOCK_CATALOG_ITEMS: list[dict[str, Any]] = [
         "capture_at": "2024-01-01T12:00:00Z",
         "added_at": "2024-01-02T12:00:00Z",
         "parts": ["still", "mov"],
+        "cpl_asset_record_name": "CPL-A1",
+        "cpl_asset_change_tag": "tag-a1",
     },
     {
         "asset_id": "A2",
@@ -68,6 +71,8 @@ MOCK_CATALOG_ITEMS: list[dict[str, Any]] = [
         "capture_at": "2024-01-03T12:00:00Z",
         "added_at": "2024-01-04T12:00:00Z",
         "parts": ["still"],
+        "cpl_asset_record_name": "CPL-A2",
+        "cpl_asset_change_tag": "tag-a2",
     },
 ]
 
@@ -285,7 +290,7 @@ def _photo_cache_bucket() -> dict[str, Any]:
 
 
 def _merge_photos_into_cache(photos: dict[str, Any]) -> None:
-    """将 lookup 得到的 PhotoAsset 写入进程内 cache 并记录 lookup 时刻。"""
+    """将 lookup PhotoAsset 写入进程内 cache（仅服务 download URL；删云不读此 cache）。"""
     if not photos:
         return
     cache = _photo_cache_bucket()
@@ -872,6 +877,7 @@ def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
         "capture_at": capture_at,
         "added_at": added_at,
         "parts": parts,
+        **ipd_photos.cpl_asset_meta_from_photo(photo),
     }
 
 
@@ -1070,6 +1076,141 @@ def _execute_download_item(api: Any, item: dict[str, Any]) -> dict[str, Any]:
                 continue
             mapped = _map_download_exception(exc)
             return {**base, "ok": False, "code": mapped, "message": str(exc)[:500]}
+
+
+def _handle_delete_assets(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    批量删云（P3）：软删 CPLAsset → 「最近删除」。
+
+    @note 宿主必须传入 catalog 落库的 cpl_asset_record_name；禁止 cache / 扫库补齐。
+    @note Live still/mov 共享同一 CPLAsset recordName，同一 name 只删一次。
+    """
+    raw_items = cmd.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        return error_event("delete_assets", CODE_INVALID_REQUEST, "items must be a non-empty array")
+
+    items = [item for item in raw_items if isinstance(item, dict)]
+    if not items:
+        return error_event("delete_assets", CODE_INVALID_REQUEST, "items must be a non-empty array")
+
+    if _is_mock_mode():
+        mock_results = [
+            {
+                "asset_id": str(item.get("asset_id", "")),
+                "part": str(item.get("part", "")),
+                "ok": True,
+                "mock": True,
+            }
+            for item in items
+        ]
+        return done_event("delete_assets", results=mock_results)
+
+    try:
+        api = _ensure_api(
+            str(cmd.get("apple_id", "")).strip(),
+            str(cmd.get("session_dir", "")).strip(),
+        )
+    except RuntimeError as exc:
+        if str(exc) == "not authenticated":
+            return error_event(
+                "delete_assets",
+                CODE_AUTH_FAILED,
+                "explicit auth is required before delete_assets",
+            )
+        return error_event("delete_assets", CODE_DELETE_FAILED, str(exc)[:500])
+
+    # record_name → 首次出现的 change_tag（同 Live 多 part 去重）
+    delete_by_name: dict[str, str | None] = {}
+    ordered: list[dict[str, str | None]] = []
+    for item in items:
+        asset_id = str(item.get("asset_id", "")).strip()
+        part = str(item.get("part", "")).strip()
+        record_name = str(item.get("cpl_asset_record_name") or "").strip()
+        change_tag = str(item.get("cpl_asset_change_tag") or "").strip() or None
+        ordered.append(
+            {
+                "asset_id": asset_id,
+                "part": part,
+                "cpl_asset_record_name": record_name or None,
+                "cpl_asset_change_tag": change_tag,
+            }
+        )
+        if record_name and record_name not in delete_by_name:
+            delete_by_name[record_name] = change_tag
+
+    name_results: dict[str, dict[str, Any]] = {}
+    try:
+        for record_name, change_tag in delete_by_name.items():
+            try:
+                ipd_photos.delete_cpl_asset_by_record(api, record_name, change_tag)
+                name_results[record_name] = {"ok": True}
+            except Exception as exc:  # noqa: BLE001
+                mapped = _map_exception(exc)
+                if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+                    _record_diagnostic("delete_assets", mapped, str(exc)[:500], exc=exc)
+                    _reset_auth_state()
+                    return error_event("delete_assets", mapped, str(exc)[:500])
+                name_results[record_name] = {
+                    "ok": False,
+                    "code": CODE_DELETE_FAILED if mapped == CODE_AUTH_FAILED else mapped,
+                    "message": str(exc)[:500],
+                }
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_exception(exc)
+        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _record_diagnostic("delete_assets", mapped, str(exc)[:500], exc=exc)
+            _reset_auth_state()
+        return error_event(
+            "delete_assets",
+            mapped if mapped != CODE_AUTH_FAILED else CODE_DELETE_FAILED,
+            str(exc)[:500],
+        )
+
+    results: list[dict[str, Any]] = []
+    for row in ordered:
+        asset_id = row["asset_id"] or ""
+        part = row["part"] or ""
+        record_name = row["cpl_asset_record_name"]
+        base = {"asset_id": asset_id, "part": part}
+        if not asset_id or not part:
+            results.append(
+                {
+                    **base,
+                    "ok": False,
+                    "code": CODE_INVALID_REQUEST,
+                    "message": "asset_id and part required",
+                }
+            )
+            continue
+        if not record_name:
+            results.append(
+                {
+                    **base,
+                    "ok": False,
+                    "code": CODE_INVALID_REQUEST,
+                    "message": "cpl_asset_record_name missing; re-run catalog",
+                }
+            )
+            continue
+        outcome = name_results.get(record_name) or {
+            "ok": False,
+            "code": CODE_DELETE_FAILED,
+            "message": "delete result missing",
+        }
+        if outcome.get("ok"):
+            results.append({**base, "ok": True})
+            _invalidate_asset_lookup(asset_id)
+        else:
+            results.append(
+                {
+                    **base,
+                    "ok": False,
+                    "code": str(outcome.get("code") or CODE_DELETE_FAILED),
+                    "message": str(outcome.get("message") or "")[:500],
+                }
+            )
+
+    return done_event("delete_assets", results=results)
 
 
 def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
@@ -1535,6 +1676,8 @@ def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
         return _handle_download(cmd)
     if name == "download_batch":
         return _handle_download_batch(cmd)
+    if name == "delete_assets":
+        return _handle_delete_assets(cmd)
     return error_event(name or "unknown", CODE_INVALID_REQUEST, f"unknown cmd: {name}")
 
 

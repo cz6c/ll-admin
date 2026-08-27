@@ -1,7 +1,7 @@
 /**
  * iCloud 同步任务共享状态
  * 职责：job 恢复、事件监听、主按钮逻辑、FAB 状态；供相册页 IcloudSyncFab / StatusCard 复用
- * 适用：views/album/IcloudSyncFab.vue、IcloudSyncStatusCard
+ * 适用：views/album/components/IcloudSyncFab.vue、components/IcloudSyncStatusCard.vue
  */
 
 import dayjs from "dayjs";
@@ -15,6 +15,7 @@ import {
   getIcloudSyncJobStatus,
   getIcloudSyncSettings,
   ICLOUD_SYNC_ACTIVE_JOB_KEY,
+  ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT,
   ICLOUD_SYNC_JOB_STATUS_EVENT,
   ICLOUD_SYNC_PROGRESS_EVENT,
   listIcloudSyncAssetTasks,
@@ -75,6 +76,7 @@ function _useIcloudSyncJob() {
   const isLoggedIn = ref(false);
   const currentAppleId = ref("");
   const starting = ref(false);
+  const checkingNew = ref(false);
   const pausing = ref(false);
   const resuming = ref(false);
   const discarding = ref(false);
@@ -109,6 +111,11 @@ function _useIcloudSyncJob() {
   let listenersBound = false;
   let unlistenProgress: (() => void) | undefined;
   let unlistenJobStatus: (() => void) | undefined;
+  let unlistenCloudState: (() => void) | undefined;
+  /** FAB 抽屉订阅 cloud-state-changed 时递增，供外部 watch 刷新列表 */
+  const cloudStateTick = ref(0);
+  /** 下载 progress 事件计数；抽屉云列表节流刷新 download_status */
+  const downloadProgressTick = ref(0);
 
   const maskedCurrentAppleId = computed(() => maskAppleId(currentAppleId.value));
 
@@ -129,7 +136,7 @@ function _useIcloudSyncJob() {
     if (isPausedSession.value) return sessionReauthReady.value;
     return isPausedUser.value;
   });
-  const isRunning = computed(() => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value);
+  const isRunning = computed(() => jobStatus.value === "running" || starting.value || checkingNew.value || resuming.value || isCataloging.value);
   const canPause = computed(() => jobStatus.value === "running" && !pausing.value);
   const isDone = computed(() => jobStatus.value === "done");
   const isFailed = computed(() => jobStatus.value === "failed");
@@ -204,7 +211,7 @@ function _useIcloudSyncJob() {
       return `首次同步需枚举全部照片；已扫描 ${catalogElapsedText.value}，完成后自动开始下载。`;
     }
     if (isDone.value && outputDir.value) {
-      return `文件已保存至：${outputDir.value}`;
+      return `照片已在本地。可从 iCloud 移除副本以释放空间（进入「最近删除」，约 30 天后彻底释放）。文件夹：${outputDir.value}`;
     }
     if (showEmptyGuide.value) {
       return "流程：登录 Apple ID → 点击开始同步。";
@@ -385,6 +392,11 @@ function _useIcloudSyncJob() {
     taskRefreshTimer = setTimeout(() => void refreshAssetTasks(jobId), 800);
   }
 
+  /** 无 worker 占用且已登录时可发起增量 catalog（新 job） */
+  const canCheckNewPhotos = computed(
+    () => isLoggedIn.value && !jobAccountMismatch.value && !isRunning.value && !starting.value && !checkingNew.value && !discarding.value
+  );
+
   async function onStart() {
     starting.value = true;
     errorMsg.value = "";
@@ -411,6 +423,36 @@ function _useIcloudSyncJob() {
       errorMsg.value = formatIcloudSyncError(e);
     } finally {
       starting.value = false;
+    }
+  }
+
+  /** 增量检查：全量 catalog + Rust diff，仅 added/modified 入队下载 */
+  async function onCheckNewPhotos() {
+    checkingNew.value = true;
+    errorMsg.value = "";
+    try {
+      const check = await validateIcloudSyncReady();
+      if (check.ok === false) {
+        errorMsg.value = check.message;
+        return;
+      }
+      const result = await startIcloudSyncJob("library", "incremental");
+      storeJobId(result.jobId);
+      jobStatus.value = "cataloging";
+      catalogStartedAt.value = Date.now();
+      downloadStartedAt.value = null;
+      syncCatalogTimer();
+      progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
+      jobFailed.value = 0;
+      jobPending.value = 0;
+      assetTasks.value = [];
+      taskTotal.value = 0;
+      taskPage.value = 1;
+      void refreshJobStatus(result.jobId);
+    } catch (e) {
+      errorMsg.value = formatIcloudSyncError(e);
+    } finally {
+      checkingNew.value = false;
     }
   }
 
@@ -466,6 +508,16 @@ function _useIcloudSyncJob() {
     router.push("/album/gallery");
   }
 
+  /** FAB 抽屉监听：切到「已同步」并引导删云腾空间 */
+  const focusCloudFreeSpaceNonce = ref(0);
+
+  /**
+   * 请求 FAB 打开云管理并聚焦「已同步」筛选项（下载完成后的腾空间主路径）
+   */
+  function requestFocusCloudFreeSpace() {
+    focusCloudFreeSpaceNonce.value += 1;
+  }
+
   function goSettings(fromSync = true) {
     router.push(fromSync ? { path: "/cs-settings", query: { from: "sync" } } : "/cs-settings");
   }
@@ -494,11 +546,11 @@ function _useIcloudSyncJob() {
     }
     if (isDone.value) {
       return {
-        label: "在相册中查看",
+        label: "释放 iCloud 空间",
         kind: "primary",
         loading: false,
         disabled: false,
-        handler: goGallery
+        handler: requestFocusCloudFreeSpace
       };
     }
     if (isFailed.value) {
@@ -579,6 +631,7 @@ function _useIcloudSyncJob() {
         progress.value = event.payload;
         jobFailed.value = event.payload.failed ?? 0;
         jobPending.value = event.payload.pending ?? 0;
+        downloadProgressTick.value += 1;
         if (event.payload.total > 0 && downloadStartedAt.value == null) {
           downloadStartedAt.value = Date.now();
         }
@@ -591,6 +644,10 @@ function _useIcloudSyncJob() {
       if (event.payload) {
         applyJobStatus(event.payload);
       }
+    });
+
+    unlistenCloudState = await listen(ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT, () => {
+      cloudStateTick.value += 1;
     });
   }
 
@@ -634,6 +691,7 @@ function _useIcloudSyncJob() {
   function disposeListeners() {
     unlistenProgress?.();
     unlistenJobStatus?.();
+    unlistenCloudState?.();
     listenersBound = false;
     if (catalogTimer) {
       clearInterval(catalogTimer);
@@ -650,6 +708,7 @@ function _useIcloudSyncJob() {
     currentAppleId,
     maskedCurrentAppleId,
     starting,
+    checkingNew,
     pausing,
     resuming,
     discarding,
@@ -691,14 +750,20 @@ function _useIcloudSyncJob() {
     statusDescription,
     syncTabBadge,
     fabState,
+    canCheckNewPhotos,
+    cloudStateTick,
+    downloadProgressTick,
+    focusCloudFreeSpaceNonce,
     primaryAction,
     hydrateFromStorage,
     loadAccountContext,
     onStart,
+    onCheckNewPhotos,
     onPause,
     onResume,
     onDiscardAndRestart,
     goGallery,
+    requestFocusCloudFreeSpace,
     goSettings,
     openOutputFolder,
     onTaskFilterChange,

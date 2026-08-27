@@ -442,3 +442,184 @@ def fetch_photo_assets_by_ids(api: Any, asset_ids: Sequence[str]) -> dict[str, A
         raise RuntimeError(f"photo lookup missing records: {sample}")
 
     return {asset_id: found[asset_id] for asset_id in unique}
+
+
+def cpl_asset_meta_from_photo(photo: Any) -> dict[str, str]:
+    """
+    从枚举得到的 PhotoAsset 提取删云元数据（供 catalog 落库）。
+
+    @returns 可能为空 dict（stub / 缺字段时）
+    """
+    if not has_real_cpl_asset_record(photo):
+        return {}
+    asset = photo._asset_record  # noqa: SLF001
+    name = str(asset.get("recordName", "")).strip()
+    tag = str(asset.get("recordChangeTag", "")).strip()
+    out: dict[str, str] = {"cpl_asset_record_name": name}
+    if tag:
+        out["cpl_asset_change_tag"] = tag
+    return out
+
+
+def lookup_cpl_asset_change_tag(api: Any, record_name: str) -> str:
+    """
+    按 CPLAsset.recordName 定点 records/lookup 刷新 changeTag（O(1)，禁止扫库）。
+
+    @raises RuntimeError 找不到或 HTTP 失败
+    """
+    name = str(record_name).strip()
+    if not name:
+        raise RuntimeError("cpl_asset_record_name required")
+
+    photos_service = getattr(api, "photos", None)
+    if photos_service is None:
+        raise RuntimeError("photos service unavailable")
+
+    service_endpoint = getattr(photos_service, "service_endpoint", None)
+    params = getattr(photos_service, "params", None)
+    session = getattr(photos_service, "session", None)
+    zone_id = getattr(photos_service, "zone_id", None)
+    if not service_endpoint or not isinstance(params, dict) or session is None or not zone_id:
+        raise RuntimeError("photos service missing lookup context")
+
+    url = f"{service_endpoint}/records/lookup?{urlencode(params)}"
+    payload = {
+        "records": [{"recordName": name}],
+        "desiredKeys": ["recordName", "recordType", "recordChangeTag", "isDeleted", "masterRef"],
+        "zoneID": zone_id,
+    }
+    response = session.post(
+        url,
+        data=json.dumps(payload),
+        headers={"Content-type": "text/plain"},
+    )
+    status = getattr(response, "status_code", None)
+    if status is not None and int(status) >= 400:
+        raise RuntimeError(f"cpl asset lookup HTTP {status}")
+
+    body = response.json() if hasattr(response, "json") else {}
+    records = body.get("records") if isinstance(body, dict) else None
+    if not isinstance(records, list) or not records:
+        raise RuntimeError(f"cpl asset not found: {name}")
+
+    record = records[0]
+    if not isinstance(record, dict):
+        raise RuntimeError(f"cpl asset lookup invalid: {name}")
+    if record.get("reason") or record.get("serverErrorCode"):
+        reason = record.get("reason") or record.get("serverErrorCode")
+        # 已删除：调用方按幂等成功处理
+        raise RuntimeError(f"cpl asset gone: {reason}")
+    tag = str(record.get("recordChangeTag", "")).strip()
+    if not tag:
+        raise RuntimeError(f"cpl asset missing recordChangeTag: {name}")
+    return tag
+
+
+def delete_cpl_asset_by_record(
+    api: Any,
+    record_name: str,
+    change_tag: str | None = None,
+) -> None:
+    """
+    用落库的 CPLAsset.recordName 软删；tag 缺失或冲突时定点 lookup 刷新一次。
+
+    @note 对齐 icloudpd delete_photo；不读进程 cache、不扫 photos.all。
+    """
+    name = str(record_name).strip()
+    if not name:
+        raise RuntimeError("cpl_asset_record_name required")
+
+    photos_service = getattr(api, "photos", None)
+    if photos_service is None:
+        raise RuntimeError("photos service unavailable")
+
+    service_endpoint = getattr(photos_service, "service_endpoint", None)
+    params = getattr(photos_service, "params", None)
+    session = getattr(photos_service, "session", None)
+    zone_id = getattr(photos_service, "zone_id", None)
+    if not service_endpoint or not isinstance(params, dict) or session is None or not zone_id:
+        raise RuntimeError("photos service missing delete context")
+
+    tag = (change_tag or "").strip()
+    if not tag:
+        tag = lookup_cpl_asset_change_tag(api, name)
+
+    url = f"{service_endpoint}/records/modify?{urlencode(params)}"
+
+    def _post(current_tag: str) -> Any:
+        payload = {
+            "atomic": True,
+            "desiredKeys": ["isDeleted"],
+            "operations": [
+                {
+                    "operationType": "update",
+                    "record": {
+                        "fields": {"isDeleted": {"value": 1}},
+                        "recordChangeTag": current_tag,
+                        "recordName": name,
+                        "recordType": "CPLAsset",
+                    },
+                }
+            ],
+            "zoneID": zone_id,
+        }
+        return session.post(
+            url,
+            data=json.dumps(payload),
+            headers={"Content-type": "application/json"},
+        )
+
+    response = _post(tag)
+    status = getattr(response, "status_code", None)
+    body = response.json() if hasattr(response, "json") else {}
+
+    # changeTag 冲突：定点刷新后重试一次
+    needs_retry = False
+    if status is not None and int(status) >= 400:
+        needs_retry = True
+    elif isinstance(body, dict):
+        for record in body.get("records") or []:
+            if isinstance(record, dict) and (record.get("reason") or record.get("serverErrorCode")):
+                reason = str(record.get("reason") or record.get("serverErrorCode") or "")
+                if "GONE" in reason.upper() or "NOT_FOUND" in reason.upper():
+                    return  # 已不存在 → 幂等成功
+                needs_retry = True
+                break
+
+    if needs_retry:
+        fresh = lookup_cpl_asset_change_tag(api, name)
+        response = _post(fresh)
+        status = getattr(response, "status_code", None)
+        if status is not None and int(status) >= 400:
+            raise RuntimeError(f"photo delete HTTP {status}")
+        body = response.json() if hasattr(response, "json") else {}
+        if isinstance(body, dict):
+            for record in body.get("records") or []:
+                if isinstance(record, dict) and (record.get("reason") or record.get("serverErrorCode")):
+                    reason = record.get("reason") or record.get("serverErrorCode")
+                    raise RuntimeError(f"photo delete rejected: {reason}")
+        return
+
+    if status is not None and int(status) >= 400:
+        raise RuntimeError(f"photo delete HTTP {status}")
+    if isinstance(body, dict):
+        for record in body.get("records") or []:
+            if isinstance(record, dict) and (record.get("reason") or record.get("serverErrorCode")):
+                reason = record.get("reason") or record.get("serverErrorCode")
+                raise RuntimeError(f"photo delete rejected: {reason}")
+
+
+def has_real_cpl_asset_record(photo: Any) -> bool:
+    """
+    PhotoAsset 是否携带可删云用的真实 CPLAsset（含 recordChangeTag）。
+
+    @note download 用的 records/lookup 只造 stub asset，不能用于 delete。
+    """
+    asset = getattr(photo, "_asset_record", None)
+    if not isinstance(asset, dict):
+        return False
+    name = str(asset.get("recordName", "")).strip()
+    if not name or name.endswith("-lookup-stub"):
+        return False
+    tag = asset.get("recordChangeTag")
+    return tag is not None and str(tag).strip() != ""

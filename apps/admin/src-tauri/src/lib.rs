@@ -53,7 +53,6 @@ pub fn run() {
       album::album_save_settings,
       album::album_scan,
       album::album_cancel_scan,
-      album::album_ensure_preview,
       icloud_sync::icloud_sync_ping,
       icloud_sync::icloud_sync_get_settings,
       icloud_sync::icloud_sync_save_settings,

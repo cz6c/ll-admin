@@ -128,7 +128,7 @@ pending 空 → done
 
 ### 前端 UX（一屏）
 
-状态卡 + 一个主按钮；失败表默认折叠（`failed>0` 展开）；共享 `useIcloudSyncJob`。
+状态卡 + 一个主按钮；任务表常显；共享 `useIcloudSyncJob`。
 
 ---
 

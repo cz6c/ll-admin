@@ -43,23 +43,120 @@ const pathIndex = computed(() => {
   return map;
 });
 
-/** 默认选中根目录分组（relPath "."），无则取第一项 */
-function defaultDirKey(list: MediaGroup[]): string {
-  const root = list.find(g => g.relPath === ".");
-  return root?.relPath ?? list[0]?.relPath ?? "";
+/** 侧栏目录树节点（ant-design-vue Tree） */
+interface AlbumTreeNode {
+  key: string;
+  title: string;
+  children?: AlbumTreeNode[];
+  isLeaf?: boolean;
 }
 
-const treeData = computed(() =>
-  groups.value.map(g => ({
-    key: g.relPath,
-    title: `${g.dirName} (${g.files.length})`,
-    isLeaf: true
-  }))
+/** 统一 relPath 分隔符，避免 Windows `\` 与树节点 key 不一致 */
+function normalizeRelPath(rel: string): string {
+  if (!rel || rel === ".") return ".";
+  return rel.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
+}
+
+/** 默认选中根目录分组（relPath "."），无则取第一项 */
+function defaultDirKey(list: MediaGroup[]): string {
+  const root = list.find(g => normalizeRelPath(g.relPath) === ".");
+  return root ? "." : normalizeRelPath(list[0]?.relPath ?? "");
+}
+
+/**
+ * 按 relPath 分段拼嵌套树（含仅作中间层、自身无媒体的目录）
+ * 标题计数为本目录直接文件数，与右侧宫格一致（不含子孙）
+ */
+function buildAlbumTree(list: MediaGroup[]): AlbumTreeNode[] {
+  type Mutable = { key: string; name: string; children: Map<string, Mutable> };
+
+  const fileCount = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const g of list) {
+    const key = normalizeRelPath(g.relPath);
+    fileCount.set(key, g.files.length);
+    names.set(key, g.dirName);
+  }
+
+  const allKeys = new Set<string>(["."]);
+  for (const key of fileCount.keys()) {
+    if (key === ".") continue;
+    const parts = key.split("/").filter(Boolean);
+    for (let i = 1; i <= parts.length; i++) {
+      allKeys.add(parts.slice(0, i).join("/"));
+    }
+  }
+
+  const root: Mutable = {
+    key: ".",
+    name: names.get(".") || "根目录",
+    children: new Map()
+  };
+
+  for (const key of allKeys) {
+    if (key === ".") continue;
+    const parts = key.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const seg = parts[i];
+      const pathKey = parts.slice(0, i + 1).join("/");
+      let child = node.children.get(seg);
+      if (!child) {
+        child = {
+          key: pathKey,
+          name: names.get(pathKey) || seg,
+          children: new Map()
+        };
+        node.children.set(seg, child);
+      }
+      node = child;
+    }
+  }
+
+  function toNode(n: Mutable): AlbumTreeNode {
+    const kids = [...n.children.values()]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+      .map(toNode);
+    const count = fileCount.get(n.key) ?? 0;
+    return {
+      key: n.key,
+      title: `${n.name} (${count})`,
+      children: kids.length ? kids : undefined,
+      isLeaf: kids.length === 0
+    };
+  }
+
+  return [toNode(root)];
+}
+
+const treeData = computed(() => buildAlbumTree(groups.value));
+
+/** 收集全部节点 key；异步 treeData 下 defaultExpandAll 只生效首次渲染，改用受控 expandedKeys */
+function collectTreeKeys(nodes: AlbumTreeNode[]): string[] {
+  const keys: string[] = [];
+  const walk = (list: AlbumTreeNode[]) => {
+    for (const n of list) {
+      keys.push(n.key);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return keys;
+}
+
+const expandedKeys = ref<string[]>([]);
+watch(
+  treeData,
+  nodes => {
+    expandedKeys.value = collectTreeKeys(nodes);
+  },
+  { immediate: true }
 );
 
-/** 当前选中的单个目录分组（供宫格与查看器） */
+/** 当前选中的单个目录分组（供宫格与查看器）；中间空目录无 group → 空宫格 */
 const displayGroups = computed<MediaGroup[]>(() => {
-  const group = groups.value.find(g => g.relPath === selectedDirKey.value);
+  const key = normalizeRelPath(selectedDirKey.value);
+  const group = groups.value.find(g => normalizeRelPath(g.relPath) === key);
   return group ? [group] : [];
 });
 
@@ -97,7 +194,7 @@ function thumbSrc(file: MediaFile): string | undefined {
 function onTreeSelect(keys: string[]) {
   const key = keys[0];
   if (key) {
-    selectedDirKey.value = key;
+    selectedDirKey.value = normalizeRelPath(key);
   }
 }
 
@@ -119,25 +216,34 @@ async function loadSettings() {
   }
 }
 
-// scan 重入保护：进行中只排队一次，结束后再扫，避免 files-changed 在扫描中被丢掉
+// scan 重入保护：进行中只排队一次，结束后再扫
+// force=true 跳过 dirty 走全量 WalkDir（用户点刷新/重试时）
+// force=false 走 dirty 决策，cache_hit 时秒返 DB 列表
 let scanPromise: Promise<void> | null = null;
 let scanQueued = false;
-function scan() {
+let scanQueuedForce = false;
+function scan(force = false) {
   if (scanPromise) {
     scanQueued = true;
+    scanQueuedForce = scanQueuedForce || force;
     return scanPromise;
   }
-  scanPromise = doScan().finally(() => {
+  scanQueuedForce = force;
+  const nextForce = scanQueuedForce;
+  scanQueuedForce = false;
+  scanPromise = doScan(nextForce).finally(() => {
     scanPromise = null;
     if (scanQueued) {
       scanQueued = false;
-      void scan();
+      const qf = scanQueuedForce;
+      scanQueuedForce = false;
+      void scan(qf);
     }
   });
   return scanPromise;
 }
 
-async function doScan() {
+async function doScan(force: boolean) {
   if (!rootDir.value) return;
   loading.value = true;
   error.value = "";
@@ -145,10 +251,10 @@ async function doScan() {
   selectedDirKey.value = "";
   scanProgress.value = { phase: "discover", done: 0, total: 0 };
   try {
-    await invoke("album_cancel_scan");
     const result = await invoke<MediaGroup[]>("album_scan", {
       root: rootDir.value,
-      thumbSize: THUMB_SIZE
+      thumbSize: THUMB_SIZE,
+      force
     });
     groups.value = result;
     selectedDirKey.value = defaultDirKey(result);
@@ -267,7 +373,7 @@ onBeforeUnmount(() => {
 
     <div v-else-if="error" class="state-error">
       <p class="state-text">{{ error }}</p>
-      <button class="state-action" @click="scan">重试</button>
+      <button class="state-action" @click="scan(true)">重试</button>
     </div>
 
     <div v-else-if="groups.length === 0" class="state-empty">
@@ -282,8 +388,8 @@ onBeforeUnmount(() => {
             class="refresh-btn"
             :class="{ spinning: loading }"
             :disabled="loading"
-            title="刷新相册"
-            @click="scan"
+            title="刷新相册（强制重扫磁盘）"
+            @click="scan(true)"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
@@ -292,7 +398,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <a-tree
-          :selected-keys="[selectedDirKey]"
+          v-model:expanded-keys="expandedKeys"
+          :selected-keys="selectedDirKey ? [selectedDirKey] : []"
           :tree-data="treeData"
           block-node
           @select="onTreeSelect"

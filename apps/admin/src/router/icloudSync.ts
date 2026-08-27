@@ -26,6 +26,12 @@ export const icloudSyncConstantRoutes: AppRouteRecordRaw[] = [
     path: "/icloudSync/settings",
     redirect: "/cs-settings",
     hidden: true
+  },
+  // 曾短暂存在的相册子路径，避免书签/事件落到「No match found」警告
+  {
+    path: "/album/icloudSync",
+    redirect: "/album/gallery",
+    hidden: true
   }
 ];
 

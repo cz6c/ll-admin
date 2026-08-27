@@ -16,7 +16,8 @@ import {
 import { isTauri } from "@/utils/tauri";
 import { deliverCsNotify, type CsNotifyKind, type CsNotifyPayload } from "@/utils/csSystemNotify";
 
-const ATTENTION_PATH = "/album/icloudSync";
+/** 同步 UI 已合并进相册页；在该 path 时由页内 FAB/抽屉展示，不重复弹 message */
+const ATTENTION_PATH = "/album/gallery";
 
 /** 需要全局提示的任务终态（paused_user 为用户主动暂停，不提示） */
 const NOTIFY_STATUSES: IcloudSyncJobStatus[] = ["paused_session", "failed", "done"];

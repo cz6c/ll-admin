@@ -23,7 +23,7 @@ pub fn open_db(album_dir: &Path) -> Result<Connection, String> {
 }
 
 fn migrate(conn: &Connection) -> Result<(), String> {
-  // WAL 模式：discover / 缩略图 pipeline / ensure_preview 并发写时不再互相阻塞
+  // WAL 模式：discover / 缩略图 pipeline 并发写时不再互相阻塞
   conn
     .execute_batch(
       "
@@ -250,15 +250,37 @@ fn upsert_media_impl(
   Ok(())
 }
 
-/// 事务内批量 upsert 所有分组（避免逐条自动提交，大相册提速显著）
-pub fn upsert_media_batch(
+/// 一次事务内：删陈旧路径 + upsert 全部分组
+/// 避免 delete 已提交、upsert 失败时 DB 既丢旧行又无新行
+pub fn sync_media_index(
   conn: &Connection,
   root: &str,
   groups: &[super::types::MediaGroup],
+  alive_paths: &[String],
 ) -> Result<(), String> {
   let tx = conn
     .unchecked_transaction()
-    .map_err(|e| format!("开启索引事务失败: {e}"))?;
+    .map_err(|e| format!("开启索引同步事务失败: {e}"))?;
+
+  let mut stmt = tx
+    .prepare("SELECT path FROM media WHERE root = ?1")
+    .map_err(|e| format!("查询陈旧路径失败: {e}"))?;
+  let existing: Vec<String> = stmt
+    .query_map(params![root], |row| row.get(0))
+    .map_err(|e| format!("读取陈旧路径失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+  drop(stmt);
+
+  let alive: std::collections::HashSet<&str> =
+    alive_paths.iter().map(|s| s.as_str()).collect();
+  for path in existing {
+    if !alive.contains(path.as_str()) {
+      tx.execute("DELETE FROM media WHERE path = ?1", params![path])
+        .map_err(|e| format!("删除陈旧索引失败: {e}"))?;
+    }
+  }
+
   for group in groups {
     for file in &group.files {
       upsert_media_impl(
@@ -271,64 +293,15 @@ pub fn upsert_media_batch(
       )?;
     }
   }
+
   tx.commit()
-    .map_err(|e| format!("提交索引事务失败: {e}"))?;
-  Ok(())
-}
-
-/// 删除根目录下已不存在的路径（事务内批量）
-pub fn delete_stale_paths(
-  conn: &Connection,
-  root: &str,
-  alive_paths: &[String],
-) -> Result<(), String> {
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启清理事务失败: {e}"))?;
-  let mut stmt = tx
-    .prepare("SELECT path FROM media WHERE root = ?1")
-    .map_err(|e| format!("查询陈旧路径失败: {e}"))?;
-  let existing: Vec<String> = stmt
-    .query_map(params![root], |row| row.get(0))
-    .map_err(|e| format!("读取陈旧路径失败: {e}"))?
-    .filter_map(|r| r.ok())
-    .collect();
-
-  let alive: std::collections::HashSet<&str> =
-    alive_paths.iter().map(|s| s.as_str()).collect();
-
-  for path in existing {
-    if !alive.contains(path.as_str()) {
-      tx.execute("DELETE FROM media WHERE path = ?1", params![path])
-        .map_err(|e| format!("删除陈旧索引失败: {e}"))?;
-    }
-  }
-  // 显式释放 stmt 对 tx 的借用后再 commit，否则 `cannot move out of tx because it is borrowed`
-  drop(stmt);
-  tx.commit()
-    .map_err(|e| format!("提交清理事务失败: {e}"))?;
-  Ok(())
-}
-
-/// 更新单条缩略图/预览路径
-/// - thumb_path / preview_path 传 None 表示「不更新」（COALESCE 保留旧值），避免把已生成缓存置空
-/// - 成功更新时重置 fail_count
-pub fn update_cache_paths(
-  conn: &Connection,
-  path: &str,
-  thumb_path: Option<&str>,
-  preview_path: Option<&str>,
-) -> Result<(), String> {
-  conn
-    .execute(
-      "UPDATE media SET thumb_path = COALESCE(?2, thumb_path), preview_path = COALESCE(?3, preview_path), fail_count = 0 WHERE path = ?1",
-      params![path, thumb_path, preview_path],
-    )
-    .map_err(|e| format!("更新缓存路径失败: {e}"))?;
+    .map_err(|e| format!("提交索引同步事务失败: {e}"))?;
   Ok(())
 }
 
 /// 事务内批量更新缩略图/预览路径（供 pipeline 每 chunk 提交一次）
+/// - thumb_path / preview_path 传 None 表示「不更新」（COALESCE 保留旧值）
+/// - 成功更新时重置 fail_count
 pub fn update_cache_paths_batch(
   conn: &Connection,
   updates: &[(String, Option<String>, Option<String>)],

@@ -1,7 +1,7 @@
 /**
  * iCloud 同步任务共享状态
- * 职责：job 恢复、事件监听、主按钮逻辑、Tab 角标；供同步页与相册壳复用
- * 适用：icloudSync.vue、album.vue
+ * 职责：job 恢复、事件监听、主按钮逻辑、FAB 状态；供相册页 IcloudSyncFab / StatusCard 复用
+ * 适用：views/album/IcloudSyncFab.vue、IcloudSyncStatusCard
  */
 
 import dayjs from "dayjs";
@@ -96,7 +96,6 @@ function _useIcloudSyncJob() {
   const taskPage = ref(1);
   const taskPageSize = ref(50);
   const loadingTasks = ref(false);
-  const taskCollapseOpen = ref<string[]>([]);
 
   const catalogStartedAt = ref<number | null>(null);
   const downloadStartedAt = ref<number | null>(null);
@@ -275,12 +274,6 @@ function _useIcloudSyncJob() {
     }
   }
 
-  function syncTaskCollapse() {
-    if (progress.value.failed > 0 && progress.value.total > 0) {
-      taskCollapseOpen.value = ["tasks"];
-    }
-  }
-
   async function loadAccountContext() {
     if (!isTauri()) return;
     try {
@@ -342,7 +335,6 @@ function _useIcloudSyncJob() {
       filename: progress.value.filename
     };
     syncCatalogTimer();
-    syncTaskCollapse();
     if (status.status === "done") {
       progress.value = { done: status.total, total: status.total, failed: 0, pending: 0, filename: "" };
       try {
@@ -590,7 +582,6 @@ function _useIcloudSyncJob() {
         if (event.payload.total > 0 && downloadStartedAt.value == null) {
           downloadStartedAt.value = Date.now();
         }
-        syncTaskCollapse();
         const jobId = activeJobId.value;
         if (jobId != null) scheduleRefreshAssetTasks(jobId);
       }
@@ -678,7 +669,6 @@ function _useIcloudSyncJob() {
     taskPage,
     taskPageSize,
     loadingTasks,
-    taskCollapseOpen,
     sessionReauthReady,
     jobAccountMismatch,
     isCataloging,

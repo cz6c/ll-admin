@@ -295,7 +295,7 @@ pub fn discover_groups(
       video_path: None,
     });
     discovered += 1;
-    if discovered == 1 || discovered % 20 == 0 {
+    if discovered % 20 == 0 {
       emit_scan_progress(app, "discover", discovered, 0);
     }
   }
@@ -353,10 +353,7 @@ pub fn discover_groups(
     }
   });
 
-  db::delete_stale_paths(&conn, root, &alive_paths)?;
-
-  // 批量 upsert（事务内），避免逐条自动提交
-  db::upsert_media_batch(&conn, root, &groups)?;
+  db::sync_media_index(&conn, root, &groups, &alive_paths)?;
 
   Ok(groups)
 }
@@ -383,7 +380,7 @@ pub fn run_thumbnail_pipeline(
     .and_then(|c| db::load_fail_counts(c, &root).ok())
     .unwrap_or_default();
 
-  let mut pending: Vec<(String, String)> = Vec::new();
+  let mut pending: Vec<String> = Vec::new();
   for group in &groups {
     for file in &group.files {
       // 跳过反复失败的坏文件，避免对同一损坏文件反复解码
@@ -394,7 +391,7 @@ pub fn run_thumbnail_pipeline(
       let needs_preview =
         thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
       if needs_thumb || needs_preview {
-        pending.push((group.rel_path.clone(), file.path.clone()));
+        pending.push(file.path.clone());
       }
     }
   }
@@ -417,9 +414,8 @@ pub fn run_thumbnail_pipeline(
     }
   });
 
-  let paths: Vec<String> = pending.iter().map(|(_, p)| p.clone()).collect();
   let outcomes = thumbnail::generate_thumbnails_batch_with_progress(
-    &paths,
+    &pending,
     &cache_dir,
     thumb_size,
     ffmpeg_bin.as_deref(),
@@ -433,7 +429,7 @@ pub fn run_thumbnail_pipeline(
   let mut update_buf: Vec<(String, Option<String>, Option<String>)> = Vec::with_capacity(BATCH);
   let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
 
-  for (path, outcome) in paths.into_iter().zip(outcomes.into_iter()) {
+  for (path, outcome) in pending.into_iter().zip(outcomes.into_iter()) {
     // 已被新扫描取代：丢弃全部写副作用（含取消前已在飞的成功结果）
     if !still_current() {
       return;
@@ -441,11 +437,6 @@ pub fn run_thumbnail_pipeline(
     // 取消中止 ≠ 解码失败：跳过写库/计失败，避免重扫叠取消把健康文件推到 FAIL_THRESHOLD
     if outcome.cancelled {
       continue;
-    }
-    // 写副作用前再次确认世代：循环开头校验后可能已被新扫描 bump
-    // push 与 emit 原子化——要么都做要么都不做，避免「push 了不 emit」中间态污染缓冲
-    if !still_current() {
-      return;
     }
     // thumb 或 preview 任一成功都落库+通知（HEIC 可能只写出 preview）
     if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
@@ -459,25 +450,26 @@ pub fn run_thumbnail_pipeline(
       emit_thumb_ready(&app, &path, None, None);
     }
 
-    if update_buf.len() >= BATCH {
+    let flush_updates = update_buf.len() >= BATCH;
+    let flush_fails = fail_buf.len() >= BATCH;
+    if flush_updates || flush_fails {
       if !still_current() {
         return;
       }
-      if let Some(conn) = &conn {
-        let _ = db::update_cache_paths_batch(conn, &update_buf);
-      }
-      update_buf.clear();
-    }
-    if fail_buf.len() >= BATCH {
-      if !still_current() {
-        return;
-      }
-      if let Some(conn) = &conn {
-        for p in &fail_buf {
-          let _ = db::mark_thumb_failed(conn, p);
+      if flush_updates {
+        if let Some(conn) = &conn {
+          let _ = db::update_cache_paths_batch(conn, &update_buf);
         }
+        update_buf.clear();
       }
-      fail_buf.clear();
+      if flush_fails {
+        if let Some(conn) = &conn {
+          for p in &fail_buf {
+            let _ = db::mark_thumb_failed(conn, p);
+          }
+        }
+        fail_buf.clear();
+      }
     }
   }
   if !still_current() {

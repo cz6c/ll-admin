@@ -5,7 +5,6 @@
 mod db;
 mod ffmpeg;
 mod heic_decode;
-mod preview;
 mod scan_state;
 mod scanner;
 mod settings;
@@ -33,6 +32,8 @@ pub struct AlbumState {
   pipeline_epoch: Arc<AtomicU64>,
   /// 根目录自上次 scan 后是否有变动；watcher 落到 true，scan 命中 false 时跳过 WalkDir 走 DB 缓存
   dirty: Arc<AtomicBool>,
+  /// 上一次扫描的根目录，切目录时强制全量 discover（dirty 是进程级单标志，不跟 root 绑定）
+  last_root: String,
 }
 
 impl AlbumState {
@@ -44,6 +45,7 @@ impl AlbumState {
       pipeline_epoch: Arc::new(AtomicU64::new(0)),
       // 首次必须全扫，初始化为 true
       dirty: Arc::new(AtomicBool::new(true)),
+      last_root: String::new(),
     }
   }
 }
@@ -56,7 +58,20 @@ pub fn album_get_settings(app: AppHandle) -> Result<AlbumSettings, String> {
 
 /// 保存相册设置
 #[tauri::command]
-pub fn album_save_settings(app: AppHandle, settings: AlbumSettings) -> Result<(), String> {
+pub fn album_save_settings(
+  app: AppHandle,
+  state: State<'_, Mutex<AlbumState>>,
+  settings: AlbumSettings,
+) -> Result<(), String> {
+  // rootDir 变化时强制下次 scan 走全量 discover（不跟 dirty 绑定）
+  if let Ok(old) = settings::load_settings(&app) {
+    if old.root_dir != settings.root_dir {
+      if let Ok(mut guard) = state.lock() {
+        guard.dirty.store(true, Ordering::SeqCst);
+        guard.last_root.clear();
+      }
+    }
+  }
   settings::save_settings(&app, &settings)
 }
 
@@ -68,87 +83,125 @@ pub fn album_cancel_scan(state: State<'_, Mutex<AlbumState>>) -> Result<(), Stri
 }
 
 /// 扫描根目录：先返回文件列表，缩略图后台生成并通过事件推送
+/// `force=true` 跳过 dirty 检查走全量 discover（用户手动刷新时传）
 #[tauri::command]
 pub async fn album_scan(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   root: String,
   thumb_size: u32,
+  force: Option<bool>,
 ) -> Result<Vec<MediaGroup>, String> {
   let album_data_dir = album_dir(&app)?;
+  let force = force.unwrap_or(false);
 
-  // 1. 取消旧 pipeline，并立刻 bump epoch 作废其写库/emit（超时残留也不再污染新扫描）
-  //    等待上限对齐 ffmpeg 单次超时 + 余量，降低残留概率；仍残留时靠 epoch 挡副作用
-  let (old_pipeline, pipeline_epoch, my_epoch) = {
-    let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
-    guard.cancel.cancel();
-    let my_epoch = guard.pipeline_epoch.fetch_add(1, Ordering::SeqCst) + 1;
-    (
-      guard.pipeline.take(),
-      Arc::clone(&guard.pipeline_epoch),
-      my_epoch,
-    )
-  };
-  if let Some(handle) = old_pipeline {
-    let wait = Duration::from_secs(ffmpeg::FFMPEG_TIMEOUT_SECS + 5);
-    let _ = tokio::time::timeout(wait, handle).await;
-  }
-
-  let cancel = {
-    let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
-    let token = ScanCancelToken::default();
-    guard.cancel = token.clone();
-    token
-  };
-
-  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(&app);
-  if let Some(path) = &ffmpeg_bin {
-    log::info!("album: HEIC decode via ffmpeg ({})", path.display());
-  } else {
-    log::warn!(
-      "album: ffmpeg 未找到，HEIC 将回退 WIC/sips；开发环境请运行: pnpm run cs:ffmpeg-fetch"
-    );
-  }
-
-  // 2. 读取 dirty：false 走 DB 缓存秒返（跳过 WalkDir），true 走全量 discover 并清零
-  let dirty_flag = {
+  let (dirty_flag, root_changed) = {
     let guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
-    Arc::clone(&guard.dirty)
+    // last_root 为空（首次 / 设置改 root 后清空）或与当前 root 不同 → 全量 discover
+    let root_changed = guard.last_root != root;
+    (Arc::clone(&guard.dirty), root_changed)
   };
 
-  // 1.5 缓存版本迁移：删除旧版本目录 + 清空 DB thumb_path/preview_path/fail_count
-  // 仅在有旧版本目录时执行一次；迁移后 dirty 必为 true，走全量 discover
+  // 缓存版本迁移：删旧 thumbs/v* + 清空 DB 缓存路径；仅有旧目录时执行一次
+  let mut migrated_here = false;
   {
     let thumbs_dir = album_data_dir.join("thumbs");
     let current_ver = format!("v{}", types::ALBUM_CACHE_VERSION);
-    let mut migrated = false;
     if let Ok(entries) = std::fs::read_dir(&thumbs_dir) {
       for entry in entries.flatten() {
         if let Some(name) = entry.file_name().to_str() {
           if name != current_ver {
             let _ = std::fs::remove_dir_all(entry.path());
             log::info!("album: removed old cache version dir: {}", name);
-            migrated = true;
+            migrated_here = true;
           }
         }
       }
     }
-    if migrated {
+    if migrated_here {
       let album_dir_for_migrate = album_data_dir.clone();
       let _ = tokio::task::spawn_blocking(move || {
         let conn = db::open_db(&album_dir_for_migrate)?;
         db::clear_all_cache_paths(&conn)
       })
       .await;
-      // 强制走全量 discover
       dirty_flag.store(true, Ordering::SeqCst);
       log::info!("album: cache version migrated, forcing full discover");
     }
   }
 
-  let cache_hit = !dirty_flag.load(Ordering::SeqCst);
+  let need_full_discover = force
+    || root_changed
+    || migrated_here
+    || dirty_flag.load(Ordering::SeqCst);
 
-  let groups = if cache_hit {
+  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(&app);
+  if let Some(path) = &ffmpeg_bin {
+    log::debug!("album: HEIC decode via ffmpeg ({})", path.display());
+  } else {
+    log::warn!(
+      "album: ffmpeg 未找到，HEIC 将回退 WIC/sips；开发环境请运行: pnpm run cs:ffmpeg-fetch"
+    );
+  }
+
+  // 全量路径：先认领当前 dirty（cancel/wait 期间 watcher 再置脏仍留给下次），再停旧 pipeline
+  if need_full_discover {
+    dirty_flag.store(false, Ordering::SeqCst);
+  }
+
+  // 仅在即将启动新 pipeline 时分配 epoch/token；cache_hit 且旧任务仍在跑则两者都不动
+  // full_discover：wait 前同一次 lock 完成 cancel+take+bump+token（不可跨 await 持锁）
+  let pipeline_slot: Option<(Arc<AtomicU64>, u64, ScanCancelToken)> = if need_full_discover {
+    let (old_pipeline, pipeline_epoch, my_epoch, cancel) = {
+      let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
+      guard.cancel.cancel();
+      let old = guard.pipeline.take();
+      let my_epoch = guard.pipeline_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+      let token = ScanCancelToken::default();
+      guard.cancel = token.clone();
+      (old, Arc::clone(&guard.pipeline_epoch), my_epoch, token)
+    };
+    if let Some(handle) = old_pipeline {
+      let wait = Duration::from_secs(ffmpeg::FFMPEG_TIMEOUT_SECS + 5);
+      let _ = tokio::time::timeout(wait, handle).await;
+    }
+    Some((pipeline_epoch, my_epoch, cancel))
+  } else {
+    // cache_hit：读 is_finished 与写 epoch/token 同一把锁，避免中间窗口
+    let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
+    let should_restart = match &guard.pipeline {
+      None => true,
+      Some(h) => h.is_finished(),
+    };
+    if should_restart {
+      let my_epoch = guard.pipeline_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+      let token = ScanCancelToken::default();
+      guard.cancel = token.clone();
+      Some((Arc::clone(&guard.pipeline_epoch), my_epoch, token))
+    } else {
+      None
+    }
+  };
+
+  let groups = if need_full_discover {
+    let app_discover = app.clone();
+    let root_discover = root.clone();
+    let album_dir_clone = album_data_dir.clone();
+    match tokio::task::spawn_blocking(move || {
+      scanner::discover_groups(&app_discover, &root_discover, &album_dir_clone)
+    })
+    .await
+    .map_err(|e| format!("扫描任务失败: {e}"))
+    .and_then(|r| r)
+    {
+      Ok(groups) => groups,
+      Err(e) => {
+        // 失败回滚 dirty，避免下次误走 cache_hit 读旧库
+        dirty_flag.store(true, Ordering::SeqCst);
+        return Err(e);
+      }
+    }
+  } else {
     let root_for_cache = root.clone();
     let album_dir_for_cache = album_data_dir.clone();
     tokio::task::spawn_blocking(move || {
@@ -157,69 +210,36 @@ pub async fn album_scan(
     })
     .await
     .map_err(|e| format!("缓存查询任务失败: {e}"))??
-  } else {
-    let app_discover = app.clone();
-    let root_discover = root.clone();
-    let album_dir_clone = album_data_dir.clone();
-    let groups = tokio::task::spawn_blocking(move || {
-      scanner::discover_groups(&app_discover, &root_discover, &album_dir_clone)
-    })
-    .await
-    .map_err(|e| format!("扫描任务失败: {e}"))??;
-    // 全量重扫完成，清零 dirty；watcher 后续变动会再次置位
-    dirty_flag.store(false, Ordering::SeqCst);
-    groups
   };
 
   {
     let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
     guard.watcher = start_watching(root.clone(), Arc::clone(&guard.dirty));
+    guard.last_root = root.clone();
   }
 
-  let app_bg = app.clone();
-  let groups_bg = groups.clone();
-  let handle = tokio::task::spawn_blocking(move || {
-    scanner::run_thumbnail_pipeline(
-      app_bg,
-      root,
-      album_data_dir,
-      thumb_size,
-      ffmpeg_bin,
-      groups_bg,
-      cancel,
-      pipeline_epoch,
-      my_epoch,
-    );
-  });
-  {
-    let mut guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
-    guard.pipeline = Some(handle);
-  }
-
-  Ok(groups)
-}
-
-/// 懒加载 HEIC/HEIF 全尺寸预览缓存
-#[tauri::command]
-pub async fn album_ensure_preview(app: AppHandle, path: String) -> Result<Option<String>, String> {
-  let album_data_dir = album_dir(&app)?;
-  let cache_dir = album_data_dir
-    .join("thumbs")
-    .join(format!("v{}", types::ALBUM_CACHE_VERSION));
-  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(&app);
-
-  let path_for_db = path.clone();
-  let preview_path = tokio::task::spawn_blocking(move || {
-    preview::ensure_heif_preview(&path, &cache_dir, ffmpeg_bin.as_deref())
-  })
-    .await
-    .map_err(|e| format!("预览任务失败: {e}"))?;
-
-  if let Some(preview) = &preview_path {
-    if let Ok(conn) = db::open_db(&album_data_dir) {
-      let _ = db::update_cache_paths(&conn, &path_for_db, None, Some(preview));
+  if let Some((pipeline_epoch, my_epoch, cancel)) = pipeline_slot {
+    let app_bg = app.clone();
+    let root_for_bg = root.clone();
+    let album_dir_for_bg = album_data_dir.clone();
+    let groups_bg = groups.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+      scanner::run_thumbnail_pipeline(
+        app_bg,
+        root_for_bg,
+        album_dir_for_bg,
+        thumb_size,
+        ffmpeg_bin,
+        groups_bg,
+        cancel,
+        pipeline_epoch,
+        my_epoch,
+      );
+    });
+    if let Ok(mut guard) = state.lock() {
+      guard.pipeline = Some(handle);
     }
   }
 
-  Ok(preview_path)
+  Ok(groups)
 }

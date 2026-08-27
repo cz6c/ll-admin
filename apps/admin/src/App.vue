@@ -55,7 +55,8 @@ function resolveAppNavigate(raw: string): string {
     case "album":
       return "/album/gallery";
     case "icloudSync":
-      return "/album/icloudSync";
+      // 独立同步页已合并进相册 FAB，旧托盘/事件 payload 仍落到相册
+      return "/album/gallery";
     default:
       return raw.startsWith("/") ? raw : "/index";
   }

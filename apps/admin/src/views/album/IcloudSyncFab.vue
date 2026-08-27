@@ -1,7 +1,7 @@
 <!--
   iCloud 同步浮动触发区
   职责：右下角常驻 FAB 体现同步状态（图标/进度环/标签），点击展开右侧抽屉承载全部同步功能
-  主流程：hydrate → FAB 状态显示 → 抽屉内 StatusCard 主按钮 + 折叠任务明细
+  主流程：hydrate → FAB 状态显示 → 抽屉内 StatusCard 主按钮 + 任务明细表
 -->
 <script setup lang="ts">
 import { Icon } from "@iconify/vue";
@@ -20,7 +20,6 @@ const {
   authModalOpen,
   activeJobId,
   progress,
-  taskCollapseOpen,
   taskFilter,
   taskKeyword,
   loadingTasks,
@@ -110,13 +109,7 @@ onMounted(() => {
     </button>
   </div>
 
-  <a-drawer
-    v-model:open="drawerOpen"
-    title="iCloud 同步"
-    placement="right"
-    width="440"
-    :body-style="{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }"
-  >
+  <a-drawer v-model:open="drawerOpen" title="iCloud 同步" placement="right" width="600" :body-style="{ display: 'flex', flexDirection: 'column', gap: '16px' }">
     <div class="drawer-head">
       <a-tag v-if="isLoggedIn" color="success">已登录 · {{ maskedCurrentAppleId }}</a-tag>
       <a-button v-if="isLoggedIn" type="link" danger size="small" :loading="loggingOut" @click="onLogout">退出登录</a-button>
@@ -125,53 +118,51 @@ onMounted(() => {
 
     <IcloudSyncStatusCard />
 
-    <a-collapse v-if="activeJobId != null && progress.total > 0" v-model:active-key="taskCollapseOpen" class="task-collapse" :bordered="false">
-      <a-collapse-panel key="tasks" :header="`文件任务（共 ${progress.total} 个）`">
-        <div class="task-toolbar">
-          <a-radio-group v-model:value="taskFilter" size="small" @change="onTaskFilterChange">
-            <a-radio-button value="all">全部</a-radio-button>
-            <a-radio-button value="pending">待下载</a-radio-button>
-            <a-radio-button value="done">已完成</a-radio-button>
-            <a-radio-button value="failed">失败</a-radio-button>
-          </a-radio-group>
-          <a-input-search v-model:value="taskKeyword" placeholder="搜索文件名" allow-clear size="small" class="task-search" @search="onTaskKeywordSearch" />
-        </div>
-        <a-spin :spinning="loadingTasks">
-          <a-table
-            :columns="taskTableColumns"
-            :data-source="assetTasks"
-            size="small"
-            bordered
-            row-key="rowKey"
-            :scroll="{ y: 280 }"
-            :pagination="{
-              current: taskPage,
-              pageSize: taskPageSize,
-              total: taskTotal,
-              showSizeChanger: true,
-              pageSizeOptions: ['50', '100', '200'],
-              showTotal: (total: number) => `共 ${total} 条`
-            }"
-            @change="onTaskTableChange"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.dataIndex === 'indexNum'">
-                {{ String(record.indexNum).padStart(5, "0") }}
-              </template>
-              <template v-else-if="column.dataIndex === 'part'">
-                {{ partLabel(record.part) }}
-              </template>
-              <template v-else-if="column.dataIndex === 'status'">
-                <a-tag :color="statusTagColor(record.status)">{{ statusLabel(record.status) }}</a-tag>
-              </template>
-              <template v-else-if="column.dataIndex === 'lastError'">
-                {{ formatAssetTaskError(record.lastError) }}
-              </template>
+    <div v-if="activeJobId != null && progress.total > 0">
+      <div class="task-toolbar">
+        <a-radio-group v-model:value="taskFilter" size="small" @change="onTaskFilterChange">
+          <a-radio-button value="all">全部</a-radio-button>
+          <a-radio-button value="pending">待下载</a-radio-button>
+          <a-radio-button value="done">已完成</a-radio-button>
+          <a-radio-button value="failed">失败</a-radio-button>
+        </a-radio-group>
+        <a-input-search v-model:value="taskKeyword" placeholder="搜索文件名" allow-clear size="small" class="task-search" @search="onTaskKeywordSearch" />
+      </div>
+      <a-spin :spinning="loadingTasks">
+        <a-table
+          :columns="taskTableColumns"
+          :data-source="assetTasks"
+          size="small"
+          bordered
+          row-key="rowKey"
+          :scroll="{ y: 316 }"
+          :pagination="{
+            current: taskPage,
+            pageSize: taskPageSize,
+            total: taskTotal,
+            showSizeChanger: true,
+            pageSizeOptions: ['50', '100', '200'],
+            showTotal: (total: number) => `共 ${total} 条`
+          }"
+          @change="onTaskTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.dataIndex === 'indexNum'">
+              {{ String(record.indexNum).padStart(5, "0") }}
             </template>
-          </a-table>
-        </a-spin>
-      </a-collapse-panel>
-    </a-collapse>
+            <template v-else-if="column.dataIndex === 'part'">
+              {{ partLabel(record.part) }}
+            </template>
+            <template v-else-if="column.dataIndex === 'status'">
+              <a-tag :color="statusTagColor(record.status)">{{ statusLabel(record.status) }}</a-tag>
+            </template>
+            <template v-else-if="column.dataIndex === 'lastError'">
+              {{ formatAssetTaskError(record.lastError) }}
+            </template>
+          </template>
+        </a-table>
+      </a-spin>
+    </div>
 
     <a-alert v-if="errorMsg" type="error" :message="errorMsg" show-icon />
 
@@ -247,18 +238,6 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-.task-collapse {
-  background: transparent;
-  :deep(.ant-collapse-header) {
-    padding: 8px 0 !important;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-  }
-  :deep(.ant-collapse-content-box) {
-    padding: 0 0 8px !important;
-  }
 }
 .task-toolbar {
   display: flex;

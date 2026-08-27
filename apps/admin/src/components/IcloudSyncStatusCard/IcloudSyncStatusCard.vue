@@ -1,7 +1,7 @@
 <!--
   iCloud 同步状态卡片
-  职责：合并告警、进度条与三指标；承载主按钮与次要操作
-  适用：icloudSync.vue
+  职责：合并告警、进度条与指标；承载主按钮与次要操作
+  适用：相册页 IcloudSyncFab 抽屉
 -->
 <script setup lang="ts">
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
@@ -54,6 +54,7 @@ const showProgressBar = computed(() => hasActiveJob.value && (progress.value.tot
     <div v-if="showProgressBar && progress.total > 0" class="progress-block">
       <a-progress :percent="progressPercent" :status="isFailed ? 'exception' : undefined" />
       <div class="progress-stats">
+        <span>总文件数 {{ progress.total }}</span>
         <span>已完成 {{ progress.done }}</span>
         <span>待下载 {{ progress.pending }}</span>
         <span :class="{ 'text-error': progress.failed > 0 }">失败 {{ progress.failed }}</span>
@@ -85,10 +86,6 @@ const showProgressBar = computed(() => hasActiveJob.value && (progress.value.tot
       <a-button v-if="canPause && primaryAction?.label !== '暂停同步'" danger :loading="pausing" @click="onPause">暂停</a-button>
       <a-button v-if="outputDir && isDone" @click="openOutputFolder">打开文件夹</a-button>
     </div>
-
-    <p v-if="outputDir && !isDone" class="output-hint">
-      落盘路径：<span class="mono">{{ outputDir }}</span>
-    </p>
   </section>
 </template>
 
@@ -132,14 +129,5 @@ const showProgressBar = computed(() => hasActiveJob.value && (progress.value.tot
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-.output-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  .mono {
-    font-family: ui-monospace, monospace;
-    word-break: break-all;
-  }
 }
 </style>

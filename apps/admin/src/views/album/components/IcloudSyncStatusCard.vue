@@ -13,8 +13,8 @@ const {
   showSessionExpiredAlert,
   isDone,
   isFailed,
-  isCataloging,
   hasActiveJob,
+  isCataloging,
   progress,
   progressPercent,
   catalogElapsedText,
@@ -22,14 +22,11 @@ const {
   isLoggedIn,
   primaryAction,
   canPause,
+  canCancelJob,
+  discarding,
   pausing,
   onPause,
-  canCheckNewPhotos,
-  checkingNew,
-  onCheckNewPhotos,
-  outputDir,
-  openOutputFolder,
-  goGallery,
+  confirmCancelJob,
   statusHeadline,
   statusDescription
 } = useIcloudSyncJob();
@@ -89,10 +86,11 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
           >
             {{ primaryAction.label }}
           </a-button>
-          <a-button v-if="canCheckNewPhotos" :loading="checkingNew" @click="onCheckNewPhotos()">检查新照片</a-button>
           <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停同步</a-button>
-          <a-button v-if="isDone" @click="goGallery">在相册中查看</a-button>
-          <a-button v-if="outputDir && isDone" @click="openOutputFolder()">打开文件夹</a-button>
+          <a-tooltip v-if="hasActiveJob && isCataloging" title="扫描图库中，请稍候再取消">
+            <a-button disabled>取消任务</a-button>
+          </a-tooltip>
+          <a-button v-else-if="canCancelJob" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>
         </div>
       </div>
 

@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Ccode",
-        "width": 1024,
-        "height": 768,
-        "minWidth": 1024,
-        "minHeight": 768,
+        "width": 1228,
+        "height": 800,
+        "minWidth": 1228,
+        "minHeight": 800,
         "resizable": true,
         "decorations": false,
         "shadow": true

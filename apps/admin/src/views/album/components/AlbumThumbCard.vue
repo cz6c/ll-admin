@@ -24,6 +24,11 @@ const thumbUrl = computed(() => {
   return convertFileSrc(props.file.thumbPath);
 });
 
+/** 仅已配对 MOV 的实况展示角标，避免 kind 误判时出现空角标块 */
+const showLiveBadge = computed(
+  () => props.file.kind === "livephoto" && !!props.file.videoPath?.trim()
+);
+
 function onOpen() {
   emit("open", props.file);
 }
@@ -36,30 +41,25 @@ function onDelete() {
 <template>
   <div class="thumb-card-host" v-bind="$attrs">
     <a-dropdown :trigger="['contextmenu']">
-      <div class="thumb-card" @click="onOpen">
-      <img v-if="thumbUrl" :src="thumbUrl" class="thumb-img" loading="lazy" decoding="async" alt="" />
-      <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-placeholder">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="9" cy="9" r="2" />
-          <path d="M21 15l-5-5L5 21" />
-        </svg>
-        <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+      <div class="thumb-card-shell">
+        <LivePhotoBadge v-if="showLiveBadge" class="thumb-badge" size="sm" />
+        <div class="thumb-card" @click="onOpen">
+          <img v-if="thumbUrl" :src="thumbUrl" class="thumb-img" loading="lazy" decoding="async" alt="" />
+          <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-placeholder">
+            <IconifyIcon icon="ant-design:file-image-outlined" width="32" height="32" class="thumb-placeholder-icon" />
+            <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+          </div>
+          <div v-else class="thumb-placeholder">
+            <IconifyIcon icon="ant-design:play-circle-filled" width="32" height="32" class="thumb-placeholder-icon" />
+            <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
+          </div>
+          <div v-if="file.kind === 'video' && thumbUrl" class="video-play-overlay">
+            <span class="video-play-btn">
+              <IconifyIcon icon="ant-design:caret-right-filled" width="18" height="18" class="video-play-icon" />
+            </span>
+          </div>
+        </div>
       </div>
-      <div v-else class="thumb-placeholder">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="rgba(0,0,0,0.5)">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-        <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
-      </div>
-      <LivePhotoBadge v-if="file.kind === 'livephoto'" class="thumb-live-badge" size="sm" />
-      <span v-if="file.kind === 'video'" class="badge-video">{{ file.ext.toUpperCase() }}</span>
-      <div v-if="file.kind === 'video' && thumbUrl" class="video-play-overlay">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-      </div>
-    </div>
     <template #overlay>
       <a-menu>
         <a-menu-item key="delete-local" danger @click="onDelete">删除本地</a-menu-item>
@@ -72,6 +72,14 @@ function onDelete() {
 <style scoped lang="scss">
 .thumb-card-host {
   position: absolute;
+}
+
+.thumb-card-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* 避免 a-dropdown trigger 继承 font-size:0 导致角标文字不可见 */
+  font-size: 12px;
 }
 
 .thumb-card {
@@ -112,23 +120,15 @@ function onDelete() {
   text-transform: uppercase;
 }
 
-.thumb-live-badge {
+.thumb-badge {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 1;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
 }
 
-.badge-video {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.65);
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
-  font-weight: 600;
+.thumb-placeholder-icon {
+  color: var(--color-text-quaternary, rgba(0, 0, 0, 0.25));
 }
 
 .video-play-overlay {
@@ -138,6 +138,21 @@ function onDelete() {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+.video-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.video-play-icon {
+  margin-left: 2px;
+  color: rgba(0, 0, 0, 0.72);
 }
 </style>

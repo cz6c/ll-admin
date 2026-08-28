@@ -3,6 +3,8 @@
   职责：扫描根目录、按子目录筛选展示；缩略图路径 + 后台增量生成
 -->
 <script setup lang="ts">
+import { h } from "vue";
+import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
 import { deleteAlbumLocal } from "@/api/icloudSync";
@@ -12,8 +14,10 @@ import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
+import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
+  ALBUM_THUMB_GENERATE_SIZE,
   ALBUM_THUMB_READY_EVENT,
   type AlbumScanProgressPayload,
   type AlbumThumbReadyPayload,
@@ -27,9 +31,7 @@ const router = useRouter();
 
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
-const THUMB_SIZE = 158;
-const GAP = 8;
-const BUFFER_ROWS = 4;
+const { gridGap: GAP, gridPadding: GRID_PADDING, bufferRows: BUFFER_ROWS } = ALBUM_LAYOUT;
 const loading = ref(false);
 const error = ref("");
 const scanProgress = ref<AlbumScanProgressPayload>({ phase: "discover", done: 0, total: 0 });
@@ -52,7 +54,22 @@ interface AlbumTreeNode {
   key: string;
   title: string;
   children?: AlbumTreeNode[];
+  /** 无下级目录时为 leaf：switcher 留空占位，文字与上级对齐 */
   isLeaf?: boolean;
+}
+
+/** Tree switcher 节点态 */
+type AlbumTreeSwitcherProps = {
+  expanded?: boolean;
+};
+
+/** 展开/收起箭头；leaf 由 rc-tree 渲染等宽 noop 占位，此处不处理 */
+function albumTreeSwitcherIcon({ expanded }: AlbumTreeSwitcherProps) {
+  return h(IconifyIcon, {
+    icon: expanded ? "ant-design:folder-open-outlined" : "ant-design:folder-outlined",
+    width: 16,
+    height: 16
+  });
 }
 
 /** 统一 relPath 分隔符，避免 Windows `\` 与树节点 key 不一致 */
@@ -120,11 +137,12 @@ function buildAlbumTree(list: MediaGroup[]): AlbumTreeNode[] {
   function toNode(n: Mutable): AlbumTreeNode {
     const kids = [...n.children.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map(toNode);
     const count = fileCount.get(n.key) ?? 0;
+    const hasSubdirs = kids.length > 0;
     return {
       key: n.key,
       title: `${n.name} (${count})`,
-      children: kids.length ? kids : undefined,
-      isLeaf: kids.length === 0
+      children: hasSubdirs ? kids : undefined,
+      isLeaf: !hasSubdirs
     };
   }
 
@@ -185,6 +203,9 @@ const scanProgressLabel = computed(() => {
 });
 
 const thumbsGenerating = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > scanProgress.value.done);
+
+/** 全页 loading 进度条：仅缩略图生成等慢过程展示；discover 扫描只 spinner + 文案 */
+const showFullPageScanProgress = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0);
 
 function onTreeSelect(keys: string[]) {
   const key = keys[0];
@@ -248,7 +269,7 @@ async function doScan(force: boolean) {
   try {
     const result = await invoke<MediaGroup[]>("album_scan", {
       root: rootDir.value,
-      thumbSize: THUMB_SIZE,
+      thumbSize: ALBUM_THUMB_GENERATE_SIZE,
       force
     });
     groups.value = result;
@@ -297,14 +318,20 @@ const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
 const { y: scrollTop } = useScroll(scrollEl, { throttle: 60 });
 
-const cols = computed(() => Math.max(1, Math.floor((containerWidth.value + GAP) / (THUMB_SIZE + GAP))));
+/** scroll 内容区宽度 − 左右 padding，供 fluid 列宽计算 */
+const gridAvailWidth = computed(() => Math.max(0, containerWidth.value - GRID_PADDING * 2));
+const gridLayout = computed(() => computeAlbumGridLayout(gridAvailWidth.value));
+const cols = computed(() => gridLayout.value.cols);
+const thumbSize = computed(() => gridLayout.value.thumbSize);
+const rowHeight = computed(() => gridLayout.value.rowHeight);
 const allFiles = computed<MediaFile[]>(() => displayGroups.value[0]?.files ?? []);
-const rowHeight = THUMB_SIZE + GAP;
 const totalRows = computed(() => Math.ceil(allFiles.value.length / cols.value));
-const totalHeight = computed(() => totalRows.value * rowHeight);
+const totalHeight = computed(() => totalRows.value * rowHeight.value);
 
-const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight) - BUFFER_ROWS));
-const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight) + BUFFER_ROWS));
+const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - BUFFER_ROWS));
+const endRow = computed(() =>
+  Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) + BUFFER_ROWS)
+);
 const startIdx = computed(() => startRow.value * cols.value);
 const endIdx = computed(() => endRow.value * cols.value);
 const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
@@ -312,11 +339,12 @@ const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.v
 function cardStyle(idx: number): Record<string, string> {
   const col = idx % cols.value;
   const row = Math.floor(idx / cols.value);
+  const cell = thumbSize.value + GAP;
   return {
-    left: `${col * (THUMB_SIZE + GAP)}px`,
-    top: `${row * rowHeight}px`,
-    width: `${THUMB_SIZE}px`,
-    height: `${THUMB_SIZE}px`
+    left: `${col * cell}px`,
+    top: `${row * rowHeight.value}px`,
+    width: `${thumbSize.value}px`,
+    height: `${thumbSize.value}px`
   };
 }
 
@@ -360,52 +388,42 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="album-page">
-    <div v-if="!rootDir && !loading" class="state-empty">
-      <div class="state-icon-box">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H3z" />
-        </svg>
-      </div>
-      <p class="state-text">未设置相册根目录</p>
-      <button class="state-action" @click="router.push('/cs-settings')">前往设置</button>
+    <a-result v-if="!rootDir && !loading" status="info" title="未设置相册根目录" class="state-panel">
+      <template #extra>
+        <a-button type="primary" @click="router.push('/cs-settings')">前往设置</a-button>
+      </template>
+    </a-result>
+
+    <div v-else-if="loading" class="state-panel state-loading">
+      <a-spin size="large" />
+      <p class="state-loading-tip">{{ scanProgressLabel }}</p>
+      <a-progress v-if="showFullPageScanProgress" :percent="scanProgressPercent" class="scan-progress" />
     </div>
 
-    <div v-else-if="loading" class="state-loading">
-      <div class="spinner" />
-      <p class="state-text">{{ scanProgressLabel }}</p>
-      <div class="scan-progress-wrap">
-        <div
-          class="scan-progress-bar"
-          :class="{ indeterminate: scanProgress.phase === 'discover' && scanProgress.total === 0 }"
-          :style="scanProgress.phase === 'thumbnails' && scanProgress.total > 0 ? { width: scanProgressPercent + '%' } : undefined"
-        />
-      </div>
-    </div>
+    <a-result v-else-if="error" status="error" :title="error" class="state-panel">
+      <template #extra>
+        <a-button type="primary" @click="scan(true)">重试</a-button>
+      </template>
+    </a-result>
 
-    <div v-else-if="error" class="state-error">
-      <p class="state-text">{{ error }}</p>
-      <button class="state-action" @click="scan(true)">重试</button>
-    </div>
-
-    <div v-else-if="groups.length === 0" class="state-empty">
-      <p class="state-text">未找到媒体文件</p>
-    </div>
+    <a-empty v-else-if="groups.length === 0" description="未找到媒体文件" class="state-panel" />
 
     <div v-else class="album-layout">
       <aside class="album-sidebar">
         <div class="sidebar-header">
           <span>目录</span>
-          <button class="refresh-btn" :class="{ spinning: loading }" :disabled="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-              <path d="M21 3v5h-5" />
-            </svg>
-          </button>
+          <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
+            <template #icon>
+              <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
+            </template>
+          </a-button>
         </div>
         <a-tree
           v-model:expanded-keys="expandedKeys"
           :selected-keys="selectedDirKey ? [selectedDirKey] : []"
           :tree-data="treeData"
+          :switcher-icon="albumTreeSwitcherIcon"
+          show-icon
           block-node
           @select="onTreeSelect"
         />
@@ -414,13 +432,11 @@ onBeforeUnmount(() => {
       <main class="album-main">
         <div v-if="thumbsGenerating" class="thumb-progress-bar">
           <span>{{ scanProgressLabel }}</span>
-          <div class="scan-progress-wrap compact">
-            <div class="scan-progress-bar" :style="{ width: scanProgressPercent + '%' }" />
-          </div>
+          <a-progress :percent="scanProgressPercent" size="small" :show-info="false" class="thumb-progress-track" />
         </div>
 
         <div ref="scrollEl" class="album-scroll">
-          <div v-if="displayGroups.length === 0" class="state-empty-inline">该目录下无媒体文件</div>
+          <a-empty v-if="displayGroups.length === 0" description="该目录下无媒体文件" class="state-empty-inline" />
           <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
             <AlbumThumbCard
               v-for="(file, i) in visibleFiles"
@@ -449,6 +465,8 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .album-page {
+  --album-sidebar-width: clamp(200px, 15vw, 248px);
+
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -464,7 +482,7 @@ onBeforeUnmount(() => {
 }
 
 .album-sidebar {
-  width: 158px;
+  width: var(--album-sidebar-width);
   flex-shrink: 0;
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -484,37 +502,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.06em;
 }
 
-.refresh-btn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  &:hover:not(:disabled) {
-    background: var(--fill-color);
-    color: var(--color-text);
-  }
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-  &.spinning svg {
-    animation: refresh-spin 0.9s linear infinite;
-  }
-}
-
-@keyframes refresh-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .album-sidebar :deep(.ant-tree) {
   background: transparent;
   color: var(--color-text);
@@ -522,34 +509,55 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  font-size: 12px;
 }
 
-.album-sidebar :deep(.ant-tree-node-content-wrapper) {
-  padding: 0 4px;
-  border-radius: 4px;
+.album-sidebar :deep(.ant-tree .ant-tree-indent-unit) {
+  width: 12px;
+}
+
+.album-sidebar :deep(.ant-tree .ant-tree-treenode) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+/* 有/无展开箭头均保留同宽占位，末级文字与上级对齐 */
+.album-sidebar :deep(.ant-tree .ant-tree-switcher) {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-width: 20px;
+  height: 24px;
+}
+
+.album-sidebar :deep(.ant-tree .ant-tree-switcher-noop) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.album-sidebar :deep(.ant-tree .ant-tree-switcher svg) {
+  width: 16px;
+  height: 16px;
+}
+
+.album-sidebar :deep(.ant-tree .ant-tree-node-content-wrapper) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
   min-width: 0;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
-.album-sidebar :deep(.ant-tree-node-content-wrapper:hover) {
-  background: var(--fill-color);
-}
-
-.album-sidebar :deep(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
-  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-  color: #fff;
-}
-
-.album-sidebar :deep(.ant-tree-title) {
-  display: block;
+.album-sidebar :deep(.ant-tree .ant-tree-title) {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.album-sidebar :deep(.ant-tree-switcher) {
-  width: 16px;
-  line-height: 22px;
 }
 
 .album-main {
@@ -568,92 +576,38 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--border-color);
-  .scan-progress-wrap.compact {
-    flex: 1;
-    max-width: 200px;
-    margin-top: 0;
-  }
 }
 
-.state-empty,
-.state-loading,
-.state-error {
+.thumb-progress-track {
+  flex: 1;
+  max-width: 200px;
+  margin: 0;
+}
+
+.state-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.state-loading {
   gap: 12px;
 }
 
-.state-empty-inline {
-  padding: 48px;
-  text-align: center;
-  color: var(--color-text-tertiary);
-  font-size: 14px;
-}
-
-.state-text {
+.state-loading-tip {
   margin: 0;
   font-size: 14px;
+  color: var(--color-text-secondary);
 }
 
-.state-action {
-  height: 34px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  &:hover {
-    background: color-mix(in srgb, var(--color-primary), #000 12%);
-  }
-}
-
-.spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--fill-color);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.scan-progress-wrap {
+.scan-progress {
   width: min(320px, 80vw);
-  height: 8px;
-  margin-top: 4px;
-  border-radius: 4px;
-  background: var(--fill-color);
-  overflow: hidden;
 }
 
-.scan-progress-bar {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 4px;
-  transition: width 0.15s ease;
-  &.indeterminate {
-    width: 40% !important;
-    animation: scan-indeterminate 1.2s ease-in-out infinite;
-  }
-}
-
-@keyframes scan-indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(260%);
-  }
+.state-empty-inline {
+  padding: 48px 0;
 }
 
 .album-scroll {
@@ -661,7 +615,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
+  padding: 8px;
   &::-webkit-scrollbar {
     width: 8px;
   }

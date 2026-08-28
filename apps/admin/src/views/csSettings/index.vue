@@ -17,6 +17,7 @@ import {
   type IcloudSyncSettings
 } from "@/api/icloudSync";
 import CsSaveBar from "@/components/CsSaveBar/index.vue";
+import { ALBUM_THUMB_GENERATE_SIZE } from "@/views/album/types";
 import { isTauri } from "@/utils/tauri";
 import $feedback from "@/utils/feedback";
 
@@ -133,7 +134,7 @@ async function saveAlbumSettings(): Promise<boolean> {
     await invoke("album_save_settings", {
       settings: {
         rootDir: rootDir.value.trim(),
-        thumbSize: 158
+        thumbSize: ALBUM_THUMB_GENERATE_SIZE
       }
     });
 

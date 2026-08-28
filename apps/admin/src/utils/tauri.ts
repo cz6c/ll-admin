@@ -5,9 +5,9 @@
  */
 
 /** CS 主窗客户区最小宽（逻辑像素），与布局设计下限一致 */
-export const CS_WINDOW_MIN_INNER_WIDTH = 1024;
+export const CS_WINDOW_MIN_INNER_WIDTH = 1228;
 /** CS 主窗客户区最小高（逻辑像素） */
-export const CS_WINDOW_MIN_INNER_HEIGHT = 768;
+export const CS_WINDOW_MIN_INNER_HEIGHT = 800;
 
 /** 是否运行在 Tauri WebView（CS）内 */
 export function isTauri(): boolean {

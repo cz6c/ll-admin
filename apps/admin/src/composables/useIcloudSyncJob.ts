@@ -1,7 +1,7 @@
 /**
  * iCloud 同步任务共享状态
- * 职责：job 恢复、事件监听、主按钮逻辑、FAB 状态；供相册页 IcloudSyncFab / StatusCard 复用
- * 适用：views/album/components/IcloudSyncFab.vue、components/IcloudSyncStatusCard.vue
+ * 职责：job 恢复、事件监听、主/次按钮（开始/暂停/继续/取消/重新开始）、登出协作暂停、FAB 状态
+ * 适用：IcloudSyncFab · IcloudSyncStatusCard · IcloudSyncAuthModal（退出）
  */
 
 import dayjs from "dayjs";
@@ -18,17 +18,16 @@ import {
   ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT,
   ICLOUD_SYNC_JOB_STATUS_EVENT,
   ICLOUD_SYNC_PROGRESS_EVENT,
-  listIcloudSyncAssetTasks,
+  logoutIcloudSync,
   pauseIcloudSyncJob,
   resumeIcloudSyncJob,
   startIcloudSyncJob,
   validateIcloudSyncReady,
-  type IcloudSyncAssetTaskFilter,
-  type IcloudSyncAssetTaskRow,
   type IcloudSyncJobStatus,
   type IcloudSyncJobStatusResult,
   type IcloudSyncProgressPayload
 } from "@/api/icloudSync";
+import { Modal } from "ant-design-vue";
 import { isTauri } from "@/utils/tauri";
 
 dayjs.extend(duration);
@@ -42,12 +41,6 @@ export interface IcloudSyncPrimaryAction {
   loading: boolean;
   disabled: boolean;
   handler: () => void | Promise<void>;
-}
-
-/** 相册 Tab 角标 */
-export interface IcloudSyncTabBadge {
-  color: "processing" | "warning" | "default" | "error" | "success";
-  text: string;
 }
 
 function maskAppleId(raw: string): string {
@@ -71,12 +64,9 @@ function readStoredJobId(): number | null {
 }
 
 function _useIcloudSyncJob() {
-  const router = useRouter();
-
   const isLoggedIn = ref(false);
   const currentAppleId = ref("");
   const starting = ref(false);
-  const checkingNew = ref(false);
   const pausing = ref(false);
   const resuming = ref(false);
   const discarding = ref(false);
@@ -88,16 +78,6 @@ function _useIcloudSyncJob() {
   const jobAppleId = ref("");
   const outputDir = ref("");
   const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, failed: 0, pending: 0, filename: "" });
-  const jobFailed = ref(0);
-  const jobPending = ref(0);
-
-  const assetTasks = ref<(IcloudSyncAssetTaskRow & { rowKey: string })[]>([]);
-  const taskTotal = ref(0);
-  const taskFilter = ref<IcloudSyncAssetTaskFilter>("all");
-  const taskKeyword = ref("");
-  const taskPage = ref(1);
-  const taskPageSize = ref(50);
-  const loadingTasks = ref(false);
 
   const catalogStartedAt = ref<number | null>(null);
   const downloadStartedAt = ref<number | null>(null);
@@ -106,7 +86,6 @@ function _useIcloudSyncJob() {
   /** session 失效续传门禁 */
   const sessionReauthReady = ref(false);
 
-  let taskRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   let catalogTimer: ReturnType<typeof setInterval> | undefined;
   let listenersBound = false;
   let unlistenProgress: (() => void) | undefined;
@@ -136,11 +115,20 @@ function _useIcloudSyncJob() {
     if (isPausedSession.value) return sessionReauthReady.value;
     return isPausedUser.value;
   });
-  const isRunning = computed(() => jobStatus.value === "running" || starting.value || checkingNew.value || resuming.value || isCataloging.value);
+  const isRunning = computed(() => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value);
   const canPause = computed(() => jobStatus.value === "running" && !pausing.value);
   const isDone = computed(() => jobStatus.value === "done");
   const isFailed = computed(() => jobStatus.value === "failed");
   const hasActiveJob = computed(() => activeJobId.value != null && jobStatus.value != null);
+  /** 未完成 job（含 pending/paused）；删云腾空间须等其结束或已失败/完成 */
+  const hasIncompleteJob = computed(() => {
+    if (!hasActiveJob.value) return false;
+    return !isDone.value && !isFailed.value;
+  });
+  /** 云删等会干扰 worker 的操作；与 hasIncompleteJob 互斥 */
+  const canManageCloudSpace = computed(() => !hasIncompleteJob.value);
+  /** 可丢弃的未完成任务（扫描中不可取消，须等 catalog 结束） */
+  const canCancelJob = computed(() => hasIncompleteJob.value && !isCataloging.value && !discarding.value);
   const showEmptyGuide = computed(() => !hasActiveJob.value && !isRunning.value);
 
   const progressPercent = computed(() => {
@@ -208,10 +196,10 @@ function _useIcloudSyncJob() {
       return "登录状态已失效，已完成文件的进度已保留。请先重新登录后再继续同步。";
     }
     if (isCataloging.value) {
-      return `首次同步需枚举全部照片；已扫描 ${catalogElapsedText.value}，完成后自动开始下载。`;
+      return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}，完成后自动开始下载。`;
     }
     if (isDone.value && outputDir.value) {
-      return `照片已在本地。可从 iCloud 移除副本以释放空间（进入「最近删除」，约 30 天后彻底释放）。文件夹：${outputDir.value}`;
+      return `照片已在本地。可再次「开始同步」拉取新增或尚未下载的照片；也可从 iCloud 移除副本以释放空间。文件夹：${outputDir.value}`;
     }
     if (showEmptyGuide.value) {
       return "流程：登录 Apple ID → 点击开始同步。";
@@ -222,32 +210,19 @@ function _useIcloudSyncJob() {
     return "";
   });
 
-  const syncTabBadge = computed((): IcloudSyncTabBadge | null => {
-    if (!jobStatus.value || isDone.value) return null;
-    if (isCataloging.value || jobStatus.value === "running") {
-      return { color: "processing", text: "同步中" };
-    }
-    if (isPausedSession.value) return { color: "warning", text: "需登录" };
-    if (isPausedUser.value) return { color: "default", text: "已暂停" };
-    if (isFailed.value || progress.value.failed > 0) {
-      return { color: "error", text: progress.value.failed > 0 ? String(progress.value.failed) : "失败" };
-    }
-    return null;
-  });
-
-  /** FAB 浮动触发区派生状态：图标/颜色/标签/进度/旋转 */
+  /** FAB 浮动触发区派生状态：图标/颜色/标签/进度/呼吸动效 */
   const fabState = computed(() => {
     if (!isLoggedIn.value) {
-      return { icon: "cloud" as const, color: "default" as const, label: "登录", percent: 0, spin: false };
+      return { icon: "cloud" as const, color: "default" as const, label: "登录", percent: 0, breathing: false };
     }
     if (isCataloging.value) {
-      return { icon: "cloud" as const, color: "processing" as const, label: "扫描中", percent: 0, spin: true };
+      return { icon: "cloud" as const, color: "processing" as const, label: "扫描中", percent: 0, breathing: true };
     }
     if (isRunning.value) {
-      return { icon: "cloud" as const, color: "processing" as const, label: `${progressPercent.value}%`, percent: progressPercent.value, spin: false };
+      return { icon: "cloud" as const, color: "processing" as const, label: `${progressPercent.value}%`, percent: progressPercent.value, breathing: false };
     }
     if (isPaused.value) {
-      return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: progressPercent.value, spin: false };
+      return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: progressPercent.value, breathing: false };
     }
     if (isFailed.value) {
       return {
@@ -255,13 +230,13 @@ function _useIcloudSyncJob() {
         color: "error" as const,
         label: progress.value.failed > 0 ? `失败 ${progress.value.failed}` : "失败",
         percent: 0,
-        spin: false
+        breathing: false
       };
     }
     if (isDone.value) {
-      return { icon: "check" as const, color: "success" as const, label: `${progress.value.done} 张`, percent: 100, spin: false };
+      return { icon: "check" as const, color: "success" as const, label: `${progress.value.done} 张`, percent: 100, breathing: false };
     }
-    return { icon: "cloud" as const, color: "default" as const, label: "同步", percent: 0, spin: false };
+    return { icon: "cloud" as const, color: "default" as const, label: "同步", percent: 0, breathing: false };
   });
 
   function syncCatalogTimer() {
@@ -312,11 +287,6 @@ function _useIcloudSyncJob() {
     jobAppleId.value = "";
     outputDir.value = "";
     progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
-    jobFailed.value = 0;
-    jobPending.value = 0;
-    assetTasks.value = [];
-    taskTotal.value = 0;
-    taskPage.value = 1;
     downloadStartedAt.value = null;
     syncCatalogTimer();
   }
@@ -326,14 +296,6 @@ function _useIcloudSyncJob() {
     jobAppleId.value = status.appleId ?? "";
     outputDir.value = status.outputDir ?? "";
     jobStatus.value = status.status;
-    jobFailed.value = status.failed ?? 0;
-    jobPending.value = status.pending ?? 0;
-    if (status.status === "paused_session") {
-      sessionReauthReady.value = false;
-    }
-    if (status.total > 0 && downloadStartedAt.value == null && status.status === "running") {
-      downloadStartedAt.value = Date.now();
-    }
     progress.value = {
       done: status.done,
       total: status.total,
@@ -341,6 +303,12 @@ function _useIcloudSyncJob() {
       pending: status.pending ?? 0,
       filename: progress.value.filename
     };
+    if (status.status === "paused_session") {
+      sessionReauthReady.value = false;
+    }
+    if (status.total > 0 && downloadStartedAt.value == null && status.status === "running") {
+      downloadStartedAt.value = Date.now();
+    }
     syncCatalogTimer();
     if (status.status === "done") {
       progress.value = { done: status.total, total: status.total, failed: 0, pending: 0, filename: "" };
@@ -350,7 +318,6 @@ function _useIcloudSyncJob() {
         /* 已完成任务不再持久化 */
       }
     }
-    void refreshAssetTasks(status.jobId);
   }
 
   async function refreshJobStatus(jobId: number) {
@@ -358,44 +325,6 @@ function _useIcloudSyncJob() {
     applyJobStatus(status);
     return status;
   }
-
-  async function refreshAssetTasks(jobId: number) {
-    if (!isTauri() || progress.value.total <= 0) {
-      assetTasks.value = [];
-      taskTotal.value = 0;
-      return;
-    }
-    loadingTasks.value = true;
-    try {
-      const offset = (taskPage.value - 1) * taskPageSize.value;
-      const result = await listIcloudSyncAssetTasks(jobId, {
-        offset,
-        limit: taskPageSize.value,
-        status: taskFilter.value,
-        keyword: taskKeyword.value
-      });
-      assetTasks.value = result.items.map((row, idx) => ({
-        ...row,
-        rowKey: `${row.indexNum}-${row.part}-${offset + idx}`
-      }));
-      taskTotal.value = result.total;
-    } catch {
-      assetTasks.value = [];
-      taskTotal.value = 0;
-    } finally {
-      loadingTasks.value = false;
-    }
-  }
-
-  function scheduleRefreshAssetTasks(jobId: number) {
-    if (taskRefreshTimer) clearTimeout(taskRefreshTimer);
-    taskRefreshTimer = setTimeout(() => void refreshAssetTasks(jobId), 800);
-  }
-
-  /** 无 worker 占用且已登录时可发起增量 catalog（新 job） */
-  const canCheckNewPhotos = computed(
-    () => isLoggedIn.value && !jobAccountMismatch.value && !isRunning.value && !starting.value && !checkingNew.value && !discarding.value
-  );
 
   async function onStart() {
     starting.value = true;
@@ -413,46 +342,11 @@ function _useIcloudSyncJob() {
       downloadStartedAt.value = null;
       syncCatalogTimer();
       progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
-      jobFailed.value = 0;
-      jobPending.value = 0;
-      assetTasks.value = [];
-      taskTotal.value = 0;
-      taskPage.value = 1;
       void refreshJobStatus(result.jobId);
     } catch (e) {
       errorMsg.value = formatIcloudSyncError(e);
     } finally {
       starting.value = false;
-    }
-  }
-
-  /** 增量检查：全量 catalog + Rust diff，仅 added/modified 入队下载 */
-  async function onCheckNewPhotos() {
-    checkingNew.value = true;
-    errorMsg.value = "";
-    try {
-      const check = await validateIcloudSyncReady();
-      if (check.ok === false) {
-        errorMsg.value = check.message;
-        return;
-      }
-      const result = await startIcloudSyncJob("library", "incremental");
-      storeJobId(result.jobId);
-      jobStatus.value = "cataloging";
-      catalogStartedAt.value = Date.now();
-      downloadStartedAt.value = null;
-      syncCatalogTimer();
-      progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
-      jobFailed.value = 0;
-      jobPending.value = 0;
-      assetTasks.value = [];
-      taskTotal.value = 0;
-      taskPage.value = 1;
-      void refreshJobStatus(result.jobId);
-    } catch (e) {
-      errorMsg.value = formatIcloudSyncError(e);
-    } finally {
-      checkingNew.value = false;
     }
   }
 
@@ -478,7 +372,6 @@ function _useIcloudSyncJob() {
     errorMsg.value = "";
     try {
       await resumeIcloudSyncJob(jobId);
-      jobStatus.value = "running";
       await refreshJobStatus(jobId);
     } catch (e) {
       errorMsg.value = formatIcloudSyncError(e);
@@ -504,36 +397,59 @@ function _useIcloudSyncJob() {
     }
   }
 
-  function goGallery() {
-    router.push("/album/gallery");
-  }
-
-  /** FAB 抽屉监听：切到「已同步」并引导删云腾空间 */
-  const focusCloudFreeSpaceNonce = ref(0);
-
-  /**
-   * 请求 FAB 打开云管理并聚焦「已同步」筛选项（下载完成后的腾空间主路径）
-   */
-  function requestFocusCloudFreeSpace() {
-    focusCloudFreeSpaceNonce.value += 1;
-  }
-
-  function goSettings(fromSync = true) {
-    router.push(fromSync ? { path: "/cs-settings", query: { from: "sync" } } : "/cs-settings");
-  }
-
-  async function openOutputFolder() {
-    const dir = outputDir.value.trim();
-    if (!dir) return;
+  /** 丢弃当前任务但不自动重新开始；已下载文件保留在磁盘 */
+  async function onCancelJob() {
+    const jobId = activeJobId.value;
+    if (jobId == null) return;
+    discarding.value = true;
+    errorMsg.value = "";
     try {
-      const { openPath } = await import("@tauri-apps/plugin-opener");
-      await openPath(dir);
+      await discardIcloudSyncJob(jobId);
+      clearActiveJob();
     } catch (e) {
       errorMsg.value = formatIcloudSyncError(e);
+    } finally {
+      discarding.value = false;
     }
   }
 
-  /** 主按钮：登录 / 开始 / 暂停 / 继续 / 查看相册 / 重新开始 */
+  function confirmCancelJob() {
+    Modal.confirm({
+      title: "取消同步任务？",
+      content: "将丢弃当前任务的下载进度（已下载到本地的文件会保留）。之后可重新「开始同步」。",
+      okText: "取消任务",
+      okType: "danger",
+      cancelText: "返回",
+      onOk: () => onCancelJob()
+    });
+  }
+
+  /**
+   * 主动退出登录前协作暂停下载 worker
+   * @note 不 discard job：同号重登可 resume；会话失效由 Rust 置 paused_session
+   */
+  async function prepareSyncBeforeLogout() {
+    const jobId = activeJobId.value;
+    if (jobId == null) return;
+    const status = jobStatus.value;
+    if (status === "running" || status === "pending") {
+      try {
+        await pauseIcloudSyncJob(jobId);
+        await refreshJobStatus(jobId);
+      } catch {
+        /* cataloging 或已暂停 */
+      }
+    }
+  }
+
+  /** 退出 Apple ID：先暂停运行中任务，再清 sidecar session；保留 SQLite 断点 */
+  async function onLogoutAccount() {
+    await prepareSyncBeforeLogout();
+    await logoutIcloudSync(true);
+    onLoggedOut();
+  }
+
+  /** 主按钮：登录 / 开始 / 暂停 / 继续 / 重新开始 */
   const primaryAction = computed((): IcloudSyncPrimaryAction | null => {
     if (jobAccountMismatch.value) {
       return {
@@ -546,11 +462,11 @@ function _useIcloudSyncJob() {
     }
     if (isDone.value) {
       return {
-        label: "释放 iCloud 空间",
+        label: "开始同步",
         kind: "primary",
-        loading: false,
-        disabled: false,
-        handler: requestFocusCloudFreeSpace
+        loading: starting.value,
+        disabled: starting.value,
+        handler: onStart
       };
     }
     if (isFailed.value) {
@@ -560,6 +476,25 @@ function _useIcloudSyncJob() {
         loading: discarding.value || starting.value,
         disabled: discarding.value || starting.value,
         handler: onDiscardAndRestart
+      };
+    }
+    /** 续传/暂停请求进行中：固定主按钮文案，避免 running 切换时闪一下 */
+    if (resuming.value) {
+      return {
+        label: "继续同步",
+        kind: "primary",
+        loading: true,
+        disabled: true,
+        handler: onResume
+      };
+    }
+    if (pausing.value) {
+      return {
+        label: "暂停同步",
+        kind: "danger",
+        loading: true,
+        disabled: true,
+        handler: onPause
       };
     }
     if (canPause.value) {
@@ -629,14 +564,10 @@ function _useIcloudSyncJob() {
     unlistenProgress = await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
       if (event.payload) {
         progress.value = event.payload;
-        jobFailed.value = event.payload.failed ?? 0;
-        jobPending.value = event.payload.pending ?? 0;
         downloadProgressTick.value += 1;
         if (event.payload.total > 0 && downloadStartedAt.value == null) {
           downloadStartedAt.value = Date.now();
         }
-        const jobId = activeJobId.value;
-        if (jobId != null) scheduleRefreshAssetTasks(jobId);
       }
     });
 
@@ -651,28 +582,17 @@ function _useIcloudSyncJob() {
     });
   }
 
-  function onTaskFilterChange() {
-    taskPage.value = 1;
-    const jobId = activeJobId.value;
-    if (jobId != null) void refreshAssetTasks(jobId);
-  }
-
-  function onTaskKeywordSearch() {
-    taskPage.value = 1;
-    const jobId = activeJobId.value;
-    if (jobId != null) void refreshAssetTasks(jobId);
-  }
-
-  function onTaskTableChange(pagination: { current?: number; pageSize?: number }) {
-    taskPage.value = pagination.current ?? 1;
-    if (pagination.pageSize) taskPageSize.value = pagination.pageSize;
-    const jobId = activeJobId.value;
-    if (jobId != null) void refreshAssetTasks(jobId);
-  }
-
-  function onLoggedIn(payload: { accountChanged: boolean }) {
-    void loadAccountContext();
+  async function onLoggedIn(payload: { accountChanged: boolean }) {
+    await loadAccountContext();
     if (payload.accountChanged) {
+      const jobId = activeJobId.value;
+      if (jobId != null) {
+        try {
+          await discardIcloudSyncJob(jobId);
+        } catch {
+          /* job 可能已不存在 */
+        }
+      }
       clearActiveJob();
       errorMsg.value = "";
       sessionReauthReady.value = false;
@@ -688,27 +608,11 @@ function _useIcloudSyncJob() {
     void loadAccountContext();
   }
 
-  function disposeListeners() {
-    unlistenProgress?.();
-    unlistenJobStatus?.();
-    unlistenCloudState?.();
-    listenersBound = false;
-    if (catalogTimer) {
-      clearInterval(catalogTimer);
-      catalogTimer = undefined;
-    }
-    if (taskRefreshTimer) {
-      clearTimeout(taskRefreshTimer);
-      taskRefreshTimer = undefined;
-    }
-  }
-
   return {
     isLoggedIn,
     currentAppleId,
     maskedCurrentAppleId,
     starting,
-    checkingNew,
     pausing,
     resuming,
     discarding,
@@ -719,15 +623,6 @@ function _useIcloudSyncJob() {
     jobAppleId,
     outputDir,
     progress,
-    jobFailed,
-    jobPending,
-    assetTasks,
-    taskTotal,
-    taskFilter,
-    taskKeyword,
-    taskPage,
-    taskPageSize,
-    loadingTasks,
     sessionReauthReady,
     jobAccountMismatch,
     isCataloging,
@@ -741,6 +636,9 @@ function _useIcloudSyncJob() {
     isDone,
     isFailed,
     hasActiveJob,
+    hasIncompleteJob,
+    canManageCloudSpace,
+    canCancelJob,
     showEmptyGuide,
     progressPercent,
     catalogElapsedText,
@@ -748,30 +646,20 @@ function _useIcloudSyncJob() {
     jobStatusLabel,
     statusHeadline,
     statusDescription,
-    syncTabBadge,
     fabState,
-    canCheckNewPhotos,
     cloudStateTick,
     downloadProgressTick,
-    focusCloudFreeSpaceNonce,
     primaryAction,
     hydrateFromStorage,
     loadAccountContext,
     onStart,
-    onCheckNewPhotos,
     onPause,
     onResume,
     onDiscardAndRestart,
-    goGallery,
-    requestFocusCloudFreeSpace,
-    goSettings,
-    openOutputFolder,
-    onTaskFilterChange,
-    onTaskKeywordSearch,
-    onTaskTableChange,
+    confirmCancelJob,
+    onLogoutAccount,
     onLoggedIn,
-    onLoggedOut,
-    disposeListeners
+    onLoggedOut
   };
 }
 

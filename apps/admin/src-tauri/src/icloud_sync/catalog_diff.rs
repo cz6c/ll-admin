@@ -1,6 +1,6 @@
 //! iCloud catalog 降级 B：全量枚举 + 与 assets 现有行 diff
 //! 职责：fingerprint 比对、added/modified/unchanged 分类；catalog 侧无 delta API 时使用
-//! 适用：P2 start_job / 检查新照片
+//! 适用：start_job 全量 catalog diff
 
 use std::collections::{HashMap, HashSet};
 

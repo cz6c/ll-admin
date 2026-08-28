@@ -6,6 +6,12 @@
 export const ALBUM_SCAN_PROGRESS_EVENT = "album://scan-progress";
 export const ALBUM_THUMB_READY_EVENT = "album://thumb-ready";
 
+/**
+ * 磁盘缩略图生成分辨率（px，正方形边长）
+ * 与 Rust `album/types.rs` 的 `default_thumb_size` 保持一致；仅用于扫描/生成，与宫格 UI 显示尺寸无关
+ */
+export const ALBUM_THUMB_GENERATE_SIZE = 158;
+
 export interface AlbumScanProgressPayload {
   phase: "discover" | "thumbnails" | string;
   done: number;

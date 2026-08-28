@@ -31,8 +31,6 @@ export default defineConfig({
     "flex-col-center": "flex-center flex-col",
     "flex-x-center": "flex justify-center",
     "flex-y-center": "flex items-center",
-    "b-flex-col": "flex flex-col",
-    "flex-col-stretch": "b-flex-col items-stretch",
     "flex-1-hidden": "flex-1 overflow-hidden",
     "absolute-lt": "absolute left-0 top-0",
     "absolute-lb": "absolute left-0 bottom-0",

@@ -364,12 +364,9 @@ export function pingIcloudSync() {
   return invoke<{ protocol: number; agent: string }>("icloud_sync_ping");
 }
 
-/** 同步任务模式：全量首次 / 增量检查新照片 */
-export type IcloudSyncJobMode = "full" | "incremental";
-
-/** 新建同步任务：catalog 一次 → 后台串行下载（固定图库视图） */
-export function startIcloudSyncJob(view: IcloudSyncJobView = "library", mode: IcloudSyncJobMode = "full") {
-  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view, mode });
+/** 新建同步任务：catalog → diff → 入队 → 下载（固定 full 模式） */
+export function startIcloudSyncJob(view: IcloudSyncJobView = "library") {
+  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view });
 }
 
 /** 从断点续传（paused_session / paused_user 等）；session 失效时需用户已重新登录 */

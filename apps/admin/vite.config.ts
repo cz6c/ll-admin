@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { createVitePlugins } from "./build/vite";
 import { wrapperEnv } from "./build/utils";
 import { createProxy } from "./build/vite/proxy";
+import { createCsDevLogger } from "./build/vite/csDevLogger";
 import { optimizeDepsInclude } from "./build/vite/optimize";
 
 const pathResolve = (dir: string) => {
@@ -47,6 +48,7 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
       }
     },
     clearScreen: false,
+    ...(isTauri && !isBuild ? { customLogger: createCsDevLogger() } : {}),
     /*  https://cn.vitejs.dev/config/server-options.html#server-proxy */
     server: {
       host: true,

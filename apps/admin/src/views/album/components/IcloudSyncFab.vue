@@ -4,14 +4,13 @@
   主流程：hydrate → FAB 状态显示 → StatusCard 进度/主按钮 → 云资产单列表（腾空间）
 -->
 <script setup lang="ts">
-import { Icon } from "@iconify/vue";
 import IcloudSyncAuthModal from "./IcloudSyncAuthModal.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
+import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
   loadIcloudSyncCloudList,
-  logoutIcloudSync,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
   cancelIcloudSyncCloudDelete,
@@ -51,9 +50,10 @@ const {
   errorMsg,
   cloudStateTick,
   downloadProgressTick,
-  focusCloudFreeSpaceNonce,
+  canManageCloudSpace,
   onLoggedIn,
   onLoggedOut,
+  onLogoutAccount,
   hydrateFromStorage
 } = useIcloudSyncJob();
 
@@ -75,22 +75,33 @@ const cancellingCloudDelete = ref(false);
 const retryingCloudDelete = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
 
-const cloudRowSelection = computed(() => ({
-  selectedRowKeys: cloudSelectedKeys.value,
-  onChange: (keys: (string | number)[]) => {
-    cloudSelectedKeys.value = keys.map(String);
-  },
-  // 等待删云可选（用于撤销）；本地缺失/待下载/云端已删不可勾选删云
-  getCheckboxProps: (record: { cloudState: string }) => ({
-    disabled: record.cloudState === "deleted_cloud_pending" || record.cloudState === "local_missing" || record.cloudState === "cloud_only"
-  })
-}));
+const cloudRowSelection = computed(() =>
+  canManageCloudSpace.value
+    ? {
+        selectedRowKeys: cloudSelectedKeys.value,
+        onChange: (keys: (string | number)[]) => {
+          cloudSelectedKeys.value = keys.map(String);
+        },
+        getCheckboxProps: (record: { cloudState: string }) => ({
+          disabled:
+            record.cloudState === "deleted_cloud_pending" || record.cloudState === "local_missing" || record.cloudState === "cloud_only"
+        })
+      }
+    : undefined
+);
+
+/** 同步未完成时禁止删云；与 canManageCloudSpace 一致 */
+function guardCloudManageAction(): boolean {
+  if (canManageCloudSpace.value) return true;
+  message.warning("同步任务未完成，请暂停或等待结束后再释放 iCloud 空间");
+  return false;
+}
 
 const cloudTableColumns = [
-  { title: "序号", dataIndex: "indexNum", width: 56 },
-  { title: "拍摄时间", dataIndex: "sortKey", width: 132 },
+  { title: "序号", dataIndex: "indexNum", width: 60 },
+  { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "文件名", dataIndex: "originalFilename" },
-  { title: "状态", dataIndex: "cloudState", width: 96 }
+  { title: "状态", dataIndex: "cloudState", width: 120 }
 ];
 
 /** 筛选 Tab 配置：label + summary 计数字段 */
@@ -108,15 +119,12 @@ const cloudFilterTabs: {
   { value: "failed_delete", label: "失败", countKey: "failedDelete", dangerCount: true }
 ];
 
-/** 筛选 Tab 计数文案；0 不展示，>9999 截断 */
-function formatTabCount(count: number | undefined): string | null {
-  if (!count || count <= 0) return null;
-  return count > 9999 ? "9999+" : String(count);
-}
-
-function summaryTabCount(key?: keyof IcloudSyncCloudStateSummary): string | null {
+/** Tab 角标数字（供 a-badge count）；0 返回 null */
+function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | null {
   if (!key || !cloudSummary.value) return null;
-  return formatTabCount(cloudSummary.value[key] as number | undefined);
+  const count = cloudSummary.value[key] as number | undefined;
+  if (!count || count <= 0) return null;
+  return count;
 }
 
 const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value || cancellingCloudDelete.value || retryingCloudDelete.value);
@@ -129,6 +137,7 @@ useResizeObserver(cloudTableWrapRef, ([entry]) => {
 });
 
 function onDeleteMenuClick(info: { key: string | number }) {
+  if (!guardCloudManageAction()) return;
   const key = String(info.key);
   if (key === "selected") confirmDeleteCloud();
   else if (key === "allSynced") confirmDeleteAllSynced();
@@ -219,7 +228,7 @@ function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): strin
     parts.push(`${result.rejectedLocalMissing} 项因本地文件缺失已跳过`);
   }
   if (result.rejectedMissingCpl > 0) {
-    parts.push(`${result.rejectedMissingCpl} 项缺 CPL 元数据（请先「检查新照片」或全量同步）`);
+    parts.push(`${result.rejectedMissingCpl} 项缺 CPL 元数据（请先「开始同步」刷新图库）`);
   }
   const other = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
   if (other > 0) {
@@ -254,6 +263,7 @@ function openDeleteConfirmModal(opts: { title: string; content: string; onConfir
 
 /** 从 iCloud 移除确认 Modal：1.5s 冷却后才可点确认（设计 §安全） */
 function confirmDeleteCloud() {
+  if (!guardCloudManageAction()) return;
   const selected = cloudRows.value.filter(
     row =>
       cloudSelectedKeys.value.includes(row.rowKey) &&
@@ -288,6 +298,7 @@ function confirmDeleteCloud() {
 
 /** 全部已下载项从 iCloud 移除（跨页） */
 function confirmDeleteAllSynced() {
+  if (!guardCloudManageAction()) return;
   const syncedCount = cloudSummary.value?.synced ?? 0;
   if (syncedCount <= 0) {
     message.info("没有已下载到本地、可从 iCloud 移除的项");
@@ -317,6 +328,7 @@ function confirmDeleteAllSynced() {
 }
 
 async function onCancelCloudDeletes() {
+  if (!guardCloudManageAction()) return;
   const selected = cloudRows.value.filter(row => cloudSelectedKeys.value.includes(row.rowKey) && row.cloudState === "cloud_delete_queued");
   if (selected.length === 0) {
     message.warning("请先在「等待移除」中勾选要取消的项");
@@ -337,6 +349,7 @@ async function onCancelCloudDeletes() {
 }
 
 async function onRetryCloudDeletes() {
+  if (!guardCloudManageAction()) return;
   retryingCloudDelete.value = true;
   errorMsg.value = "";
   try {
@@ -367,6 +380,10 @@ async function onClearLocalBinding(record: IcloudSyncCloudListRow) {
   }
 }
 
+watch(canManageCloudSpace, ok => {
+  if (!ok) cloudSelectedKeys.value = [];
+});
+
 watch(drawerOpen, open => {
   if (open) refreshCloudIfVisible();
 });
@@ -378,16 +395,6 @@ watch(cloudStateTick, refreshCloudIfVisible);
 /** 下载中 progress 事件驱动列表 refresh（cloud_state 仅在 catalog/完成时变） */
 const throttledRefreshOnDownload = useThrottleFn(refreshCloudIfVisible, 1200, true, true);
 watch(downloadProgressTick, throttledRefreshOnDownload);
-
-/** 下载完成后主按钮「删云腾空间」：打开抽屉并筛已同步 */
-watch(focusCloudFreeSpaceNonce, () => {
-  if (focusCloudFreeSpaceNonce.value <= 0) return;
-  drawerOpen.value = true;
-  cloudFilter.value = "synced";
-  cloudPage.value = 1;
-  cloudSelectedKeys.value = [];
-  void refreshCloudAssets();
-});
 
 const iconName = computed(() => {
   switch (fabState.value.icon) {
@@ -409,8 +416,7 @@ async function onLogout() {
   loggingOut.value = true;
   errorMsg.value = "";
   try {
-    await logoutIcloudSync(true);
-    onLoggedOut();
+    await onLogoutAccount();
   } catch (e) {
     errorMsg.value = formatIcloudSyncError(e);
   } finally {
@@ -425,15 +431,15 @@ onMounted(() => {
 
 <template>
   <div class="fab-root">
-    <button class="fab-btn" :class="`fab-${fabState.color}`" :title="fabState.label" @click="drawerOpen = true">
-      <a-progress v-if="showProgress" type="circle" :percent="fabState.percent" :size="36" :show-info="false" />
-      <Icon v-else :icon="iconName" :class="{ spin: fabState.spin }" />
-    </button>
+    <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label" @click="drawerOpen = true">
+      <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
+      <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="26" height="26" />
+    </a-button>
   </div>
 
   <a-drawer
     v-model:open="drawerOpen"
-    title="iCloud 同步 · 释放空间"
+    title="iCloud 同步"
     placement="right"
     width="800"
     class="icloud-sync-drawer"
@@ -456,24 +462,30 @@ onMounted(() => {
         <a-radio-group v-model:value="cloudFilter" class="filter-tabs" @change="onCloudFilterChange">
           <a-radio-button v-for="tab in cloudFilterTabs" :key="tab.value" :value="tab.value">
             {{ tab.label }}
-            <span v-if="summaryTabCount(tab.countKey)" class="tab-count" :class="{ 'tab-count--danger': tab.dangerCount }">
-              {{ summaryTabCount(tab.countKey) }}
-            </span>
+            <a-badge
+              v-if="summaryTabCountNum(tab.countKey)"
+              :count="summaryTabCountNum(tab.countKey)!"
+              :overflow-count="9999"
+              :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
+              class="tab-count-badge"
+            />
           </a-radio-button>
         </a-radio-group>
         <div class="toolbar-actions">
           <a-range-picker v-model:value="cloudDateRange" class="cloud-date-range" :placeholder="['起始', '结束']" allow-clear @change="onCloudFilterChange" />
-          <a-dropdown :trigger="['click']">
-            <a-button type="primary" danger :loading="deleteBusy">释放 iCloud 空间</a-button>
-            <template #overlay>
-              <a-menu @click="onDeleteMenuClick">
-                <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
-                <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已下载项从 iCloud 移除</a-menu-item>
-                <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
-                <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: '同步任务未完成，请暂停或等待结束后再操作' }">
+            <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">
+              <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
+              <template #overlay>
+                <a-menu @click="onDeleteMenuClick">
+                  <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
+                  <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已下载项从 iCloud 移除</a-menu-item>
+                  <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
+                  <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+          </a-tooltip>
         </div>
       </div>
 
@@ -548,21 +560,20 @@ onMounted(() => {
   pointer-events: auto;
 }
 .fab-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 58px;
+  height: 58px;
+  padding: 0;
   border: 2px solid currentColor;
   background: var(--color-bg-container, #fff);
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  font-size: 22px;
-  line-height: 1;
   transition: transform 0.2s;
   &:hover {
     transform: scale(1.08);
+    background: var(--color-bg-container, #fff);
+    border-color: currentColor;
   }
 }
 .fab-default {
@@ -580,12 +591,24 @@ onMounted(() => {
 .fab-error {
   color: #ff4d4f;
 }
-.spin {
-  animation: fab-spin 1.5s linear infinite;
+.breathing {
+  animation: fab-breathe 2.2s ease-in-out infinite;
 }
-@keyframes fab-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes fab-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .breathing {
+    animation: none;
+    opacity: 0.7;
   }
 }
 
@@ -626,31 +649,20 @@ onMounted(() => {
   flex-shrink: 0;
   margin-top: 8px;
 }
-.tab-count {
-  display: inline-block;
+.tab-count-badge {
   margin-left: 4px;
-  padding: 0 5px;
-  min-width: 16px;
-  height: 16px;
-  line-height: 16px;
-  font-size: 11px;
-  text-align: center;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--color-text-secondary);
   vertical-align: 1px;
+  :deep(.ant-badge-count) {
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    padding: 0 5px;
+    font-size: 11px;
+    box-shadow: none;
+  }
 }
-:deep(.ant-radio-button-wrapper-checked) .tab-count {
+:deep(.ant-radio-button-wrapper-checked) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
   background: var(--color-primary);
-  color: #fff;
-}
-.tab-count--danger {
-  background: rgba(255, 77, 79, 0.12);
-  color: #ff4d4f;
-}
-:deep(.ant-radio-button-wrapper-checked) .tab-count--danger {
-  background: #ff4d4f;
-  color: #fff;
 }
 .cloud-date-range {
   width: 240px;

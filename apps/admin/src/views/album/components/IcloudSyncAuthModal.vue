@@ -9,13 +9,13 @@ import {
   getIcloudSyncAuthState,
   getIcloudSyncSettings,
   loginIcloudSync,
-  logoutIcloudSync,
   saveIcloudSyncSettings,
   setIcloudSyncCredentials,
   submitIcloudSync2fa,
   type IcloudSyncLoginResult,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
+import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
 defineOptions({ name: "IcloudSyncAuthModal" });
@@ -28,6 +28,8 @@ const emit = defineEmits<{
   /** 主动退出后触发，供同步页刷新登录态 */
   loggedOut: [];
 }>();
+
+const { onLogoutAccount } = useIcloudSyncJob();
 
 const loading = ref(false);
 const loggingIn = ref(false);
@@ -259,7 +261,7 @@ async function onLogout() {
   errorMsg.value = "";
   successMsg.value = "";
   try {
-    await logoutIcloudSync(true);
+    await onLogoutAccount();
     isLoggedIn.value = false;
     password.value = "";
     successMsg.value = "已退出登录，可重新填写凭据登录";

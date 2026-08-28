@@ -16,7 +16,8 @@ use tauri::{AppHandle, Emitter};
 use super::ensure_sidecar_authenticated;
 use super::catalog_diff::classify_catalog_rows;
 use super::db::{
-  apply_catalog_delta, count_assets_by_status, discard_job, finalize_job_download, get_job,
+  apply_catalog_delta, count_assets_by_status, discard_job, enqueue_outstanding_for_full_sync,
+  finalize_job_download, get_job,
   insert_job, job_has_assets, list_asset_tasks, list_failed_assets, list_pending_assets,
   load_existing_baselines, mark_asset_outcome, mark_asset_status, mark_catalog_deletions,
   open_db, reset_failed_to_pending, set_job_catalog_counts, state_db_path, update_job_status,
@@ -525,6 +526,8 @@ fn persist_catalog_delta(
   let (classified, catalog_keys) = classify_catalog_rows(&rows, &existing);
   let mut summary = apply_catalog_delta(conn, job_id, apple_id, &classified)?;
   summary.deleted = mark_catalog_deletions(conn, apple_id, &catalog_keys)?;
+  let extra = enqueue_outstanding_for_full_sync(conn, job_id, apple_id, &catalog_keys)?;
+  summary.enqueued += extra;
   set_job_catalog_counts(conn, job_id)?;
   log::info!(
     "icloud catalog delta job {job_id}: added={} modified={} unchanged={} deleted={} enqueued={}",
@@ -978,8 +981,19 @@ fn spawn_catalog_then_download(
       if catalog_items.is_empty() {
         return Err("catalog 为空".to_string());
       }
-      let conn = open_db(&db_path)?;
+      let mut conn = open_db(&db_path)?;
+      if get_job(&conn, job_id)?.is_none() {
+        log::info!("icloud catalog job {job_id} discarded before persist, abort");
+        release_job(job_id);
+        return Ok(());
+      }
       persist_catalog_delta(&app, &conn, job_id, &apple_id, view, &catalog_items)?;
+      conn = open_db(&db_path)?;
+      if get_job(&conn, job_id)?.is_none() {
+        log::info!("icloud catalog job {job_id} discarded before download, abort");
+        release_job(job_id);
+        return Ok(());
+      }
       set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
       spawn_download_loop(app.clone(), job_id, client.clone());
       Ok(())
@@ -1052,7 +1066,6 @@ fn set_job_status(
 pub fn icloud_sync_start_job(
   app: AppHandle,
   view: JobView,
-  mode: Option<String>,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncStartJobResult, String> {
   let client = sidecar.client();
@@ -1068,14 +1081,6 @@ pub fn icloud_sync_start_job(
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
   let created_at = chrono::Utc::now().timestamp();
-  let job_mode = mode
-    .as_deref()
-    .map(str::trim)
-    .filter(|s| !s.is_empty())
-    .unwrap_or("full");
-  if job_mode != "full" && job_mode != "incremental" {
-    return Err(format!("无效 sync mode: {job_mode}"));
-  }
   let job_id = insert_job(
     &conn,
     view,
@@ -1083,7 +1088,7 @@ pub fn icloud_sync_start_job(
     &apple_id,
     JobStatus::Cataloging,
     created_at,
-    job_mode,
+    "full",
   )?;
   emit_job_status(&app, &conn, job_id);
 

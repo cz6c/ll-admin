@@ -119,29 +119,28 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="viewer-overlay" @click="emit('close')">
-    <button class="viewer-close" title="关闭 (Esc)" @click.stop="emit('close')">
-      <span>&times;</span>
-    </button>
+    <a-button class="viewer-close" shape="circle" type="text" title="关闭 (Esc)" @click.stop="emit('close')">
+      <template #icon>
+        <IconifyIcon icon="ant-design:close-outlined" width="20" height="20" />
+      </template>
+    </a-button>
 
-    <button v-if="currentIndex > 0" class="viewer-nav viewer-prev" title="上一张" @click.stop="prev">
-      <span>&lsaquo;</span>
-    </button>
+    <a-button v-if="currentIndex > 0" class="viewer-nav viewer-prev" shape="circle" type="text" title="上一张" @click.stop="prev">
+      <template #icon>
+        <IconifyIcon icon="ant-design:left-outlined" width="24" height="24" />
+      </template>
+    </a-button>
 
-    <button v-if="currentIndex < flatFiles.length - 1" class="viewer-nav viewer-next" title="下一张" @click.stop="next">
-      <span>&rsaquo;</span>
-    </button>
+    <a-button v-if="currentIndex < flatFiles.length - 1" class="viewer-nav viewer-next" shape="circle" type="text" title="下一张" @click.stop="next">
+      <template #icon>
+        <IconifyIcon icon="ant-design:right-outlined" width="24" height="24" />
+      </template>
+    </a-button>
 
     <div class="viewer-content" @click.stop>
       <template v-if="current">
         <!-- 加载失败占位 -->
-        <div v-if="loadFailed" class="viewer-failed">
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
-          <p class="failed-text">无法加载该文件</p>
-          <p class="failed-name">{{ current.file.name }}</p>
-        </div>
+        <a-result v-if="loadFailed" status="error" title="无法加载该文件" :sub-title="current.file.name" class="viewer-result" />
 
         <!-- 普通图片 -->
         <img
@@ -164,11 +163,8 @@ onBeforeUnmount(() => {
 
         <!-- 普通视频（HEVC 经 Rust 转 H.264 后再播） -->
         <div v-else-if="current.file.kind === 'video'" class="video-container">
-          <div v-if="videoPlaybackLoading" class="viewer-preparing">正在准备播放…</div>
-          <div v-else-if="videoPlaybackError" class="viewer-failed">
-            <p class="failed-text">{{ videoPlaybackError }}</p>
-            <p class="failed-name">{{ current.file.name }}</p>
-          </div>
+          <a-spin v-if="videoPlaybackLoading" tip="正在准备播放…" />
+          <a-result v-else-if="videoPlaybackError" status="error" :title="videoPlaybackError" :sub-title="current.file.name" class="viewer-result" />
           <video
             v-else-if="videoPlaybackSrc"
             :key="videoPlaybackSrc"
@@ -206,15 +202,8 @@ onBeforeUnmount(() => {
   right: 16px;
   width: 40px;
   height: 40px;
-  border: 0;
-  border-radius: 50%;
   background: rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  font-size: 24px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   &:hover {
     background: rgba(0, 0, 0, 0.12);
   }
@@ -225,15 +214,8 @@ onBeforeUnmount(() => {
   transform: translateY(-50%);
   width: 48px;
   height: 48px;
-  border: 0;
-  border-radius: 50%;
   background: rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  font-size: 32px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   &:hover {
     background: rgba(0, 0, 0, 0.12);
   }
@@ -259,25 +241,12 @@ onBeforeUnmount(() => {
   object-fit: contain;
   border-radius: 4px;
 }
-.viewer-failed {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--color-text-secondary);
-}
-.failed-text {
-  margin: 8px 0 0;
-  font-size: 14px;
-}
-.failed-name {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  word-break: break-all;
-  text-align: center;
-  max-width: 60vw;
+.viewer-result {
+  padding: 24px 0;
+  :deep(.ant-result-subtitle) {
+    word-break: break-all;
+    max-width: 60vw;
+  }
 }
 .live-container {
   display: flex;
@@ -292,10 +261,6 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 100%;
   height: 100%;
-}
-.viewer-preparing {
-  color: var(--color-text-secondary);
-  font-size: 14px;
 }
 .viewer-info {
   position: absolute;

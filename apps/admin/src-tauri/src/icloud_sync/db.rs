@@ -393,6 +393,38 @@ pub fn apply_catalog_delta(
   Ok(summary)
 }
 
+/// catalog 后补入队：`cloud_only` / `modified_cloud` 孤儿行（discard 或 unchanged diff 后无 pending）
+pub fn enqueue_outstanding_for_full_sync(
+  conn: &Connection,
+  job_id: i64,
+  apple_id: &str,
+  catalog_keys: &HashSet<(String, String)>,
+) -> Result<u32, String> {
+  let mut enqueued = 0u32;
+  for (asset_id, part) in catalog_keys {
+    let changed = conn
+      .execute(
+        r#"
+        UPDATE assets SET
+          download_status = 'pending',
+          active_job_id = ?1
+        WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
+          AND cloud_state IN ('cloud_only', 'modified_cloud')
+          AND (
+            active_job_id IS NULL
+            OR active_job_id != ?1
+            OR download_status IS NULL
+            OR download_status != 'pending'
+          )
+        "#,
+        params![job_id, apple_id, asset_id, part],
+      )
+      .map_err(|e| format!("full 同步补入队失败: {e}"))?;
+    enqueued += u32::try_from(changed).unwrap_or(0);
+  }
+  Ok(enqueued)
+}
+
 /// catalog 中消失的 (asset_id, part) → deleted_cloud_pending（不删本地、不入队）
 pub fn mark_catalog_deletions(
   conn: &Connection,
@@ -442,7 +474,8 @@ pub fn mark_catalog_deletions(
   Ok(changed)
 }
 
-/// @deprecated 首版 catalog 全量入队；P2 起用 apply_catalog_delta
+/// @deprecated 首版 catalog 全量入队；P2 起用 apply_catalog_delta；仅测试沿用
+#[cfg(test)]
 pub fn upsert_catalog_assets(
   conn: &Connection,
   job_id: i64,
@@ -1899,6 +1932,125 @@ mod tests {
     let requeued = list_pending_assets(&conn, job_id).expect("pending after reset");
     assert_eq!(requeued.len(), 3);
     assert_eq!(requeued[0].asset_id, "A1");
+
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn full_sync_re_enqueues_orphaned_cloud_only_after_discard() {
+    use std::collections::HashSet;
+
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    let old_job = insert_job(
+      &conn,
+      JobView::Library,
+      "C:\\out",
+      "user@icloud.com",
+      JobStatus::Running,
+      1,
+      "full",
+    )
+    .expect("old job");
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, active_job_id, cloud_state
+        ) VALUES('user@icloud.com', 'A1', '2024-01-01', 'a.jpg', 'photo', 1, 'full', 'pending', ?1, 'cloud_only')
+        "#,
+        params![old_job],
+      )
+      .expect("insert orphan candidate");
+
+    discard_job(&conn, old_job).expect("discard");
+    assert!(list_pending_assets(&conn, old_job).expect("old pending").is_empty());
+
+    let new_job = insert_job(
+      &conn,
+      JobView::Library,
+      "C:\\out",
+      "user@icloud.com",
+      JobStatus::Cataloging,
+      2,
+      "full",
+    )
+    .expect("new job");
+
+    let mut keys = HashSet::new();
+    keys.insert(("A1".into(), "full".into()));
+
+    let row = AssetRow {
+      id: 0,
+      apple_id: "user@icloud.com".into(),
+      asset_id: "A1".into(),
+      sort_key: "2024-01-01".into(),
+      original_filename: "a.jpg".into(),
+      media_kind: MediaKind::Photo,
+      live_pair_id: None,
+      index_num: 1,
+      part: AssetPart::Full,
+      download_status: None,
+      active_job_id: None,
+      dest_path: None,
+      cloud_state: CloudState::CloudOnly,
+      last_synced_at: None,
+      last_catalog_at: None,
+      last_error: None,
+      attempt_count: 0,
+      cpl_asset_record_name: None,
+      cpl_asset_change_tag: None,
+    };
+    let classified = vec![(row, CatalogDeltaKind::Unchanged)];
+    let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified).expect("delta");
+    assert_eq!(summary.enqueued, 0);
+    assert_eq!(summary.unchanged, 1);
+
+    let extra = enqueue_outstanding_for_full_sync(&conn, new_job, "user@icloud.com", &keys).expect("re-enqueue");
+    assert_eq!(extra, 1);
+
+    let pending = list_pending_assets(&conn, new_job).expect("new pending");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].asset_id, "A1");
+    assert_eq!(pending[0].cloud_state, CloudState::CloudOnly);
+
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn full_sync_re_enqueue_skips_synced_assets() {
+    use std::collections::HashSet;
+
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    let job_id = insert_job(
+      &conn,
+      JobView::Library,
+      "C:\\out",
+      "user@icloud.com",
+      JobStatus::Cataloging,
+      1,
+      "full",
+    )
+    .expect("job");
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, active_job_id, cloud_state, dest_path
+        ) VALUES('user@icloud.com', 'A1', '2024-01-01', 'a.jpg', 'photo', 1, 'full', NULL, NULL, 'synced', 'C:\\out\\00001_a.jpg')
+        "#,
+        [],
+      )
+      .expect("insert synced");
+
+    let mut keys = HashSet::new();
+    keys.insert(("A1".into(), "full".into()));
+    let extra = enqueue_outstanding_for_full_sync(&conn, job_id, "user@icloud.com", &keys).expect("re-enqueue");
+    assert_eq!(extra, 0);
+    assert!(list_pending_assets(&conn, job_id).expect("pending").is_empty());
 
     let _ = std::fs::remove_file(path);
   }

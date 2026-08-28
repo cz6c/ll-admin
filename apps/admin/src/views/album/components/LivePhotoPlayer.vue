@@ -95,8 +95,10 @@ onBeforeUnmount(() => {
       @pointercancel="stopPlay"
     >
       <img :src="photoSrc" class="live-photo-still" :class="{ 'is-hidden': playing }" alt="" />
-      <div v-if="playbackLoading" class="live-photo-status">正在准备播放…</div>
-      <div v-else-if="playbackError" class="live-photo-status is-error">{{ playbackError }}</div>
+      <div v-if="playbackLoading" class="live-photo-status">
+        <a-spin tip="正在准备播放…" />
+      </div>
+      <a-alert v-else-if="playbackError" class="live-photo-status" type="error" :message="playbackError" banner />
       <video
         v-show="!playbackLoading && !playbackError"
         ref="videoRef"
@@ -183,14 +185,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 12px;
-  text-align: center;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.55);
   background: rgba(255, 255, 255, 0.72);
   border-radius: 4px;
 
-  &.is-error {
-    color: #cf1322;
+  :deep(.ant-alert) {
+    width: 100%;
   }
 }
 </style>

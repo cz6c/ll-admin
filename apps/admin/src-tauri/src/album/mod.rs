@@ -102,7 +102,7 @@ pub async fn album_scan(
     (Arc::clone(&guard.dirty), root_changed)
   };
 
-  // 缓存版本迁移：删旧 thumbs/v* + 清空 DB 缓存路径；仅有旧目录时执行一次
+  // 缓存目录代际迁移：删 thumbs/v*（非当前 vN）+ 清 DB 缓存路径；与 cache_key 公式变更配套 bump
   let mut migrated_here = false;
   {
     let thumbs_dir = album_data_dir.join("thumbs");
@@ -290,4 +290,112 @@ pub fn album_delete_local(
     }
   }
   Ok(deleted)
+}
+
+/// 返回 WebView 可直接 `<video>` 播放的路径：H.264 等原生格式原样返回；HEVC 转 H.264 MP4 缓存
+#[tauri::command]
+pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<String, String> {
+  use std::path::PathBuf;
+  use std::time::UNIX_EPOCH;
+
+  let path = path.trim().to_string();
+  if path.is_empty() {
+    return Err("路径为空".into());
+  }
+  let src = PathBuf::from(&path);
+  if !src.is_file() {
+    return Err(format!("文件不存在: {path}"));
+  }
+
+  let ext = src
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("")
+    .to_lowercase();
+  if !thumbnail::is_video_ext(&ext) {
+    return Ok(path);
+  }
+
+  let modified = std::fs::metadata(&src)
+    .and_then(|m| m.modified())
+    .ok()
+    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+    .map(|d| d.as_secs() as i64)
+    .unwrap_or(0);
+
+  let album_data_dir = album_dir(&app)?;
+  let cache_dir = album_data_dir
+    .join("thumbs")
+    .join(format!("v{}", types::ALBUM_CACHE_VERSION));
+  std::fs::create_dir_all(&cache_dir).map_err(|e| format!("创建播放缓存目录失败: {e}"))?;
+
+  let cache_file = thumbnail::playback_cache_file(&cache_dir, &path, modified);
+  let ffprobe_bin = ffmpeg::resolve_ffprobe_binary(&app);
+
+  if cache_file.is_file()
+    && std::fs::metadata(&cache_file)
+      .map(|m| m.len() > 0)
+      .unwrap_or(false)
+  {
+    let cache_ok = ffprobe_bin
+      .as_ref()
+      .map(|p| ffmpeg::is_web_playable_h264(p, &cache_file))
+      .unwrap_or(true);
+    if cache_ok {
+      return Ok(cache_file.to_string_lossy().into_owned());
+    }
+    let _ = std::fs::remove_file(&cache_file);
+    log::warn!("album: 播放代理缓存无效，将重新转码: {}", cache_file.display());
+  }
+
+  let needs_transcode = if ffmpeg::prefer_playback_proxy(&ext) {
+    true
+  } else if let Some(ref ffprobe) = ffprobe_bin {
+    ffmpeg::probe_video_codec(ffprobe, &src)
+      .map(|c| ffmpeg::needs_playback_transcode(&c))
+      .unwrap_or(false)
+  } else {
+    false
+  };
+
+  if !needs_transcode {
+    return Ok(path);
+  }
+
+  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(&app).ok_or_else(|| {
+    "未找到 ffmpeg，无法转码 HEVC 视频。开发环境请运行: pnpm run cs:ffmpeg-fetch".to_string()
+  })?;
+
+  let partial = cache_file.with_extension("mp4.partial");
+  let src_for_task = src.clone();
+  let cache_for_task = cache_file.clone();
+  let partial_for_task = partial.clone();
+  let path_for_err = path.clone();
+
+  let ok = tokio::task::spawn_blocking(move || {
+    if !ffmpeg::transcode_for_web_playback(&ffmpeg_bin, &src_for_task, &partial_for_task) {
+      let _ = std::fs::remove_file(&partial_for_task);
+      return false;
+    }
+    if !partial_for_task.is_file() {
+      return false;
+    }
+    if cache_for_task.is_file() {
+      let _ = std::fs::remove_file(&cache_for_task);
+    }
+    std::fs::rename(&partial_for_task, &cache_for_task).is_ok()
+  })
+  .await
+  .map_err(|e| format!("转码任务失败: {e}"))?;
+
+  if !ok {
+    return Err(format!("HEVC 转码失败: {path_for_err}"));
+  }
+  if let Some(ref ffprobe) = ffprobe_bin {
+    if !ffmpeg::is_web_playable_h264(ffprobe, &cache_file) {
+      let _ = std::fs::remove_file(&cache_file);
+      return Err(format!("转码结果无法播放: {path_for_err}"));
+    }
+  }
+  Ok(cache_file.to_string_lossy().into_owned())
 }

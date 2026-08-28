@@ -335,7 +335,7 @@ pub fn mark_thumb_failed(conn: &Connection, path: &str) -> Result<(), String> {
   Ok(())
 }
 
-/// 清空所有 thumb_path / preview_path / fail_count（缓存版本升级时调用）
+/// 清空 thumb_path / preview_path / fail_count（`ALBUM_CACHE_VERSION` bump 迁移时调用）
 pub fn clear_all_cache_paths(conn: &Connection) -> Result<(), String> {
   conn
     .execute(

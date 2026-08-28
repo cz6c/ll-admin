@@ -1,25 +1,35 @@
 <!--
   Live Photo 播放器（本地文件）
   职责：全尺寸静态帧预览 + 按住/悬停播放配对 MOV
-  适用：相册 MediaViewer、iCloud 同步落盘后的实况文件
+  适用：MediaViewer、iCloud 同步落盘后的实况文件
   @note 不用 LivePhotosKit：本地 HEIC 需解码 JPEG；LPK 初始化易偏位，且播放低分辨率 MOV 会糊
 -->
 <script setup lang="ts">
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useAlbumPlaybackSrc } from "@/composables/useAlbumPlayback";
+import LivePhotoBadge from "./LivePhotoBadge.vue";
 
-const props = defineProps<{
-  /** 静态帧 JPG/HEIC 绝对路径 */
-  photoPath: string;
-  /** 配对 MOV 绝对路径 */
-  videoPath: string;
-  /** HEIC/HEIF 全尺寸解码 JPEG 缓存路径 */
-  photoPreviewPath?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** 静态帧 JPG/HEIC 绝对路径 */
+    photoPath: string;
+    /** 配对 MOV 绝对路径 */
+    videoPath: string;
+    /** HEIC/HEIF 全尺寸解码 JPEG 缓存路径 */
+    photoPreviewPath?: string;
+    /** 是否在静态帧左上角显示 Live 角标 */
+    showBadge?: boolean;
+  }>(),
+  { showBadge: true }
+);
 
 defineOptions({ name: "LivePhotoPlayer" });
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const playing = ref(false);
+
+const sourceVideoPath = computed(() => props.videoPath?.trim() || undefined);
+const { playbackSrc, loading: playbackLoading, error: playbackError } = useAlbumPlaybackSrc(sourceVideoPath);
 
 /** HEIC/HEIF 在 WebView 中无法作为 img src 直接渲染 */
 function isHeifPath(path: string): boolean {
@@ -37,12 +47,13 @@ const photoSrc = computed(() => {
   return convertFileSrc(props.photoPath);
 });
 
-const videoSrc = computed(() => convertFileSrc(props.videoPath));
+/** 实况 MOV 播放源（HEVC 经 Rust 转 H.264 代理） */
+const videoSrc = playbackSrc;
 
-/** 开始播放 MOV（悬停/按下） */
+/** 开始播放 MOV（悬停/按下）；转码未完成时不发起播放 */
 async function startPlay() {
   const video = videoRef.value;
-  if (!video || playing.value) return;
+  if (!video || playing.value || playbackLoading.value || !videoSrc.value) return;
   playing.value = true;
   try {
     video.currentTime = 0;
@@ -74,17 +85,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="live-photo-player"
-    @pointerenter="startPlay"
-    @pointerleave="stopPlay"
-    @pointerdown="startPlay"
-    @pointerup="stopPlay"
-    @pointercancel="stopPlay"
-  >
-    <div class="live-photo-frame">
+  <div class="live-photo-player">
+    <div
+      class="live-photo-frame"
+      @pointerenter="startPlay"
+      @pointerleave="stopPlay"
+      @pointerdown="startPlay"
+      @pointerup="stopPlay"
+      @pointercancel="stopPlay"
+    >
       <img :src="photoSrc" class="live-photo-still" :class="{ 'is-hidden': playing }" alt="" />
+      <div v-if="playbackLoading" class="live-photo-status">正在准备播放…</div>
+      <div v-else-if="playbackError" class="live-photo-status is-error">{{ playbackError }}</div>
       <video
+        v-show="!playbackLoading && !playbackError"
         ref="videoRef"
         :src="videoSrc"
         class="live-photo-motion"
@@ -93,22 +107,21 @@ onBeforeUnmount(() => {
         playsinline
         preload="metadata"
       />
+      <LivePhotoBadge v-if="props.showBadge" size="md" class="live-badge" />
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
+/* 外层仅居中，不撑满预览区；交互绑在 frame（随图片 intrinsic 尺寸） */
 .live-photo-player {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  touch-action: manipulation;
+  max-width: 100%;
+  max-height: 100%;
 }
 
-/* 以静态帧尺寸为框，视频叠在同区域，避免 LPK 绝对定位偏左 */
 .live-photo-frame {
   position: relative;
   display: inline-flex;
@@ -116,10 +129,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   max-width: 90vw;
   max-height: 85vh;
+  cursor: pointer;
+  touch-action: manipulation;
+  line-height: 0;
 }
 
-.live-photo-still,
-.live-photo-motion {
+.live-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
+}
+
+.live-photo-still {
   display: block;
   max-width: 90vw;
   max-height: 85vh;
@@ -130,10 +152,16 @@ onBeforeUnmount(() => {
 }
 
 .live-photo-motion {
+  display: block;
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 4px;
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  z-index: 1;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease-out;
@@ -145,5 +173,24 @@ onBeforeUnmount(() => {
 
 .live-photo-still.is-hidden {
   visibility: hidden;
+}
+
+.live-photo-status {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 4px;
+
+  &.is-error {
+    color: #cf1322;
+  }
 }
 </style>

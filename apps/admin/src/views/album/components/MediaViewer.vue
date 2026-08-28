@@ -3,9 +3,10 @@
   职责：全屏预览图片/视频/实况照片；键盘导航；上一张/下一张
 -->
 <script setup lang="ts">
-import LivePhotoPlayer from "@/components/LivePhotoPlayer/LivePhotoPlayer.vue";
+import LivePhotoPlayer from "./LivePhotoPlayer.vue";
+import { useAlbumPlaybackSrc } from "@/composables/useAlbumPlayback";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { FlatFile, MediaFile, MediaGroup } from "./types";
+import type { FlatFile, MediaFile, MediaGroup } from "../types";
 
 const props = defineProps<{
   groups: MediaGroup[];
@@ -32,6 +33,16 @@ const flatFiles = computed<FlatFile[]>(() => {
 });
 
 const current = computed<FlatFile | null>(() => flatFiles.value[currentIndex.value] ?? null);
+
+const currentVideoPath = computed(() => {
+  const file = current.value?.file;
+  return file?.kind === "video" ? file.path : undefined;
+});
+const {
+  playbackSrc: videoPlaybackSrc,
+  loading: videoPlaybackLoading,
+  error: videoPlaybackError
+} = useAlbumPlaybackSrc(currentVideoPath);
 
 function calcInitialIndex(): number {
   let idx = 0;
@@ -144,25 +155,31 @@ onBeforeUnmount(() => {
         <!-- 实况照片（LivePhotosKit：长按/点击播放 MOV） -->
         <div v-else-if="current.file.kind === 'livephoto'" class="live-container">
           <LivePhotoPlayer
-            class="live-photo-player-host"
             :key="current.file.path"
             :photo-path="current.file.path"
             :video-path="current.file.videoPath || ''"
             :photo-preview-path="current.file.previewPath"
           />
-          <span class="live-badge-viewer">Live</span>
         </div>
 
-        <!-- 普通视频 -->
-        <video
-          v-else
-          :key="current.file.path"
-          :src="getMediaSrc(current.file.path)"
-          controls
-          autoplay
-          class="viewer-media viewer-video"
-          @error="onMediaError"
-        />
+        <!-- 普通视频（HEVC 经 Rust 转 H.264 后再播） -->
+        <div v-else-if="current.file.kind === 'video'" class="video-container">
+          <div v-if="videoPlaybackLoading" class="viewer-preparing">正在准备播放…</div>
+          <div v-else-if="videoPlaybackError" class="viewer-failed">
+            <p class="failed-text">{{ videoPlaybackError }}</p>
+            <p class="failed-name">{{ current.file.name }}</p>
+          </div>
+          <video
+            v-else-if="videoPlaybackSrc"
+            :key="videoPlaybackSrc"
+            :src="videoPlaybackSrc"
+            controls
+            autoplay
+            playsinline
+            class="viewer-media viewer-video"
+            @error="onMediaError"
+          />
+        </div>
       </template>
     </div>
 
@@ -263,30 +280,22 @@ onBeforeUnmount(() => {
   max-width: 60vw;
 }
 .live-container {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
 }
-.live-photo-player-host {
-  flex: 1;
+.video-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 0;
 }
-.live-badge-viewer {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #4ade80;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+.viewer-preparing {
+  color: var(--color-text-secondary);
+  font-size: 14px;
 }
 .viewer-info {
   position: absolute;

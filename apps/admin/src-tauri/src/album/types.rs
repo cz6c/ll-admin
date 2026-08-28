@@ -3,9 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 缩略图缓存逻辑版本；变更解码/命名规则时递增，并清空 `album/thumbs`
-/// v4: cache_key 用 file_stem 替代 path，移动文件后复用缓存
-pub const ALBUM_CACHE_VERSION: u32 = 4;
+/// 磁盘缓存目录代际（`album/thumbs/v{N}/`）；bump 时删旧 v* 目录并清 DB 缓存路径
+/// - v4: cache_key 曾混入本常量；discover 复用 DB 绝对路径，与 hash 无关
+/// - v5: cache_key 仅 stem + modified + size；目录版本单独负责批量作废
+pub const ALBUM_CACHE_VERSION: u32 = 5;
 
 /// 相册设置（持久化到 `<appData>/album/settings.json`）
 #[derive(Debug, Clone, Serialize, Deserialize)]

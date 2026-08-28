@@ -1,6 +1,6 @@
 //! 缩略图生成
-//! 职责：网格 WebP 缩略图；HEIC 扫描时同步生成全尺寸预览 JPEG
-//! 缓存位置：`<appData>/album/thumbs/v{version}/`
+//! 职责：网格 WebP 缩略图；HEIC 扫描时同步生成全尺寸预览 JPEG；HEVC 播放代理路径
+//! 缓存位置：`<appData>/album/thumbs/v{ALBUM_CACHE_VERSION}/`（目录代际由 types 常量 bump）
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -12,7 +12,6 @@ use image::ImageFormat;
 
 use super::ffmpeg;
 use super::heic_decode;
-use super::types::ALBUM_CACHE_VERSION;
 
 /// 单张缩略图生成结果
 #[derive(Debug, Clone, Default)]
@@ -53,9 +52,8 @@ fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<imag
   heic_decode::decode_heif_file(file_path, ffmpeg_bin)
 }
 
-/// 缩略图唯一标识：用 file_stem（不含扩展名的小写文件名）替代完整 path
-/// 解决"文件移动到不同目录后 path 变化导致缓存失效重新生成"的问题
-/// iCloud 文件名含索引前缀（如 00003_IMG_0027）本身有唯一性，移动不改名时复用缓存
+/// 缓存文件名哈希：stem + modified + size（缩略图 target）
+/// discover 复用 DB 里的绝对路径，不据此查找；换规则须 bump `ALBUM_CACHE_VERSION` 清目录
 fn cache_key(path: &str, modified: i64, size: u32) -> String {
   let stem = Path::new(path)
     .file_stem()
@@ -63,7 +61,6 @@ fn cache_key(path: &str, modified: i64, size: u32) -> String {
     .unwrap_or("")
     .to_lowercase();
   let mut h = DefaultHasher::new();
-  ALBUM_CACHE_VERSION.hash(&mut h);
   stem.hash(&mut h);
   modified.hash(&mut h);
   size.hash(&mut h);
@@ -73,6 +70,12 @@ fn cache_key(path: &str, modified: i64, size: u32) -> String {
 pub fn preview_cache_file(cache_dir: &Path, path: &str, modified: i64) -> PathBuf {
   let key = cache_key(path, modified, 0);
   cache_dir.join(format!("{key}_full.jpg"))
+}
+
+/// HEVC→H.264 播放代理缓存路径（WebView 无法硬解 HEVC 时使用）
+pub fn playback_cache_file(cache_dir: &Path, path: &str, modified: i64) -> PathBuf {
+  let key = cache_key(path, modified, 0);
+  cache_dir.join(format!("{key}_play.mp4"))
 }
 
 /// 保存全尺寸 RGB JPEG 供预览
@@ -267,4 +270,31 @@ pub fn generate_thumbnails_batch_with_progress(
   });
 
   results.into_iter().flatten().collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::path::Path;
+
+  #[test]
+  fn cache_key_stable_for_same_source() {
+    let dir = Path::new("/tmp/thumbs/v5");
+    let path = "E:\\photos\\00001_IMG_1.HEIC";
+    let modified = 1_700_000_000_i64;
+    assert_eq!(
+      preview_cache_file(dir, path, modified),
+      preview_cache_file(dir, path, modified)
+    );
+  }
+
+  #[test]
+  fn cache_key_changes_when_modified_changes() {
+    let dir = Path::new("/tmp/thumbs/v5");
+    let path = "E:\\photos\\00001_IMG_1.HEIC";
+    assert_ne!(
+      preview_cache_file(dir, path, 100),
+      preview_cache_file(dir, path, 101)
+    );
+  }
 }

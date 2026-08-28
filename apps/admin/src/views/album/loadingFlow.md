@@ -77,8 +77,9 @@ flowchart LR
 ### 缓存路径
 
 ```text
-thumbs/v{ALBUM_CACHE_VERSION}/{hash}.webp          # 网格
+thumbs/v{ALBUM_CACHE_VERSION}/{hash}.webp          # 网格（hash=stem+modified+size，不含目录代际）
 thumbs/v{ALBUM_CACHE_VERSION}/{hash}_full.jpg     # 仅 HEIC
+thumbs/v{ALBUM_CACHE_VERSION}/{hash}_play.mp4   # HEVC 播放代理
 hash ← version + file_stem + modified + size
 ```
 

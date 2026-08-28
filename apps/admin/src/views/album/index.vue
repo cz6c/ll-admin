@@ -3,12 +3,13 @@
   职责：扫描根目录、按子目录筛选展示；缩略图路径 + 后台增量生成
 -->
 <script setup lang="ts">
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
 import { deleteAlbumLocal } from "@/api/icloudSync";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
+import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import {
@@ -184,11 +185,6 @@ const scanProgressLabel = computed(() => {
 });
 
 const thumbsGenerating = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > scanProgress.value.done);
-
-function thumbSrc(file: MediaFile): string | undefined {
-  if (!file.thumbPath) return undefined;
-  return convertFileSrc(file.thumbPath);
-}
 
 function onTreeSelect(keys: string[]) {
   const key = keys[0];
@@ -426,37 +422,14 @@ onBeforeUnmount(() => {
         <div ref="scrollEl" class="album-scroll">
           <div v-if="displayGroups.length === 0" class="state-empty-inline">该目录下无媒体文件</div>
           <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
-            <a-dropdown v-for="(file, i) in visibleFiles" :key="file.path" :trigger="['contextmenu']">
-              <div class="thumb-card" :style="cardStyle(startIdx + i)" @click="openViewer(file)">
-                <img v-if="thumbSrc(file)" :src="thumbSrc(file)" class="thumb-img" loading="lazy" decoding="async" alt="" />
-                <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-video-placeholder">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="9" cy="9" r="2" />
-                    <path d="M21 15l-5-5L5 21" />
-                  </svg>
-                  <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
-                </div>
-                <div v-else class="thumb-video-placeholder">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="rgba(0,0,0,0.5)">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  <span class="thumb-ext">{{ file.ext.toUpperCase() }}</span>
-                </div>
-                <span v-if="file.kind === 'livephoto'" class="badge-live">Live</span>
-                <span v-if="file.kind === 'video'" class="badge-video">{{ file.ext.toUpperCase() }}</span>
-                <div v-if="file.kind === 'video' && thumbSrc(file)" class="video-play-overlay">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-              </div>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item key="delete-local" danger @click="onDeleteLocal(file)">删除本地</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
+            <AlbumThumbCard
+              v-for="(file, i) in visibleFiles"
+              :key="file.path"
+              :file="file"
+              :style="cardStyle(startIdx + i)"
+              @open="openViewer"
+              @delete="onDeleteLocal"
+            />
           </div>
         </div>
       </main>
@@ -701,77 +674,5 @@ onBeforeUnmount(() => {
 .thumb-canvas {
   position: relative;
   width: 100%;
-}
-
-.thumb-card {
-  position: absolute;
-  border-radius: 6px;
-  overflow: hidden;
-  cursor: pointer;
-  background: var(--fill-color);
-  &:hover .thumb-img {
-    opacity: 0.85;
-  }
-}
-
-.thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.thumb-video-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  background: var(--fill-color);
-}
-
-.thumb-ext {
-  font-size: 10px;
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-}
-
-.badge-live {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.65);
-  color: #4ade80;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.badge-video {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.65);
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.video-play-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 </style>

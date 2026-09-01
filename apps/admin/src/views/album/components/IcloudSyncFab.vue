@@ -15,7 +15,6 @@ import {
   deleteAllSyncedIcloudAssets,
   cancelIcloudSyncCloudDelete,
   retryIcloudSyncCloudDeletes,
-  clearIcloudSyncLocalBinding,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetsResult
@@ -24,8 +23,10 @@ import {
   cloudListRowsToAssetItems,
   cloudListDisplayState,
   cloudListDisplayFilename,
+  cloudFilterTabLabel,
   cloudStateLabel,
   cloudStateColor,
+  CLOUD_LIST_STATE_FILTER_OPTIONS,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import { Modal, message } from "ant-design-vue";
@@ -51,6 +52,11 @@ const {
   cloudStateTick,
   downloadProgressTick,
   canManageCloudSpace,
+  refreshingCatalog,
+  bindActiveTask,
+  onRefreshCatalog,
+  isCloudDeleteTask,
+  jobStatus,
   onLoggedIn,
   onLoggedOut,
   onLogoutAccount,
@@ -84,16 +90,24 @@ const cloudRowSelection = computed(() =>
         },
         getCheckboxProps: (record: { cloudState: string }) => ({
           disabled:
-            record.cloudState === "deleted_cloud_pending" || record.cloudState === "local_missing" || record.cloudState === "cloud_only"
+            record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only"
         })
       }
     : undefined
 );
 
-/** 同步未完成时禁止删云；与 canManageCloudSpace 一致 */
+/** 未完成任务占用时，禁用云列表操作的提示（已暂停时不再引导「暂停」） */
+const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
+
+function onRefreshCatalogClick() {
+  if (!guardCloudManageAction()) return;
+  void onRefreshCatalog();
+}
+
+/** 有任务进行中时禁止删云 / 刷新 catalog */
 function guardCloudManageAction(): boolean {
   if (canManageCloudSpace.value) return true;
-  message.warning("同步任务未完成，请暂停或等待结束后再释放 iCloud 空间");
+  message.warning(TASK_BUSY_HINT);
   return false;
 }
 
@@ -101,25 +115,17 @@ const cloudTableColumns = [
   { title: "序号", dataIndex: "indexNum", width: 60 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "文件名", dataIndex: "originalFilename" },
-  { title: "状态", dataIndex: "cloudState", width: 120 }
+  { title: "状态", dataIndex: "cloudState", width: 150 }
 ];
 
-/** 筛选 Tab 配置：label + summary 计数字段 */
-const cloudFilterTabs: {
-  value: IcloudSyncCloudStateFilter;
-  label: string;
-  countKey?: keyof IcloudSyncCloudStateSummary;
-  dangerCount?: boolean;
-}[] = [
-  { value: "all", label: "全部" },
-  { value: "cloud_only", label: "待下载", countKey: "cloudOnly" },
-  { value: "synced", label: "已下载", countKey: "synced" },
-  { value: "cloud_delete_queued", label: "等待移除", countKey: "cloudDeleteQueued" },
-  { value: "local_missing", label: "本地缺失", countKey: "localMissing" },
-  { value: "failed_delete", label: "失败", countKey: "failedDelete", dangerCount: true }
-];
+/** 状态 Tab 配置；download_failed 仅在 summary 有计数时展示 */
+const cloudStateFilterTabs = computed(() =>
+  CLOUD_LIST_STATE_FILTER_OPTIONS.filter(
+    tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0
+  )
+);
 
-/** Tab 角标数字（供 a-badge count）；0 返回 null */
+/** Tab 角标数字；0 返回 null */
 function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | null {
   if (!key || !cloudSummary.value) return null;
   const count = cloudSummary.value[key] as number | undefined;
@@ -170,15 +176,19 @@ async function refreshCloudAssets() {
   if (!isLoggedIn.value) return;
   loadingCloud.value = true;
   try {
-    const [list, summary] = await Promise.all([
-      loadIcloudSyncCloudList({
-        offset: (cloudPage.value - 1) * cloudPageSize.value,
-        limit: cloudPageSize.value,
-        cloudState: cloudFilter.value,
-        ...cloudDateBounds()
-      }),
-      getIcloudSyncCloudStateSummary(true)
-    ]);
+    const summary = await getIcloudSyncCloudStateSummary();
+    let filter = cloudFilter.value;
+    // 同步失败为活跃 job 派生态；任务结束或无失败项时自动退回「全部」
+    if (filter === "download_failed" && !(summary.downloadFailed > 0)) {
+      filter = "all";
+      cloudFilter.value = "all";
+    }
+    const list = await loadIcloudSyncCloudList({
+      offset: (cloudPage.value - 1) * cloudPageSize.value,
+      limit: cloudPageSize.value,
+      cloudState: filter,
+      ...cloudDateBounds()
+    });
     cloudRows.value = list.items.map(row => {
       const displayRow: IcloudSyncCloudListRow = { ...row, rowKey: row.assetId };
       const state = cloudListDisplayState(displayRow);
@@ -268,11 +278,10 @@ function confirmDeleteCloud() {
     row =>
       cloudSelectedKeys.value.includes(row.rowKey) &&
       row.cloudState !== "cloud_delete_queued" &&
-      row.cloudState !== "deleted_cloud_pending" &&
-      row.cloudState !== "local_missing"
+      row.cloudState !== "deleted_cloud_pending"
   );
   if (selected.length === 0) {
-    message.warning("请先勾选要从 iCloud 移除的照片（须已下载到本地）");
+    message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
     return;
   }
 
@@ -285,7 +294,10 @@ function confirmDeleteCloud() {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
         message.success(formatDeleteEnqueueMessage(result));
         cloudSelectedKeys.value = [];
+        cloudFilter.value = "cloud_delete_queued";
+        cloudPage.value = 1;
         await refreshCloudAssets();
+        if (result.jobId > 0) await bindActiveTask(result.jobId);
       } catch (e) {
         errorMsg.value = formatIcloudSyncError(e);
         throw e;
@@ -296,17 +308,17 @@ function confirmDeleteCloud() {
   });
 }
 
-/** 全部已下载项从 iCloud 移除（跨页） */
+/** 全部已同步项从 iCloud 移除（跨页） */
 function confirmDeleteAllSynced() {
   if (!guardCloudManageAction()) return;
   const syncedCount = cloudSummary.value?.synced ?? 0;
   if (syncedCount <= 0) {
-    message.info("没有已下载到本地、可从 iCloud 移除的项");
+    message.info("没有已同步到本地、可从 iCloud 移除的项");
     return;
   }
 
   openDeleteConfirmModal({
-    title: `从 iCloud 移除全部已下载项（约 ${syncedCount} 项）？`,
+    title: `从 iCloud 移除全部已同步项（约 ${syncedCount} 项）？`,
     content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
     onConfirm: async () => {
       deletingAllSynced.value = true;
@@ -317,6 +329,7 @@ function confirmDeleteAllSynced() {
         cloudFilter.value = "cloud_delete_queued";
         cloudPage.value = 1;
         await refreshCloudAssets();
+        if (result.jobId > 0) await bindActiveTask(result.jobId);
       } catch (e) {
         errorMsg.value = formatIcloudSyncError(e);
         throw e;
@@ -359,6 +372,7 @@ async function onRetryCloudDeletes() {
     } else {
       message.success(`已重新安排 ${result.retried} 项从 iCloud 移除`);
       await refreshCloudAssets();
+      if (result.jobId > 0) await bindActiveTask(result.jobId);
     }
   } catch (e) {
     errorMsg.value = formatIcloudSyncError(e);
@@ -367,18 +381,14 @@ async function onRetryCloudDeletes() {
   }
 }
 
-async function onClearLocalBinding(record: IcloudSyncCloudListRow) {
-  try {
-    const part = record.mediaKind === "live" ? "still" : record.part;
-    const changed = await clearIcloudSyncLocalBinding(record.assetId, part);
-    if (changed) {
-      message.success("已移除本地绑定");
-      await refreshCloudAssets();
-    }
-  } catch (e) {
-    errorMsg.value = formatIcloudSyncError(e);
+watch(jobStatus, (status, prev) => {
+  if (status === "done" && prev !== "done" && isCloudDeleteTask.value && drawerOpen.value) {
+    cloudFilter.value = "deleted_cloud_pending";
+    cloudPage.value = 1;
+    cloudSelectedKeys.value = [];
+    void refreshCloudAssets();
   }
-}
+});
 
 watch(canManageCloudSpace, ok => {
   if (!ok) cloudSelectedKeys.value = [];
@@ -460,26 +470,31 @@ onMounted(() => {
 
       <div v-if="isLoggedIn" class="cloud-toolbar">
         <a-radio-group v-model:value="cloudFilter" class="filter-tabs" @change="onCloudFilterChange">
-          <a-radio-button v-for="tab in cloudFilterTabs" :key="tab.value" :value="tab.value">
-            {{ tab.label }}
+          <a-radio-button v-for="tab in cloudStateFilterTabs" :key="tab.value" :value="tab.value">
+            {{ cloudFilterTabLabel(tab) }}
             <a-badge
               v-if="summaryTabCountNum(tab.countKey)"
               :count="summaryTabCountNum(tab.countKey)!"
               :overflow-count="9999"
               :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
-              class="tab-count-badge"
+              :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
             />
           </a-radio-button>
         </a-radio-group>
         <div class="toolbar-actions">
           <a-range-picker v-model:value="cloudDateRange" class="cloud-date-range" :placeholder="['起始', '结束']" allow-clear @change="onCloudFilterChange" />
-          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: '同步任务未完成，请暂停或等待结束后再操作' }">
+          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+            <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">
+              刷新 iCloud 状态
+            </a-button>
+          </a-tooltip>
+          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
             <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">
               <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
               <template #overlay>
                 <a-menu @click="onDeleteMenuClick">
                   <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
-                  <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已下载项从 iCloud 移除</a-menu-item>
+                  <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已同步项从 iCloud 移除</a-menu-item>
                   <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
                   <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
                 </a-menu>
@@ -526,14 +541,6 @@ onMounted(() => {
                 <span class="filename-text" :title="(record as CloudListDisplayRow).displayFilename">
                   {{ (record as CloudListDisplayRow).displayFilename }}
                 </span>
-                <a-button
-                  v-if="(record as CloudListDisplayRow).cloudState === 'local_missing'"
-                  type="link"
-                  size="small"
-                  @click.stop="onClearLocalBinding(record as CloudListDisplayRow)"
-                >
-                  移除绑定
-                </a-button>
               </template>
             </template>
           </a-table>

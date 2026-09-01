@@ -1,6 +1,6 @@
-//! iCloud 云删队列与后台 worker
-//! 职责：用户删云入队、cancel/retry、sidecar delete_assets 批处理与审计
-//! 适用：P3 抽屉批量删云；下载 worker 活跃时让路
+//! iCloud 删云任务
+//! 职责：删云作为 CloudDelete 类型统一任务入队、worker 批处理、与同步全局互斥
+//! 适用：抽屉「释放 iCloud 空间」
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,23 +8,29 @@ use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::Duration;
 
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use super::db::{
-  cancel_cloud_deletes, clear_local_binding, collect_synced_keys_for_cloud_delete,
-  count_global_pending_downloads, enqueue_cloud_deletes, expand_live_delete_pair,
-  finalize_cloud_delete_failure, finalize_cloud_delete_success, list_pending_cloud_deletes,
-  mark_cloud_deletes_deleting, open_db, reset_interrupted_cloud_deletes,
-  retry_failed_cloud_deletes, state_db_path,
-  CloudDeleteQueueRow,
+  cancel_cloud_deletes, collect_synced_keys_for_cloud_delete,
+  cloud_delete_job_has_work, discard_cloud_delete_job, enqueue_cloud_deletes,
+  expand_live_delete_pair, finalize_cloud_delete_failure, finalize_cloud_delete_success,
+  find_incomplete_task_for_apple, insert_job, list_pending_cloud_deletes,
+  mark_cloud_deletes_deleting, open_db, refresh_cloud_delete_job_counts,
+  reset_interrupted_cloud_deletes, retry_failed_cloud_deletes, revert_cloud_deletes_batch,
+  state_db_path, CloudDeleteQueueRow,
 };
 use super::ensure_sidecar_authenticated;
-use super::queue::{is_download_worker_active, CLOUD_STATE_CHANGED_EVENT};
+use super::queue::{
+  emit_task_progress, emit_task_status, is_worker_slot_active, release_job, set_task_status,
+  try_claim_job, CLOUD_STATE_CHANGED_EVENT,
+};
 use super::settings::{load_album_root_dir, load_settings};
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
-use super::types::error_codes;
+use super::task::require_no_incomplete_task;
+use super::types::{error_codes, JobStatus, JobView, TaskType};
 
 const DELETE_BATCH_SIZE: u32 = 50;
 const WORKER_IDLE_MS: u64 = 2000;
@@ -40,7 +46,22 @@ fn emit_cloud_state_changed(app: &AppHandle) {
   let _ = app.emit(CLOUD_STATE_CHANGED_EVENT, ());
 }
 
-/// 删云入队单项（前端 camelCase）
+fn is_auth_pause_message(msg: &str) -> bool {
+  msg.contains(error_codes::NEED_2FA)
+    || msg.contains(error_codes::SESSION_EXPIRED)
+    || msg.starts_with(error_codes::AUTH_FAILED)
+    || msg.starts_with(error_codes::SIDECAR_CRASHED)
+    || msg.contains(error_codes::ACCOUNT_LOCKED)
+}
+
+fn is_auth_pause_code(code: &str) -> bool {
+  code == error_codes::NEED_2FA
+    || code == error_codes::SESSION_EXPIRED
+    || code == error_codes::AUTH_FAILED
+    || code == error_codes::ACCOUNT_LOCKED
+    || code == error_codes::SIDECAR_CRASHED
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncDeleteAssetItem {
@@ -55,15 +76,7 @@ pub struct IcloudSyncDeleteAssetsResult {
   pub rejected: u32,
   pub rejected_missing_cpl: u32,
   pub rejected_local_missing: u32,
-}
-
-fn delete_assets_result_from(summary: crate::icloud_sync::db::EnqueueCloudDeleteResult) -> IcloudSyncDeleteAssetsResult {
-  IcloudSyncDeleteAssetsResult {
-    accepted: summary.accepted,
-    rejected: summary.rejected,
-    rejected_missing_cpl: summary.rejected_missing_cpl,
-    rejected_local_missing: summary.rejected_local_missing,
-  }
+  pub job_id: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +89,7 @@ pub struct IcloudSyncCancelCloudDeleteResult {
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncRetryCloudDeletesResult {
   pub retried: u32,
+  pub job_id: i64,
 }
 
 struct DeleteBatchItemResult {
@@ -84,7 +98,19 @@ struct DeleteBatchItemResult {
   message: Option<String>,
 }
 
-/// App 启动：重置中断 deleting + 启动后台云删 worker（单例）
+fn delete_assets_result_from(
+  job_id: i64,
+  summary: super::db::EnqueueCloudDeleteResult,
+) -> IcloudSyncDeleteAssetsResult {
+  IcloudSyncDeleteAssetsResult {
+    accepted: summary.accepted,
+    rejected: summary.rejected,
+    rejected_missing_cpl: summary.rejected_missing_cpl,
+    rejected_local_missing: summary.rejected_local_missing,
+    job_id,
+  }
+}
+
 pub fn init_cloud_delete_worker(app: AppHandle, client: Arc<SidecarClient>) {
   if delete_worker_flag()
     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -108,7 +134,19 @@ fn run_cloud_delete_worker(app: AppHandle, client: Arc<SidecarClient>) {
   loop {
     thread::sleep(Duration::from_millis(WORKER_IDLE_MS));
 
-    if is_download_worker_active() {
+    if is_worker_slot_active() {
+      continue;
+    }
+
+    let settings = match load_settings(&app) {
+      Ok(s) => s,
+      Err(e) => {
+        log::warn!("icloud cloud delete settings: {e}");
+        continue;
+      }
+    };
+    let apple_id = settings.apple_id.trim().to_string();
+    if apple_id.is_empty() {
       continue;
     }
 
@@ -120,87 +158,160 @@ fn run_cloud_delete_worker(app: AppHandle, client: Arc<SidecarClient>) {
       }
     };
 
-    let outcome = (|| -> Result<(), String> {
-      if let Err(e) = ensure_sidecar_authenticated(&app, client.as_ref()) {
-        if e.contains(error_codes::NEED_2FA) || e.contains(error_codes::SESSION_EXPIRED) {
-          return Ok(());
+    let conn = match open_db(&db_path) {
+      Ok(c) => c,
+      Err(e) => {
+        log::warn!("icloud cloud delete open db: {e}");
+        continue;
+      }
+    };
+
+    if let Err(e) = reset_interrupted_cloud_deletes(&conn) {
+      log::warn!("icloud cloud delete reset interrupted: {e}");
+    }
+
+    let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)
+      .ok()
+      .flatten()
+      .filter(|j| j.task_type == TaskType::CloudDelete)
+    else {
+      continue;
+    };
+
+    if matches!(job.status, JobStatus::PausedSession | JobStatus::PausedUser) {
+      continue;
+    }
+
+    if try_claim_job(job.id).is_err() {
+      continue;
+    }
+
+    let job_id = job.id;
+    let process_result = (|| -> Result<(), String> {
+      ensure_sidecar_authenticated(&app, client.as_ref()).map_err(|e| {
+        if is_auth_pause_message(&e) {
+          let _ = set_task_status(&app, &conn, job_id, JobStatus::PausedSession);
         }
-        return Err(e);
-      }
+        e
+      })?;
 
-      let settings = load_settings(&app)?;
-      let apple_id = settings.apple_id.trim().to_string();
-      if apple_id.is_empty() {
-        return Ok(());
-      }
-
-      let conn = open_db(&db_path)?;
-      if count_global_pending_downloads(&conn)? > 0 {
-        return Ok(());
-      }
-
-      let batch = list_pending_cloud_deletes(&conn, &apple_id, DELETE_BATCH_SIZE)?;
+      let batch = list_pending_cloud_deletes(&conn, job_id, DELETE_BATCH_SIZE)?;
       if batch.is_empty() {
+        refresh_cloud_delete_job_counts(&conn, job_id)?;
+        emit_task_status(&app, &conn, job_id);
+        if !cloud_delete_job_has_work(&conn, job_id)? {
+          set_task_status(&app, &conn, job_id, JobStatus::Done)?;
+        }
         return Ok(());
       }
 
       let ids: Vec<i64> = batch.iter().map(|r| r.id).collect();
       mark_cloud_deletes_deleting(&conn, &ids)?;
+      let filename = batch
+        .first()
+        .map(|r| r.original_filename.clone())
+        .unwrap_or_default();
+
+      refresh_cloud_delete_job_counts(&conn, job_id)?;
+      emit_task_progress(&app, &conn, job_id, &filename);
 
       let session_path = session_dir(&app)?;
-      let results = call_delete_assets(
-        client.as_ref(),
-        &app,
-        &batch,
-        &apple_id,
-        &session_path,
-      )
-      .map_err(|e| e.to_string())?;
-
-      let mut changed = false;
-      for (row, result) in batch.iter().zip(results.iter()) {
-        if result.ok {
-          append_delete_audit(&app, row)?;
-          finalize_cloud_delete_success(
-            &conn,
-            row.id,
-            &apple_id,
-            &row.asset_id,
-            &row.part,
-          )?;
-          changed = true;
-        } else {
-          let code = result.code.as_deref().unwrap_or(error_codes::DELETE_FAILED);
-          let msg = result.message.as_deref().unwrap_or(code);
-          let summary = if result.message.as_deref().is_some_and(|m| !m.is_empty()) {
-            format!("{code}: {msg}")
-          } else {
-            code.to_string()
-          };
-          finalize_cloud_delete_failure(
-            &conn,
-            row.id,
-            &apple_id,
-            &row.asset_id,
-            &row.part,
-            &summary,
-          )?;
-          changed = true;
+      match call_delete_assets(client.as_ref(), &app, &batch, &apple_id, &session_path) {
+        Ok(results) => {
+          for (row, result) in batch.iter().zip(results.iter()) {
+            if result.ok {
+              append_delete_audit(&app, row)?;
+              finalize_cloud_delete_success(
+                &conn,
+                row.id,
+                &apple_id,
+                &row.asset_id,
+                &row.part,
+              )?;
+            } else {
+              let code = result.code.as_deref().unwrap_or(error_codes::DELETE_FAILED);
+              let msg = result.message.as_deref().unwrap_or(code);
+              finalize_cloud_delete_failure(
+                &conn,
+                row.id,
+                &apple_id,
+                &row.asset_id,
+                &row.part,
+                &format!("{code}: {msg}"),
+              )?;
+            }
+          }
+          emit_cloud_state_changed(&app);
+        }
+        Err(err) => {
+          let summary = err.to_string();
+          revert_cloud_deletes_batch(&conn, &ids, &summary)?;
+          emit_cloud_state_changed(&app);
+          if is_auth_pause_code(err.code.as_str()) || is_auth_pause_message(&summary) {
+            set_task_status(&app, &conn, job_id, JobStatus::PausedSession)?;
+          }
+          return Err(summary);
         }
       }
 
-      if changed {
-        emit_cloud_state_changed(&app);
+      refresh_cloud_delete_job_counts(&conn, job_id)?;
+      emit_task_progress(&app, &conn, job_id, &filename);
+      if !cloud_delete_job_has_work(&conn, job_id)? {
+        set_task_status(&app, &conn, job_id, JobStatus::Done)?;
       }
-
       thread::sleep(Duration::from_millis(DELETE_BATCH_GAP_MS));
       Ok(())
     })();
 
-    if let Err(e) = outcome {
-      log::warn!("icloud cloud delete worker: {e}");
+    if let Err(e) = process_result {
+      log::warn!("icloud cloud delete worker job {job_id}: {e}");
     }
+    release_job(job_id);
   }
+}
+
+fn start_cloud_delete_task(
+  app: &AppHandle,
+  apple_id: &str,
+  keys: &[(String, String)],
+  reason: &str,
+) -> Result<IcloudSyncDeleteAssetsResult, String> {
+  if keys.is_empty() {
+    return Err("没有可删除的云资产".to_string());
+  }
+
+  let db_path = state_db_path(app)?;
+  let conn = open_db(&db_path)?;
+  require_no_incomplete_task(&conn, apple_id, TaskType::CloudDelete)?;
+
+  let created_at = chrono::Utc::now().timestamp();
+  let job_id = insert_job(
+    &conn,
+    TaskType::CloudDelete,
+    JobView::Library,
+    "",
+    apple_id,
+    JobStatus::Running,
+    created_at,
+    "cloud_delete",
+  )?;
+
+  let summary = enqueue_cloud_deletes(&conn, job_id, apple_id, keys, reason)?;
+  if summary.accepted == 0 {
+    discard_cloud_delete_job(&conn, job_id)?;
+    return Err("没有可删除的云资产".to_string());
+  }
+
+  conn
+    .execute(
+      "UPDATE jobs SET total_count = ?1, pending_count = ?1 WHERE id = ?2",
+      params![summary.accepted, job_id],
+    )
+    .map_err(|e| format!("更新删云任务 total 失败: {e}"))?;
+
+  emit_task_status(app, &conn, job_id);
+  emit_cloud_state_changed(app);
+  Ok(delete_assets_result_from(job_id, summary))
 }
 
 fn call_delete_assets(
@@ -286,16 +397,11 @@ fn parse_delete_assets_event(
       }
       _ => (true, None, None),
     };
-    out.push(DeleteBatchItemResult {
-      ok,
-      code,
-      message,
-    });
+    out.push(DeleteBatchItemResult { ok, code, message });
   }
   Ok(out)
 }
 
-/// 审计落盘：`<albumRoot>/audit/cloud_deletes_YYYY-MM.log`
 fn append_delete_audit(app: &AppHandle, row: &CloudDeleteQueueRow) -> Result<(), String> {
   let root = load_album_root_dir(app)?;
   if root.trim().is_empty() {
@@ -348,7 +454,6 @@ fn collect_delete_keys(
   Ok(keys)
 }
 
-/// 用户批量删云：入队 + cloud_state=cloud_delete_queued
 #[tauri::command]
 pub fn icloud_sync_delete_assets(
   app: AppHandle,
@@ -367,22 +472,14 @@ pub fn icloud_sync_delete_assets(
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
   let keys = collect_delete_keys(&conn, &apple_id, &items)?;
-  if keys.is_empty() {
-    return Err("没有可删除的云资产".to_string());
-  }
-
   let reason_text = reason
     .as_deref()
     .map(str::trim)
     .filter(|s| !s.is_empty())
     .unwrap_or("user_batch");
-
-  let summary = enqueue_cloud_deletes(&conn, &apple_id, &keys, reason_text)?;
-  emit_cloud_state_changed(&app);
-  Ok(delete_assets_result_from(summary))
+  start_cloud_delete_task(&app, &apple_id, &keys, reason_text)
 }
 
-/// 已同步全部入队删云（跨页；仍走本地文件门禁 + Live 成对）
 #[tauri::command]
 pub fn icloud_sync_delete_all_synced(
   app: AppHandle,
@@ -397,10 +494,6 @@ pub fn icloud_sync_delete_all_synced(
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
   let synced = collect_synced_keys_for_cloud_delete(&conn, &apple_id)?;
-  if synced.is_empty() {
-    return Err("没有已同步的云资产可删".to_string());
-  }
-
   let mut seen = std::collections::HashSet::new();
   let mut keys: Vec<(String, String)> = Vec::new();
   for (asset_id, part) in synced {
@@ -410,22 +503,14 @@ pub fn icloud_sync_delete_all_synced(
       }
     }
   }
-  if keys.is_empty() {
-    return Err("没有可删除的云资产".to_string());
-  }
-
   let reason_text = reason
     .as_deref()
     .map(str::trim)
     .filter(|s| !s.is_empty())
     .unwrap_or("user_all_synced");
-
-  let summary = enqueue_cloud_deletes(&conn, &apple_id, &keys, reason_text)?;
-  emit_cloud_state_changed(&app);
-  Ok(delete_assets_result_from(summary))
+  start_cloud_delete_task(&app, &apple_id, &keys, reason_text)
 }
 
-/// 撤销 pending 云删
 #[tauri::command]
 pub fn icloud_sync_cancel_cloud_delete(
   app: AppHandle,
@@ -444,11 +529,18 @@ pub fn icloud_sync_cancel_cloud_delete(
   let conn = open_db(&db_path)?;
   let keys = collect_delete_keys(&conn, &apple_id, &items)?;
   let cancelled = cancel_cloud_deletes(&conn, &apple_id, &keys)?;
+
+  if let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)?
+    .filter(|j| j.task_type == TaskType::CloudDelete)
+  {
+    refresh_cloud_delete_job_counts(&conn, job.id)?;
+    emit_task_status(&app, &conn, job.id);
+  }
+
   emit_cloud_state_changed(&app);
   Ok(IcloudSyncCancelCloudDeleteResult { cancelled })
 }
 
-/// 将 failed_delete 重新入队
 #[tauri::command]
 pub fn icloud_sync_retry_cloud_deletes(
   app: AppHandle,
@@ -458,30 +550,44 @@ pub fn icloud_sync_retry_cloud_deletes(
   if apple_id.is_empty() {
     return Err("请先填写 Apple ID".to_string());
   }
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let retried = retry_failed_cloud_deletes(&conn, &apple_id)?;
-  emit_cloud_state_changed(&app);
-  Ok(IcloudSyncRetryCloudDeletesResult { retried })
-}
 
-/// 移除本地绑定（不删盘、不删云）
-#[tauri::command]
-pub fn icloud_sync_clear_local_binding(
-  app: AppHandle,
-  asset_id: String,
-  part: String,
-) -> Result<bool, String> {
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.trim().to_string();
-  if apple_id.is_empty() {
-    return Err("请先填写 Apple ID".to_string());
-  }
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
-  let changed = clear_local_binding(&conn, &apple_id, asset_id.trim(), part.trim())?;
-  if changed {
-    emit_cloud_state_changed(&app);
+  require_no_incomplete_task(&conn, &apple_id, TaskType::CloudDelete)?;
+
+  let retried = retry_failed_cloud_deletes(&conn, &apple_id)?;
+  if retried == 0 {
+    return Ok(IcloudSyncRetryCloudDeletesResult {
+      retried: 0,
+      job_id: 0,
+    });
   }
-  Ok(changed)
+
+  let created_at = chrono::Utc::now().timestamp();
+  let job_id = insert_job(
+    &conn,
+    TaskType::CloudDelete,
+    JobView::Library,
+    "",
+    &apple_id,
+    JobStatus::Running,
+    created_at,
+    "cloud_delete_retry",
+  )?;
+  conn
+    .execute(
+      "UPDATE cloud_delete_queue SET job_id = ?1 WHERE apple_id = ?2 AND status = 'pending'",
+      params![job_id, apple_id],
+    )
+    .map_err(|e| format!("绑定重试删云 job 失败: {e}"))?;
+  conn
+    .execute(
+      "UPDATE jobs SET total_count = ?1, pending_count = ?1 WHERE id = ?2",
+      params![retried, job_id],
+    )
+    .map_err(|e| format!("更新重试删云 total 失败: {e}"))?;
+
+  emit_task_status(&app, &conn, job_id);
+  emit_cloud_state_changed(&app);
+  Ok(IcloudSyncRetryCloudDeletesResult { retried, job_id })
 }

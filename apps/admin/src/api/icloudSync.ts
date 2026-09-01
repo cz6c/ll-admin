@@ -13,6 +13,9 @@ export type IcloudSyncJobView = "library" | "recents";
 /** 任务生命周期状态（与 Rust JobStatus 对齐） */
 export type IcloudSyncJobStatus = "cataloging" | "pending" | "running" | "paused_session" | "paused_user" | "done" | "failed";
 
+/** 全局任务类型（与 Rust TaskType 对齐） */
+export type IcloudSyncTaskType = "sync" | "cloudDelete" | "catalog";
+
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
   /** 同步落盘绝对路径；空时 Rust 侧推导 albumRoot/iCloudSync */
@@ -84,6 +87,7 @@ export interface IcloudSyncStartJobResult {
 
 export interface IcloudSyncJobStatusResult {
   jobId: number;
+  taskType: IcloudSyncTaskType;
   status: IcloudSyncJobStatus;
   /** 创建任务时的 Apple ID */
   appleId: string;
@@ -129,7 +133,7 @@ export interface IcloudSyncListAssetTasksResult {
   total: number;
 }
 
-/** 抽屉云注册表行（cloud_state 含派生 local_missing） */
+/** 抽屉云注册表行 */
 export interface IcloudSyncSyncAssetRow {
   assetId: string;
   part: string;
@@ -162,22 +166,23 @@ export interface IcloudSyncLoadAssetsResult {
 export interface IcloudSyncCloudStateSummary {
   cloudOnly: number;
   synced: number;
-  modifiedCloud: number;
   deletedCloudPending: number;
   cloudDeleteQueued: number;
   failedDelete: number;
-  localMissing: number;
+  /** 活跃同步任务内 download_status=failed 的行数；任务结束后为 0 */
+  downloadFailed: number;
+  /** 最近一次 catalog diff 时间戳（秒） */
+  lastCatalogAt?: number | null;
 }
 
 export type IcloudSyncCloudStateFilter =
   | "all"
   | "cloud_only"
   | "synced"
-  | "modified_cloud"
   | "deleted_cloud_pending"
   | "cloud_delete_queued"
-  | "local_missing"
-  | "failed_delete";
+  | "failed_delete"
+  | "download_failed";
 
 /** 任务文件状态筛选 */
 export type IcloudSyncAssetTaskFilter = "all" | "pending" | "done" | "failed";
@@ -209,6 +214,7 @@ export interface IcloudSyncDeleteAssetsResult {
   rejectedMissingCpl: number;
   /** 本地 dest_path 缺失或磁盘无文件 */
   rejectedLocalMissing: number;
+  jobId: number;
 }
 
 export interface IcloudSyncCancelCloudDeleteResult {
@@ -217,6 +223,7 @@ export interface IcloudSyncCancelCloudDeleteResult {
 
 export interface IcloudSyncRetryCloudDeletesResult {
   retried: number;
+  jobId: number;
 }
 
 /** 云态变更后刷新 summary / 列表（catalog、下载完成等） */
@@ -241,7 +248,8 @@ export const ICLOUD_SYNC_ERROR_CODES = {
   ACCOUNT_MISMATCH: "account_mismatch",
   ALREADY_LOGGED_IN: "already_logged_in",
   DOMAIN_MISMATCH: "domain_mismatch",
-  DELETE_FAILED: "delete_failed"
+  DELETE_FAILED: "delete_failed",
+  TASK_ACTIVE: "task_active"
 } as const;
 
 const ERROR_USER_MESSAGES: Record<string, string> = {
@@ -257,7 +265,8 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_MISMATCH]: "当前 Apple ID 与任务创建账号不一致，请开始新同步",
   [ICLOUD_SYNC_ERROR_CODES.ALREADY_LOGGED_IN]: "已处于登录状态，请先退出后再登录",
   [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "iCloud 区域与 Apple ID 不匹配，请切换区域后重新登录",
-  [ICLOUD_SYNC_ERROR_CODES.DELETE_FAILED]: "删除云端照片失败，请稍后重试"
+  [ICLOUD_SYNC_ERROR_CODES.DELETE_FAILED]: "从 iCloud 移除失败，请稍后重试",
+  [ICLOUD_SYNC_ERROR_CODES.TASK_ACTIVE]: "已有任务进行中，请先取消后再操作"
 };
 
 /**
@@ -403,9 +412,19 @@ export function listIcloudSyncAssetTasks(
   });
 }
 
-/** 丢弃本地同步任务（运行中会先请求暂停）；用于账号不一致或「开始新同步」 */
+/** 丢弃未完成任务（同步 / 删云 / 刷新 catalog） */
 export function discardIcloudSyncJob(jobId: number) {
   return invoke<void>("icloud_sync_discard_job", { jobId });
+}
+
+/** 当前账号未完成任务（hydrate 用） */
+export function getIcloudSyncActiveTask() {
+  return invoke<IcloudSyncJobStatusResult | null>("icloud_sync_active_task");
+}
+
+/** 仅刷新 iCloud 目录统计，不下载；与同步/删云互斥 */
+export function refreshIcloudSyncCatalog(view: IcloudSyncJobView = "library") {
+  return invoke<IcloudSyncStartJobResult>("icloud_sync_refresh_catalog", { view });
 }
 
 /** 分页加载跨 job 云资产列表（抽屉主列表；Live 在应用层合并展示） */
@@ -454,9 +473,9 @@ export async function loadIcloudSyncCloudList(options: Parameters<typeof loadIcl
   };
 }
 
-/** cloud_state 汇总；checkDisk=true 时懒算 local_missing */
-export function getIcloudSyncCloudStateSummary(checkDisk = false) {
-  return invoke<IcloudSyncCloudStateSummary>("icloud_sync_get_cloud_state_summary", { checkDisk });
+/** cloud_state 汇总 */
+export function getIcloudSyncCloudStateSummary() {
+  return invoke<IcloudSyncCloudStateSummary>("icloud_sync_get_cloud_state_summary");
 }
 
 /** 批量删云入队（Modal 确认后调用；Live still 会自动带上 mov） */
@@ -482,11 +501,6 @@ export function cancelIcloudSyncCloudDelete(items: IcloudSyncDeleteAssetItem[]) 
 /** 将 failed_delete 重新入队 */
 export function retryIcloudSyncCloudDeletes() {
   return invoke<IcloudSyncRetryCloudDeletesResult>("icloud_sync_retry_cloud_deletes");
-}
-
-/** 移除本地绑定（不删盘、不删云） */
-export function clearIcloudSyncLocalBinding(assetId: string, part: string) {
-  return invoke<boolean>("icloud_sync_clear_local_binding", { assetId, part });
 }
 
 /** 删除本地文件及 media.db 索引（不触碰 iCloud sync） */

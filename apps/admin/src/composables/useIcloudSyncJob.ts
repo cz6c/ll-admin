@@ -1,6 +1,6 @@
 /**
- * iCloud 同步任务共享状态
- * 职责：job 恢复、事件监听、主/次按钮（开始/暂停/继续/取消/重新开始）、登出协作暂停、FAB 状态
+ * iCloud 统一任务状态
+ * 职责：同步 / 删云 / 刷新 catalog 单任务模型、事件监听、主按钮与 FAB 状态
  * 适用：IcloudSyncFab · IcloudSyncStatusCard · IcloudSyncAuthModal（退出）
  */
 
@@ -11,6 +11,7 @@ import { createSharedComposable } from "@vueuse/core";
 import {
   discardIcloudSyncJob,
   formatIcloudSyncError,
+  getIcloudSyncActiveTask,
   getIcloudSyncAuthState,
   getIcloudSyncJobStatus,
   getIcloudSyncSettings,
@@ -20,12 +21,14 @@ import {
   ICLOUD_SYNC_PROGRESS_EVENT,
   logoutIcloudSync,
   pauseIcloudSyncJob,
+  refreshIcloudSyncCatalog,
   resumeIcloudSyncJob,
   startIcloudSyncJob,
   validateIcloudSyncReady,
   type IcloudSyncJobStatus,
   type IcloudSyncJobStatusResult,
-  type IcloudSyncProgressPayload
+  type IcloudSyncProgressPayload,
+  type IcloudSyncTaskType
 } from "@/api/icloudSync";
 import { Modal } from "ant-design-vue";
 import { isTauri } from "@/utils/tauri";
@@ -52,17 +55,6 @@ function maskAppleId(raw: string): string {
   return `${head}***@${domain}`;
 }
 
-function readStoredJobId(): number | null {
-  try {
-    const raw = localStorage.getItem(ICLOUD_SYNC_ACTIVE_JOB_KEY);
-    if (!raw) return null;
-    const id = Number(raw);
-    return Number.isFinite(id) && id > 0 ? id : null;
-  } catch {
-    return null;
-  }
-}
-
 function _useIcloudSyncJob() {
   const isLoggedIn = ref(false);
   const currentAppleId = ref("");
@@ -74,10 +66,12 @@ function _useIcloudSyncJob() {
   const authModalOpen = ref(false);
 
   const activeJobId = ref<number | null>(null);
+  const taskType = ref<IcloudSyncTaskType | null>(null);
   const jobStatus = ref<IcloudSyncJobStatus | null>(null);
   const jobAppleId = ref("");
   const outputDir = ref("");
   const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, failed: 0, pending: 0, filename: "" });
+  const refreshingCatalog = ref(false);
 
   const catalogStartedAt = ref<number | null>(null);
   const downloadStartedAt = ref<number | null>(null);
@@ -105,6 +99,10 @@ function _useIcloudSyncJob() {
     return jobId !== current;
   });
 
+  const isSyncTask = computed(() => taskType.value === "sync" || taskType.value === null);
+  const isCloudDeleteTask = computed(() => taskType.value === "cloudDelete");
+  const isCatalogTask = computed(() => taskType.value === "catalog");
+
   const isCataloging = computed(() => jobStatus.value === "cataloging");
   const isPausedSession = computed(() => jobStatus.value === "paused_session");
   const isPausedUser = computed(() => jobStatus.value === "paused_user");
@@ -115,21 +113,25 @@ function _useIcloudSyncJob() {
     if (isPausedSession.value) return sessionReauthReady.value;
     return isPausedUser.value;
   });
-  const isRunning = computed(() => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value);
-  const canPause = computed(() => jobStatus.value === "running" && !pausing.value);
+  const isRunning = computed(
+    () => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value
+  );
+  const canPause = computed(() => {
+    if (!isRunning.value || pausing.value || isCataloging.value) return false;
+    return isSyncTask.value || isCloudDeleteTask.value;
+  });
   const isDone = computed(() => jobStatus.value === "done");
   const isFailed = computed(() => jobStatus.value === "failed");
   const hasActiveJob = computed(() => activeJobId.value != null && jobStatus.value != null);
-  /** 未完成 job（含 pending/paused）；删云腾空间须等其结束或已失败/完成 */
-  const hasIncompleteJob = computed(() => {
+  /** 任意类型未完成任务；所有入口互斥 */
+  const hasIncompleteTask = computed(() => {
     if (!hasActiveJob.value) return false;
     return !isDone.value && !isFailed.value;
   });
-  /** 云删等会干扰 worker 的操作；与 hasIncompleteJob 互斥 */
-  const canManageCloudSpace = computed(() => !hasIncompleteJob.value);
-  /** 可丢弃的未完成任务（扫描中不可取消，须等 catalog 结束） */
-  const canCancelJob = computed(() => hasIncompleteJob.value && !isCataloging.value && !discarding.value);
+  const canManageCloudSpace = computed(() => !hasIncompleteTask.value);
+  const canCancelJob = computed(() => hasIncompleteTask.value && !isCataloging.value && !discarding.value);
   const showEmptyGuide = computed(() => !hasActiveJob.value && !isRunning.value);
+  const showProgressBar = computed(() => hasActiveJob.value && (progress.value.total > 0 || isCataloging.value));
 
   const progressPercent = computed(() => {
     if (!progress.value.total) return 0;
@@ -165,8 +167,8 @@ function _useIcloudSyncJob() {
   const jobStatusLabel = computed(() => {
     const map: Record<IcloudSyncJobStatus, string> = {
       cataloging: "扫描图库",
-      pending: "待下载",
-      running: "下载中",
+      pending: "待同步",
+      running: "同步中",
       paused_session: "已暂停（登录失效）",
       paused_user: "已暂停",
       done: "已完成",
@@ -177,12 +179,32 @@ function _useIcloudSyncJob() {
 
   const statusHeadline = computed(() => {
     if (jobAccountMismatch.value) return "任务与当前账号不一致";
-    if (showSessionExpiredAlert.value) return "同步已暂停（登录失效）";
-    if (isDone.value) return "同步已完成";
-    if (isFailed.value) return "同步失败";
-    if (isCataloging.value) return "正在扫描 iCloud 图库…";
-    if (isPausedUser.value) return "同步已暂停";
-    if (jobStatus.value === "running") return "正在下载";
+    if (showSessionExpiredAlert.value) {
+      if (isCloudDeleteTask.value) return "移除已暂停（登录失效）";
+      return "同步已暂停（登录失效）";
+    }
+    if (isDone.value) {
+      if (isCloudDeleteTask.value) return "移除已完成";
+      if (isCatalogTask.value) return "iCloud 目录已刷新";
+      return "同步已完成";
+    }
+    if (isFailed.value) {
+      if (isCloudDeleteTask.value) return "移除失败";
+      if (isCatalogTask.value) return "刷新 iCloud 目录失败";
+      return "同步失败";
+    }
+    if (isCataloging.value) {
+      if (isCatalogTask.value) return "正在刷新 iCloud 目录…";
+      return "正在扫描 iCloud 图库…";
+    }
+    if (isPausedUser.value) {
+      if (isCloudDeleteTask.value) return "移除已暂停";
+      return "同步已暂停";
+    }
+    if (jobStatus.value === "running") {
+      if (isCloudDeleteTask.value) return "正在从 iCloud 移除…";
+      return "正在同步";
+    }
     if (showEmptyGuide.value && !isLoggedIn.value) return "登录后即可开始同步";
     if (showEmptyGuide.value) return "准备就绪，可开始同步";
     return jobStatusLabel.value;
@@ -190,22 +212,34 @@ function _useIcloudSyncJob() {
 
   const statusDescription = computed(() => {
     if (jobAccountMismatch.value) {
-      return `本地任务属于 ${maskAppleId(jobAppleId.value)}，当前登录 ${maskedCurrentAppleId.value}。请开始新同步。`;
+      return `本地任务属于 ${maskAppleId(jobAppleId.value)}，当前登录 ${maskedCurrentAppleId.value}。请取消任务或开始新同步。`;
     }
     if (showSessionExpiredAlert.value) {
+      if (isCloudDeleteTask.value) return "登录状态已失效，请重新登录后继续从 iCloud 移除。";
       return "登录状态已失效，已完成文件的进度已保留。请先重新登录后再继续同步。";
     }
-    if (isCataloging.value) {
-      return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}，完成后自动开始下载。`;
+    if (isCataloging.value && isCatalogTask.value) {
+      return `正在对比 iCloud 图库与本地注册表；已用时 ${catalogElapsedText.value}。`;
     }
-    if (isDone.value && outputDir.value) {
-      return `照片已在本地。可再次「开始同步」拉取新增或尚未下载的照片；也可从 iCloud 移除副本以释放空间。文件夹：${outputDir.value}`;
+    if (isCataloging.value) {
+      return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}，完成后自动开始同步。`;
+    }
+    if (isDone.value && isCloudDeleteTask.value) {
+      return "iCloud 副本已移除，本地文件保留。可在下方「iCloud 已删除」查看。";
+    }
+    if (isDone.value && isSyncTask.value && outputDir.value) {
+      return `照片已在本地。可再次「开始同步」拉取新增或尚未同步的照片；也可从 iCloud 移除副本以释放空间。文件夹：${outputDir.value}`;
     }
     if (showEmptyGuide.value) {
-      return "流程：登录 Apple ID → 点击开始同步。";
+      return "流程：登录 Apple ID → 点击开始同步；iCloud 列表可单独「刷新 iCloud 状态」更新待同步统计。";
     }
     if (jobStatus.value === "running" && progress.value.filename) {
-      return `当前：${progress.value.filename}${etaText.value ? ` · 预计剩余 ${etaText.value}` : ""}`;
+      const prefix = isCloudDeleteTask.value ? "当前移除" : "当前";
+      return `${prefix}：${progress.value.filename}${etaText.value && isSyncTask.value ? ` · 预计剩余 ${etaText.value}` : ""}`;
+    }
+    if (jobStatus.value === "running" && progress.value.total > 0) {
+      const p = progress.value;
+      return `进度 ${p.done}/${p.total}${p.failed > 0 ? ` · 失败 ${p.failed}` : ""}`;
     }
     return "";
   });
@@ -216,10 +250,12 @@ function _useIcloudSyncJob() {
       return { icon: "cloud" as const, color: "default" as const, label: "登录", percent: 0, breathing: false };
     }
     if (isCataloging.value) {
-      return { icon: "cloud" as const, color: "processing" as const, label: "扫描中", percent: 0, breathing: true };
+      const label = isCatalogTask.value ? "刷新中" : "扫描中";
+      return { icon: "cloud" as const, color: "processing" as const, label, percent: 0, breathing: true };
     }
     if (isRunning.value) {
-      return { icon: "cloud" as const, color: "processing" as const, label: `${progressPercent.value}%`, percent: progressPercent.value, breathing: false };
+      const label = isCloudDeleteTask.value ? `${progressPercent.value}%` : `${progressPercent.value}%`;
+      return { icon: "cloud" as const, color: "processing" as const, label, percent: progressPercent.value, breathing: false };
     }
     if (isPaused.value) {
       return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: progressPercent.value, breathing: false };
@@ -232,6 +268,9 @@ function _useIcloudSyncJob() {
         percent: 0,
         breathing: false
       };
+    }
+    if (isDone.value && isCloudDeleteTask.value) {
+      return { icon: "check" as const, color: "success" as const, label: "已移除", percent: 100, breathing: false };
     }
     if (isDone.value) {
       return { icon: "check" as const, color: "success" as const, label: `${progress.value.done} 张`, percent: 100, breathing: false };
@@ -283,6 +322,7 @@ function _useIcloudSyncJob() {
 
   function clearActiveJob() {
     storeJobId(null);
+    taskType.value = null;
     jobStatus.value = null;
     jobAppleId.value = "";
     outputDir.value = "";
@@ -293,6 +333,8 @@ function _useIcloudSyncJob() {
 
   function applyJobStatus(status: IcloudSyncJobStatusResult) {
     if (activeJobId.value != null && status.jobId !== activeJobId.value) return;
+    if (activeJobId.value == null) storeJobId(status.jobId);
+    taskType.value = status.taskType;
     jobAppleId.value = status.appleId ?? "";
     outputDir.value = status.outputDir ?? "";
     jobStatus.value = status.status;
@@ -337,6 +379,7 @@ function _useIcloudSyncJob() {
       }
       const result = await startIcloudSyncJob();
       storeJobId(result.jobId);
+      taskType.value = "sync";
       jobStatus.value = "cataloging";
       catalogStartedAt.value = Date.now();
       downloadStartedAt.value = null;
@@ -413,10 +456,43 @@ function _useIcloudSyncJob() {
     }
   }
 
+  async function bindActiveTask(jobId: number) {
+    storeJobId(jobId);
+    await refreshJobStatus(jobId);
+  }
+
+  async function onRefreshCatalog() {
+    refreshingCatalog.value = true;
+    errorMsg.value = "";
+    try {
+      const result = await refreshIcloudSyncCatalog();
+      storeJobId(result.jobId);
+      taskType.value = "catalog";
+      jobStatus.value = "cataloging";
+      catalogStartedAt.value = Date.now();
+      progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
+      void refreshJobStatus(result.jobId);
+    } catch (e) {
+      errorMsg.value = formatIcloudSyncError(e);
+    } finally {
+      refreshingCatalog.value = false;
+    }
+  }
+
   function confirmCancelJob() {
+    const title = isCloudDeleteTask.value
+      ? "取消移除任务？"
+      : isCatalogTask.value
+        ? "取消刷新 iCloud 目录？"
+        : "取消同步任务？";
+    const content = isCloudDeleteTask.value
+      ? "将撤销尚未完成的 iCloud 移除队列；已移除的项不会恢复。"
+      : isCatalogTask.value
+        ? "将停止当前 iCloud 目录刷新；已有 cloud_state 统计会保留。"
+        : "将丢弃当前任务的同步进度（已同步到本地的文件会保留）。之后可重新「开始同步」。";
     Modal.confirm({
-      title: "取消同步任务？",
-      content: "将丢弃当前任务的下载进度（已下载到本地的文件会保留）。之后可重新「开始同步」。",
+      title,
+      content,
       okText: "取消任务",
       okType: "danger",
       cancelText: "返回",
@@ -462,10 +538,10 @@ function _useIcloudSyncJob() {
     }
     if (isDone.value) {
       return {
-        label: "开始同步",
+        label: isCloudDeleteTask.value ? "开始同步" : "开始同步",
         kind: "primary",
         loading: starting.value,
-        disabled: starting.value,
+        disabled: starting.value || hasIncompleteTask.value,
         handler: onStart
       };
     }
@@ -498,8 +574,9 @@ function _useIcloudSyncJob() {
       };
     }
     if (canPause.value) {
+      const pauseLabel = isCloudDeleteTask.value ? "暂停移除" : "暂停同步";
       return {
-        label: "暂停同步",
+        label: pauseLabel,
         kind: "danger",
         loading: pausing.value,
         disabled: pausing.value,
@@ -507,15 +584,16 @@ function _useIcloudSyncJob() {
       };
     }
     if (isPaused.value && activeJobId.value != null) {
+      const resumeLabel = isCloudDeleteTask.value ? "继续移除" : isCatalogTask.value ? "继续" : "继续同步";
       return {
-        label: "继续同步",
+        label: resumeLabel,
         kind: "primary",
         loading: resuming.value,
         disabled: !canResume.value,
         handler: onResume
       };
     }
-    if (isRunning.value) {
+    if (isRunning.value || isCataloging.value) {
       return null;
     }
     if (!isLoggedIn.value) {
@@ -542,18 +620,16 @@ function _useIcloudSyncJob() {
     if (!isTauri()) return;
     await loadAccountContext();
     await ensureListeners();
-    const jobId = readStoredJobId();
-    if (jobId == null) return;
-    activeJobId.value = jobId;
     try {
-      const status = await refreshJobStatus(jobId);
-      if (currentAppleId.value.trim() && status.appleId.trim().toLowerCase() !== currentAppleId.value.trim().toLowerCase()) {
-        /* 保留 job 供用户选择「开始新同步」，不清除 */
+      const active = await getIcloudSyncActiveTask();
+      if (active) {
+        storeJobId(active.jobId);
+        applyJobStatus(active);
+        return;
       }
+      clearActiveJob();
     } catch {
-      storeJobId(null);
-      jobStatus.value = null;
-      jobAppleId.value = "";
+      clearActiveJob();
     }
   }
 
@@ -606,6 +682,7 @@ function _useIcloudSyncJob() {
   function onLoggedOut() {
     sessionReauthReady.value = false;
     void loadAccountContext();
+    clearActiveJob();
   }
 
   return {
@@ -619,6 +696,7 @@ function _useIcloudSyncJob() {
     errorMsg,
     authModalOpen,
     activeJobId,
+    taskType,
     jobStatus,
     jobAppleId,
     outputDir,
@@ -636,10 +714,14 @@ function _useIcloudSyncJob() {
     isDone,
     isFailed,
     hasActiveJob,
-    hasIncompleteJob,
+    hasIncompleteTask,
     canManageCloudSpace,
     canCancelJob,
     showEmptyGuide,
+    showProgressBar,
+    isSyncTask,
+    isCloudDeleteTask,
+    isCatalogTask,
     progressPercent,
     catalogElapsedText,
     etaText,
@@ -649,6 +731,9 @@ function _useIcloudSyncJob() {
     fabState,
     cloudStateTick,
     downloadProgressTick,
+    refreshingCatalog,
+    bindActiveTask,
+    onRefreshCatalog,
     primaryAction,
     hydrateFromStorage,
     loadAccountContext,

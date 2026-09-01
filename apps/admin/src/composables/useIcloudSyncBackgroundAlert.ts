@@ -53,7 +53,7 @@ function notifyCopy(
       kind: "success",
       payload: {
         title: "iCloud 同步已完成",
-        body: `共 ${detail.total} 项已全部下载完成。`
+        body: `共 ${detail.total} 项已全部同步完成。`
       }
     };
   }

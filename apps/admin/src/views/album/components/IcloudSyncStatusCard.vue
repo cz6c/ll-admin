@@ -1,6 +1,6 @@
 <!--
-  iCloud 同步状态卡片（抽屉版）
-  职责：状态标题 + 进度 + 同步相关操作按钮平铺展示
+  iCloud 统一任务状态卡片（抽屉版）
+  职责：同步 / 删云 / 刷新 catalog 单进度条与操作按钮
   适用：IcloudSyncFab 抽屉上方区域
 -->
 <script setup lang="ts">
@@ -15,10 +15,12 @@ const {
   isFailed,
   hasActiveJob,
   isCataloging,
+  isCloudDeleteTask,
   progress,
   progressPercent,
   catalogElapsedText,
   showEmptyGuide,
+  showProgressBar,
   isLoggedIn,
   primaryAction,
   canPause,
@@ -32,7 +34,9 @@ const {
 } = useIcloudSyncJob();
 
 /** 需展开说明的告警（账号不一致 / 会话失效 / 失败） */
-const showExpandedAlert = computed(() => jobAccountMismatch.value || showSessionExpiredAlert.value || isFailed.value);
+const showExpandedAlert = computed(
+  () => jobAccountMismatch.value || showSessionExpiredAlert.value || isFailed.value
+);
 
 const alertType = computed(() => {
   if (jobAccountMismatch.value) return "error";
@@ -43,13 +47,12 @@ const alertType = computed(() => {
   return undefined;
 });
 
-const showProgressBar = computed(() => hasActiveJob.value && (progress.value.total > 0 || isCataloging.value));
-
 const progressStatsText = computed(() => {
   if (isCataloging.value) return `扫描 ${catalogElapsedText.value}`;
   const p = progress.value;
   if (p.total <= 0) return "";
-  return `${p.total} · 完成 ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
+  const verb = isCloudDeleteTask.value ? "已移除" : "已同步";
+  return `${p.total} · ${verb} ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
 });
 
 /** 暂停已作为主按钮展示时，不再重复渲染 */
@@ -71,7 +74,7 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
       <div class="status-head">
         <div class="status-main">
           <span class="status-title">{{ statusHeadline }}</span>
-          <a-tooltip v-if="statusDescription && isDone" :title="statusDescription">
+          <a-tooltip v-if="statusDescription && (isDone || hasActiveJob)" :title="statusDescription">
             <span class="status-tip">详情</span>
           </a-tooltip>
         </div>
@@ -86,7 +89,7 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
           >
             {{ primaryAction.label }}
           </a-button>
-          <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停同步</a-button>
+          <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停</a-button>
           <a-tooltip v-if="hasActiveJob && isCataloging" title="扫描图库中，请稍候再取消">
             <a-button disabled>取消任务</a-button>
           </a-tooltip>
@@ -105,6 +108,8 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
         <span v-if="!isCataloging && progress.total > 0" class="progress-percent">{{ progressPercent }}%</span>
         <span class="progress-stats">{{ progressStatsText }}</span>
       </div>
+
+      <p v-else-if="statusDescription" class="status-desc">{{ statusDescription }}</p>
 
       <p v-if="showEmptyGuide" class="empty-hint">
         {{ isLoggedIn ? "点击「开始同步」拉取 iCloud 照片到本地" : "请先登录 Apple ID" }}
@@ -145,6 +150,12 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
   color: var(--color-primary);
   cursor: help;
   flex-shrink: 0;
+}
+.status-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
 }
 .progress-row {
   display: flex;

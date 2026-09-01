@@ -1,5 +1,5 @@
 //! iCloud 同步 — 跨 job 云资产查询
-//! 职责：抽屉 load_assets、cloud_state 汇总（含 local_missing 懒算）
+//! 职责：抽屉 load_assets、cloud_state 汇总（含 download_failed 派生计数）
 //! 适用：P1b 云管理列表；不写入 cloud_state
 
 use std::path::Path;
@@ -13,18 +13,7 @@ use super::types::{
 };
 use tauri::AppHandle;
 
-/// 单次请求最多对多少条「有 dest_path 的候选」做 is_file()。
-/// 禁止对全库 10w 扫盘；超出窗口的缺失不计入本轮 total（与 summary 一致）。
-const LOCAL_MISSING_CHECK_LIMIT: i64 = 2000;
-
-fn derive_display_state(cloud_state: CloudState, dest_path: Option<&str>) -> String {
-  if let Some(p) = dest_path.filter(|s| !s.is_empty()) {
-    if matches!(cloud_state, CloudState::Synced | CloudState::ModifiedCloud) {
-      if !Path::new(p).is_file() {
-        return "local_missing".to_string();
-      }
-    }
-  }
+fn derive_display_state(cloud_state: CloudState) -> String {
   cloud_state.as_str().to_string()
 }
 
@@ -105,9 +94,7 @@ fn cloud_display_rank(state: &str) -> u8 {
   match state {
     "failed_delete" => 7,
     "deleted_cloud_pending" => 6,
-    "local_missing" => 5,
     "cloud_delete_queued" => 4,
-    "modified_cloud" => 3,
     "cloud_only" => 2,
     "synced" => 1,
     _ => 0,
@@ -122,35 +109,34 @@ fn worse_cloud_display(a: &str, b: &str) -> String {
   }
 }
 
-/// Live 列表行：合并 still/mov 派生态（local_missing、等待删云等取更「差」一侧）
+/// Live 列表行：合并 still/mov 派生态（等待删云等取更「差」一侧）
 fn derive_list_display_state(
   conn: &Connection,
   apple_id: &str,
   asset_id: &str,
   part: &str,
   cloud_state: CloudState,
-  dest_path: Option<&str>,
 ) -> Result<String, String> {
-  let still_display = derive_display_state(cloud_state, dest_path);
+  let still_display = derive_display_state(cloud_state);
   if part != "still" {
     return Ok(still_display);
   }
-  let mov_row: Option<(String, Option<String>)> = conn
+  let mov_row: Option<String> = conn
     .query_row(
       r#"
-      SELECT cloud_state, dest_path FROM assets
+      SELECT cloud_state FROM assets
       WHERE apple_id = ?1 AND asset_id = ?2 AND part = 'mov'
       "#,
       params![apple_id, asset_id],
-      |row| Ok((row.get(0)?, row.get(1)?)),
+      |row| row.get(0),
     )
     .optional()
     .map_err(|e| format!("读取 live mov 态失败: {e}"))?;
-  let Some((mov_cloud_s, mov_dest)) = mov_row else {
+  let Some(mov_cloud_s) = mov_row else {
     return Ok(still_display);
   };
   let mov_cloud = CloudState::parse(&mov_cloud_s).unwrap_or(CloudState::CloudOnly);
-  let mov_display = derive_display_state(mov_cloud, mov_dest.as_deref());
+  let mov_display = derive_display_state(mov_cloud);
   Ok(worse_cloud_display(&still_display, &mov_display))
 }
 
@@ -199,97 +185,25 @@ impl SortKeyDateFilter {
   }
 }
 
-/// 流式扫描有限候选：最多 `LOCAL_MISSING_CHECK_LIMIT` 次 is_file，收集缺失行。
-///
-/// @note 按 sort_key 前缀窗口懒算；不写回 cloud_state。
-fn collect_local_missing(
-  conn: &Connection,
-  apple_id: &str,
-  date_filter: &SortKeyDateFilter,
-) -> Result<Vec<SyncAssetRow>, String> {
-  let mut where_parts = vec![
-    "apple_id = ?1",
-    "dest_path IS NOT NULL",
-    "cloud_state IN ('synced', 'modified_cloud')",
-  ];
-  push_cloud_list_where(&mut where_parts);
-  date_filter.push_where(&mut where_parts);
-  let where_clause = where_parts.join(" AND ");
-  let sql = format!(
-    r#"
-      SELECT asset_id, part, index_num, sort_key, original_filename, media_kind, live_pair_id,
-             dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
-      FROM assets
-      WHERE {where_clause}
-      ORDER BY sort_key ASC,
-               CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
-      LIMIT ?
-      "#
-  );
-
-  let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(apple_id.to_string())];
-  date_filter.push_params(&mut params);
-  params.push(Box::new(LOCAL_MISSING_CHECK_LIMIT));
-  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-  let mut stmt = conn
-    .prepare(&sql)
-    .map_err(|e| format!("准备 local_missing 候选失败: {e}"))?;
-
-  let mut missing = Vec::new();
-  let rows = stmt
-    .query_map(param_refs.as_slice(), map_candidate_row)
-    .map_err(|e| format!("查询 local_missing 候选失败: {e}"))?;
-  for row in rows {
-      let item = row.map_err(|e| format!("解析 local_missing 候选失败: {e}"))?;
-      let display = derive_list_display_state(
-        conn,
-        apple_id,
-        &item.asset_id,
-        &item.part,
-        CloudState::parse(&item.cloud_state).unwrap_or(CloudState::Synced),
-        item.dest_path.as_deref(),
-      )?;
-      if display != "local_missing" {
-        continue;
-      }
-      let mut row = SyncAssetRow {
-        cloud_state: display,
-        live_mov_filename: None,
-        live_mov_download_status: None,
-        ..item
-      };
-      enrich_live_pair_meta(conn, apple_id, &mut row)?;
-      missing.push(row);
-  }
-  Ok(missing)
+/// 活跃 sync job 内 download_status=failed 计数（任务结束 finalize 后归零）
+fn count_download_failed(conn: &Connection, apple_id: &str) -> Result<u32, String> {
+  let count: i64 = conn
+    .query_row(
+      r#"
+      SELECT COUNT(*) FROM assets a
+      INNER JOIN jobs j ON j.id = a.active_job_id
+      WHERE a.apple_id = ?1
+        AND a.download_status = 'failed'
+        AND j.task_type = 'sync'
+      "#,
+      params![apple_id],
+      |row| row.get(0),
+    )
+    .map_err(|e| format!("统计 sync download_failed 失败: {e}"))?;
+  u32::try_from(count).map_err(|_| "download_failed 计数超出 u32".to_string())
 }
 
-fn map_candidate_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SyncAssetRow> {
-  Ok(SyncAssetRow {
-    asset_id: row.get(0)?,
-    part: row.get(1)?,
-    index_num: row.get(2)?,
-    sort_key: row.get(3)?,
-    original_filename: row.get(4)?,
-    live_mov_filename: None,
-    live_mov_download_status: None,
-    media_kind: row.get(5)?,
-    live_pair_id: row.get(6)?,
-    dest_path: row.get(7)?,
-    cloud_state: row.get(8)?,
-    download_status: row.get(9)?,
-    last_synced_at: row.get(10)?,
-    last_catalog_at: row.get(11)?,
-  })
-}
-
-fn count_local_missing(conn: &Connection, apple_id: &str) -> Result<u32, String> {
-  let missing = collect_local_missing(conn, apple_id, &SortKeyDateFilter::default())?;
-  Ok(u32::try_from(missing.len()).unwrap_or(u32::MAX))
-}
-
-/// 分页加载云注册表行（只读；local_missing 为派生态）
+/// 分页加载云注册表行（只读；download_failed 为派生态）
 pub fn load_sync_assets(
   conn: &Connection,
   apple_id: &str,
@@ -300,9 +214,12 @@ pub fn load_sync_assets(
   date_to: Option<&str>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let date_filter = SortKeyDateFilter::parse(date_from, date_to);
-  let filter = cloud_state_filter.map(str::trim).filter(|s| !s.is_empty() && *s != "all");
-  if filter == Some("local_missing") {
-    return load_sync_assets_local_missing(conn, apple_id, offset, limit, &date_filter);
+  let filter = cloud_state_filter
+    .map(str::trim)
+    .filter(|s| !s.is_empty() && *s != "all")
+    .map(|s| if s == "modified_cloud" { "cloud_only" } else { s });
+  if filter == Some("download_failed") {
+    return load_sync_assets_download_failed(conn, apple_id, offset, limit, &date_filter);
   }
 
   let lim = i64::from(limit.clamp(1, 200));
@@ -393,7 +310,6 @@ pub fn load_sync_assets(
       &asset_id,
       &part,
       cloud_state,
-      dest_path.as_deref(),
     )?;
     items.push(SyncAssetRow {
       asset_id,
@@ -423,27 +339,130 @@ pub fn load_sync_assets(
   })
 }
 
-/// local_missing 筛选：SQL `LIMIT` 候选窗口 + 流式 is_file，再内存切片分页。
-fn load_sync_assets_local_missing(
+/// download_failed 筛选：活跃 sync job 内 download_status=failed（派生态，不写 cloud_state）
+fn load_sync_assets_download_failed(
   conn: &Connection,
   apple_id: &str,
   offset: u32,
   limit: u32,
   date_filter: &SortKeyDateFilter,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
-  let lim = limit.clamp(1, 200) as usize;
-  let off = offset as usize;
-  // 单次扫满窗口（≤ CHECK_LIMIT 次 is_file），再切片；禁止无 LIMIT 的全表拉行
-  let missing = collect_local_missing(conn, apple_id, date_filter)?;
-  let total = u32::try_from(missing.len()).unwrap_or(u32::MAX);
-  let page: Vec<_> = missing.into_iter().skip(off).take(lim).collect();
-  Ok(IcloudSyncLoadAssetsResult { items: page, total })
+  let lim = i64::from(limit.clamp(1, 200));
+  let off = i64::from(offset);
+
+  let mut where_parts = vec![
+    "apple_id = ?",
+    "download_status = 'failed'",
+    "active_job_id IS NOT NULL",
+    "EXISTS (SELECT 1 FROM jobs j WHERE j.id = assets.active_job_id AND j.task_type = 'sync')",
+  ];
+  date_filter.push_where(&mut where_parts);
+  push_cloud_list_where(&mut where_parts);
+  let where_clause = where_parts.join(" AND ");
+
+  let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
+  let list_sql = format!(
+    r#"
+    SELECT asset_id, part, index_num, sort_key, original_filename, media_kind, live_pair_id,
+           dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
+    FROM assets
+    WHERE {where_clause}
+    ORDER BY sort_key ASC,
+             CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
+    LIMIT ? OFFSET ?
+    "#
+  );
+
+  let mut count_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(apple_id.to_string())];
+  date_filter.push_params(&mut count_params);
+  let count_refs: Vec<&dyn rusqlite::ToSql> = count_params.iter().map(|p| p.as_ref()).collect();
+  let total: i64 = conn
+    .query_row(&count_sql, count_refs.as_slice(), |row| row.get(0))
+    .map_err(|e| format!("统计 sync download_failed 列表失败: {e}"))?;
+
+  let mut list_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(apple_id.to_string())];
+  date_filter.push_params(&mut list_params);
+  list_params.push(Box::new(lim));
+  list_params.push(Box::new(off));
+  let list_refs: Vec<&dyn rusqlite::ToSql> = list_params.iter().map(|p| p.as_ref()).collect();
+
+  let mut stmt = conn
+    .prepare(&list_sql)
+    .map_err(|e| format!("准备 download_failed 列表失败: {e}"))?;
+  let rows = stmt
+    .query_map(list_refs.as_slice(), |row| {
+      Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, i32>(2)?,
+        row.get::<_, String>(3)?,
+        row.get::<_, String>(4)?,
+        row.get::<_, String>(5)?,
+        row.get::<_, Option<String>>(6)?,
+        row.get::<_, Option<String>>(7)?,
+        row.get::<_, String>(8)?,
+        row.get::<_, Option<String>>(9)?,
+        row.get::<_, Option<i64>>(10)?,
+        row.get::<_, Option<i64>>(11)?,
+      ))
+    })
+    .map_err(|e| format!("查询 download_failed 列表失败: {e}"))?;
+
+  let mut items = Vec::new();
+  for row in rows {
+    let (
+      asset_id,
+      part,
+      index_num,
+      sort_key,
+      original_filename,
+      media_kind,
+      live_pair_id,
+      dest_path,
+      cloud_s,
+      download_status,
+      last_synced_at,
+      last_catalog_at,
+    ) = row.map_err(|e| format!("解析 download_failed 行失败: {e}"))?;
+    let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
+    let display = derive_list_display_state(
+      conn,
+      apple_id,
+      &asset_id,
+      &part,
+      cloud_state,
+    )?;
+    items.push(SyncAssetRow {
+      asset_id,
+      part,
+      index_num,
+      sort_key,
+      original_filename,
+      live_mov_filename: None,
+      live_mov_download_status: None,
+      media_kind,
+      live_pair_id,
+      dest_path,
+      cloud_state: display,
+      download_status,
+      last_synced_at,
+      last_catalog_at,
+    });
+  }
+
+  for item in &mut items {
+    enrich_live_pair_meta(conn, apple_id, item)?;
+  }
+
+  Ok(IcloudSyncLoadAssetsResult {
+    items,
+    total: u32::try_from(total).map_err(|_| "download_failed 总数超出 u32".to_string())?,
+  })
 }
 
 pub fn get_cloud_state_summary(
   conn: &Connection,
   apple_id: &str,
-  check_disk: bool,
 ) -> Result<IcloudSyncCloudStateSummary, String> {
   let mut stmt = conn
     .prepare(
@@ -458,29 +477,34 @@ pub fn get_cloud_state_summary(
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| format!("解析 cloud_state 汇总失败: {e}"))?;
 
+  let last_catalog_at: Option<i64> = conn
+    .query_row(
+      "SELECT MAX(last_catalog_at) FROM assets WHERE apple_id = ?1",
+      rusqlite::params![apple_id],
+      |row| row.get(0),
+    )
+    .unwrap_or(None);
+
   let mut summary = IcloudSyncCloudStateSummary {
     cloud_only: 0,
     synced: 0,
-    modified_cloud: 0,
     deleted_cloud_pending: 0,
     cloud_delete_queued: 0,
     failed_delete: 0,
-    local_missing: 0,
+    download_failed: 0,
+    last_catalog_at,
   };
+  summary.download_failed = count_download_failed(conn, apple_id)?;
   for (state, count) in rows {
     let n = u32::try_from(count).unwrap_or(u32::MAX);
     match CloudState::parse(&state) {
       Some(CloudState::CloudOnly) => summary.cloud_only = n,
       Some(CloudState::Synced) => summary.synced = n,
-      Some(CloudState::ModifiedCloud) => summary.modified_cloud = n,
       Some(CloudState::DeletedCloudPending) => summary.deleted_cloud_pending = n,
       Some(CloudState::CloudDeleteQueued) => summary.cloud_delete_queued = n,
       Some(CloudState::FailedDelete) => summary.failed_delete = n,
       None => {}
     }
-  }
-  if check_disk {
-    summary.local_missing = count_local_missing(conn, apple_id)?;
   }
   Ok(summary)
 }
@@ -521,7 +545,6 @@ pub fn icloud_sync_load_assets(
 #[tauri::command]
 pub fn icloud_sync_get_cloud_state_summary(
   app: AppHandle,
-  check_disk: Option<bool>,
 ) -> Result<IcloudSyncCloudStateSummary, String> {
   let settings = load_settings(&app)?;
   let apple_id = settings.apple_id.trim();
@@ -530,13 +553,13 @@ pub fn icloud_sync_get_cloud_state_summary(
   }
   let db_path = state_db_path(&app)?;
   let conn = open_db(&db_path)?;
-  get_cloud_state_summary(&conn, apple_id, check_disk.unwrap_or(false))
+  get_cloud_state_summary(&conn, apple_id)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::icloud_sync::db::open_db;
+  use crate::icloud_sync::db::{open_db, reconcile_synced_missing_local_files};
   use std::time::{SystemTime, UNIX_EPOCH};
 
   fn temp_db() -> (std::path::PathBuf, Connection) {
@@ -564,10 +587,10 @@ mod tests {
   }
 
   #[test]
-  fn local_missing_list_skips_existing_files_and_paginates() {
+  fn reconcile_synced_missing_local_files_downgrades_to_cloud_only() {
     let (path, conn) = temp_db();
     let dir = std::env::temp_dir().join(format!(
-      "icloud-lm-files-{}",
+      "icloud-reconcile-{}",
       SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -576,24 +599,51 @@ mod tests {
     std::fs::create_dir_all(&dir).unwrap();
     let present = dir.join("ok.jpg");
     std::fs::write(&present, b"x").unwrap();
-    let gone1 = dir.join("gone1.jpg");
-    let gone2 = dir.join("gone2.jpg");
+    let gone = dir.join("gone.jpg");
 
-    insert_synced(&conn, "A0", "2024-01-01", present.to_str().unwrap());
-    insert_synced(&conn, "A1", "2024-01-02", gone1.to_str().unwrap());
-    insert_synced(&conn, "A2", "2024-01-03", gone2.to_str().unwrap());
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, cloud_state, dest_path
+        ) VALUES('u@x.com', 'OK', '2024-01-01', 'ok.jpg', 'photo', 1, 'full', NULL, 'synced', ?1)
+        "#,
+        params![present.to_str().unwrap()],
+      )
+      .expect("insert ok");
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, cloud_state, dest_path
+        ) VALUES('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 2, 'full', NULL, 'synced', ?1)
+        "#,
+        params![gone.to_str().unwrap()],
+      )
+      .expect("insert gone");
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 1, Some("local_missing"), None, None).expect("page");
-    assert_eq!(page.total, 2);
-    assert_eq!(page.items.len(), 1);
-    assert_eq!(page.items[0].asset_id, "A1");
-    assert_eq!(page.items[0].sort_key, "2024-01-02");
+    let changed = reconcile_synced_missing_local_files(&conn, "u@x.com").expect("reconcile");
+    assert_eq!(changed, 1);
 
-    let page2 = load_sync_assets(&conn, "u@x.com", 1, 1, Some("local_missing"), None, None).expect("p2");
-    assert_eq!(page2.items[0].asset_id, "A2");
+    let gone_state: String = conn
+      .query_row(
+        "SELECT cloud_state FROM assets WHERE asset_id='GONE'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("gone state");
+    assert_eq!(gone_state, CloudState::CloudOnly.as_str());
 
-    let synced = load_sync_assets(&conn, "u@x.com", 0, 10, Some("synced"), None, None).expect("synced");
-    assert!(synced.items.iter().any(|r| r.asset_id == "A0" && r.sort_key == "2024-01-01"));
+    let ok_state: String = conn
+      .query_row(
+        "SELECT cloud_state FROM assets WHERE asset_id='OK'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("ok state");
+    assert_eq!(ok_state, CloudState::Synced.as_str());
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(path);
@@ -768,9 +818,50 @@ mod tests {
   }
 
   #[test]
-  fn local_missing_sql_limit_caps_candidate_window() {
-    // 窗口常量应限制候选，而非一次拉全表
-    assert!(LOCAL_MISSING_CHECK_LIMIT <= 2000);
-    assert!(LOCAL_MISSING_CHECK_LIMIT > 0);
+  fn download_failed_summary_and_filter_only_active_sync_job() {
+    let (path, conn) = temp_db();
+    conn
+      .execute(
+        r#"
+        INSERT INTO jobs(
+          id, task_type, view, output_dir, apple_id, status, mode, created_at
+        ) VALUES(1, 'sync', 'library', '/tmp/out', 'u@x.com', 'running', 'full', 1)
+        "#,
+        [],
+      )
+      .expect("insert job");
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, active_job_id, cloud_state
+        ) VALUES('u@x.com', 'F1', '2024-01-01', 'a.jpg', 'photo', 1, 'full', 'failed', 1, 'cloud_only')
+        "#,
+        [],
+      )
+      .expect("insert failed active");
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, cloud_state
+        ) VALUES('u@x.com', 'F2', '2024-01-02', 'b.jpg', 'photo', 2, 'full', 'failed', 'cloud_only')
+        "#,
+        [],
+      )
+      .expect("insert failed orphan");
+
+    let summary = get_cloud_state_summary(&conn, "u@x.com").expect("summary");
+    assert_eq!(summary.download_failed, 1);
+
+    let page =
+      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None).expect("page");
+    assert_eq!(page.total, 1);
+    assert_eq!(page.items[0].asset_id, "F1");
+    assert_eq!(page.items[0].download_status.as_deref(), Some("failed"));
+
+    let _ = std::fs::remove_file(path);
   }
 }

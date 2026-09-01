@@ -212,30 +212,13 @@ impl AssetStatus {
   }
 }
 
-/// SQLite jobs 行（Rust 内部）
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JobRow {
-  pub id: i64,
-  pub view: JobView,
-  pub output_dir: String,
-  pub apple_id: String,
-  pub status: JobStatus,
-  pub mode: String,
-  pub created_at: i64,
-  pub finished_at: Option<i64>,
-  pub total_count: u32,
-  pub done_count: u32,
-  pub failed_count: u32,
-  pub pending_count: u32,
-}
-
-/// 云端资产持久态（写入 assets.cloud_state）
+/// iCloud 资产持久态（写入 assets.cloud_state）
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CloudState {
+  /// 待同步（含 catalog 新增与 iCloud 有更新）
   CloudOnly,
   Synced,
-  ModifiedCloud,
   DeletedCloudPending,
   CloudDeleteQueued,
   FailedDelete,
@@ -246,7 +229,6 @@ impl CloudState {
     match self {
       Self::CloudOnly => "cloud_only",
       Self::Synced => "synced",
-      Self::ModifiedCloud => "modified_cloud",
       Self::DeletedCloudPending => "deleted_cloud_pending",
       Self::CloudDeleteQueued => "cloud_delete_queued",
       Self::FailedDelete => "failed_delete",
@@ -255,9 +237,8 @@ impl CloudState {
 
   pub fn parse(s: &str) -> Option<Self> {
     match s {
-      "cloud_only" => Some(Self::CloudOnly),
+      "cloud_only" | "modified_cloud" => Some(Self::CloudOnly),
       "synced" => Some(Self::Synced),
-      "modified_cloud" => Some(Self::ModifiedCloud),
       "deleted_cloud_pending" => Some(Self::DeletedCloudPending),
       "cloud_delete_queued" => Some(Self::CloudDeleteQueued),
       "failed_delete" => Some(Self::FailedDelete),
@@ -266,7 +247,35 @@ impl CloudState {
   }
 }
 
-/// 抽屉云管理列表行（含派生 local_missing）
+/// 全局任务类型：同一时刻仅允许一个未完成任务
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TaskType {
+  Sync,
+  CloudDelete,
+  Catalog,
+}
+
+impl TaskType {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Sync => "sync",
+      Self::CloudDelete => "cloud_delete",
+      Self::Catalog => "catalog",
+    }
+  }
+
+  pub fn parse(s: &str) -> Option<Self> {
+    match s {
+      "sync" => Some(Self::Sync),
+      "cloud_delete" => Some(Self::CloudDelete),
+      "catalog" => Some(Self::Catalog),
+      _ => None,
+    }
+  }
+}
+
+/// 抽屉云管理列表行
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncAssetRow {
@@ -302,12 +311,32 @@ pub struct IcloudSyncLoadAssetsResult {
 pub struct IcloudSyncCloudStateSummary {
   pub cloud_only: u32,
   pub synced: u32,
-  pub modified_cloud: u32,
   pub deleted_cloud_pending: u32,
   pub cloud_delete_queued: u32,
   pub failed_delete: u32,
-  /// 懒算：check_disk=true 时对 sort_key 前缀 ≤2000 候选 is_file()；否则为 0
-  pub local_missing: u32,
+  /// 派生：活跃 sync job 内 download_status=failed 的行数；任务结束 finalize 后为 0
+  pub download_failed: u32,
+  /// 最近一次 catalog 写入 assets 的时间（秒）；无记录时为 null
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub last_catalog_at: Option<i64>,
+}
+
+/// SQLite jobs 行
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobRow {
+  pub id: i64,
+  pub task_type: TaskType,
+  pub view: JobView,
+  pub output_dir: String,
+  pub apple_id: String,
+  pub status: JobStatus,
+  pub mode: String,
+  pub created_at: i64,
+  pub finished_at: Option<i64>,
+  pub total_count: u32,
+  pub done_count: u32,
+  pub failed_count: u32,
+  pub pending_count: u32,
 }
 
 /// SQLite assets 行（Rust 内部）
@@ -388,4 +417,6 @@ pub mod error_codes {
   /// 所选 iCloud 区域与 Apple ID 不匹配
   pub const DOMAIN_MISMATCH: &str = "domain_mismatch";
   pub const DELETE_FAILED: &str = "delete_failed";
+  /// 已有未完成任务，须先取消
+  pub const TASK_ACTIVE: &str = "task_active";
 }

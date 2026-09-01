@@ -11,6 +11,7 @@ mod naming;
 pub mod queue;
 mod settings;
 mod sidecar;
+mod task;
 mod types;
 
 use std::sync::Mutex;

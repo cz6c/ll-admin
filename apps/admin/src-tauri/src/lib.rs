@@ -70,13 +70,14 @@ pub fn run() {
       icloud_sync::queue::icloud_sync_list_failed_assets,
       icloud_sync::queue::icloud_sync_list_asset_tasks,
       icloud_sync::queue::icloud_sync_discard_job,
+      icloud_sync::queue::icloud_sync_active_task,
+      icloud_sync::queue::icloud_sync_refresh_catalog,
       icloud_sync::cloud_assets::icloud_sync_load_assets,
       icloud_sync::cloud_assets::icloud_sync_get_cloud_state_summary,
       icloud_sync::cloud_delete::icloud_sync_delete_assets,
       icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
       icloud_sync::cloud_delete::icloud_sync_cancel_cloud_delete,
       icloud_sync::cloud_delete::icloud_sync_retry_cloud_deletes,
-      icloud_sync::cloud_delete::icloud_sync_clear_local_binding,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -16,7 +16,7 @@ use super::types::{
   JobRow, JobStatus, JobView, MediaKind, TaskType,
 };
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 /// icloud_sync SQLite 路径
 pub fn state_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -87,9 +87,21 @@ fn is_greenfield_schema(conn: &Connection) -> Result<bool, String> {
       && column_exists(conn, "assets", "apple_id")?
       && column_exists(conn, "assets", "cloud_state")?
       && column_exists(conn, "assets", "cpl_asset_record_name")?
+      && column_exists(conn, "assets", "capture_at")?
       && column_exists(conn, "jobs", "mode")?
       && column_exists(conn, "jobs", "task_type")?
       && column_exists(conn, "cloud_delete_queue", "cpl_asset_record_name")?
+      && column_exists(conn, "cloud_delete_queue", "job_id")?,
+  )
+}
+
+fn is_v3_schema(conn: &Connection) -> Result<bool, String> {
+  Ok(
+    schema_version(conn)? == Some(3)
+      && column_exists(conn, "assets", "apple_id")?
+      && column_exists(conn, "assets", "cloud_state")?
+      && !column_exists(conn, "assets", "capture_at")?
+      && column_exists(conn, "jobs", "task_type")?
       && column_exists(conn, "cloud_delete_queue", "job_id")?,
   )
 }
@@ -122,13 +134,40 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<(), String> {
   Ok(())
 }
 
-/// 绿field：只建终态表。版本或关键列不匹配 → 尝试 v2 迁移，否则 DROP 重建。
+/// v3→v4：产品元数据分列（拍摄/加入时间、GPS）
+fn migrate_v3_to_v4(conn: &Connection) -> Result<(), String> {
+  conn
+    .execute_batch(
+      r#"
+      ALTER TABLE assets ADD COLUMN capture_at TEXT;
+      ALTER TABLE assets ADD COLUMN added_at TEXT;
+      ALTER TABLE assets ADD COLUMN latitude REAL;
+      ALTER TABLE assets ADD COLUMN longitude REAL;
+      CREATE INDEX IF NOT EXISTS idx_assets_capture_at ON assets(apple_id, capture_at);
+      UPDATE schema_meta SET value = '4' WHERE key = 'version';
+      "#,
+    )
+    .map_err(|e| format!("v3→v4 迁移失败: {e}"))?;
+  log::info!("icloud_sync state.db migrated v3 → v4 (product catalog metadata columns)");
+  Ok(())
+}
+
+/// 绿field：只建终态表。版本或关键列不匹配 → 尝试 v2/v3 迁移，否则 DROP 重建。
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
   if is_greenfield_schema(conn)? {
     return Ok(());
   }
+  if is_v3_schema(conn)? {
+    migrate_v3_to_v4(conn)?;
+    if is_greenfield_schema(conn)? {
+      return Ok(());
+    }
+  }
   if is_v2_schema(conn)? {
     migrate_v2_to_v3(conn)?;
+    if is_v3_schema(conn)? {
+      migrate_v3_to_v4(conn)?;
+    }
     if is_greenfield_schema(conn)? {
       return Ok(());
     }
@@ -190,6 +229,10 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
         active_job_id INTEGER,
         cpl_asset_record_name TEXT,
         cpl_asset_change_tag TEXT,
+        capture_at TEXT,
+        added_at TEXT,
+        latitude REAL,
+        longitude REAL,
         UNIQUE(apple_id, asset_id, part)
       );
 
@@ -197,6 +240,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       CREATE INDEX idx_assets_dest ON assets(dest_path);
       CREATE INDEX idx_assets_apple ON assets(apple_id);
       CREATE INDEX idx_assets_active_job ON assets(active_job_id, download_status);
+      CREATE INDEX idx_assets_capture_at ON assets(apple_id, capture_at);
 
       CREATE TABLE cloud_cursors (
         apple_id TEXT NOT NULL,
@@ -227,7 +271,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       CREATE INDEX idx_cloud_delete_status ON cloud_delete_queue(apple_id, status);
       CREATE INDEX idx_cloud_delete_job ON cloud_delete_queue(job_id, status);
 
-      INSERT INTO schema_meta(key, value) VALUES('version', '3');
+      INSERT INTO schema_meta(key, value) VALUES('version', '4');
       "#,
     )
     .map_err(|e| format!("初始化 SQLite schema 失败: {e}"))?;
@@ -319,9 +363,100 @@ fn map_job_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobRow> {
 pub struct CatalogApplySummary {
   pub added: u32,
   pub modified: u32,
+  /// fingerprint/changeTag 未变，仅刷新产品元数据
+  pub metadata_refresh: u32,
   pub unchanged: u32,
+  /// Unchanged 且跳过逐行 UPDATE（仅批量 touch last_catalog_at）
+  pub unchanged_skipped: u32,
   pub deleted: u32,
   pub enqueued: u32,
+}
+
+const CATALOG_KEYS_TEMP: &str = "catalog_keys_temp";
+const CATALOG_TOUCH_TEMP: &str = "catalog_touch_temp";
+
+/// 写入 catalog diff 批处理用的临时键表（同连接内 mark/enqueue/reconcile 复用）
+pub fn prepare_catalog_keys_temp(
+  conn: &Connection,
+  catalog_keys: &HashSet<(String, String)>,
+) -> Result<(), String> {
+  conn
+    .execute_batch(&format!(
+      r#"
+      CREATE TEMP TABLE IF NOT EXISTS {CATALOG_KEYS_TEMP} (
+        asset_id TEXT NOT NULL,
+        part TEXT NOT NULL,
+        PRIMARY KEY (asset_id, part)
+      );
+      DELETE FROM {CATALOG_KEYS_TEMP};
+      "#
+    ))
+    .map_err(|e| format!("准备 catalog_keys_temp 失败: {e}"))?;
+  if catalog_keys.is_empty() {
+    return Ok(());
+  }
+  let mut stmt = conn
+    .prepare(&format!(
+      "INSERT OR IGNORE INTO {CATALOG_KEYS_TEMP}(asset_id, part) VALUES (?1, ?2)"
+    ))
+    .map_err(|e| format!("准备 catalog_keys_temp 插入失败: {e}"))?;
+  for (asset_id, part) in catalog_keys {
+    stmt
+      .execute(params![asset_id, part])
+      .map_err(|e| format!("写入 catalog_keys_temp 失败: {e}"))?;
+  }
+  drop(stmt);
+  Ok(())
+}
+
+fn batch_touch_last_catalog_at(
+  conn: &Connection,
+  apple_id: &str,
+  now: i64,
+  keys: &[(String, String)],
+) -> Result<(), String> {
+  if keys.is_empty() {
+    return Ok(());
+  }
+  conn
+    .execute_batch(&format!(
+      r#"
+      CREATE TEMP TABLE IF NOT EXISTS {CATALOG_TOUCH_TEMP} (
+        asset_id TEXT NOT NULL,
+        part TEXT NOT NULL,
+        PRIMARY KEY (asset_id, part)
+      );
+      DELETE FROM {CATALOG_TOUCH_TEMP};
+      "#
+    ))
+    .map_err(|e| format!("准备 catalog_touch_temp 失败: {e}"))?;
+  let mut stmt = conn
+    .prepare(&format!(
+      "INSERT OR IGNORE INTO {CATALOG_TOUCH_TEMP}(asset_id, part) VALUES (?1, ?2)"
+    ))
+    .map_err(|e| format!("准备 catalog_touch_temp 插入失败: {e}"))?;
+  for (asset_id, part) in keys {
+    stmt
+      .execute(params![asset_id, part])
+      .map_err(|e| format!("写入 catalog_touch_temp 失败: {e}"))?;
+  }
+  drop(stmt);
+  conn
+    .execute(
+      &format!(
+        r#"
+        UPDATE assets SET last_catalog_at = ?1
+        WHERE apple_id = ?2
+          AND EXISTS (
+            SELECT 1 FROM {CATALOG_TOUCH_TEMP} t
+            WHERE t.asset_id = assets.asset_id AND t.part = assets.part
+          )
+        "#
+      ),
+      params![now, apple_id],
+    )
+    .map_err(|e| format!("批量 touch last_catalog_at 失败: {e}"))?;
+  Ok(())
 }
 
 /// 读取 apple_id 下已有 assets 的 fingerprint 基线（降级 B diff）
@@ -332,7 +467,9 @@ pub fn load_existing_baselines(
   let mut stmt = conn
     .prepare(
       r#"
-      SELECT asset_id, part, sort_key, original_filename, media_kind, cloud_state
+      SELECT asset_id, part, sort_key, original_filename, media_kind, cloud_state,
+             cpl_asset_record_name, cpl_asset_change_tag,
+             capture_at, added_at, latitude, longitude
       FROM assets WHERE apple_id = ?1
       "#,
     )
@@ -351,6 +488,12 @@ pub fn load_existing_baselines(
         ExistingAssetBaseline {
           fingerprint: catalog_fingerprint(&sort_key, &filename, media_kind),
           cloud_state: CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly),
+          cpl_asset_record_name: row.get(6)?,
+          cpl_asset_change_tag: row.get(7)?,
+          capture_at: row.get(8)?,
+          added_at: row.get(9)?,
+          latitude: row.get(10)?,
+          longitude: row.get(11)?,
         },
       ))
     })
@@ -369,6 +512,7 @@ pub fn apply_catalog_delta(
 ) -> Result<CatalogApplySummary, String> {
   let now = chrono::Utc::now().timestamp();
   let mut summary = CatalogApplySummary::default();
+  let mut unchanged_touch: Vec<(String, String)> = Vec::new();
   let tx = conn
     .unchecked_transaction()
     .map_err(|e| format!("开启事务失败: {e}"))?;
@@ -383,8 +527,9 @@ pub fn apply_catalog_delta(
           INSERT INTO assets(
             apple_id, asset_id, sort_key, original_filename, media_kind, live_pair_id,
             index_num, part, download_status, active_job_id, cloud_state, last_catalog_at,
-            cpl_asset_record_name, cpl_asset_change_tag
-          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+            cpl_asset_record_name, cpl_asset_change_tag,
+            capture_at, added_at, latitude, longitude
+          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
           ON CONFLICT(apple_id, asset_id, part) DO UPDATE SET
             sort_key = excluded.sort_key,
             original_filename = excluded.original_filename,
@@ -396,7 +541,11 @@ pub fn apply_catalog_delta(
             cloud_state = 'cloud_only',
             last_catalog_at = excluded.last_catalog_at,
             cpl_asset_record_name = COALESCE(excluded.cpl_asset_record_name, assets.cpl_asset_record_name),
-            cpl_asset_change_tag = COALESCE(excluded.cpl_asset_change_tag, assets.cpl_asset_change_tag)
+            cpl_asset_change_tag = COALESCE(excluded.cpl_asset_change_tag, assets.cpl_asset_change_tag),
+            capture_at = excluded.capture_at,
+            added_at = excluded.added_at,
+            latitude = excluded.latitude,
+            longitude = excluded.longitude
           "#,
           params![
             apple_id,
@@ -413,6 +562,10 @@ pub fn apply_catalog_delta(
             now,
             row.cpl_asset_record_name,
             row.cpl_asset_change_tag,
+            row.capture_at,
+            row.added_at,
+            row.latitude,
+            row.longitude,
           ],
         )
         .map_err(|e| format!("写入 added asset 失败: {e}"))?;
@@ -432,8 +585,12 @@ pub fn apply_catalog_delta(
             active_job_id = ?6,
             cloud_state = 'cloud_only',
             cpl_asset_record_name = COALESCE(?7, cpl_asset_record_name),
-            cpl_asset_change_tag = COALESCE(?8, cpl_asset_change_tag)
-          WHERE apple_id = ?9 AND asset_id = ?10 AND part = ?11
+            cpl_asset_change_tag = COALESCE(?8, cpl_asset_change_tag),
+            capture_at = ?9,
+            added_at = ?10,
+            latitude = ?11,
+            longitude = ?12
+          WHERE apple_id = ?13 AND asset_id = ?14 AND part = ?15
           "#,
           params![
             row.sort_key,
@@ -444,6 +601,10 @@ pub fn apply_catalog_delta(
             job_id,
             row.cpl_asset_record_name,
             row.cpl_asset_change_tag,
+            row.capture_at,
+            row.added_at,
+            row.latitude,
+            row.longitude,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -451,58 +612,58 @@ pub fn apply_catalog_delta(
         )
         .map_err(|e| format!("写入 modified→cloud_only asset 失败: {e}"))?;
       }
-      CatalogDeltaKind::Unchanged => {
-        summary.unchanged += 1;
+      CatalogDeltaKind::MetadataRefresh => {
+        summary.metadata_refresh += 1;
         tx.execute(
           r#"
           UPDATE assets SET
-            sort_key = ?1,
-            original_filename = ?2,
-            media_kind = ?3,
-            live_pair_id = ?4,
-            last_catalog_at = ?5,
-            cpl_asset_record_name = COALESCE(?6, cpl_asset_record_name),
-            cpl_asset_change_tag = COALESCE(?7, cpl_asset_change_tag)
-          WHERE apple_id = ?8 AND asset_id = ?9 AND part = ?10
+            last_catalog_at = ?1,
+            cpl_asset_record_name = COALESCE(?2, cpl_asset_record_name),
+            capture_at = ?3,
+            added_at = ?4,
+            latitude = ?5,
+            longitude = ?6
+          WHERE apple_id = ?7 AND asset_id = ?8 AND part = ?9
           "#,
           params![
-            row.sort_key,
-            row.original_filename,
-            row.media_kind.as_str(),
-            row.live_pair_id,
             now,
             row.cpl_asset_record_name,
-            row.cpl_asset_change_tag,
+            row.capture_at,
+            row.added_at,
+            row.latitude,
+            row.longitude,
             apple_id,
             row.asset_id,
             row.part.as_str(),
           ],
         )
-        .map_err(|e| format!("更新 unchanged asset 失败: {e}"))?;
+        .map_err(|e| format!("刷新 metadata asset 失败: {e}"))?;
+      }
+      CatalogDeltaKind::Unchanged => {
+        summary.unchanged += 1;
+        summary.unchanged_skipped += 1;
+        unchanged_touch.push((row.asset_id.clone(), row.part.as_str().to_string()));
       }
     }
   }
 
   tx.commit().map_err(|e| format!("提交 catalog delta 失败: {e}"))?;
+  batch_touch_last_catalog_at(conn, apple_id, now, &unchanged_touch)?;
   Ok(summary)
 }
 
-/// catalog 后补入队：`cloud_only` 孤儿行（discard 或 unchanged diff 后无 pending）
+/// catalog 后补入队：`cloud_only` 孤儿行（需先 `prepare_catalog_keys_temp`）
 pub fn enqueue_outstanding_for_full_sync(
   conn: &Connection,
   job_id: i64,
   apple_id: &str,
-  catalog_keys: &HashSet<(String, String)>,
 ) -> Result<u32, String> {
-  let mut enqueued = 0u32;
-  for (asset_id, part) in catalog_keys {
-    let changed = conn
-      .execute(
+  let changed = conn
+    .execute(
+      &format!(
         r#"
-        UPDATE assets SET
-          download_status = 'pending',
-          active_job_id = ?1
-        WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
+        UPDATE assets SET download_status = 'pending', active_job_id = ?1
+        WHERE apple_id = ?2
           AND cloud_state = 'cloud_only'
           AND (
             active_job_id IS NULL
@@ -510,62 +671,38 @@ pub fn enqueue_outstanding_for_full_sync(
             OR download_status IS NULL
             OR download_status != 'pending'
           )
-        "#,
-        params![job_id, apple_id, asset_id, part],
-      )
-      .map_err(|e| format!("full 同步补入队失败: {e}"))?;
-    enqueued += u32::try_from(changed).unwrap_or(0);
-  }
-  Ok(enqueued)
+          AND EXISTS (
+            SELECT 1 FROM {CATALOG_KEYS_TEMP} t
+            WHERE t.asset_id = assets.asset_id AND t.part = assets.part
+          )
+        "#
+      ),
+      params![job_id, apple_id],
+    )
+    .map_err(|e| format!("full 同步补入队失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
 }
 
-/// catalog 中消失的 (asset_id, part) → deleted_cloud_pending（不删本地、不入队）
-pub fn mark_catalog_deletions(
-  conn: &Connection,
-  apple_id: &str,
-  catalog_keys: &HashSet<(String, String)>,
-) -> Result<u32, String> {
+/// catalog 中消失的 (asset_id, part) → deleted_cloud_pending（需先 `prepare_catalog_keys_temp`）
+pub fn mark_catalog_deletions(conn: &Connection, apple_id: &str) -> Result<u32, String> {
   let now = chrono::Utc::now().timestamp();
-  let mut stmt = conn
-    .prepare("SELECT asset_id, part, cloud_state FROM assets WHERE apple_id = ?1")
-    .map_err(|e| format!("准备 deletion 扫描失败: {e}"))?;
-  let rows = stmt
-    .query_map(params![apple_id], |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, String>(2)?,
-      ))
-    })
-    .map_err(|e| format!("扫描 deletion 失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 deletion 行失败: {e}"))?;
-
-  let mut changed = 0u32;
-  for (asset_id, part, cloud_state) in rows {
-    if catalog_keys.contains(&(asset_id.clone(), part.clone())) {
-      continue;
-    }
-    if matches!(
-      CloudState::parse(&cloud_state),
-      Some(CloudState::DeletedCloudPending)
-        | Some(CloudState::CloudDeleteQueued)
-        | Some(CloudState::FailedDelete)
-    ) {
-      continue;
-    }
-    conn
-      .execute(
+  let changed = conn
+    .execute(
+      &format!(
         r#"
         UPDATE assets SET cloud_state = 'deleted_cloud_pending', last_catalog_at = ?1
-        WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
-        "#,
-        params![now, apple_id, asset_id, part],
-      )
-      .map_err(|e| format!("标记 deleted_cloud_pending 失败: {e}"))?;
-    changed += 1;
-  }
-  Ok(changed)
+        WHERE apple_id = ?2
+          AND cloud_state NOT IN ('deleted_cloud_pending', 'cloud_delete_queued', 'failed_delete')
+          AND NOT EXISTS (
+            SELECT 1 FROM {CATALOG_KEYS_TEMP} t
+            WHERE t.asset_id = assets.asset_id AND t.part = assets.part
+          )
+        "#
+      ),
+      params![now, apple_id],
+    )
+    .map_err(|e| format!("批量标记 deleted_cloud_pending 失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
 }
 
 /// @deprecated 首版 catalog 全量入队；P2 起用 apply_catalog_delta；仅测试沿用
@@ -870,12 +1007,6 @@ pub fn discard_task(conn: &Connection, job: &JobRow) -> Result<(), String> {
   }
 }
 
-/// @deprecated 别名；请用 discard_sync_job / discard_task
-pub fn discard_job(conn: &Connection, job_id: i64) -> Result<(), String> {
-  let job = get_job(conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
-  discard_task(conn, &job)
-}
-
 /// 分页列出任务下全部/指定状态的文件行（按 index 升序）；可选文件名 keyword 子串匹配
 pub fn list_asset_tasks(
   conn: &Connection,
@@ -1038,7 +1169,8 @@ fn list_assets_by_statuses(
     SELECT id, apple_id, asset_id, sort_key, original_filename, media_kind,
            live_pair_id, index_num, part, download_status, active_job_id, dest_path,
            cloud_state, last_synced_at, last_catalog_at, last_error, attempt_count,
-           cpl_asset_record_name, cpl_asset_change_tag
+           cpl_asset_record_name, cpl_asset_change_tag,
+           capture_at, added_at, latitude, longitude
     FROM assets
     WHERE active_job_id = ?1 AND download_status IN ({placeholders})
     ORDER BY index_num ASC,
@@ -1091,6 +1223,10 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
     attempt_count: row.get(16)?,
     cpl_asset_record_name: row.get(17)?,
     cpl_asset_change_tag: row.get(18)?,
+    capture_at: row.get(19)?,
+    added_at: row.get(20)?,
+    latitude: row.get(21)?,
+    longitude: row.get(22)?,
   })
 }
 
@@ -1206,8 +1342,8 @@ pub fn reset_interrupted_cloud_deletes(conn: &Connection) -> Result<u32, String>
   u32::try_from(changed).map_err(|_| "重置行数超出 u32".to_string())
 }
 
-/// 全局待下载数：仅统计**未完成** sync job 占用的 pending 行。
-/// @note 旧实现未关联 jobs.status，done/failed job 遗留的 pending 会永久阻塞云删 worker。
+/// 全局待下载数：仅统计**未完成** sync job 占用的 pending 行（测试用）
+#[cfg(test)]
 pub fn count_global_pending_downloads(conn: &Connection) -> Result<u32, String> {
   let n: i64 = conn
     .query_row(
@@ -1290,60 +1426,6 @@ pub fn cloud_delete_job_has_work(conn: &Connection, job_id: i64) -> Result<bool,
     )
     .map_err(|e| format!("统计删云待处理失败: {e}"))?;
   Ok(n > 0)
-}
-
-/// 云删队列计数（pending / deleting）— 按 job
-pub struct CloudDeleteQueueStats {
-  pub pending: u32,
-  pub deleting: u32,
-}
-
-pub fn count_cloud_delete_queue_stats(
-  conn: &Connection,
-  job_id: i64,
-) -> Result<CloudDeleteQueueStats, String> {
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT status, COUNT(*) FROM cloud_delete_queue
-      WHERE job_id = ?1 AND status IN ('pending', 'deleting')
-      GROUP BY status
-      "#,
-    )
-    .map_err(|e| format!("准备云删队列统计失败: {e}"))?;
-  let mut pending = 0u32;
-  let mut deleting = 0u32;
-  let rows = stmt
-    .query_map(params![job_id], |row| {
-      Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    })
-    .map_err(|e| format!("查询云删队列统计失败: {e}"))?;
-  for row in rows {
-    let (status, count) = row.map_err(|e| format!("解析云删队列统计失败: {e}"))?;
-    let n = u32::try_from(count).unwrap_or(u32::MAX);
-    if status == CloudDeleteQueueStatus::Pending.as_str() {
-      pending = n;
-    } else if status == CloudDeleteQueueStatus::Deleting.as_str() {
-      deleting = n;
-    }
-  }
-  Ok(CloudDeleteQueueStats { pending, deleting })
-}
-
-/// 指定 cloud_state 的 assets 行数
-pub fn count_assets_by_cloud_state(
-  conn: &Connection,
-  apple_id: &str,
-  state: CloudState,
-) -> Result<u32, String> {
-  let n: i64 = conn
-    .query_row(
-      "SELECT COUNT(*) FROM assets WHERE apple_id = ?1 AND cloud_state = ?2",
-      params![apple_id, state.as_str()],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("统计 cloud_state 失败: {e}"))?;
-  Ok(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// sidecar 整批 delete_assets 失败：deleting 行退回 pending，避免永久卡死
@@ -1653,14 +1735,42 @@ pub fn reconcile_synced_missing_local_files(
   conn: &Connection,
   apple_id: &str,
 ) -> Result<u32, String> {
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT asset_id, part, dest_path FROM assets
-      WHERE apple_id = ?1 AND cloud_state = ?2
-        AND dest_path IS NOT NULL AND trim(dest_path) != ''
-      "#,
+  reconcile_synced_missing_local_files_scoped(conn, apple_id, false)
+}
+
+/// 仅检查本次 catalog 仍存在的 synced 行（需先 `prepare_catalog_keys_temp`）
+pub fn reconcile_synced_missing_local_files_in_catalog(
+  conn: &Connection,
+  apple_id: &str,
+) -> Result<u32, String> {
+  reconcile_synced_missing_local_files_scoped(conn, apple_id, true)
+}
+
+fn reconcile_synced_missing_local_files_scoped(
+  conn: &Connection,
+  apple_id: &str,
+  catalog_only: bool,
+) -> Result<u32, String> {
+  let catalog_filter = if catalog_only {
+    format!(
+      "AND EXISTS (
+        SELECT 1 FROM {CATALOG_KEYS_TEMP} t
+        WHERE t.asset_id = assets.asset_id AND t.part = assets.part
+      )"
     )
+  } else {
+    String::new()
+  };
+  let sql = format!(
+    r#"
+    SELECT asset_id, part, dest_path FROM assets
+    WHERE apple_id = ?1 AND cloud_state = ?2
+      AND dest_path IS NOT NULL AND trim(dest_path) != ''
+      {catalog_filter}
+    "#
+  );
+  let mut stmt = conn
+    .prepare(&sql)
     .map_err(|e| format!("准备本地缺失 reconcile 失败: {e}"))?;
   let rows = stmt
     .query_map(params![apple_id, CloudState::Synced.as_str()], |row| {
@@ -2204,7 +2314,15 @@ mod tests {
     let version: i32 = conn
       .query_row("SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key='version'", [], |r| r.get(0))
       .expect("ver");
-    assert_eq!(version, 3);
+    assert_eq!(version, 4);
+    let has_capture: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='capture_at'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("capture col");
+    assert_eq!(has_capture, 1);
     let state: String = conn
       .query_row("SELECT cloud_state FROM assets WHERE asset_id='M1'", [], |r| r.get(0))
       .expect("state");
@@ -2314,6 +2432,10 @@ mod tests {
         attempt_count: 0,
         cpl_asset_record_name: None,
         cpl_asset_change_tag: None,
+        capture_at: None,
+        added_at: None,
+        latitude: None,
+        longitude: None,
       },
       AssetRow {
         id: 0,
@@ -2335,6 +2457,10 @@ mod tests {
         attempt_count: 0,
         cpl_asset_record_name: None,
         cpl_asset_change_tag: None,
+        capture_at: None,
+        added_at: None,
+        latitude: None,
+        longitude: None,
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -2394,6 +2520,10 @@ mod tests {
         attempt_count: 0,
         cpl_asset_record_name: None,
         cpl_asset_change_tag: None,
+        capture_at: None,
+        added_at: None,
+        latitude: None,
+        longitude: None,
       },
       AssetRow {
         id: 0,
@@ -2415,6 +2545,10 @@ mod tests {
         attempt_count: 0,
         cpl_asset_record_name: None,
         cpl_asset_change_tag: None,
+        capture_at: None,
+        added_at: None,
+        latitude: None,
+        longitude: None,
       },
       AssetRow {
         id: 0,
@@ -2436,6 +2570,10 @@ mod tests {
         attempt_count: 0,
         cpl_asset_record_name: None,
         cpl_asset_change_tag: None,
+        capture_at: None,
+        added_at: None,
+        latitude: None,
+        longitude: None,
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -2487,7 +2625,7 @@ mod tests {
       )
       .expect("insert orphan candidate");
 
-    discard_job(&conn, old_job).expect("discard");
+    discard_sync_job(&conn, old_job).expect("discard");
     assert!(list_pending_assets(&conn, old_job).expect("old pending").is_empty());
 
     let new_job = insert_job(
@@ -2510,6 +2648,10 @@ mod tests {
       apple_id: "user@icloud.com".into(),
       asset_id: "A1".into(),
       sort_key: "2024-01-01".into(),
+      capture_at: Some("2024-01-01".into()),
+      added_at: None,
+      latitude: None,
+      longitude: None,
       original_filename: "a.jpg".into(),
       media_kind: MediaKind::Photo,
       live_pair_id: None,
@@ -2530,8 +2672,10 @@ mod tests {
     let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified).expect("delta");
     assert_eq!(summary.enqueued, 0);
     assert_eq!(summary.unchanged, 1);
+    assert_eq!(summary.unchanged_skipped, 1);
 
-    let extra = enqueue_outstanding_for_full_sync(&conn, new_job, "user@icloud.com", &keys).expect("re-enqueue");
+    prepare_catalog_keys_temp(&conn, &keys).expect("temp");
+    let extra = enqueue_outstanding_for_full_sync(&conn, new_job, "user@icloud.com").expect("re-enqueue");
     assert_eq!(extra, 1);
 
     let pending = list_pending_assets(&conn, new_job).expect("new pending");
@@ -2573,7 +2717,8 @@ mod tests {
 
     let mut keys = HashSet::new();
     keys.insert(("A1".into(), "full".into()));
-    let extra = enqueue_outstanding_for_full_sync(&conn, job_id, "user@icloud.com", &keys).expect("re-enqueue");
+    prepare_catalog_keys_temp(&conn, &keys).expect("temp");
+    let extra = enqueue_outstanding_for_full_sync(&conn, job_id, "user@icloud.com").expect("re-enqueue");
     assert_eq!(extra, 0);
     assert!(list_pending_assets(&conn, job_id).expect("pending").is_empty());
 

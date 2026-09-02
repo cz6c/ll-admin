@@ -89,8 +89,7 @@ const cloudRowSelection = computed(() =>
           cloudSelectedKeys.value = keys.map(String);
         },
         getCheckboxProps: (record: { cloudState: string }) => ({
-          disabled:
-            record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only"
+          disabled: record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only"
         })
       }
     : undefined
@@ -120,9 +119,7 @@ const cloudTableColumns = [
 
 /** 状态 Tab 配置；download_failed 仅在 summary 有计数时展示 */
 const cloudStateFilterTabs = computed(() =>
-  CLOUD_LIST_STATE_FILTER_OPTIONS.filter(
-    tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0
-  )
+  CLOUD_LIST_STATE_FILTER_OPTIONS.filter(tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0)
 );
 
 /** Tab 角标数字；0 返回 null */
@@ -275,10 +272,7 @@ function openDeleteConfirmModal(opts: { title: string; content: string; onConfir
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
   const selected = cloudRows.value.filter(
-    row =>
-      cloudSelectedKeys.value.includes(row.rowKey) &&
-      row.cloudState !== "cloud_delete_queued" &&
-      row.cloudState !== "deleted_cloud_pending"
+    row => cloudSelectedKeys.value.includes(row.rowKey) && row.cloudState !== "cloud_delete_queued" && row.cloudState !== "deleted_cloud_pending"
   );
   if (selected.length === 0) {
     message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
@@ -451,7 +445,7 @@ onMounted(() => {
     v-model:open="drawerOpen"
     title="iCloud 同步"
     placement="right"
-    width="800"
+    width="1024"
     class="icloud-sync-drawer"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
   >
@@ -469,38 +463,48 @@ onMounted(() => {
       </div>
 
       <div v-if="isLoggedIn" class="cloud-toolbar">
-        <a-radio-group v-model:value="cloudFilter" class="filter-tabs" @change="onCloudFilterChange">
-          <a-radio-button v-for="tab in cloudStateFilterTabs" :key="tab.value" :value="tab.value">
-            {{ cloudFilterTabLabel(tab) }}
-            <a-badge
-              v-if="summaryTabCountNum(tab.countKey)"
-              :count="summaryTabCountNum(tab.countKey)!"
-              :overflow-count="9999"
-              :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
-              :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
-            />
-          </a-radio-button>
-        </a-radio-group>
+        <a-tabs v-model:activeKey="cloudFilter" type="card" class="filter-tabs" @change="onCloudFilterChange">
+          <a-tab-pane v-for="tab in cloudStateFilterTabs" :key="tab.value">
+            <template #tab>
+              <span class="filter-tab-label">
+                {{ cloudFilterTabLabel(tab) }}
+                <a-badge
+                  v-if="summaryTabCountNum(tab.countKey)"
+                  :count="summaryTabCountNum(tab.countKey)!"
+                  :overflow-count="9999"
+                  :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
+                  :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
+                />
+              </span>
+            </template>
+          </a-tab-pane>
+        </a-tabs>
         <div class="toolbar-actions">
-          <a-range-picker v-model:value="cloudDateRange" class="cloud-date-range" :placeholder="['起始', '结束']" allow-clear @change="onCloudFilterChange" />
-          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-            <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">
-              刷新 iCloud 状态
-            </a-button>
-          </a-tooltip>
-          <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-            <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">
-              <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
-              <template #overlay>
-                <a-menu @click="onDeleteMenuClick">
-                  <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
-                  <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已同步项从 iCloud 移除</a-menu-item>
-                  <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
-                  <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-          </a-tooltip>
+          <a-range-picker
+            v-model:value="cloudDateRange"
+            class="cloud-date-range"
+            :placeholder="['拍摄时间起始', '拍摄时间结束']"
+            allow-clear
+            @change="onCloudFilterChange"
+          />
+          <div class="flex items-center gap-2">
+            <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+              <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新 iCloud 状态 </a-button>
+            </a-tooltip>
+            <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+              <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">
+                <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
+                <template #overlay>
+                  <a-menu @click="onDeleteMenuClick">
+                    <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
+                    <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已同步项从 iCloud 移除</a-menu-item>
+                    <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
+                    <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </a-tooltip>
+          </div>
         </div>
       </div>
 
@@ -530,7 +534,7 @@ onMounted(() => {
                 {{ String((record as CloudListDisplayRow).indexNum).padStart(5, "0") }}
               </template>
               <template v-else-if="column.dataIndex === 'sortKey'">
-                {{ formatSortKeyTime((record as CloudListDisplayRow).sortKey) }}
+                {{ formatSortKeyTime((record as CloudListDisplayRow).captureAt ?? (record as CloudListDisplayRow).sortKey) }}
               </template>
               <template v-else-if="column.dataIndex === 'cloudState'">
                 <a-tag :color="(record as CloudListDisplayRow).displayStateColor">
@@ -625,7 +629,6 @@ onMounted(() => {
 .drawer-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -645,20 +648,26 @@ onMounted(() => {
   flex-shrink: 0;
 }
 .filter-tabs {
-  flex: 1;
-  min-width: 0;
+  margin-top: 16px;
+  :deep(.ant-tabs-nav) {
+    margin-bottom: 0;
+  }
+  :deep(.ant-tabs-content) {
+    display: none;
+  }
+}
+.filter-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .toolbar-actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  margin-top: 8px;
+  justify-content: space-between;
+  margin-top: 12px;
 }
 .tab-count-badge {
-  margin-left: 4px;
-  vertical-align: 1px;
   :deep(.ant-badge-count) {
     min-width: 16px;
     height: 16px;
@@ -668,13 +677,14 @@ onMounted(() => {
     box-shadow: none;
   }
 }
-:deep(.ant-radio-button-wrapper-checked) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
+:deep(.ant-tabs-tab-active) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
   background: var(--color-primary);
 }
 .cloud-date-range {
-  width: 240px;
+  width: 260px;
 }
 .cloud-table-wrap {
+  margin-top: 12px;
   flex: 1;
   min-height: 0;
   overflow: hidden;

@@ -20,7 +20,8 @@ use super::db::{
   finalize_job_download, find_incomplete_task_for_apple, get_job,
   insert_job, job_has_assets, list_asset_tasks, list_failed_assets, list_pending_assets,
   load_existing_baselines, mark_asset_outcome, mark_asset_status, mark_catalog_deletions,
-  open_db, refresh_cloud_delete_job_counts, reconcile_synced_missing_local_files,
+  open_db, prepare_catalog_keys_temp, refresh_cloud_delete_job_counts,
+  reconcile_synced_missing_local_files_in_catalog,
   reset_failed_to_pending, set_job_catalog_counts,
   state_db_path, update_job_status,
 };
@@ -44,7 +45,7 @@ pub const CLOUD_STATE_CHANGED_EVENT: &str = "icloud-sync://cloud-state-changed";
 const MIN_BATCH_GAP_MS: u64 = 400;
 
 /// sidecar catalog 单条资产（与 Python mock 字段对齐）
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CatalogItem {
   pub asset_id: String,
   pub filename: String,
@@ -52,6 +53,10 @@ pub struct CatalogItem {
   pub live_pair_id: Option<String>,
   pub capture_at: Option<String>,
   pub added_at: Option<String>,
+  /// WGS84 纬度；catalog 有 GPS 时落库
+  pub latitude: Option<f64>,
+  /// WGS84 经度；catalog 有 GPS 时落库
+  pub longitude: Option<f64>,
   pub parts: Vec<String>,
   /// CloudKit CPLAsset.recordName；catalog 时落库，删云只读库
   pub cpl_asset_record_name: Option<String>,
@@ -216,6 +221,10 @@ pub fn catalog_to_asset_rows(
         apple_id: String::new(),
         asset_id: item.asset_id.clone(),
         sort_key: sort_key(item, view),
+        capture_at: item.capture_at.clone(),
+        added_at: item.added_at.clone(),
+        latitude: item.latitude,
+        longitude: item.longitude,
         original_filename: item.filename.clone(),
         media_kind: item.media_kind,
         live_pair_id: item.live_pair_id.clone(),
@@ -302,6 +311,8 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+      let latitude = value.get("latitude").and_then(|v| v.as_f64());
+      let longitude = value.get("longitude").and_then(|v| v.as_f64());
 
       Ok(CatalogItem {
         asset_id,
@@ -310,6 +321,8 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         live_pair_id,
         capture_at,
         added_at,
+        latitude,
+        longitude,
         parts,
         cpl_asset_record_name,
         cpl_asset_change_tag,
@@ -547,23 +560,26 @@ fn persist_catalog_delta(
   let rows = catalog_to_asset_rows(view, catalog_items)?;
   let existing = load_existing_baselines(conn, apple_id)?;
   let (classified, catalog_keys) = classify_catalog_rows(&rows, &existing);
+  prepare_catalog_keys_temp(conn, &catalog_keys)?;
   let mut summary = apply_catalog_delta(conn, job_id, apple_id, &classified)?;
-  summary.deleted = mark_catalog_deletions(conn, apple_id, &catalog_keys)?;
+  summary.deleted = mark_catalog_deletions(conn, apple_id)?;
   // 本地文件缺失的 synced 行降级为 cloud_only，须在 enqueue 前完成以便本次 job 可下载
-  let reconciled = reconcile_synced_missing_local_files(conn, apple_id)?;
+  let reconciled = reconcile_synced_missing_local_files_in_catalog(conn, apple_id)?;
   if reconciled > 0 {
     log::info!(
       "icloud catalog job {job_id}: {reconciled} synced assets missing on disk → cloud_only"
     );
   }
-  let extra = enqueue_outstanding_for_full_sync(conn, job_id, apple_id, &catalog_keys)?;
+  let extra = enqueue_outstanding_for_full_sync(conn, job_id, apple_id)?;
   summary.enqueued += extra;
   set_job_catalog_counts(conn, job_id)?;
   log::info!(
-    "icloud catalog delta job {job_id}: added={} modified={} unchanged={} deleted={} enqueued={}",
+    "icloud catalog delta job {job_id}: added={} modified={} meta_refresh={} unchanged={} skipped={} deleted={} enqueued={}",
     summary.added,
     summary.modified,
+    summary.metadata_refresh,
     summary.unchanged,
+    summary.unchanged_skipped,
     summary.deleted,
     summary.enqueued
   );
@@ -1478,6 +1494,8 @@ mod tests {
       live_pair_id: None,
       capture_at: Some(capture.into()),
       added_at: Some(added.into()),
+      latitude: None,
+      longitude: None,
       parts: vec!["still".into()],
       cpl_asset_record_name: Some(format!("CPL-{id}")),
       cpl_asset_change_tag: Some("t".into()),
@@ -1492,6 +1510,8 @@ mod tests {
       live_pair_id: Some(pair.into()),
       capture_at: Some(capture.into()),
       added_at: Some(added.into()),
+      latitude: None,
+      longitude: None,
       parts: vec!["still".into(), "mov".into()],
       cpl_asset_record_name: Some(format!("CPL-{id}")),
       cpl_asset_change_tag: Some("t".into()),
@@ -1617,6 +1637,10 @@ mod tests {
       apple_id: String::new(),
       asset_id: "A31".into(),
       sort_key: "2026-01-01".into(),
+      capture_at: None,
+      added_at: None,
+      latitude: None,
+      longitude: None,
       original_filename: "微信图片_20260821145301_14_2.jpg".into(),
       media_kind: MediaKind::Photo,
       live_pair_id: None,

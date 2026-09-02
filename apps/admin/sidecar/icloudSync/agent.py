@@ -869,7 +869,7 @@ def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
     if not asset_id:
         raise LiveBindMissingError("asset id missing")
 
-    return {
+    item: dict[str, Any] = {
         "asset_id": asset_id,
         "filename": getattr(photo, "filename", "") or f"{asset_id}.bin",
         "media_kind": media_kind,
@@ -879,6 +879,11 @@ def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
         "parts": parts,
         **ipd_photos.cpl_asset_meta_from_photo(photo),
     }
+    latitude, longitude = ipd_photos.catalog_location_from_photo(photo)
+    if latitude is not None and longitude is not None:
+        item["latitude"] = latitude
+        item["longitude"] = longitude
+    return item
 
 
 def _iter_view_assets(api: Any, view: str) -> Any:

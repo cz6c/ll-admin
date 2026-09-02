@@ -444,6 +444,46 @@ def fetch_photo_assets_by_ids(api: Any, asset_ids: Sequence[str]) -> dict[str, A
     return {asset_id: found[asset_id] for asset_id in unique}
 
 
+def _cpl_record_field_value(record: Any, field: str) -> Any:
+    """读取 CloudKit record fields 内单字段的 value；缺失或非 dict 时返回 None。"""
+    if not isinstance(record, dict):
+        return None
+    fields = record.get("fields")
+    if not isinstance(fields, dict):
+        return None
+    entry = fields.get(field)
+    if not isinstance(entry, dict):
+        return None
+    return entry.get("value")
+
+
+def _coerce_wgs84_coord(raw: Any) -> float | None:
+    """将 CPL 经纬度字段转为 float；非法值视为无 GPS。"""
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def catalog_location_from_photo(photo: Any) -> tuple[float | None, float | None]:
+    """
+    从 CPL master 记录读取 WGS84 坐标（供 catalog 产品元数据落库）。
+
+    @returns (latitude, longitude)；无 GPS 或 stub 资产时为 (None, None)
+    @note 只读 locationLatitude/locationLongitude，不解码 locationEnc
+    """
+    master = getattr(photo, "_master_record", None)
+    lat = _coerce_wgs84_coord(_cpl_record_field_value(master, "locationLatitude"))
+    lng = _coerce_wgs84_coord(_cpl_record_field_value(master, "locationLongitude"))
+    if lat is None or lng is None:
+        return None, None
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
+        return None, None
+    return lat, lng
+
+
 def cpl_asset_meta_from_photo(photo: Any) -> dict[str, str]:
     """
     从枚举得到的 PhotoAsset 提取删云元数据（供 catalog 落库）。

@@ -3,7 +3,7 @@
 //! 适用：start_job、删云入队、refresh_catalog 入口
 
 use super::db::{find_incomplete_task_for_apple, get_job};
-use super::types::{JobRow, JobStatus, TaskType};
+use super::types::{error_codes, JobRow, JobStatus, TaskType};
 use rusqlite::Connection;
 
 /// 任务是否仍处于进行中（非终态）
@@ -44,16 +44,12 @@ pub fn require_no_incomplete_task(
     return Ok(());
   };
   Err(format!(
-    "task_active: 已有{}任务进行中（{}），请先取消后再{}",
+    "{}: 已有{}任务进行中（{}），请先取消后再{}",
+    error_codes::TASK_ACTIVE,
     task_type_label(existing.task_type),
     existing.id,
     starting_label(starting)
   ))
-}
-
-/// 读取未完成任务；job 不存在时 None
-pub fn get_incomplete_task(conn: &Connection, apple_id: &str) -> Result<Option<JobRow>, String> {
-  find_incomplete_task_for_apple(conn, apple_id)
 }
 
 /// discard 前校验 job 仍属于未完成任务

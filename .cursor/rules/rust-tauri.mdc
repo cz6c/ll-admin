@@ -1,0 +1,45 @@
+---
+description: Admin Tauri/Rust（src-tauri）编译警告门禁与改后必验
+globs: apps/admin/src-tauri/**/*.{rs,toml}
+alwaysApply: false
+---
+
+# Rust / Tauri（`@apps/admin` src-tauri）
+
+## 交付硬门禁（强制）
+
+凡本次会话**新增或修改**了 `apps/admin/src-tauri/**/*.rs`（含 `Cargo.toml` 影响编译时），**存在未处理的 `cargo` 警告则不得声称任务完成、不得结束回合**。
+
+**改完必跑（至少其一，推荐顺序）：**
+
+```bash
+cd apps/admin/src-tauri
+cargo check
+cargo test --lib
+```
+
+- **`cargo check` 输出含 `warning:`** → 必须在本回合内修掉，或加 **有理由的** `#[allow(...)]` + 注释说明为何不能删（禁止无注释批量 allow）。
+- 改动集中在某模块时，可附加：`cargo test --lib <module_path>`（如 `icloud_sync`）。
+- 用户明确要求或发版前：可再跑 `cargo clippy -- -D warnings`（视仓库是否已启用 clippy 为准）。
+
+**自检清单（改完 Rust 后逐项打勾，未完成则继续改）：**
+
+1. [ ] 已实跑 `cargo check`（或 `cargo test --lib`）且 **0 warnings**？
+2. [ ] 新增代码无 `unused import` / `unused variable` / `dead_code`（除非测试专用且 `#[cfg(test)]`）？
+3. [ ] 公开 API、复杂分支的注释已按 `comment-standards.mdc` 补齐（若本次有改业务逻辑）？
+
+## 常见警告与处理
+
+| 警告 | 处理 |
+|------|------|
+| `unused import` / `unused variable` | 删除或用 `_` 前缀；确需保留则注释 why |
+| `dead_code` | 删除未用函数/类型；仅诊断/预留则 `#[cfg(test)]` 或删 |
+| `unused_mut` | 去掉多余 `mut` |
+| `private_interfaces` / 可见性 | 调整 `pub` 或缩小暴露面，勿为消警随意 `pub` |
+| `must_use` / 未处理 `Result` | 显式处理或 `?` 传播，禁止无声丢弃 |
+
+## 与 monorepo 的衔接
+
+- Rust **模块/文件名** 用 `snake_case`（见 `file-naming.mdc` 例外条款）。
+- 不要为消警告做无关重构；**最小 diff 修到 0 warning**。
+- 全仓 `pnpm check` 不一定覆盖 Tauri；**改 src-tauri 后以上述 `cargo` 命令为准**。

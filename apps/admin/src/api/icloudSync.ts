@@ -141,9 +141,17 @@ export interface IcloudSyncSyncAssetRow {
   indexNum: number;
   /**
    * catalog 排序键：Library≈拍摄时间，Recents≈加入图库时间（ISO8601）
-   * 列表「拍摄时间」列直接展示此字段
+   * 列表排序仍用此字段；展示拍摄时间优先用 captureAt
    */
   sortKey: string;
+  /** 拍摄时间 ISO8601；无 GPS/旧库未刷新时为 null */
+  captureAt?: string | null;
+  /** 加入 iCloud 图库时间 ISO8601 */
+  addedAt?: string | null;
+  /** WGS84 纬度；无 GPS 时为 null */
+  latitude?: number | null;
+  /** WGS84 经度；无 GPS 时为 null */
+  longitude?: number | null;
   originalFilename: string;
   /** Live Photo 配对 mov 文件名（catalog 同名时会推导 .MOV） */
   liveMovFilename?: string | null;
@@ -433,7 +441,7 @@ export function loadIcloudSyncAssets(
     offset?: number;
     limit?: number;
     cloudState?: IcloudSyncCloudStateFilter;
-    /** YYYY-MM-DD，按 sortKey 前缀筛选拍摄/加入时间 */
+    /** YYYY-MM-DD，按拍摄日期（captureAt，无则 sortKey）筛选 */
     dateFrom?: string;
     dateTo?: string;
   } = {}

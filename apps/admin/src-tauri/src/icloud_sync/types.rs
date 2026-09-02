@@ -285,6 +285,18 @@ pub struct SyncAssetRow {
   pub index_num: i32,
   /// catalog 排序键：Library=拍摄时间(capture_at)，Recents=加入时间(added_at)
   pub sort_key: String,
+  /// 拍摄时间 ISO8601（与 sort_key 解耦；Recents 视图下 sort_key 可能为 added_at）
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub capture_at: Option<String>,
+  /// 加入 iCloud 图库时间 ISO8601
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub added_at: Option<String>,
+  /// WGS84 纬度；无 GPS 时为 null
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub latitude: Option<f64>,
+  /// WGS84 经度；无 GPS 时为 null
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub longitude: Option<f64>,
   pub original_filename: String,
   /// Live Photo 配对 mov 文件名；catalog 常 still/mov 同名，展示时会推导 .MOV
   pub live_mov_filename: Option<String>,
@@ -340,12 +352,20 @@ pub struct JobRow {
 }
 
 /// SQLite assets 行（Rust 内部）
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AssetRow {
   pub id: i64,
   pub apple_id: String,
   pub asset_id: String,
   pub sort_key: String,
+  /// 拍摄时间 ISO8601；catalog 落库，供按日分组/筛选
+  pub capture_at: Option<String>,
+  /// 加入图库时间 ISO8601
+  pub added_at: Option<String>,
+  /// WGS84 纬度；无 GPS 时为 None
+  pub latitude: Option<f64>,
+  /// WGS84 经度；无 GPS 时为 None
+  pub longitude: Option<f64>,
   pub original_filename: String,
   pub media_kind: MediaKind,
   pub live_pair_id: Option<String>,

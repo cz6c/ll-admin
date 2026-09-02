@@ -194,6 +194,26 @@ def test_has_real_cpl_asset_record_rejects_stub() -> None:
     assert meta["cpl_asset_change_tag"] == "abc"
 
 
+def test_catalog_location_from_photo_reads_master_fields() -> None:
+    photo = _FakePhoto(
+        item_type=AssetItemType.IMAGE,
+        versions={AssetVersionSize.ORIGINAL: _FakeVersion("https://x")},
+    )
+    photo._master_record = {  # noqa: SLF001
+        "recordName": "A1",
+        "fields": {
+            "locationLatitude": {"value": 31.23},
+            "locationLongitude": {"value": 121.47},
+        },
+    }
+    lat, lng = ipd_photos.catalog_location_from_photo(photo)
+    assert lat == 31.23
+    assert lng == 121.47
+
+    photo._master_record = {"recordName": "A1", "fields": {}}  # noqa: SLF001
+    assert ipd_photos.catalog_location_from_photo(photo) == (None, None)
+
+
 def test_delete_cpl_asset_by_record_posts_is_deleted() -> None:
     api = MagicMock()
     api.photos.service_endpoint = "https://photos.example/db"

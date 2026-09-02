@@ -28,8 +28,8 @@ const LIVE_MOV_LIST_HIDDEN: &str = r#"NOT (
   )
 )"#;
 
-fn push_cloud_list_where(parts: &mut Vec<&'static str>) {
-  parts.push(LIVE_MOV_LIST_HIDDEN);
+fn push_cloud_list_where(parts: &mut Vec<String>) {
+  parts.push(LIVE_MOV_LIST_HIDDEN.to_string());
 }
 
 /// catalog 常给 still/mov 同一 filename；列表展示 mov 时用云端原名或从 still 推导 .MOV
@@ -140,7 +140,10 @@ fn derive_list_display_state(
   Ok(worse_cloud_display(&still_display, &mov_display))
 }
 
-/// YYYY-MM-DD 日期边界（对 sort_key ISO8601 前缀比较）
+/// 列表日期筛选：优先 capture_at，旧行无值时回退 sort_key
+const CAPTURE_DATE_SQL: &str = "COALESCE(NULLIF(trim(capture_at), ''), sort_key)";
+
+/// YYYY-MM-DD 日期边界（对拍摄日期 ISO8601 前缀比较）
 #[derive(Debug, Clone, Default)]
 struct SortKeyDateFilter {
   from: Option<String>,
@@ -166,12 +169,12 @@ impl SortKeyDateFilter {
     }
   }
 
-  fn push_where(&self, parts: &mut Vec<&'static str>) {
+  fn push_where(&self, parts: &mut Vec<String>) {
     if self.from.is_some() {
-      parts.push("substr(sort_key, 1, 10) >= ?");
+      parts.push(format!("substr({CAPTURE_DATE_SQL}, 1, 10) >= ?"));
     }
     if self.to.is_some() {
-      parts.push("substr(sort_key, 1, 10) <= ?");
+      parts.push(format!("substr({CAPTURE_DATE_SQL}, 1, 10) <= ?"));
     }
   }
 
@@ -183,6 +186,93 @@ impl SortKeyDateFilter {
       params.push(Box::new(t.clone()));
     }
   }
+}
+
+type CloudListRowRaw = (
+  String,
+  String,
+  i32,
+  String,
+  Option<String>,
+  Option<String>,
+  Option<f64>,
+  Option<f64>,
+  String,
+  String,
+  Option<String>,
+  Option<String>,
+  String,
+  Option<String>,
+  Option<i64>,
+  Option<i64>,
+);
+
+fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRowRaw> {
+  Ok((
+    row.get(0)?,
+    row.get(1)?,
+    row.get(2)?,
+    row.get(3)?,
+    row.get(4)?,
+    row.get(5)?,
+    row.get(6)?,
+    row.get(7)?,
+    row.get(8)?,
+    row.get(9)?,
+    row.get(10)?,
+    row.get(11)?,
+    row.get(12)?,
+    row.get(13)?,
+    row.get(14)?,
+    row.get(15)?,
+  ))
+}
+
+fn build_sync_asset_row(
+  conn: &Connection,
+  apple_id: &str,
+  raw: CloudListRowRaw,
+) -> Result<SyncAssetRow, String> {
+  let (
+    asset_id,
+    part,
+    index_num,
+    sort_key,
+    capture_at,
+    added_at,
+    latitude,
+    longitude,
+    original_filename,
+    media_kind,
+    live_pair_id,
+    dest_path,
+    cloud_s,
+    download_status,
+    last_synced_at,
+    last_catalog_at,
+  ) = raw;
+  let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
+  let display = derive_list_display_state(conn, apple_id, &asset_id, &part, cloud_state)?;
+  Ok(SyncAssetRow {
+    asset_id,
+    part,
+    index_num,
+    sort_key,
+    capture_at,
+    added_at,
+    latitude,
+    longitude,
+    original_filename,
+    live_mov_filename: None,
+    live_mov_download_status: None,
+    media_kind,
+    live_pair_id,
+    dest_path,
+    cloud_state: display,
+    download_status,
+    last_synced_at,
+    last_catalog_at,
+  })
 }
 
 /// 活跃 sync job 内 download_status=failed 计数（任务结束 finalize 后归零）
@@ -225,9 +315,9 @@ pub fn load_sync_assets(
   let lim = i64::from(limit.clamp(1, 200));
   let off = i64::from(offset);
 
-  let mut where_parts = vec!["apple_id = ?"];
+  let mut where_parts = vec!["apple_id = ?".to_string()];
   if filter.is_some() {
-    where_parts.push("cloud_state = ?");
+    where_parts.push("cloud_state = ?".to_string());
   }
   date_filter.push_where(&mut where_parts);
   push_cloud_list_where(&mut where_parts);
@@ -236,11 +326,12 @@ pub fn load_sync_assets(
   let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
   let list_sql = format!(
     r#"
-    SELECT asset_id, part, index_num, sort_key, original_filename, media_kind, live_pair_id,
+    SELECT asset_id, part, index_num, sort_key, capture_at, added_at, latitude, longitude,
+           original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
     FROM assets
     WHERE {where_clause}
-    ORDER BY sort_key ASC,
+    ORDER BY {CAPTURE_DATE_SQL} ASC,
              CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
     LIMIT ? OFFSET ?
     "#
@@ -269,64 +360,13 @@ pub fn load_sync_assets(
     .prepare(&list_sql)
     .map_err(|e| format!("准备云资产列表失败: {e}"))?;
   let rows = stmt
-    .query_map(list_refs.as_slice(), |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, i32>(2)?,
-        row.get::<_, String>(3)?,
-        row.get::<_, String>(4)?,
-        row.get::<_, String>(5)?,
-        row.get::<_, Option<String>>(6)?,
-        row.get::<_, Option<String>>(7)?,
-        row.get::<_, String>(8)?,
-        row.get::<_, Option<String>>(9)?,
-        row.get::<_, Option<i64>>(10)?,
-        row.get::<_, Option<i64>>(11)?,
-      ))
-    })
+    .query_map(list_refs.as_slice(), read_cloud_list_row)
     .map_err(|e| format!("查询云资产列表失败: {e}"))?;
 
   let mut items = Vec::new();
   for row in rows {
-    let (
-      asset_id,
-      part,
-      index_num,
-      sort_key,
-      original_filename,
-      media_kind,
-      live_pair_id,
-      dest_path,
-      cloud_s,
-      download_status,
-      last_synced_at,
-      last_catalog_at,
-    ) = row.map_err(|e| format!("解析云资产行失败: {e}"))?;
-    let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
-    let display = derive_list_display_state(
-      conn,
-      apple_id,
-      &asset_id,
-      &part,
-      cloud_state,
-    )?;
-    items.push(SyncAssetRow {
-      asset_id,
-      part,
-      index_num,
-      sort_key,
-      original_filename,
-      live_mov_filename: None,
-      live_mov_download_status: None,
-      media_kind,
-      live_pair_id,
-      dest_path,
-      cloud_state: display,
-      download_status,
-      last_synced_at,
-      last_catalog_at,
-    });
+    let raw = row.map_err(|e| format!("解析云资产行失败: {e}"))?;
+    items.push(build_sync_asset_row(conn, apple_id, raw)?);
   }
 
   for item in &mut items {
@@ -351,10 +391,10 @@ fn load_sync_assets_download_failed(
   let off = i64::from(offset);
 
   let mut where_parts = vec![
-    "apple_id = ?",
-    "download_status = 'failed'",
-    "active_job_id IS NOT NULL",
-    "EXISTS (SELECT 1 FROM jobs j WHERE j.id = assets.active_job_id AND j.task_type = 'sync')",
+    "apple_id = ?".to_string(),
+    "download_status = 'failed'".to_string(),
+    "active_job_id IS NOT NULL".to_string(),
+    "EXISTS (SELECT 1 FROM jobs j WHERE j.id = assets.active_job_id AND j.task_type = 'sync')".to_string(),
   ];
   date_filter.push_where(&mut where_parts);
   push_cloud_list_where(&mut where_parts);
@@ -363,11 +403,12 @@ fn load_sync_assets_download_failed(
   let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
   let list_sql = format!(
     r#"
-    SELECT asset_id, part, index_num, sort_key, original_filename, media_kind, live_pair_id,
+    SELECT asset_id, part, index_num, sort_key, capture_at, added_at, latitude, longitude,
+           original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
     FROM assets
     WHERE {where_clause}
-    ORDER BY sort_key ASC,
+    ORDER BY {CAPTURE_DATE_SQL} ASC,
              CASE part WHEN 'still' THEN 0 WHEN 'mov' THEN 1 ELSE 2 END ASC
     LIMIT ? OFFSET ?
     "#
@@ -390,64 +431,13 @@ fn load_sync_assets_download_failed(
     .prepare(&list_sql)
     .map_err(|e| format!("准备 download_failed 列表失败: {e}"))?;
   let rows = stmt
-    .query_map(list_refs.as_slice(), |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, i32>(2)?,
-        row.get::<_, String>(3)?,
-        row.get::<_, String>(4)?,
-        row.get::<_, String>(5)?,
-        row.get::<_, Option<String>>(6)?,
-        row.get::<_, Option<String>>(7)?,
-        row.get::<_, String>(8)?,
-        row.get::<_, Option<String>>(9)?,
-        row.get::<_, Option<i64>>(10)?,
-        row.get::<_, Option<i64>>(11)?,
-      ))
-    })
+    .query_map(list_refs.as_slice(), read_cloud_list_row)
     .map_err(|e| format!("查询 download_failed 列表失败: {e}"))?;
 
   let mut items = Vec::new();
   for row in rows {
-    let (
-      asset_id,
-      part,
-      index_num,
-      sort_key,
-      original_filename,
-      media_kind,
-      live_pair_id,
-      dest_path,
-      cloud_s,
-      download_status,
-      last_synced_at,
-      last_catalog_at,
-    ) = row.map_err(|e| format!("解析 download_failed 行失败: {e}"))?;
-    let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
-    let display = derive_list_display_state(
-      conn,
-      apple_id,
-      &asset_id,
-      &part,
-      cloud_state,
-    )?;
-    items.push(SyncAssetRow {
-      asset_id,
-      part,
-      index_num,
-      sort_key,
-      original_filename,
-      live_mov_filename: None,
-      live_mov_download_status: None,
-      media_kind,
-      live_pair_id,
-      dest_path,
-      cloud_state: display,
-      download_status,
-      last_synced_at,
-      last_catalog_at,
-    });
+    let raw = row.map_err(|e| format!("解析 download_failed 行失败: {e}"))?;
+    items.push(build_sync_asset_row(conn, apple_id, raw)?);
   }
 
   for item in &mut items {

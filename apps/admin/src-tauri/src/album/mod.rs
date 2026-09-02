@@ -3,6 +3,7 @@
 //! 适用：admin CS（Tauri）个人工具
 
 mod db;
+mod duplicates;
 mod ffmpeg;
 mod heic_decode;
 mod scan_state;
@@ -12,7 +13,7 @@ mod thumbnail;
 mod types;
 mod watcher;
 
-pub use types::{AlbumSettings, MediaGroup};
+pub use types::{AlbumSettings, DuplicatePair, MediaGroup};
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -244,8 +245,37 @@ pub async fn album_scan(
   Ok(groups)
 }
 
+fn persist_playback_path(album_data_dir: &std::path::Path, source_path: &str, cache_path: &str) {
+  if let Ok(conn) = db::open_db(album_data_dir) {
+    let _ = db::update_playback_path(&conn, source_path, cache_path);
+  }
+}
+
+fn append_playback_deletes(
+  to_remove: &mut Vec<std::path::PathBuf>,
+  album_data_dir: &std::path::Path,
+  source_path: &str,
+  db_playback: Option<String>,
+) {
+  if let Some(p) = db_playback.filter(|s| !s.is_empty()) {
+    let pb = std::path::PathBuf::from(&p);
+    if !to_remove.iter().any(|x| x == &pb) {
+      to_remove.push(pb);
+    }
+  }
+  let cache_dir = album_data_dir
+    .join("thumbs")
+    .join(format!("v{}", types::ALBUM_CACHE_VERSION));
+  if let Some(derived) = thumbnail::probe_playback_cache(&cache_dir, source_path) {
+    let pb = std::path::PathBuf::from(derived);
+    if !to_remove.iter().any(|x| x == &pb) {
+      to_remove.push(pb);
+    }
+  }
+}
+
 /// 删除本地媒体文件及 media.db 索引（不触碰 iCloud sync assets）
-/// @param paths 主文件绝对路径；Live Photo 会一并删除 video_path
+/// @param paths 主文件绝对路径；Live Photo 会一并删除 video_path 与播放代理
 #[tauri::command]
 pub fn album_delete_local(
   app: AppHandle,
@@ -264,16 +294,21 @@ pub fn album_delete_local(
     if path.is_empty() {
       continue;
     }
-    let (thumb, preview, video) = db::get_media_companion_paths(&conn, path)?;
+    let (thumb, preview, video, playback) = db::get_media_companion_paths(&conn, path)?;
     let mut to_remove: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
     if let Some(v) = video.filter(|s| !s.is_empty() && s != path) {
-      to_remove.push(std::path::PathBuf::from(v));
+      to_remove.push(std::path::PathBuf::from(v.clone()));
+      append_playback_deletes(&mut to_remove, &album_data_dir, &v, None);
     }
-    for p in [thumb, preview].into_iter().flatten() {
+    for p in [thumb, preview, playback].into_iter().flatten() {
       if !p.is_empty() {
-        to_remove.push(std::path::PathBuf::from(p));
+        let pb = std::path::PathBuf::from(&p);
+        if !to_remove.iter().any(|x| x == &pb) {
+          to_remove.push(pb);
+        }
       }
     }
+    append_playback_deletes(&mut to_remove, &album_data_dir, path, None);
     for p in &to_remove {
       if p.is_file() {
         std::fs::remove_file(p).map_err(|e| format!("删除文件失败 {}: {e}", p.display()))?;
@@ -290,6 +325,12 @@ pub fn album_delete_local(
     }
   }
   Ok(deleted)
+}
+
+/// 扫描 sync 正本与 legacy 重复组（不含删盘）
+#[tauri::command]
+pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicatePair>, String> {
+  duplicates::find_local_duplicates(&app)
 }
 
 /// 返回 WebView 可直接 `<video>` 播放的路径：H.264 等原生格式原样返回；HEVC 转 H.264 MP4 缓存
@@ -342,7 +383,9 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
       .map(|p| ffmpeg::is_web_playable_h264(p, &cache_file))
       .unwrap_or(true);
     if cache_ok {
-      return Ok(cache_file.to_string_lossy().into_owned());
+      let cache_path = cache_file.to_string_lossy().into_owned();
+      persist_playback_path(&album_data_dir, &path, &cache_path);
+      return Ok(cache_path);
     }
     let _ = std::fs::remove_file(&cache_file);
     log::warn!("album: 播放代理缓存无效，将重新转码: {}", cache_file.display());
@@ -397,5 +440,7 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
       return Err(format!("转码结果无法播放: {path_for_err}"));
     }
   }
-  Ok(cache_file.to_string_lossy().into_owned())
+  let cache_path = cache_file.to_string_lossy().into_owned();
+  persist_playback_path(&album_data_dir, &path, &cache_path);
+  Ok(cache_path)
 }

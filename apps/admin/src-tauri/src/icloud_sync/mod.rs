@@ -14,6 +14,7 @@ mod sidecar;
 mod task;
 mod types;
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -21,12 +22,67 @@ use tauri::{AppHandle, State};
 
 pub use cloud_delete::init_cloud_delete_worker;
 pub use queue::SidecarClientHandle;
+use db::{open_db, state_db_path};
 use settings::{
-  clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain, require_consent,
-  save_settings, session_has_files, session_has_files_for_apple_id,
+  clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain,
+  require_consent, resolve_default_output_dir, save_settings, session_has_files,
+  session_has_files_for_apple_id,
 };
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
-use types::IcloudSyncSettings;
+use types::{CloudState, IcloudSyncSettings};
+
+/// 供 album 重复检测：已同步且 dest_path 非空的资产行
+#[derive(Debug, Clone)]
+pub struct SyncedLocalRow {
+  pub asset_id: String,
+  pub part: String,
+  pub dest_path: String,
+  pub original_filename: String,
+  pub media_kind: String,
+}
+
+/// 列出 cloud_state=synced 且 dest_path 已绑定的行（不校验文件是否在盘）
+pub fn list_synced_local_rows(app: &AppHandle) -> Result<Vec<SyncedLocalRow>, String> {
+  let db_path = state_db_path(app)?;
+  if !db_path.is_file() {
+    return Ok(Vec::new());
+  }
+  let conn = open_db(&db_path)?;
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT asset_id, part, dest_path, original_filename, media_kind
+      FROM assets
+      WHERE cloud_state = ?1
+        AND dest_path IS NOT NULL AND trim(dest_path) != ''
+      "#,
+    )
+    .map_err(|e| format!("准备重复检测查询失败: {e}"))?;
+
+  let rows = stmt
+    .query_map([CloudState::Synced.as_str()], |row| {
+      Ok(SyncedLocalRow {
+        asset_id: row.get(0)?,
+        part: row.get(1)?,
+        dest_path: row.get(2)?,
+        original_filename: row.get(3)?,
+        media_kind: row.get(4)?,
+      })
+    })
+    .map_err(|e| format!("查询 synced 资产失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析 synced 资产失败: {e}"))?;
+  Ok(rows)
+}
+
+/// 同步落盘目录：settings.outputDir 或 `{albumRoot}/iCloudSync`
+pub fn resolve_sync_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+  let settings = load_settings(app)?;
+  if !settings.output_dir.trim().is_empty() {
+    return Ok(Some(PathBuf::from(settings.output_dir.trim())));
+  }
+  resolve_default_output_dir(app)
+}
 
 /// 将 sidecar error 事件格式化为 `code` 或 `code: message` 供上层展示。
 fn format_sidecar_error_event(event: &SidecarEvent, default_code: &str) -> String {

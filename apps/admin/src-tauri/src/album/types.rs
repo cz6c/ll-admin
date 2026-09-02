@@ -64,6 +64,8 @@ pub struct MediaFile {
   pub thumb_path: Option<String>,
   /// HEIC/HEIF 全尺寸预览缓存路径（懒加载，打开查看器时生成）
   pub preview_path: Option<String>,
+  /// HEVC 播放代理 MP4；普通视频为 path 的代理，Live 为 video_path(mov) 的代理
+  pub playback_path: Option<String>,
   /// 实况照片配对的视频路径（仅 LivePhoto 有值）
   pub video_path: Option<String>,
 }
@@ -99,4 +101,40 @@ pub struct AlbumThumbReadyPayload {
   pub path: String,
   pub thumb_path: Option<String>,
   pub preview_path: Option<String>,
+}
+
+/// 重复清理弹窗：单侧文件（正本或 legacy）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateFileSide {
+  /// 主文件绝对路径（Live 为 still；仅 mov 时为 mov）
+  pub path: String,
+  /// 文件名
+  pub name: String,
+  /// 扩展名（小写）
+  pub ext: String,
+  /// Live 配对 mov 路径
+  pub video_path: Option<String>,
+  /// 网格缩略图或 HEIC 预览缓存（供 WebView 展示）
+  pub thumb_path: Option<String>,
+}
+
+/// 一组本地重复：左保留 sync 正本，右为可删 legacy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicatePair {
+  /// 匹配键（original_filename stem 归一）
+  pub content_key: String,
+  /// `photo` / `video` / `live`
+  pub media_kind: String,
+  /// iCloud asset_id（sync 正本）
+  pub asset_id: String,
+  /// 应用同步落盘（保留）
+  pub canonical: DuplicateFileSide,
+  /// 旧下载副本（默认勾选删除）
+  pub duplicate: DuplicateFileSide,
+  /// Live 等是否存在缺 part
+  pub incomplete: bool,
+  /// 不完整说明（如「旧下载缺配对视频」）
+  pub incomplete_note: Option<String>,
 }

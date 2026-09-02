@@ -58,7 +58,7 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-const SKIP_DIRS: &[&str] = &[
+pub(crate) const SKIP_DIRS: &[&str] = &[
   ".git",
   "node_modules",
   "$RECYCLE.BIN",
@@ -142,7 +142,7 @@ fn mov_matches_image_stem(mov: &MovCandidate, image_stem: &str) -> bool {
   mov.stem == image_stem || mov_stem_to_image_stem(&mov.stem) == image_stem
 }
 
-fn pair_live_photos(files: &mut Vec<MediaFile>) {
+pub(crate) fn pair_live_photos(files: &mut Vec<MediaFile>) {
   let mov_candidates: Vec<MovCandidate> = files
     .iter()
     .filter(|f| f.ext == "mov")
@@ -208,6 +208,7 @@ pub fn discover_groups(
 
   let conn = db::open_db(album_dir)?;
   let indexed = db::load_indexed_paths(&conn, root)?;
+  let cache_dir = cache_dir_for(album_dir);
 
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
   let mut discovered = 0u32;
@@ -249,6 +250,7 @@ pub fn discover_groups(
 
     let mut thumb_path = None;
     let mut preview_path = None;
+    let mut playback_path = None;
     if let Some(row) = indexed.get(&file_path) {
       if row.size == size && row.modified == modified {
         if row
@@ -265,7 +267,18 @@ pub fn discover_groups(
         {
           preview_path = row.preview_path.clone();
         }
+        if row
+          .playback_path
+          .as_ref()
+          .is_some_and(|p| Path::new(p).is_file())
+        {
+          playback_path = row.playback_path.clone();
+        }
       }
+    }
+
+    if playback_path.is_none() && is_video(&ext) {
+      playback_path = thumbnail::probe_playback_cache(&cache_dir, &file_path);
     }
 
     // 小图优化：< 100KB 且浏览器可原生显示的栅格图片，直接用原图当缩略图
@@ -292,6 +305,7 @@ pub fn discover_groups(
       ext,
       thumb_path,
       preview_path,
+      playback_path,
       video_path: None,
     });
     discovered += 1;
@@ -304,6 +318,15 @@ pub fn discover_groups(
 
   for files in dir_map.values_mut() {
     pair_live_photos(files);
+    for file in files.iter_mut() {
+      if file.kind == MediaKind::LivePhoto {
+        if file.playback_path.is_none() {
+          if let Some(ref mov_path) = file.video_path {
+            file.playback_path = thumbnail::probe_playback_cache(&cache_dir, mov_path);
+          }
+        }
+      }
+    }
     files.sort_by(|a, b| a.name.cmp(&b.name));
   }
 
@@ -504,6 +527,7 @@ mod tests {
       ext: name.rsplit('.').next().unwrap_or("jpg").to_lowercase(),
       thumb_path: None,
       preview_path: None,
+      playback_path: None,
       video_path: None,
     }
   }
@@ -518,6 +542,7 @@ mod tests {
       ext: "mov".to_string(),
       thumb_path: None,
       preview_path: None,
+      playback_path: None,
       video_path: None,
     }
   }

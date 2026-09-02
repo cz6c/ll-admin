@@ -1,0 +1,489 @@
+//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd 等同内容文件
+//! 职责：按 content_key 匹配正本（sync dest_path）与 legacy 副本；Live 按一张实况成组
+//! 适用：`album_find_local_duplicates`、清理重复弹窗
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+use tauri::AppHandle;
+use walkdir::WalkDir;
+
+use crate::icloud_sync::{list_synced_local_rows, resolve_sync_output_dir};
+
+use super::types::{DuplicateFileSide, DuplicatePair, ALBUM_CACHE_VERSION};
+use super::scanner::{pair_live_photos, SKIP_DIRS};
+use super::types::{MediaFile, MediaKind};
+use super::{db, ffmpeg, settings, thumbnail};
+
+const IMAGE_EXTS: &[&str] = &[
+  "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "tiff", "tif", "svg", "avif",
+];
+
+const VIDEO_EXTS: &[&str] = &[
+  "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
+];
+
+/// iCloud 同步落盘五位序号前缀，如 `00042_`
+fn icloud_index_prefix(stem: &str) -> Option<&str> {
+  if stem.len() >= 6
+    && stem.as_bytes().get(5) == Some(&b'_')
+    && stem[..5].chars().all(|c| c.is_ascii_digit())
+  {
+    Some(&stem[..5])
+  } else {
+    None
+  }
+}
+
+/// 文件名 stem 归一为匹配键：去序号前缀、小写
+fn content_key_from_stem(stem: &str) -> String {
+  let lower = stem.to_lowercase();
+  if let Some(prefix) = icloud_index_prefix(&lower) {
+    lower[prefix.len()..].trim_start_matches('_').to_string()
+  } else {
+    lower
+  }
+}
+
+fn content_key_from_filename(name: &str) -> String {
+  let stem = Path::new(name)
+    .file_stem()
+    .and_then(|s| s.to_str())
+    .unwrap_or(name);
+  content_key_from_stem(stem)
+}
+
+fn normalize_path_key(path: &str) -> String {
+  path.replace('\\', "/").to_lowercase()
+}
+
+fn path_is_under(path: &Path, ancestor: &Path) -> bool {
+  let p = normalize_path_key(&path.to_string_lossy());
+  let a = normalize_path_key(&ancestor.to_string_lossy());
+  if p == a {
+    return true;
+  }
+  if !p.starts_with(&a) {
+    return false;
+  }
+  p.as_bytes()
+    .get(a.len())
+    .is_some_and(|b| *b == b'/' || *b == b'\\')
+}
+
+fn get_ext(path: &Path) -> String {
+  path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase())
+    .unwrap_or_default()
+}
+
+fn is_image(ext: &str) -> bool {
+  IMAGE_EXTS.contains(&ext)
+}
+
+fn is_video(ext: &str) -> bool {
+  VIDEO_EXTS.contains(&ext)
+}
+
+/// 同步库中的一张逻辑资产（Live 聚合 still+mov）
+struct CanonicalAsset {
+  asset_id: String,
+  media_kind: String,
+  content_key: String,
+  still_path: Option<String>,
+  mov_path: Option<String>,
+  display_name: String,
+}
+
+struct LegacyAsset {
+  path: String,
+  name: String,
+  ext: String,
+  video_path: Option<String>,
+}
+
+fn sync_media_kind_label(kind: &str) -> &str {
+  match kind {
+    "video" => "video",
+    "live" => "live",
+    _ => "photo",
+  }
+}
+
+fn to_duplicate_side(entry: &LegacyAsset) -> DuplicateFileSide {
+  DuplicateFileSide {
+    path: entry.path.clone(),
+    name: entry.name.clone(),
+    ext: entry.ext.clone(),
+    video_path: entry.video_path.clone(),
+    thumb_path: None,
+  }
+}
+
+fn incomplete_note(
+  media_kind: &str,
+  canonical_still: bool,
+  canonical_mov: bool,
+  legacy_still: bool,
+  legacy_mov: bool,
+) -> Option<String> {
+  if media_kind != "live" {
+    return None;
+  }
+  let canonical_full = canonical_still && canonical_mov;
+  let legacy_full = legacy_still && legacy_mov;
+  if canonical_full && legacy_full {
+    return None;
+  }
+  if !canonical_mov && legacy_mov {
+    return Some("应用侧缺配对视频".into());
+  }
+  if canonical_mov && !legacy_mov {
+    return Some("旧下载缺配对视频".into());
+  }
+  if !canonical_still && legacy_still {
+    return Some("应用侧仅视频轨".into());
+  }
+  if canonical_still && !legacy_still {
+    return Some("旧下载仅视频轨".into());
+  }
+  Some("Live 配对不完整".into())
+}
+
+fn load_canonical_assets(app: &AppHandle) -> Result<(HashSet<String>, Vec<CanonicalAsset>), String> {
+  let rows = list_synced_local_rows(app)?;
+
+  let mut by_asset: HashMap<String, CanonicalAsset> = HashMap::new();
+  let mut canonical_paths: HashSet<String> = HashSet::new();
+
+  for row in rows {
+    let dest = row.dest_path.trim().to_string();
+    if dest.is_empty() || !Path::new(&dest).is_file() {
+      continue;
+    }
+    canonical_paths.insert(normalize_path_key(&dest));
+
+    let part = row.part.as_str();
+    let media_kind = row.media_kind.as_str();
+
+    let entry = by_asset
+      .entry(row.asset_id.clone())
+      .or_insert_with(|| {
+        let content_key = content_key_from_filename(&row.original_filename);
+        CanonicalAsset {
+          asset_id: row.asset_id.clone(),
+          media_kind: media_kind.to_string(),
+          content_key,
+          still_path: None,
+          mov_path: None,
+          display_name: row.original_filename.clone(),
+        }
+      });
+
+    match part {
+      "still" | "full" => {
+        entry.still_path = Some(dest);
+        if part == "still" {
+          entry.display_name = row.original_filename.clone();
+          entry.content_key = content_key_from_filename(&row.original_filename);
+        }
+      }
+      "mov" => {
+        entry.mov_path = Some(dest);
+      }
+      _ => {}
+    }
+    if media_kind == "live" {
+      entry.media_kind = "live".to_string();
+    }
+  }
+
+  Ok((canonical_paths, by_asset.into_values().collect()))
+}
+
+fn scan_legacy_assets(
+  root: &Path,
+  sync_output: &Path,
+  canonical_paths: &HashSet<String>,
+) -> HashMap<String, Vec<LegacyAsset>> {
+  let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
+
+  for entry in WalkDir::new(root)
+    .min_depth(1)
+    .into_iter()
+    .filter_entry(|e| {
+      if e.file_type().is_dir() {
+        let path = e.path();
+        if path_is_under(path, sync_output) {
+          return false;
+        }
+        let name = e.file_name().to_string_lossy();
+        !SKIP_DIRS.contains(&name.as_ref())
+      } else {
+        true
+      }
+    })
+    .filter_map(|e| e.ok())
+  {
+    if !entry.file_type().is_file() {
+      continue;
+    }
+    let path = entry.path();
+    if path_is_under(path, sync_output) {
+      continue;
+    }
+    let path_key = normalize_path_key(&path.to_string_lossy());
+    if canonical_paths.contains(&path_key) {
+      continue;
+    }
+
+    let ext = get_ext(path);
+    if !is_image(&ext) && !is_video(&ext) {
+      continue;
+    }
+
+    let parent = entry.path().parent().unwrap_or(root).to_path_buf();
+    let name = path
+      .file_name()
+      .and_then(|n| n.to_str())
+      .unwrap_or_default()
+      .to_string();
+    let file_path = path.to_string_lossy().to_string();
+
+    dir_map.entry(parent).or_default().push(MediaFile {
+      path: file_path,
+      name,
+      kind: if is_image(&ext) {
+        MediaKind::Image
+      } else {
+        MediaKind::Video
+      },
+      size: 0,
+      modified: 0,
+      ext,
+      thumb_path: None,
+      preview_path: None,
+      playback_path: None,
+      video_path: None,
+    });
+  }
+
+  let mut index: HashMap<String, Vec<LegacyAsset>> = HashMap::new();
+
+  for mut files in dir_map.into_values() {
+    pair_live_photos(&mut files);
+    for file in files {
+      if canonical_paths.contains(&normalize_path_key(&file.path)) {
+        continue;
+      }
+      if let Some(ref vp) = file.video_path {
+        if canonical_paths.contains(&normalize_path_key(vp)) {
+          // still 可匹配，mov 已是正本时仍保留 still 侧 legacy
+        }
+      }
+
+      let key = content_key_from_filename(&file.name);
+      if key.is_empty() {
+        continue;
+      }
+      index.entry(key).or_default().push(LegacyAsset {
+        path: file.path,
+        name: file.name,
+        ext: file.ext,
+        video_path: file.video_path,
+      });
+    }
+  }
+
+  index
+}
+
+fn canonical_to_side(asset: &CanonicalAsset) -> DuplicateFileSide {
+  let path = asset
+    .still_path
+    .clone()
+    .or_else(|| asset.mov_path.clone())
+    .unwrap_or_default();
+  let name = asset.display_name.clone();
+  let ext = Path::new(&name)
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("")
+    .to_lowercase();
+  DuplicateFileSide {
+    path,
+    name,
+    ext,
+    video_path: asset.mov_path.clone(),
+    thumb_path: None,
+  }
+}
+
+fn legacy_paths_set(entry: &LegacyAsset) -> HashSet<String> {
+  let mut set = HashSet::new();
+  set.insert(normalize_path_key(&entry.path));
+  if let Some(ref vp) = entry.video_path {
+    set.insert(normalize_path_key(vp));
+  }
+  set
+}
+
+fn overlaps_canonical(entry: &LegacyAsset, canonical_paths: &HashSet<String>) -> bool {
+  legacy_paths_set(entry)
+    .iter()
+    .any(|p| canonical_paths.contains(p))
+}
+
+/// 解析 UI 缩略图：media.db 缓存优先，缺失时对 HEIC/视频按需生成 WebP
+fn resolve_display_thumb(app: &AppHandle, path: &str) -> Option<String> {
+  if path.trim().is_empty() || !Path::new(path).is_file() {
+    return None;
+  }
+
+  let album_data_dir = settings::album_dir(app).ok()?;
+  let conn = db::open_db(&album_data_dir).ok()?;
+  if let Ok((thumb, preview, _, _)) = db::get_media_companion_paths(&conn, path) {
+    if thumb.as_ref().is_some_and(|p| Path::new(p).is_file()) {
+      return thumb;
+    }
+    if preview.as_ref().is_some_and(|p| Path::new(p).is_file()) {
+      return preview;
+    }
+  }
+
+  let ext = get_ext(Path::new(path));
+  // 浏览器可直接显示的栅格图，小文件可复用原图
+  if is_image(&ext) && !matches!(ext.as_str(), "heic" | "heif") {
+    return Some(path.to_string());
+  }
+
+  let cache_dir = album_data_dir
+    .join("thumbs")
+    .join(format!("v{ALBUM_CACHE_VERSION}"));
+  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(app);
+  let outcome = thumbnail::generate_thumbnail(path, &cache_dir, 158, ffmpeg_bin.as_deref());
+  // 与 scan pipeline 一致：生成成功后写回 media.db（须已有索引行，否则 UPDATE 无影响）
+  if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
+    let _ = db::update_cache_paths_batch(
+      &conn,
+      &[(
+        path.to_string(),
+        outcome.thumb_path.clone(),
+        outcome.preview_path.clone(),
+      )],
+    );
+  }
+  outcome.thumb_path.or(outcome.preview_path)
+}
+
+fn enrich_pair_thumbs(app: &AppHandle, pair: &mut DuplicatePair) {
+  if let Some(thumb) = resolve_display_thumb(app, &pair.canonical.path) {
+    pair.canonical.thumb_path = Some(thumb);
+  }
+  if let Some(thumb) = resolve_display_thumb(app, &pair.duplicate.path) {
+    pair.duplicate.thumb_path = Some(thumb);
+  }
+}
+
+/// 扫描相册根目录，找出 sync 正本与 legacy 重复组
+pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicatePair>, String> {
+  let album_settings = settings::load_settings(app)?;
+  let root = album_settings.root_dir.trim();
+  if root.is_empty() {
+    return Err("请先配置相册根目录".into());
+  }
+  let root_path = PathBuf::from(root);
+  if !root_path.is_dir() {
+    return Err(format!("相册根目录不存在: {root}"));
+  }
+
+  let sync_output = resolve_sync_output_dir(app)?;
+  let sync_output = sync_output.unwrap_or_else(|| root_path.join("iCloudSync"));
+
+  let (canonical_paths, canonical_assets) = load_canonical_assets(app)?;
+  if canonical_assets.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let legacy_index = scan_legacy_assets(&root_path, &sync_output, &canonical_paths);
+
+  let mut pairs: Vec<DuplicatePair> = Vec::new();
+  let mut used_legacy: HashSet<String> = HashSet::new();
+
+  for asset in canonical_assets {
+    let Some(candidates) = legacy_index.get(&asset.content_key) else {
+      continue;
+    };
+
+    let canonical_side = canonical_to_side(&asset);
+    if canonical_side.path.is_empty() {
+      continue;
+    }
+
+    for legacy in candidates {
+      let legacy_key = normalize_path_key(&legacy.path);
+      if used_legacy.contains(&legacy_key) {
+        continue;
+      }
+      if overlaps_canonical(legacy, &canonical_paths) {
+        continue;
+      }
+      // 正本与候选路径不能完全相同
+      if normalize_path_key(&legacy.path) == normalize_path_key(&canonical_side.path) {
+        continue;
+      }
+
+      let note = incomplete_note(
+        &asset.media_kind,
+        asset.still_path.is_some(),
+        asset.mov_path.is_some(),
+        true,
+        legacy.video_path.is_some(),
+      );
+
+      pairs.push(DuplicatePair {
+        content_key: asset.content_key.clone(),
+        media_kind: sync_media_kind_label(&asset.media_kind).to_string(),
+        asset_id: asset.asset_id.clone(),
+        canonical: canonical_side.clone(),
+        duplicate: to_duplicate_side(legacy),
+        incomplete: note.is_some(),
+        incomplete_note: note,
+      });
+      used_legacy.insert(legacy_key);
+      break;
+    }
+  }
+
+  pairs.sort_by(|a, b| a.content_key.cmp(&b.content_key));
+  for pair in &mut pairs {
+    enrich_pair_thumbs(app, pair);
+  }
+  Ok(pairs)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn content_key_strips_index_prefix() {
+    assert_eq!(content_key_from_filename("00042_IMG_0027.HEIC"), "img_0027");
+    assert_eq!(content_key_from_filename("IMG_0027.HEIC"), "img_0027");
+  }
+
+  #[test]
+  fn path_is_under_windows_style() {
+    let root = PathBuf::from(r"E:\Photos\iCloudSync");
+    assert!(path_is_under(
+      Path::new(r"E:\Photos\iCloudSync\00001_x.heic"),
+      &root
+    ));
+    assert!(!path_is_under(
+      Path::new(r"E:\Photos\iCloudSyncBackup\x.heic"),
+      &root
+    ));
+  }
+}

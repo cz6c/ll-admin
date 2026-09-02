@@ -7,13 +7,14 @@ import { h } from "vue";
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
-import { deleteAlbumLocal } from "@/api/icloudSync";
+import { deleteAlbumLocal } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
+import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
@@ -37,6 +38,7 @@ const error = ref("");
 const scanProgress = ref<AlbumScanProgressPayload>({ phase: "discover", done: 0, total: 0 });
 const viewerState = ref<{ groupIdx: number; fileIdx: number } | null>(null);
 const selectedDirKey = ref("");
+const duplicateModalOpen = ref(false);
 
 /** path → { groupIdx, fileIdx }，缩略图就绪事件 O(1) 定位，避免遍历全部 group/file */
 const pathIndex = computed(() => {
@@ -291,6 +293,10 @@ function openViewer(file: MediaFile) {
   }
 }
 
+function onDuplicatesDeleted() {
+  void scan(true);
+}
+
 /** 右键删除本地文件（不触碰 iCloud sync assets） */
 function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
@@ -412,11 +418,18 @@ onBeforeUnmount(() => {
       <aside class="album-sidebar">
         <div class="sidebar-header">
           <span>目录</span>
-          <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
-            <template #icon>
-              <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
-            </template>
-          </a-button>
+          <div class="sidebar-actions">
+            <a-button type="text" size="small" title="清理重复下载" @click="duplicateModalOpen = true">
+              <template #icon>
+                <IconifyIcon icon="ant-design:clear-outlined" width="14" height="14" />
+              </template>
+            </a-button>
+            <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
+              <template #icon>
+                <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
+              </template>
+            </a-button>
+          </div>
         </div>
         <a-tree
           v-model:expanded-keys="expandedKeys"
@@ -460,6 +473,8 @@ onBeforeUnmount(() => {
     />
 
     <IcloudSyncFab />
+
+    <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
   </div>
 </template>
 
@@ -500,6 +515,12 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--color-text-tertiary);
   letter-spacing: 0.06em;
+}
+
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .album-sidebar :deep(.ant-tree) {

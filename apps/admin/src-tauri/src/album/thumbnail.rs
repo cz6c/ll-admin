@@ -78,6 +78,26 @@ pub fn playback_cache_file(cache_dir: &Path, path: &str, modified: i64) -> PathB
   cache_dir.join(format!("{key}_play.mp4"))
 }
 
+/// 若磁盘已有 HEVC 播放代理则返回绝对路径（供 discover 写库、删文件兜底）
+pub fn probe_playback_cache(cache_dir: &Path, source_path: &str) -> Option<String> {
+  let src = Path::new(source_path);
+  if !src.is_file() {
+    return None;
+  }
+  let modified = std::fs::metadata(src)
+    .ok()
+    .and_then(|m| m.modified().ok())
+    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+    .map(|d| d.as_secs() as i64)
+    .unwrap_or(0);
+  let cache = playback_cache_file(cache_dir, source_path, modified);
+  if cache.is_file() && std::fs::metadata(&cache).map(|m| m.len() > 0).unwrap_or(false) {
+    Some(cache.to_string_lossy().into_owned())
+  } else {
+    None
+  }
+}
+
 /// 保存全尺寸 RGB JPEG 供预览
 pub fn save_preview_jpeg(img: &image::DynamicImage, preview_file: &Path) -> Option<String> {
   let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());

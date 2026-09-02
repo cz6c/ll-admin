@@ -1,5 +1,5 @@
 //! 相册媒体 SQLite 索引
-//! 职责：扫描结果持久化、增量比对（path + modified + size）、缩略图/预览缓存路径
+//! 职责：扫描结果持久化、增量比对（path + modified + size）、缩略图/预览/播放代理缓存路径
 //! 适用：增量扫描、文件监听后的局部更新
 
 use std::collections::HashMap;
@@ -49,15 +49,16 @@ fn migrate(conn: &Connection) -> Result<(), String> {
       ",
     )
     .map_err(|e| format!("迁移相册表失败: {e}"))?;
-  // 兼容旧库（无 fail_count 列）：补列，已存在则忽略 duplicate column 错误
+  // 兼容旧库：补列，已存在则忽略 duplicate column 错误
   let _ = conn.execute(
     "ALTER TABLE media ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0",
     [],
   );
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN playback_path TEXT", []);
   Ok(())
 }
 
-/// 读取某根目录下已索引的 path → (size, modified, thumb_path, preview_path)
+/// 读取某根目录下已索引的 path → (size, modified, 缓存路径)
 /// 失败计数（fail_count）请走 `load_fail_counts`，避免在此重复拉取
 pub fn load_indexed_paths(
   conn: &Connection,
@@ -65,7 +66,7 @@ pub fn load_indexed_paths(
 ) -> Result<HashMap<String, IndexedRow>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, size, modified, thumb_path, preview_path FROM media WHERE root = ?1",
+      "SELECT path, size, modified, thumb_path, preview_path, playback_path FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
 
@@ -77,6 +78,7 @@ pub fn load_indexed_paths(
         modified: row.get::<_, i64>(2)?,
         thumb_path: row.get(3)?,
         preview_path: row.get(4)?,
+        playback_path: row.get(5)?,
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -94,6 +96,7 @@ pub struct IndexedRow {
   pub modified: i64,
   pub thumb_path: Option<String>,
   pub preview_path: Option<String>,
+  pub playback_path: Option<String>,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -102,7 +105,7 @@ pub struct IndexedRow {
 pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, video_path, rel_dir
+      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -116,7 +119,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
 
   let rows = stmt
     .query_map(params![root], |row| {
-      let rel_dir: String = row.get(9)?;
+      let rel_dir: String = row.get(10)?;
       let dir_name = if rel_dir == "." {
         root_basename.clone()
       } else {
@@ -132,11 +135,13 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         "livephoto" => MediaKind::LivePhoto,
         _ => MediaKind::Image,
       };
-      // is_file() 检查：DB 中可能残留指向已删除/损坏文件的 thumb_path
+      // is_file() 检查：DB 中可能残留指向已删除/损坏文件的缓存路径
       let thumb_path: Option<String> = row.get(6)?;
       let thumb_path = thumb_path.filter(|p| Path::new(p).is_file());
       let preview_path: Option<String> = row.get(7)?;
       let preview_path = preview_path.filter(|p| Path::new(p).is_file());
+      let playback_path: Option<String> = row.get(8)?;
+      let playback_path = playback_path.filter(|p| Path::new(p).is_file());
       Ok((rel_dir, dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -146,7 +151,8 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         ext: row.get(5)?,
         thumb_path,
         preview_path,
-        video_path: row.get(8)?,
+        playback_path,
+        video_path: row.get(9)?,
       }))
     })
     .map_err(|e| format!("查询缓存失败: {e}"))?;
@@ -203,6 +209,7 @@ fn upsert_media_impl(
   file: &MediaFile,
   thumb_path: Option<&str>,
   preview_path: Option<&str>,
+  playback_path: Option<&str>,
 ) -> Result<(), String> {
   let kind = match file.kind {
     MediaKind::Image => "image",
@@ -216,13 +223,14 @@ fn upsert_media_impl(
       "
       INSERT INTO media(
         path, root, rel_dir, name, kind, size, modified, ext,
-        thumb_path, preview_path, video_path, scanned_at, fail_count
-      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,0)
+        thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count
+      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,0)
       ON CONFLICT(path) DO UPDATE SET
         root=excluded.root, rel_dir=excluded.rel_dir, name=excluded.name,
         kind=excluded.kind, size=excluded.size, modified=excluded.modified,
         ext=excluded.ext, thumb_path=excluded.thumb_path,
-        preview_path=excluded.preview_path, video_path=excluded.video_path,
+        preview_path=excluded.preview_path, playback_path=excluded.playback_path,
+        video_path=excluded.video_path,
         scanned_at=excluded.scanned_at,
         -- 文件已变（modified/size 不同）时重置失败计数，给坏文件一次重试机会
         fail_count = CASE
@@ -242,6 +250,7 @@ fn upsert_media_impl(
         file.ext,
         thumb_path,
         preview_path,
+        playback_path,
         file.video_path,
         scanned_at,
       ],
@@ -290,6 +299,7 @@ pub fn sync_media_index(
         file,
         file.thumb_path.as_deref(),
         file.preview_path.as_deref(),
+        file.playback_path.as_deref(),
       )?;
     }
   }
@@ -324,6 +334,29 @@ pub fn update_cache_paths_batch(
   Ok(())
 }
 
+/// 写入 HEVC 播放代理路径；普通视频绑 path 行，Live mov 绑 video_path 匹配的行
+pub fn update_playback_path(
+  conn: &Connection,
+  source_path: &str,
+  playback_path: &str,
+) -> Result<(), String> {
+  let n = conn
+    .execute(
+      "UPDATE media SET playback_path = ?2 WHERE path = ?1",
+      params![source_path, playback_path],
+    )
+    .map_err(|e| format!("更新播放代理路径失败: {e}"))?;
+  if n == 0 {
+    conn
+      .execute(
+        "UPDATE media SET playback_path = ?2 WHERE video_path = ?1",
+        params![source_path, playback_path],
+      )
+      .map_err(|e| format!("更新 Live 播放代理路径失败: {e}"))?;
+  }
+  Ok(())
+}
+
 /// 标记某文件缩略图生成失败（fail_count +1）
 pub fn mark_thumb_failed(conn: &Connection, path: &str) -> Result<(), String> {
   conn
@@ -335,33 +368,33 @@ pub fn mark_thumb_failed(conn: &Connection, path: &str) -> Result<(), String> {
   Ok(())
 }
 
-/// 清空 thumb_path / preview_path / fail_count（`ALBUM_CACHE_VERSION` bump 迁移时调用）
+/// 清空 thumb/preview/playback 缓存路径（`ALBUM_CACHE_VERSION` bump 迁移时调用）
 pub fn clear_all_cache_paths(conn: &Connection) -> Result<(), String> {
   conn
     .execute(
-      "UPDATE media SET thumb_path = NULL, preview_path = NULL, fail_count = 0",
+      "UPDATE media SET thumb_path = NULL, preview_path = NULL, playback_path = NULL, fail_count = 0",
       [],
     )
     .map_err(|e| format!("清空缓存路径失败: {e}"))?;
   Ok(())
 }
 
-/// 读取单条 media 的伴生路径（Live Photo 的 mov 等）
+/// 读取单条 media 的伴生路径（缩略图、预览、Live mov、播放代理）
 pub fn get_media_companion_paths(
   conn: &Connection,
   path: &str,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<(Option<String>, Option<String>, Option<String>, Option<String>), String> {
   match conn
     .query_row(
-      "SELECT thumb_path, preview_path, video_path FROM media WHERE path = ?1",
+      "SELECT thumb_path, preview_path, video_path, playback_path FROM media WHERE path = ?1",
       params![path],
-      |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+      |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
     )
     .optional()
     .map_err(|e| format!("读取媒体索引失败: {e}"))?
   {
     Some(row) => Ok(row),
-    None => Ok((None, None, None)),
+    None => Ok((None, None, None, None)),
   }
 }
 

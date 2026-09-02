@@ -45,6 +45,27 @@ export interface MediaGroup {
   files: MediaFile[];
 }
 
+/** 重复清理：单侧文件路径 */
+export interface DuplicateFileSide {
+  path: string;
+  name: string;
+  ext: string;
+  videoPath?: string;
+  /** WebP/JPEG 缩略图缓存；HEIC 不可用原 path 直接展示 */
+  thumbPath?: string;
+}
+
+/** 重复清理：一组 sync 正本 vs legacy 副本 */
+export interface DuplicatePair {
+  contentKey: string;
+  mediaKind: "photo" | "video" | "live" | string;
+  assetId: string;
+  canonical: DuplicateFileSide;
+  duplicate: DuplicateFileSide;
+  incomplete: boolean;
+  incompleteNote?: string;
+}
+
 /** 查看器扁平化后的单项：文件 + 所属目录名 */
 export interface FlatFile<T = MediaFile> {
   file: T;

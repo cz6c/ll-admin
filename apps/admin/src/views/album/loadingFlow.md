@@ -73,13 +73,15 @@ flowchart LR
 | `album_scan(root, thumbSize, force?)` | dirty/force 决策 → discover 或 load_groups；按需起 pipeline |
 | `album_cancel_scan` | 取消缩略图 pipeline（离页时调用；force 全扫由 album_scan 内部 cancel） |
 | `album_get/save_settings` | `rootDir` 等；改 rootDir 会 dirty=true 强制下次全扫 |
+| `album_delete_local` | 删本地文件 + thumb/preview/playback 缓存 + media.db；不碰 sync 注册表 |
+| `album_find_local_duplicates` | sync 正本 vs legacy 重复组（见「清理重复下载」） |
 
 ### 缓存路径
 
 ```text
 thumbs/v{ALBUM_CACHE_VERSION}/{hash}.webp          # 网格（hash=stem+modified+size，不含目录代际）
 thumbs/v{ALBUM_CACHE_VERSION}/{hash}_full.jpg     # 仅 HEIC
-thumbs/v{ALBUM_CACHE_VERSION}/{hash}_play.mp4   # HEVC 播放代理
+thumbs/v{ALBUM_CACHE_VERSION}/{hash}_play.mp4     # HEVC 播放代理（写入 media.playback_path）
 hash ← version + file_stem + modified + size
 ```
 
@@ -113,6 +115,20 @@ hash ← version + file_stem + modified + size
 3. 2–8 路并行 `generate_thumbnail`：图 / HEIC（ffmpeg→WIC）/ 视频首帧。  
 4. **thumb 或 preview 任一成功** 即落库 + emit；`cancelled` 不计失败。  
 5. 写副作用前校验 `pipeline_epoch == my_epoch`。
+
+### 清理重复下载
+
+入口：侧栏 **清理重复** → `DuplicateCleanupModal.vue` → `album_find_local_duplicates`。
+
+| 概念 | 规则 |
+|------|------|
+| 正本 | `state.db` 中 `cloud_state=synced` 且 `dest_path` 在盘的文件（多在 `{root}/iCloudSync`） |
+| Legacy | 根目录下**排除** sync 落盘目录后的旧 icloudpd 等同内容文件 |
+| 匹配键 | `original_filename` 的 stem 归一（去 `00042_` 序号前缀、小写） |
+| Live | **一张实况 = 一行**；以 still 的 content_key 匹配；删 legacy 时 still+mov 打包 |
+| 缺 part | 不阻塞匹配；UI 标「旧下载缺配对视频」等 |
+
+删除所选 → `deleteAlbumLocal`（legacy 路径）→ `album_scan(force:true)` 刷新宫格。
 
 ### Live 配对（同目录）
 

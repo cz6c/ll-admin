@@ -333,6 +333,15 @@ pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>
   duplicates::find_local_duplicates(&app)
 }
 
+/// 重复清理弹窗：可见行 lazy 拉取缩略图（HEIC/视频等）
+#[tauri::command]
+pub fn album_resolve_duplicate_thumb(
+  app: AppHandle,
+  path: String,
+) -> Result<Option<String>, String> {
+  Ok(duplicates::resolve_display_thumb_on_demand(&app, &path))
+}
+
 /// 返回 WebView 可直接 `<video>` 播放的路径：H.264 等原生格式原样返回；HEVC 转 H.264 MP4 缓存
 #[tauri::command]
 pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<String, String> {

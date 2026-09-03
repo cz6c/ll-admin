@@ -429,8 +429,8 @@ fn overlaps_canonical(entry: &LegacyAsset, canonical_paths: &HashSet<String>) ->
     .any(|p| canonical_paths.contains(p))
 }
 
-/// 解析 UI 缩略图：media.db 缓存优先，缺失时对 HEIC/视频按需生成 WebP
-fn resolve_display_thumb(app: &AppHandle, path: &str) -> Option<String> {
+/// 解析 UI 缩略图：仅读 media.db 缓存或浏览器可直接显示的原图；批量扫描时不触发生成
+fn resolve_display_thumb_cached(app: &AppHandle, path: &str) -> Option<String> {
   if path.trim().is_empty() || !Path::new(path).is_file() {
     return None;
   }
@@ -447,17 +447,30 @@ fn resolve_display_thumb(app: &AppHandle, path: &str) -> Option<String> {
   }
 
   let ext = get_ext(Path::new(path));
-  // 浏览器可直接显示的栅格图，小文件可复用原图
   if is_image(&ext) && !matches!(ext.as_str(), "heic" | "heif") {
     return Some(path.to_string());
   }
 
+  None
+}
+
+/// 按需生成缩略图（弹窗内可见行 lazy 加载用）
+pub fn resolve_display_thumb_on_demand(app: &AppHandle, path: &str) -> Option<String> {
+  if let Some(cached) = resolve_display_thumb_cached(app, path) {
+    return Some(cached);
+  }
+
+  if path.trim().is_empty() || !Path::new(path).is_file() {
+    return None;
+  }
+
+  let album_data_dir = settings::album_dir(app).ok()?;
+  let conn = db::open_db(&album_data_dir).ok()?;
   let cache_dir = album_data_dir
     .join("thumbs")
     .join(format!("v{ALBUM_CACHE_VERSION}"));
   let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(app);
   let outcome = thumbnail::generate_thumbnail(path, &cache_dir, 158, ffmpeg_bin.as_deref());
-  // 与 scan pipeline 一致：生成成功后写回 media.db（须已有索引行，否则 UPDATE 无影响）
   if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
     let _ = db::update_cache_paths_batch(
       &conn,
@@ -472,7 +485,7 @@ fn resolve_display_thumb(app: &AppHandle, path: &str) -> Option<String> {
 }
 
 fn enrich_side_thumb(app: &AppHandle, side: &mut DuplicateFileSide) {
-  if let Some(thumb) = resolve_display_thumb(app, &side.path) {
+  if let Some(thumb) = resolve_display_thumb_cached(app, &side.path) {
     side.thumb_path = Some(thumb);
   }
 }

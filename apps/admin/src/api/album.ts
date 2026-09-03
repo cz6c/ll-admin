@@ -21,6 +21,11 @@ export async function findAlbumLocalDuplicates(): Promise<DuplicateGroup[]> {
   return invoke<DuplicateGroup[]>("album_find_local_duplicates");
 }
 
+/** 重复清理弹窗：可见行 lazy 解析缩略图路径 */
+export async function resolveDuplicateThumb(path: string): Promise<string | null> {
+  return invoke<string | null>("album_resolve_duplicate_thumb", { path });
+}
+
 /**
  * 删除本地 legacy 重复文件（不触碰 iCloud sync 注册表）
  */

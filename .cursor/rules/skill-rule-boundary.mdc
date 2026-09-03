@@ -1,0 +1,40 @@
+---
+description: Rules vs Skills 边界——命名/注释/栈约定归 rules，流程归 skills；新增任一时必循
+alwaysApply: true
+---
+
+# Rules ↔ Skills 边界（强制）
+
+本仓 AI 协作分两类资产，**不得混写**：
+
+| | **Rules**（`.cursor/rules/*.mdc`） | **Skills**（`.cursor/skills/`，同步 `.agents/skills/`） |
+|--|--|--|
+| 管什么 | **长什么样 / 禁止什么**（恒定约束） | **怎么走完一件事**（步骤、样板、关卡、完成检查） |
+| 典型内容 | 命名、注释门禁、栈选型、API/权限写法、migration/`cargo` 硬门禁、UI 模度 | 澄清、蓝图、纠错、按样板装配顺序、跨文件接线清单 |
+| 加载 | globs / alwaysApply，改对应文件时常驻 | 按任务 description 或用户点名才读 |
+
+## 单一事实源
+
+- **约束全文**只维护在对应 rule；skill **禁止**再贴对照表、色板、Entity 细则、migration 全文。
+- skill 需要门禁时：写 **一句提醒 + 规则文件名**（如「migration 须用户同意 → `nestjs-server.mdc`」），不复制条文。
+- 流程、必问、样板路径、完成检查只维护在 skill；**不要**把「先问哪一端 / 抄哪页」写进 rule。
+
+## 新增时自检（二选一）
+
+写新内容前先问：这是**永远成立的约束**，还是**某类任务的步骤**？
+
+| 判断 | 动作 |
+|------|------|
+| 命名 / 注释 / 禁止项 / 栈与模块边界 / 交付硬门禁 | → **只加或改 rule** |
+| 新功能怎么拆步、对照哪份样板、跨端怎么接线、何时澄清 | → **只加或改 skill** |
+| 两者都要 | → rule 写约束；skill 写流程并 **链接** rule，禁止两处各写一版全文 |
+
+## 改现有内容
+
+- 发现 skill 与 rule 同文：删 skill 侧细则，改为引用 rule。
+- 发现 rule 在写「第 1 步…第 2 步…抄 XX 页」：挪到 skill，rule 只留约束句。
+- 改 skill 时同步 `.cursor/skills` 与 `.agents/skills`；索引见 skills `README.md`。
+
+## 入口
+
+功能任务流程入口：`c-page` skill。约束索引见 `monorepo-core.mdc`。

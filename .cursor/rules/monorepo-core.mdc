@@ -53,9 +53,11 @@ alwaysApply: true
 
 | App | 规则文件 |
 |-----|----------|
-| 全仓 | `monorepo-core.mdc`、`comment-standards.mdc`（注释规范）、`file-naming.mdc`（文件与目录命名） |
+| 全仓 | `monorepo-core.mdc`、`skill-rule-boundary.mdc`（**Rules vs Skills 边界**）、`comment-standards.mdc`、`file-naming.mdc` |
 | admin | `vue-admin.mdc`、`antd-design-system.mdc`（Ant Design 5.x UI 原则）、`rust-tauri.mdc`（src-tauri 改后 cargo 无 warning） |
 | uni | `vue-uni.mdc` |
 | server | `nestjs-server.mdc` |
 | docs | `vitepress-docs.mdc` |
 | common | `shared-common.mdc` |
+
+流程类能力在 **`.cursor/skills/`**（如 `c-page`）；**命名/注释/栈约定归 rules，流程归 skills**，细则见 `skill-rule-boundary.mdc`。

@@ -472,3 +472,55 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
   persist_playback_path(&album_data_dir, &path, &cache_path);
   Ok(cache_path)
 }
+
+/// 将树节点相对路径解析为相册根下的绝对目录；拒绝 `..` 与越界
+fn resolve_album_subdir(root: &std::path::Path, rel: &str) -> Result<std::path::PathBuf, String> {
+  let normalized = rel.trim().replace('\\', "/");
+  let joined = if normalized.is_empty() || normalized == "." {
+    root.to_path_buf()
+  } else {
+    let mut path = root.to_path_buf();
+    for seg in normalized.split('/').filter(|s| !s.is_empty()) {
+      if seg == ".." || seg == "." {
+        return Err("非法相对路径".to_string());
+      }
+      path.push(seg);
+    }
+    path
+  };
+
+  let root_canon = root
+    .canonicalize()
+    .map_err(|e| format!("相册根目录无效: {e}"))?;
+  let target_canon = joined
+    .canonicalize()
+    .map_err(|e| format!("目录不存在或无法访问: {e}"))?;
+  if !target_canon.starts_with(&root_canon) {
+    return Err("路径超出相册根目录".to_string());
+  }
+  if !target_canon.is_dir() {
+    return Err("目标不是目录".to_string());
+  }
+  Ok(target_canon)
+}
+
+/**
+ * 在系统资源管理器中打开相册子目录
+ * @param rel_path 与前端树节点 key 一致（`.` 为根）
+ * @note 走 Rust opener，避免前端 openPath 的 capability 路径 scope（相册根用户自选）
+ */
+#[tauri::command]
+pub fn album_open_dir(app: AppHandle, rel_path: String) -> Result<(), String> {
+  use tauri_plugin_opener::OpenerExt;
+
+  let settings = settings::load_settings(&app)?;
+  let root = settings.root_dir.trim();
+  if root.is_empty() {
+    return Err("相册根目录未设置".to_string());
+  }
+  let target = resolve_album_subdir(std::path::Path::new(root), &rel_path)?;
+  app
+    .opener()
+    .open_path(target.to_string_lossy().as_ref(), None::<&str>)
+    .map_err(|e| format!("打开目录失败: {e}"))
+}

@@ -1,13 +1,14 @@
 <!--
   相册主页 — 左侧目录树 + 右侧资源宫格
   职责：扫描根目录、按子目录筛选展示；缩略图路径 + 后台增量生成
+  主流程：discover → 树/宫格 → 缩略图增量；目录节点右键可打开本地文件夹；侧栏可拖宽
 -->
 <script setup lang="ts">
 import { h } from "vue";
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
-import { deleteAlbumLocal } from "@/api/album";
+import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
@@ -16,6 +17,7 @@ import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
+import { useAlbumSidebarResize } from "./useAlbumSidebarResize";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
   ALBUM_THUMB_GENERATE_SIZE,
@@ -29,6 +31,8 @@ import {
 defineOptions({ name: "AlbumGallery" });
 
 const router = useRouter();
+/** CS 桌面端才支持 opener 打开本地目录 */
+const inTauri = isTauri();
 
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
@@ -80,10 +84,9 @@ function normalizeRelPath(rel: string): string {
   return rel.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
 }
 
-/** 默认选中根目录分组（relPath "."），无则取第一项 */
-function defaultDirKey(list: MediaGroup[]): string {
-  const root = list.find(g => normalizeRelPath(g.relPath) === ".");
-  return root ? "." : normalizeRelPath(list[0]?.relPath ?? "");
+/** 初始始终选中根目录（即使根下无直接媒体文件，右侧为空宫格） */
+function defaultDirKey(): string {
+  return ".";
 }
 
 /**
@@ -216,6 +219,21 @@ function onTreeSelect(keys: string[]) {
   }
 }
 
+/**
+ * 右键：在系统资源管理器中打开该目录（Rust 侧校验须在相册根下）
+ */
+async function openAlbumDirInExplorer(relKey: string) {
+  if (!inTauri) {
+    message.warning("仅桌面端可打开本地目录");
+    return;
+  }
+  try {
+    await openAlbumDir(normalizeRelPath(relKey));
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : String(e) || "打开目录失败");
+  }
+}
+
 function applyThumbReady(payload: AlbumThumbReadyPayload) {
   const pos = pathIndex.value.get(payload.path);
   if (!pos) return;
@@ -275,7 +293,7 @@ async function doScan(force: boolean) {
       force
     });
     groups.value = result;
-    selectedDirKey.value = defaultDirKey(result);
+    selectedDirKey.value = defaultDirKey();
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "扫描失败";
   } finally {
@@ -324,8 +342,11 @@ const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
 const { y: scrollTop } = useScroll(scrollEl, { throttle: 60 });
 
-/** scroll 内容区宽度 − 左右 padding，供 fluid 列宽计算 */
-const gridAvailWidth = computed(() => Math.max(0, containerWidth.value - GRID_PADDING * 2));
+const { sidebarWidth, sidebarResizing, layoutContainerWidth, onSidebarResizeStart, onSidebarResizeMove, onSidebarResizeEnd, resetSidebarWidth } =
+  useAlbumSidebarResize(containerWidth);
+
+/** scroll 内容区宽度 − 左右 padding；拖侧栏时用节流后的 layoutContainerWidth */
+const gridAvailWidth = computed(() => Math.max(0, layoutContainerWidth.value - GRID_PADDING * 2));
 const gridLayout = computed(() => computeAlbumGridLayout(gridAvailWidth.value));
 const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
@@ -335,9 +356,7 @@ const totalRows = computed(() => Math.ceil(allFiles.value.length / cols.value));
 const totalHeight = computed(() => totalRows.value * rowHeight.value);
 
 const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - BUFFER_ROWS));
-const endRow = computed(() =>
-  Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) + BUFFER_ROWS)
-);
+const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) + BUFFER_ROWS));
 const startIdx = computed(() => startRow.value * cols.value);
 const endIdx = computed(() => endRow.value * cols.value);
 const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
@@ -415,7 +434,7 @@ onBeforeUnmount(() => {
     <a-empty v-else-if="groups.length === 0" description="未找到媒体文件" class="state-panel" />
 
     <div v-else class="album-layout">
-      <aside class="album-sidebar">
+      <aside class="album-sidebar" :style="{ width: `${sidebarWidth}px` }">
         <div class="sidebar-header">
           <span>目录</span>
           <div class="sidebar-actions">
@@ -439,8 +458,30 @@ onBeforeUnmount(() => {
           show-icon
           block-node
           @select="onTreeSelect"
-        />
+        >
+          <template #title="{ key, title }">
+            <a-dropdown :trigger="['contextmenu']" :disabled="!inTauri">
+              <span class="tree-node-title" @contextmenu.prevent.stop>{{ title }}</span>
+              <template #overlay>
+                <a-menu>
+                  <a-menu-item key="open-folder" @click="openAlbumDirInExplorer(String(key))"> 在资源管理器中打开 </a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+          </template>
+        </a-tree>
       </aside>
+
+      <div
+        class="sidebar-resize-handle"
+        :class="{ 'is-active': sidebarResizing }"
+        title="拖拽调整宽度，双击恢复默认"
+        @pointerdown="onSidebarResizeStart"
+        @pointermove="onSidebarResizeMove"
+        @pointerup="onSidebarResizeEnd"
+        @pointercancel="onSidebarResizeEnd"
+        @dblclick="resetSidebarWidth"
+      />
 
       <main class="album-main">
         <div v-if="thumbsGenerating" class="thumb-progress-bar">
@@ -480,8 +521,6 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .album-page {
-  --album-sidebar-width: clamp(200px, 15vw, 248px);
-
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -497,13 +536,30 @@ onBeforeUnmount(() => {
 }
 
 .album-sidebar {
-  width: var(--album-sidebar-width);
   flex-shrink: 0;
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--bg-color);
+}
+
+.sidebar-resize-handle {
+  width: 1px;
+  background: var(--border-color);
+
+  &:hover,
+  &.is-active {
+    width: 3px;
+    flex-shrink: 0;
+    margin-left: -1px;
+    margin-right: -1px;
+    cursor: col-resize;
+    touch-action: none;
+    position: relative;
+    z-index: 2;
+    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  }
 }
 
 .sidebar-header {
@@ -581,6 +637,14 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.tree-node-title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .album-main {
   flex: 1;
   min-width: 0;
@@ -649,5 +713,13 @@ onBeforeUnmount(() => {
 .thumb-canvas {
   position: relative;
   width: 100%;
+}
+</style>
+
+<!-- 拖拽侧栏时禁止选中文字并固定光标（挂在 body，需非 scoped） -->
+<style lang="scss">
+body.album-sidebar-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 </style>

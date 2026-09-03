@@ -35,6 +35,8 @@ flowchart LR
 | 4 | **pipeline**：全扫必起；cache_hit 仅当旧任务已结束/无任务时补跑缺图 | 顶部进度条；占位 → 实图 |
 | 5 | 每条成功：`update_cache_paths` + `album://thumb-ready` | 对应卡片刷新 |
 | 6 | 点击卡片 → Viewer（图 / 视频 / Live） | 全屏预览 |
+| 6b | 目录树节点右键 → 在资源管理器中打开 | 系统文件夹窗口 |
+| 6c | 目录侧栏右缘拖拽改宽（localStorage 记忆；拖中宫格布局节流） | 主区列数/格宽重算 |
 
 **硬规则（改代码勿破）：**
 

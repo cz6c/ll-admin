@@ -1,5 +1,6 @@
 <!--
-  重复清理：单组正本 + 多副本；独立组件便于 v-memo 降低勾选时的重绘范围
+  重复清理：单组正本 + 多副本
+  布局：左右侧栏同构（side-head → thumb → paths），首张副本缩略图与左侧顶对齐
 -->
 <script setup lang="ts">
 import DuplicateLazyThumb from "./DuplicateLazyThumb.vue";
@@ -75,6 +76,14 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
     <header class="dup-group-head">
       <span class="dup-group-title">{{ groupHeaderTitle() }}</span>
       <a-tag v-if="group.ambiguousStem" color="orange" class="dup-ambiguous-tag">stem 歧义</a-tag>
+      <a-checkbox
+        class="dup-group-check"
+        :checked="groupAllSelected"
+        :indeterminate="groupIndeterminate"
+        @change="(e: { target: { checked: boolean } }) => emit('toggleGroup', e.target.checked)"
+      >
+        本组副本（{{ selectedInGroup }} / {{ dupCount }}）
+      </a-checkbox>
     </header>
 
     <div class="dup-group-body">
@@ -97,25 +106,16 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
       </div>
 
       <div class="dup-duplicates">
-        <div class="dup-dup-toolbar">
-          <a-checkbox
-            :checked="groupAllSelected"
-            :indeterminate="groupIndeterminate"
-            @change="(e: { target: { checked: boolean } }) => emit('toggleGroup', e.target.checked)"
-          >
-            本组副本（{{ selectedInGroup }} / {{ dupCount }}）
-          </a-checkbox>
-        </div>
-
         <ul class="dup-dup-list">
           <li v-for="(item, idx) in group.duplicates" :key="duplicatePath(item)" class="dup-dup-row">
-            <a-checkbox
-              class="dup-check"
-              :checked="selectedPaths.has(duplicatePath(item))"
-              @change="(e: { target: { checked: boolean } }) => emit('toggleDuplicate', duplicatePath(item), e.target.checked)"
-            />
-            <div class="dup-side dup-delete dup-dup-side">
+            <!-- 与左侧同构：head → thumb → paths，避免左侧勾选列把缩略图挤偏 -->
+            <div class="dup-side dup-delete">
               <div class="dup-side-head">
+                <a-checkbox
+                  class="dup-item-check"
+                  :checked="selectedPaths.has(duplicatePath(item))"
+                  @change="(e: { target: { checked: boolean } }) => emit('toggleDuplicate', duplicatePath(item), e.target.checked)"
+                />
                 <span class="dup-tag dup-tag-delete">删除 {{ idx + 1 }}</span>
                 <a-tag :color="confidenceColor(item.confidence)" class="dup-conf-tag">
                   {{ confidenceLabel(item.confidence) }}
@@ -172,6 +172,7 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   font-weight: 500;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .dup-ambiguous-tag {
@@ -180,9 +181,16 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   font-size: 11px;
 }
 
+.dup-group-check {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 .dup-group-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  /* 等宽列，左右缩略图水平起点一致 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   min-width: 0;
@@ -190,10 +198,12 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
 
 .dup-side {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.dup-dup-toolbar {
-  margin-bottom: 8px;
+.dup-duplicates {
+  min-width: 0;
 }
 
 .dup-dup-list {
@@ -203,37 +213,31 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
 }
 
 .dup-dup-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px 0;
-  border-top: 1px dashed var(--border-color);
   min-width: 0;
+  padding: 0;
 
-  &:first-child {
-    border-top: none;
-    padding-top: 0;
+  & + & {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color);
   }
-}
-
-.dup-check {
-  flex-shrink: 0;
-  margin-top: 8px;
-}
-
-.dup-dup-side {
-  flex: 1;
-  min-width: 0;
 }
 
 .dup-side-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 固定一行高度，保证左右 thumb 顶边对齐（标签换行时仍占满 min 高度） */
+  min-height: 24px;
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--color-text-secondary);
   flex-wrap: wrap;
+}
+
+.dup-item-check {
+  flex-shrink: 0;
+  margin-inline-end: 0;
 }
 
 .dup-tag {
@@ -285,6 +289,11 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
 @media (max-width: 640px) {
   .dup-group-body {
     grid-template-columns: 1fr;
+  }
+
+  .dup-group-check {
+    margin-left: 0;
+    width: 100%;
   }
 }
 </style>

@@ -32,3 +32,11 @@ export async function resolveDuplicateThumb(path: string): Promise<string | null
 export async function deleteAlbumLocal(paths: string[]): Promise<number> {
   return invoke<number>("album_delete_local", { paths });
 }
+
+/**
+ * 在系统资源管理器中打开相册子目录
+ * @param relPath 树节点 key（`.` 为相册根）
+ */
+export async function openAlbumDir(relPath: string): Promise<void> {
+  await invoke("album_open_dir", { relPath });
+}

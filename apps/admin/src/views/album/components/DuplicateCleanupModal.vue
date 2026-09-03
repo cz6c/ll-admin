@@ -7,7 +7,7 @@ import DuplicateGroupCard from "./DuplicateGroupCard.vue";
 import { deleteAlbumLocal, findAlbumLocalDuplicates } from "@/api/album";
 import { DUP_LIST_SCROLL_KEY } from "../duplicateListScroll";
 import { message } from "ant-design-vue";
-import type { DuplicateGroup, DuplicateLegacyItem } from "../types";
+import type { DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const open = defineModel<boolean>("open", { default: false });
 
@@ -123,15 +123,11 @@ function toggleAll(checked: boolean) {
   }
 }
 
-function selectHighAndMedium() {
-  selectedPaths.value = new Set(defaultSelectedPaths(groups.value));
-}
-
-function deselectLowConfidence() {
+function selectByConfidence(level: DuplicateMatchConfidence) {
   const next = new Set(selectedPaths.value);
   for (const item of iterDuplicateItems(groups.value)) {
-    if (item.confidence === "low") {
-      next.delete(duplicatePath(item));
+    if (item.confidence === level) {
+      next.add(duplicatePath(item));
     }
   }
   selectedPaths.value = next;
@@ -231,8 +227,9 @@ async function onDeleteSelected() {
               高 {{ confidenceCounts.high }} · 中 {{ confidenceCounts.medium }} · 低 {{ confidenceCounts.low }}
             </span>
             <a-space :size="8" class="dup-conf-actions">
-              <a-button size="small" @click="selectHighAndMedium()">只选高中</a-button>
-              <a-button size="small" @click="deselectLowConfidence()">取消低置信</a-button>
+              <a-button size="small" @click="selectByConfidence('high')">勾选高置信</a-button>
+              <a-button size="small" @click="selectByConfidence('medium')">勾选中置信</a-button>
+              <a-button size="small" @click="selectByConfidence('low')">勾选低置信</a-button>
             </a-space>
           </div>
         </a-spin>

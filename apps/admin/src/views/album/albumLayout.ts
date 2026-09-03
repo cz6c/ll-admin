@@ -1,6 +1,6 @@
 /**
  * 相册宫格布局常量与 fluid 尺寸计算
- * 职责：侧栏 clamp、宫格 gap/padding、按容器宽度均分列宽（方案 A）
+ * 职责：侧栏可拖宽度边界、宫格 gap/padding、按容器宽度均分列宽
  * 适用：album/index.vue 虚拟滚动宫格 UI；缩略图生成分辨率见 types.ts ALBUM_THUMB_GENERATE_SIZE
  */
 
@@ -15,8 +15,14 @@ export interface AlbumGridLayout {
 }
 
 export const ALBUM_LAYOUT = {
-  /** 侧栏 CSS clamp：1228≈200px，1920≈248px */
-  sidebarWidthCss: "clamp(200px, 15vw, 248px)",
+  /** 侧栏可拖最小宽度（px） */
+  sidebarMin: 180,
+  /** 侧栏可拖最大宽度（px）；拖拽时还会与 40vw 取较小值 */
+  sidebarMax: 360,
+  /** 无本地记录时的默认侧栏宽（px） */
+  sidebarDefault: 220,
+  /** 拖拽中宫格布局重算节流（ms） */
+  sidebarResizeThrottleMs: 80,
   gridGap: 8,
   gridPadding: 8,
   /** 算列数时的目标格宽（非最终宽度）；182 → 1920 全屏约 8 列、1228 约 5 列 */
@@ -29,6 +35,39 @@ export const ALBUM_LAYOUT = {
   minAvailForMinCols: 732,
   bufferRows: 4
 } as const;
+
+/** 侧栏宽度 localStorage key（纯 UI 偏好，不进 album settings） */
+export const ALBUM_SIDEBAR_WIDTH_KEY = "album.sidebarWidth";
+
+/**
+ * 将侧栏宽度限制在 [min, max]（max 另受 40vw 约束，避免挤死主区）
+ */
+export function clampAlbumSidebarWidth(width: number, viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1920): number {
+  const { sidebarMin, sidebarMax } = ALBUM_LAYOUT;
+  const max = Math.min(sidebarMax, Math.max(sidebarMin, Math.floor(viewportWidth * 0.4)));
+  if (!Number.isFinite(width)) return ALBUM_LAYOUT.sidebarDefault;
+  return Math.min(max, Math.max(sidebarMin, Math.round(width)));
+}
+
+/** 读取持久化侧栏宽；非法则 default */
+export function loadAlbumSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(ALBUM_SIDEBAR_WIDTH_KEY);
+    if (raw == null || raw === "") return ALBUM_LAYOUT.sidebarDefault;
+    return clampAlbumSidebarWidth(Number(raw));
+  } catch {
+    return ALBUM_LAYOUT.sidebarDefault;
+  }
+}
+
+/** 写入持久化侧栏宽（已 clamp） */
+export function saveAlbumSidebarWidth(width: number): void {
+  try {
+    localStorage.setItem(ALBUM_SIDEBAR_WIDTH_KEY, String(clampAlbumSidebarWidth(width)));
+  } catch {
+    // 隐私模式等忽略
+  }
+}
 
 /**
  * 根据宫格可用宽度计算列数与均分缩略图边长，尽量填满行宽

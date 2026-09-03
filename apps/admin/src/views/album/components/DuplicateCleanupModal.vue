@@ -30,6 +30,30 @@ function duplicatePath(item: DuplicateLegacyItem): string {
   return item.duplicate.path;
 }
 
+/** 置信度展示序：高 → 中 → 低（右侧副本区按此排列） */
+const CONFIDENCE_RANK: Record<DuplicateMatchConfidence, number> = {
+  high: 0,
+  medium: 1,
+  low: 2
+};
+
+/**
+ * 组内副本按置信度从高到低排序；同档保持相对顺序
+ */
+function sortDuplicatesByConfidence(items: DuplicateLegacyItem[]): DuplicateLegacyItem[] {
+  return [...items].sort(
+    (a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence]
+  );
+}
+
+/** 每组 duplicates 按置信度排序后返回新列表 */
+function withSortedDuplicates(list: DuplicateGroup[]): DuplicateGroup[] {
+  return list.map(group => ({
+    ...group,
+    duplicates: sortDuplicatesByConfidence(group.duplicates)
+  }));
+}
+
 function allDuplicatePaths(list: DuplicateGroup[]): string[] {
   const paths: string[] = [];
   for (const group of list) {
@@ -94,7 +118,7 @@ async function loadGroups() {
   groups.value = [];
   selectedPaths.value = new Set();
   try {
-    const result = await findAlbumLocalDuplicates();
+    const result = withSortedDuplicates(await findAlbumLocalDuplicates());
     groups.value = result;
     selectedPaths.value = new Set(defaultSelectedPaths(result));
   } catch (e: unknown) {
@@ -168,12 +192,14 @@ async function onDeleteSelected() {
     }
     await deleteAlbumLocal([...paths, ...extraMov]);
 
-    groups.value = groups.value
-      .map(group => ({
-        ...group,
-        duplicates: group.duplicates.filter(item => !pathSet.has(duplicatePath(item)))
-      }))
-      .filter(group => group.duplicates.length > 0);
+    groups.value = withSortedDuplicates(
+      groups.value
+        .map(group => ({
+          ...group,
+          duplicates: group.duplicates.filter(item => !pathSet.has(duplicatePath(item)))
+        }))
+        .filter(group => group.duplicates.length > 0)
+    );
 
     selectedPaths.value = new Set();
     message.success(`已删除 ${paths.length} 个重复副本`);

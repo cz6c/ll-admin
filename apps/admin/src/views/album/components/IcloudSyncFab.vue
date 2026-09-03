@@ -80,13 +80,60 @@ const deletingAllSynced = ref(false);
 const cancellingCloudDelete = ref(false);
 const retryingCloudDelete = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
+/** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云/取消须用此 Map */
+const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
+
+/**
+ * 合并当前页勾选与他页已选。
+ * antd Table 的 onChange 默认只回传本页 keys，直接赋值会丢掉跨页勾选。
+ */
+function mergeCloudPageSelection(keys: (string | number)[], rows: CloudListDisplayRow[]) {
+  const pageKeySet = new Set(cloudRows.value.map(row => row.rowKey));
+  const reported = keys.map(String);
+  const reportedOffPage = reported.some(key => !pageKeySet.has(key));
+  const nextKeys = reportedOffPage
+    ? reported
+    : [...cloudSelectedKeys.value.filter(key => !pageKeySet.has(key)), ...reported.filter(key => pageKeySet.has(key))];
+  const nextKeySet = new Set(nextKeys);
+  const nextMap = new Map(cloudSelectedRowsByKey.value);
+  for (const key of [...nextMap.keys()]) {
+    if (!nextKeySet.has(key)) nextMap.delete(key);
+  }
+  for (const row of rows) {
+    if (row?.rowKey && nextKeySet.has(row.rowKey)) nextMap.set(row.rowKey, row);
+  }
+  cloudSelectedKeys.value = nextKeys;
+  cloudSelectedRowsByKey.value = nextMap;
+}
+
+function clearCloudSelection() {
+  cloudSelectedKeys.value = [];
+  cloudSelectedRowsByKey.value = new Map();
+}
+
+/** 用当前页最新行刷新已选快照（catalog 刷新后 cloudState 可能已变） */
+function refreshSelectedRowsFromPage(rows: CloudListDisplayRow[]) {
+  if (cloudSelectedRowsByKey.value.size === 0) return;
+  const nextMap = new Map(cloudSelectedRowsByKey.value);
+  for (const row of rows) {
+    if (nextMap.has(row.rowKey)) nextMap.set(row.rowKey, row);
+  }
+  cloudSelectedRowsByKey.value = nextMap;
+}
+
+/** 跨页已勾选行（含他页快照）；缺快照的 key 忽略 */
+function selectedCloudRows(): CloudListDisplayRow[] {
+  return cloudSelectedKeys.value
+    .map(key => cloudSelectedRowsByKey.value.get(key))
+    .filter((row): row is CloudListDisplayRow => !!row);
+}
 
 const cloudRowSelection = computed(() =>
   canManageCloudSpace.value
     ? {
         selectedRowKeys: cloudSelectedKeys.value,
-        onChange: (keys: (string | number)[]) => {
-          cloudSelectedKeys.value = keys.map(String);
+        onChange: (keys: (string | number)[], rows: CloudListDisplayRow[]) => {
+          mergeCloudPageSelection(keys, rows);
         },
         getCheckboxProps: (record: { cloudState: string }) => ({
           disabled: record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only"
@@ -111,8 +158,8 @@ function guardCloudManageAction(): boolean {
 }
 
 const cloudTableColumns = [
-  { title: "列表序号", dataIndex: "listSeq", width: 72 },
-  { title: "文件序号", dataIndex: "indexNum", width: 72 },
+  { title: "序号", dataIndex: "listSeq", width: 80 },
+  { title: "文件序号", dataIndex: "indexNum", width: 100 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "文件名", dataIndex: "originalFilename" },
   { title: "状态", dataIndex: "cloudState", width: 150 }
@@ -207,6 +254,7 @@ async function refreshCloudAssets() {
     });
     cloudTotal.value = list.total;
     cloudSummary.value = summary;
+    refreshSelectedRowsFromPage(cloudRows.value);
   } catch (e) {
     // 列表加载失败用轻提示，避免底栏粘住历史错误
     message.error(formatIcloudSyncError(e));
@@ -217,7 +265,7 @@ async function refreshCloudAssets() {
 
 function onCloudFilterChange() {
   cloudPage.value = 1;
-  cloudSelectedKeys.value = [];
+  clearCloudSelection();
   void refreshCloudAssets();
 }
 
@@ -242,14 +290,10 @@ const ICLOUD_REMOVE_HINT =
 function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): string {
   const parts = [`已安排从 iCloud 移除 ${result.accepted} 项`];
   if (result.rejectedLocalMissing > 0) {
-    parts.push(
-      `${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先「刷新 iCloud 状态」核对）`
-    );
+    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先「刷新 iCloud 状态」核对）`);
   }
   if (result.rejectedMissingCpl > 0) {
-    parts.push(
-      `${result.rejectedMissingCpl} 项缺云端元数据（请先「开始同步」或「刷新 iCloud 状态」）`
-    );
+    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据（请先「开始同步」或「刷新 iCloud 状态」）`);
   }
   const other = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
   if (other > 0) {
@@ -302,8 +346,8 @@ function openDeleteConfirmModal(opts: { title: string; content: string; onConfir
 /** 从 iCloud 移除确认 Modal：1.5s 冷却后才可点确认（设计 §安全） */
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
-  const selected = cloudRows.value.filter(
-    row => cloudSelectedKeys.value.includes(row.rowKey) && row.cloudState !== "cloud_delete_queued" && row.cloudState !== "deleted_cloud_pending"
+  const selected = selectedCloudRows().filter(
+    row => row.cloudState !== "cloud_delete_queued" && row.cloudState !== "deleted_cloud_pending"
   );
   if (selected.length === 0) {
     message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
@@ -319,7 +363,7 @@ function confirmDeleteCloud() {
       try {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
         notifyDeleteEnqueueResult(result);
-        cloudSelectedKeys.value = [];
+        clearCloudSelection();
         cloudFilter.value = "cloud_delete_queued";
         cloudPage.value = 1;
         await refreshCloudAssets();
@@ -352,7 +396,7 @@ function confirmDeleteAllSynced() {
       try {
         const result = await deleteAllSyncedIcloudAssets();
         notifyDeleteEnqueueResult(result);
-        cloudSelectedKeys.value = [];
+        clearCloudSelection();
         cloudFilter.value = "cloud_delete_queued";
         cloudPage.value = 1;
         await refreshCloudAssets();
@@ -369,7 +413,7 @@ function confirmDeleteAllSynced() {
 
 async function onCancelCloudDeletes() {
   if (!guardCloudManageAction()) return;
-  const selected = cloudRows.value.filter(row => cloudSelectedKeys.value.includes(row.rowKey) && row.cloudState === "cloud_delete_queued");
+  const selected = selectedCloudRows().filter(row => row.cloudState === "cloud_delete_queued");
   if (selected.length === 0) {
     message.warning("请先在「等待移除」中勾选要取消的项");
     return;
@@ -379,7 +423,7 @@ async function onCancelCloudDeletes() {
   try {
     const result = await cancelIcloudSyncCloudDelete(cloudListRowsToAssetItems(selected));
     message.success(`已取消 ${result.cancelled} 项的 iCloud 移除`);
-    cloudSelectedKeys.value = [];
+    clearCloudSelection();
     await refreshCloudAssets();
   } catch (e) {
     notifyDeleteOpError(e);
@@ -412,13 +456,13 @@ watch(jobStatus, (status, prev) => {
   if (status === "done" && prev !== "done" && isCloudDeleteTask.value && drawerOpen.value) {
     cloudFilter.value = "deleted_cloud_pending";
     cloudPage.value = 1;
-    cloudSelectedKeys.value = [];
+    clearCloudSelection();
     void refreshCloudAssets();
   }
 });
 
 watch(canManageCloudSpace, ok => {
-  if (!ok) cloudSelectedKeys.value = [];
+  if (!ok) clearCloudSelection();
 });
 
 watch(drawerOpen, open => {
@@ -529,7 +573,9 @@ onMounted(() => {
                 <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
                 <template #overlay>
                   <a-menu @click="onDeleteMenuClick">
-                    <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">移除所选（保留本地）</a-menu-item>
+                    <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">
+                      移除所选{{ cloudSelectedKeys.length ? `（${cloudSelectedKeys.length}）` : "" }}（保留本地）
+                    </a-menu-item>
                     <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已同步项从 iCloud 移除</a-menu-item>
                     <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
                     <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
@@ -558,7 +604,8 @@ onMounted(() => {
               size: 'small',
               showSizeChanger: true,
               pageSizeOptions: ['30', '50', '100'],
-              showTotal: (total: number) => `共 ${total} 条`
+              showTotal: (total: number) =>
+                cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`
             }"
             @change="onCloudTableChange"
           >

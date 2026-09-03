@@ -122,12 +122,13 @@ hash ← version + file_stem + modified + size
 
 | 概念 | 规则 |
 |------|------|
-| 结构 | 一正本 + **多副本** 分组（`DuplicateGroup`）；sync 内外 legacy 全部列出 |
-| 正本 | `state.db` 中 `cloud_state=synced` 且 `dest_path` 在盘的**新命名**文件 |
-| Legacy | ① sync 目录外旧 icloudpd；② sync 目录内旧命名 `{index}_{stem}` |
-| 匹配键 | stem 归一（去序号/id8 前缀）；**不要求序号一致** |
-| stem 歧义 | 多个正本共用 stem 时组上标 `ambiguousStem`，UI 顶部 warning |
-| Live | 一张实况 = 一组；删副本时 still+mov 打包 |
+| 结构 | 一正本 + 多副本分组；副本带置信度 |
+| 置信度 | **低**：stem 同、大小不一致（默认不选）→ **中**：大小一致 → **高**：在中档上内容哈希一致（中/高默认选） |
+| 性能 | 仅中档候选读盘算哈希；低档不算哈希 |
+| 正本 | `state.db` synced + 新命名 `dest_path` 在盘 |
+| Legacy | sync 外 icloudpd + sync 内旧命名；匹配 stem |
+| stem 歧义 | 多正本同 stem 时组标 `ambiguousStem` |
+| Live | still+mov 分别比大小/哈希；缺 part 标 incomplete |
 | 缺 part | 不阻塞匹配；UI 标「旧下载缺配对视频」等 |
 
 删除所选 → `deleteAlbumLocal`（legacy 路径）→ `album_scan(force:true)` 刷新宫格。

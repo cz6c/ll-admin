@@ -3,7 +3,7 @@
 -->
 <script setup lang="ts">
 import DuplicateLazyThumb from "./DuplicateLazyThumb.vue";
-import type { DuplicateGroup, DuplicateLegacyItem } from "../types";
+import type { DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const props = defineProps<{
   group: DuplicateGroup;
@@ -49,6 +49,24 @@ const groupIndeterminate = computed(
 
 function groupHeaderTitle(): string {
   return `${sideLabel(props.group.mediaKind)} · ${props.group.contentKey} · ${dupCount.value} 个副本`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function confidenceLabel(level: DuplicateMatchConfidence): string {
+  if (level === "high") return "高置信";
+  if (level === "medium") return "中置信";
+  return "低置信";
+}
+
+function confidenceColor(level: DuplicateMatchConfidence): string {
+  if (level === "high") return "green";
+  if (level === "medium") return "blue";
+  return "default";
 }
 </script>
 
@@ -99,6 +117,12 @@ function groupHeaderTitle(): string {
             <div class="dup-side dup-delete dup-dup-side">
               <div class="dup-side-head">
                 <span class="dup-tag dup-tag-delete">删除 {{ idx + 1 }}</span>
+                <a-tag :color="confidenceColor(item.confidence)" class="dup-conf-tag">
+                  {{ confidenceLabel(item.confidence) }}
+                </a-tag>
+                <span class="dup-size-hint">
+                  {{ formatBytes(item.canonicalSize) }} → {{ formatBytes(item.duplicateSize) }}
+                </span>
                 <a-tag v-if="item.incomplete" color="orange" class="dup-incomplete-tag">
                   {{ item.incompleteNote || "不完整" }}
                 </a-tag>
@@ -232,6 +256,16 @@ function groupHeaderTitle(): string {
 .dup-incomplete-tag {
   margin: 0;
   font-size: 11px;
+}
+
+.dup-conf-tag {
+  margin: 0;
+  font-size: 11px;
+}
+
+.dup-size-hint {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
 }
 
 .dup-paths {

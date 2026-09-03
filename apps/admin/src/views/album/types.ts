@@ -56,10 +56,16 @@ export interface DuplicateFileSide {
 }
 
 /** 重复清理：一组内单个可删 legacy 副本 */
+export type DuplicateMatchConfidence = "low" | "medium" | "high";
+
 export interface DuplicateLegacyItem {
   duplicate: DuplicateFileSide;
   incomplete: boolean;
   incompleteNote?: string;
+  confidence: DuplicateMatchConfidence;
+  /** 正本主文件字节数（Live 为 still） */
+  canonicalSize: number;
+  duplicateSize: number;
 }
 
 /** 重复清理：一个 sync 正本 + 多个 legacy 副本 */

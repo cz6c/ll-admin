@@ -3,6 +3,8 @@
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
 
 use std::collections::{HashMap, HashSet};
+use std::hash::Hasher;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use tauri::AppHandle;
@@ -13,7 +15,10 @@ use crate::icloud_sync::{
   resolve_sync_output_dir, strip_sync_filename_stem_prefix,
 };
 
-use super::types::{DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, ALBUM_CACHE_VERSION};
+use super::types::{
+  DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence,
+  ALBUM_CACHE_VERSION,
+};
 use super::scanner::{pair_live_photos, SKIP_DIRS};
 use super::types::{MediaFile, MediaKind};
 use super::{db, ffmpeg, settings, thumbnail};
@@ -429,6 +434,124 @@ fn overlaps_canonical(entry: &LegacyAsset, canonical_paths: &HashSet<String>) ->
     .any(|p| canonical_paths.contains(p))
 }
 
+fn path_file_size(path: &str) -> Option<u64> {
+  let path = path.trim();
+  if path.is_empty() {
+    return None;
+  }
+  let p = Path::new(path);
+  if !p.is_file() {
+    return None;
+  }
+  std::fs::metadata(p).ok().map(|m| m.len())
+}
+
+fn paths_same_size(a: &str, b: &str) -> bool {
+  match (path_file_size(a), path_file_size(b)) {
+    (Some(x), Some(y)) => x == y,
+    _ => false,
+  }
+}
+
+/// 流式读取文件内容指纹；仅用于本地重复比对，不要求跨版本稳定
+fn path_content_fingerprint(path: &str) -> Option<u64> {
+  use std::collections::hash_map::DefaultHasher;
+
+  let mut file = std::fs::File::open(path.trim()).ok()?;
+  let mut hasher = DefaultHasher::new();
+  let mut buf = [0u8; 65536];
+  loop {
+    let n = file.read(&mut buf).ok()?;
+    if n == 0 {
+      break;
+    }
+    hasher.write(&buf[..n]);
+  }
+  Some(hasher.finish())
+}
+
+fn paths_same_content(a: &str, b: &str) -> bool {
+  match (path_content_fingerprint(a), path_content_fingerprint(b)) {
+    (Some(x), Some(y)) => x == y,
+    _ => false,
+  }
+}
+
+fn canonical_primary_path(asset: &CanonicalAsset) -> &str {
+  asset
+    .still_path
+    .as_deref()
+    .or(asset.mov_path.as_deref())
+    .unwrap_or("")
+}
+
+fn live_sizes_compatible(asset: &CanonicalAsset, legacy: &LegacyAsset) -> bool {
+  let c_still = asset.still_path.as_deref().unwrap_or("");
+  if !paths_same_size(c_still, &legacy.path) {
+    return false;
+  }
+  match (asset.mov_path.as_deref(), legacy.video_path.as_deref()) {
+    (Some(c), Some(l)) => paths_same_size(c, l),
+    (None, None) => true,
+    _ => false,
+  }
+}
+
+fn live_content_matches(asset: &CanonicalAsset, legacy: &LegacyAsset) -> bool {
+  let c_still = asset.still_path.as_deref().unwrap_or("");
+  if !paths_same_content(c_still, &legacy.path) {
+    return false;
+  }
+  match (asset.mov_path.as_deref(), legacy.video_path.as_deref()) {
+    (Some(c), Some(l)) => paths_same_content(c, l),
+    (None, None) => true,
+    _ => false,
+  }
+}
+
+/// 低→中→高：仅在中档（大小一致）时才读盘算哈希
+fn classify_duplicate_confidence(
+  asset: &CanonicalAsset,
+  legacy: &LegacyAsset,
+) -> (DuplicateMatchConfidence, u64, u64) {
+  let duplicate_size = path_file_size(&legacy.path).unwrap_or(0);
+  let canonical_size = path_file_size(canonical_primary_path(asset)).unwrap_or(0);
+
+  let sizes_ok = if asset.media_kind == "live" {
+    live_sizes_compatible(asset, legacy)
+  } else {
+    paths_same_size(canonical_primary_path(asset), &legacy.path)
+  };
+
+  if !sizes_ok {
+    return (
+      DuplicateMatchConfidence::Low,
+      canonical_size,
+      duplicate_size,
+    );
+  }
+
+  let content_ok = if asset.media_kind == "live" {
+    live_content_matches(asset, legacy)
+  } else {
+    paths_same_content(canonical_primary_path(asset), &legacy.path)
+  };
+
+  if content_ok {
+    (
+      DuplicateMatchConfidence::High,
+      canonical_size,
+      duplicate_size,
+    )
+  } else {
+    (
+      DuplicateMatchConfidence::Medium,
+      canonical_size,
+      duplicate_size,
+    )
+  }
+}
+
 /// 解析 UI 缩略图：仅读 media.db 缓存或浏览器可直接显示的原图；批量扫描时不触发生成
 fn resolve_display_thumb_cached(app: &AppHandle, path: &str) -> Option<String> {
   if path.trim().is_empty() || !Path::new(path).is_file() {
@@ -536,6 +659,9 @@ fn try_push_legacy_duplicate(
     legacy.video_path.is_some(),
   );
 
+  let (confidence, canonical_size, duplicate_size) =
+    classify_duplicate_confidence(asset, legacy);
+
   let builder = groups
     .entry(asset.asset_id.clone())
     .or_insert_with(|| GroupBuilder {
@@ -550,6 +676,9 @@ fn try_push_legacy_duplicate(
     duplicate: to_duplicate_side(legacy),
     incomplete: note.is_some(),
     incomplete_note: note,
+    confidence,
+    canonical_size,
+    duplicate_size,
   });
   used_legacy.insert(legacy_key);
 }
@@ -658,5 +787,107 @@ mod tests {
       Path::new(r"E:\Photos\iCloudSyncBackup\x.heic"),
       &root
     ));
+  }
+
+  #[test]
+  fn classify_low_when_sizes_differ() {
+    let dir = std::env::temp_dir().join(format!(
+      "dup_conf_low_{}",
+      std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    std::fs::write(&a, b"aaa").expect("write");
+    std::fs::write(&b, b"bbbb").expect("write");
+
+    let asset = CanonicalAsset {
+      asset_id: "A".into(),
+      media_kind: "photo".into(),
+      content_key: "x".into(),
+      still_path: Some(a.to_string_lossy().into_owned()),
+      mov_path: None,
+      display_name: "x.jpg".into(),
+    };
+    let legacy = LegacyAsset {
+      path: b.to_string_lossy().into_owned(),
+      name: "b.bin".into(),
+      ext: "bin".into(),
+      video_path: None,
+    };
+
+    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
+    assert_eq!(conf, DuplicateMatchConfidence::Low);
+
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn classify_high_when_same_size_and_content() {
+    let dir = std::env::temp_dir().join(format!(
+      "dup_conf_high_{}",
+      std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    std::fs::write(&a, b"same-bytes").expect("write");
+    std::fs::write(&b, b"same-bytes").expect("write");
+
+    let asset = CanonicalAsset {
+      asset_id: "A".into(),
+      media_kind: "photo".into(),
+      content_key: "x".into(),
+      still_path: Some(a.to_string_lossy().into_owned()),
+      mov_path: None,
+      display_name: "x.jpg".into(),
+    };
+    let legacy = LegacyAsset {
+      path: b.to_string_lossy().into_owned(),
+      name: "b.bin".into(),
+      ext: "bin".into(),
+      video_path: None,
+    };
+
+    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
+    assert_eq!(conf, DuplicateMatchConfidence::High);
+
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn classify_medium_when_same_size_different_content() {
+    let dir = std::env::temp_dir().join(format!(
+      "dup_conf_med_{}",
+      std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    std::fs::write(&a, b"1111").expect("write");
+    std::fs::write(&b, b"2222").expect("write");
+
+    let asset = CanonicalAsset {
+      asset_id: "A".into(),
+      media_kind: "photo".into(),
+      content_key: "x".into(),
+      still_path: Some(a.to_string_lossy().into_owned()),
+      mov_path: None,
+      display_name: "x.jpg".into(),
+    };
+    let legacy = LegacyAsset {
+      path: b.to_string_lossy().into_owned(),
+      name: "b.bin".into(),
+      ext: "bin".into(),
+      video_path: None,
+    };
+
+    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
+    assert_eq!(conf, DuplicateMatchConfidence::Medium);
+
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }

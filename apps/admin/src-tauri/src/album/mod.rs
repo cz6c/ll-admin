@@ -13,7 +13,7 @@ mod thumbnail;
 mod types;
 mod watcher;
 
-pub use types::{AlbumSettings, DuplicatePair, MediaGroup};
+pub use types::{AlbumSettings, DuplicateGroup, MediaGroup};
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -329,7 +329,7 @@ pub fn album_delete_local(
 
 /// 扫描 sync 正本与 legacy 重复组（不含删盘）
 #[tauri::command]
-pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicatePair>, String> {
+pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {
   duplicates::find_local_duplicates(&app)
 }
 

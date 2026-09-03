@@ -3,7 +3,7 @@
  * 职责：扫描设置之外的按需能力（HEVC 播放代理、重复检测等）
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { DuplicatePair } from "@/views/album/types";
+import type { DuplicateGroup } from "@/views/album/types";
 
 /**
  * 确保视频可在 WebView 中播放：HEVC 转 H.264 MP4 缓存，H.264 等直接返回原路径
@@ -17,8 +17,8 @@ export async function ensureAlbumPlayback(path: string): Promise<string> {
 /**
  * 扫描 sync 正本与 legacy 重复组（不删盘）
  */
-export async function findAlbumLocalDuplicates(): Promise<DuplicatePair[]> {
-  return invoke<DuplicatePair[]>("album_find_local_duplicates");
+export async function findAlbumLocalDuplicates(): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("album_find_local_duplicates");
 }
 
 /**

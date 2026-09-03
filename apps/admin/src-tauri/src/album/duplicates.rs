@@ -1,5 +1,5 @@
-//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd 等同内容文件
-//! 职责：按 content_key 匹配正本（sync dest_path）与 legacy 副本；Live 按一张实况成组
+//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd / 同步目录内旧命名副本
+//! 职责：按 content_key 匹配正本（sync dest_path）与可删 legacy；Live 按一张实况成组
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
 
 use std::collections::{HashMap, HashSet};
@@ -8,10 +8,12 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
-use crate::icloud_sync::strip_sync_filename_stem_prefix;
-use crate::icloud_sync::{list_synced_local_rows, resolve_sync_output_dir};
+use crate::icloud_sync::{
+  is_legacy_sync_filename, is_new_format_sync_filename, list_synced_local_rows,
+  resolve_sync_output_dir, strip_sync_filename_stem_prefix,
+};
 
-use super::types::{DuplicateFileSide, DuplicatePair, ALBUM_CACHE_VERSION};
+use super::types::{DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, ALBUM_CACHE_VERSION};
 use super::scanner::{pair_live_photos, SKIP_DIRS};
 use super::types::{MediaFile, MediaKind};
 use super::{db, ffmpeg, settings, thumbnail};
@@ -72,6 +74,7 @@ fn is_video(ext: &str) -> bool {
 }
 
 /// 同步库中的一张逻辑资产（Live 聚合 still+mov）
+#[derive(Clone)]
 struct CanonicalAsset {
   asset_id: String,
   media_kind: String,
@@ -284,6 +287,112 @@ fn scan_legacy_assets(
   index
 }
 
+/// 同步目录内旧命名文件：DB 已有新格式正本且 content_key（stem）一致时可删
+fn scan_sync_dir_legacy_orphans(
+  sync_output: &Path,
+  canonical_paths: &HashSet<String>,
+  canonical_assets: &[CanonicalAsset],
+) -> Vec<(CanonicalAsset, LegacyAsset)> {
+  if !sync_output.is_dir() {
+    return Vec::new();
+  }
+
+  let mut canonical_by_key: HashMap<String, CanonicalAsset> = HashMap::new();
+  for asset in canonical_assets {
+    let Some(path) = asset
+      .still_path
+      .as_deref()
+      .or(asset.mov_path.as_deref())
+    else {
+      continue;
+    };
+    if !Path::new(path).is_file() || !is_new_format_sync_filename(path) {
+      continue;
+    }
+    canonical_by_key
+      .entry(asset.content_key.clone())
+      .or_insert_with(|| asset.clone());
+  }
+
+  if canonical_by_key.is_empty() {
+    return Vec::new();
+  }
+
+  let mut dir_files: Vec<MediaFile> = Vec::new();
+  for entry in WalkDir::new(sync_output)
+    .min_depth(1)
+    .max_depth(1)
+    .into_iter()
+    .filter_map(|e| e.ok())
+  {
+    if !entry.file_type().is_file() {
+      continue;
+    }
+    let path = entry.path();
+    let path_key = normalize_path_key(&path.to_string_lossy());
+    if canonical_paths.contains(&path_key) {
+      continue;
+    }
+    let name = path
+      .file_name()
+      .and_then(|n| n.to_str())
+      .unwrap_or_default()
+      .to_string();
+    if !is_legacy_sync_filename(&name) {
+      continue;
+    }
+    let ext = get_ext(path);
+    if !is_image(&ext) && !is_video(&ext) {
+      continue;
+    }
+    dir_files.push(MediaFile {
+      path: path.to_string_lossy().to_string(),
+      name,
+      kind: if is_image(&ext) {
+        MediaKind::Image
+      } else {
+        MediaKind::Video
+      },
+      size: 0,
+      modified: 0,
+      ext,
+      thumb_path: None,
+      preview_path: None,
+      playback_path: None,
+      video_path: None,
+    });
+  }
+
+  pair_live_photos(&mut dir_files);
+
+  let mut out: Vec<(CanonicalAsset, LegacyAsset)> = Vec::new();
+  let mut used_legacy: HashSet<String> = HashSet::new();
+
+  for file in dir_files {
+    let legacy_key = normalize_path_key(&file.path);
+    if used_legacy.contains(&legacy_key) {
+      continue;
+    }
+    let key = content_key_from_filename(&file.name);
+    let Some(canonical) = canonical_by_key.get(&key).cloned() else {
+      continue;
+    };
+    let legacy = LegacyAsset {
+      path: file.path,
+      name: file.name,
+      ext: file.ext,
+      video_path: file.video_path,
+    };
+    if overlaps_canonical(&legacy, canonical_paths) {
+      continue;
+    }
+    used_legacy.insert(legacy_key);
+    out.push((canonical, legacy));
+  }
+
+  out
+}
+
 fn canonical_to_side(asset: &CanonicalAsset) -> DuplicateFileSide {
   let path = asset
     .still_path
@@ -362,17 +471,78 @@ fn resolve_display_thumb(app: &AppHandle, path: &str) -> Option<String> {
   outcome.thumb_path.or(outcome.preview_path)
 }
 
-fn enrich_pair_thumbs(app: &AppHandle, pair: &mut DuplicatePair) {
-  if let Some(thumb) = resolve_display_thumb(app, &pair.canonical.path) {
-    pair.canonical.thumb_path = Some(thumb);
-  }
-  if let Some(thumb) = resolve_display_thumb(app, &pair.duplicate.path) {
-    pair.duplicate.thumb_path = Some(thumb);
+fn enrich_side_thumb(app: &AppHandle, side: &mut DuplicateFileSide) {
+  if let Some(thumb) = resolve_display_thumb(app, &side.path) {
+    side.thumb_path = Some(thumb);
   }
 }
 
-/// 扫描相册根目录，找出 sync 正本与 legacy 重复组
-pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicatePair>, String> {
+fn enrich_group_thumbs(app: &AppHandle, group: &mut DuplicateGroup) {
+  enrich_side_thumb(app, &mut group.canonical);
+  for item in &mut group.duplicates {
+    enrich_side_thumb(app, &mut item.duplicate);
+  }
+}
+
+struct GroupBuilder {
+  content_key: String,
+  media_kind: String,
+  asset_id: String,
+  canonical: DuplicateFileSide,
+  duplicates: Vec<DuplicateLegacyItem>,
+}
+
+/// 向分组追加一个 legacy 副本；已占用或非法则跳过
+fn try_push_legacy_duplicate(
+  groups: &mut HashMap<String, GroupBuilder>,
+  asset: &CanonicalAsset,
+  legacy: &LegacyAsset,
+  canonical_paths: &HashSet<String>,
+  used_legacy: &mut HashSet<String>,
+) {
+  let legacy_key = normalize_path_key(&legacy.path);
+  if used_legacy.contains(&legacy_key) {
+    return;
+  }
+  if overlaps_canonical(legacy, canonical_paths) {
+    return;
+  }
+  let canonical_side = canonical_to_side(asset);
+  if canonical_side.path.is_empty() {
+    return;
+  }
+  if normalize_path_key(&legacy.path) == normalize_path_key(&canonical_side.path) {
+    return;
+  }
+
+  let note = incomplete_note(
+    &asset.media_kind,
+    asset.still_path.is_some(),
+    asset.mov_path.is_some(),
+    true,
+    legacy.video_path.is_some(),
+  );
+
+  let builder = groups
+    .entry(asset.asset_id.clone())
+    .or_insert_with(|| GroupBuilder {
+      content_key: asset.content_key.clone(),
+      media_kind: sync_media_kind_label(&asset.media_kind).to_string(),
+      asset_id: asset.asset_id.clone(),
+      canonical: canonical_side,
+      duplicates: Vec::new(),
+    });
+
+  builder.duplicates.push(DuplicateLegacyItem {
+    duplicate: to_duplicate_side(legacy),
+    incomplete: note.is_some(),
+    incomplete_note: note,
+  });
+  used_legacy.insert(legacy_key);
+}
+
+/// 扫描相册根目录，找出 sync 正本与 legacy 重复组（一正本多副本）
+pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, String> {
   let album_settings = settings::load_settings(app)?;
   let root = album_settings.root_dir.trim();
   if root.is_empty() {
@@ -392,60 +562,66 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicatePair>, Stri
   }
 
   let legacy_index = scan_legacy_assets(&root_path, &sync_output, &canonical_paths);
+  let sync_orphans =
+    scan_sync_dir_legacy_orphans(&sync_output, &canonical_paths, &canonical_assets);
 
-  let mut pairs: Vec<DuplicatePair> = Vec::new();
+  let mut stem_counts: HashMap<String, usize> = HashMap::new();
+  for asset in &canonical_assets {
+    *stem_counts
+      .entry(asset.content_key.clone())
+      .or_insert(0) += 1;
+  }
+
+  let mut groups: HashMap<String, GroupBuilder> = HashMap::new();
   let mut used_legacy: HashSet<String> = HashSet::new();
 
-  for asset in canonical_assets {
+  for (asset, legacy) in sync_orphans {
+    try_push_legacy_duplicate(
+      &mut groups,
+      &asset,
+      &legacy,
+      &canonical_paths,
+      &mut used_legacy,
+    );
+  }
+
+  for asset in &canonical_assets {
     let Some(candidates) = legacy_index.get(&asset.content_key) else {
       continue;
     };
-
-    let canonical_side = canonical_to_side(&asset);
-    if canonical_side.path.is_empty() {
-      continue;
-    }
-
     for legacy in candidates {
-      let legacy_key = normalize_path_key(&legacy.path);
-      if used_legacy.contains(&legacy_key) {
-        continue;
-      }
-      if overlaps_canonical(legacy, &canonical_paths) {
-        continue;
-      }
-      // 正本与候选路径不能完全相同
-      if normalize_path_key(&legacy.path) == normalize_path_key(&canonical_side.path) {
-        continue;
-      }
-
-      let note = incomplete_note(
-        &asset.media_kind,
-        asset.still_path.is_some(),
-        asset.mov_path.is_some(),
-        true,
-        legacy.video_path.is_some(),
+      try_push_legacy_duplicate(
+        &mut groups,
+        asset,
+        legacy,
+        &canonical_paths,
+        &mut used_legacy,
       );
-
-      pairs.push(DuplicatePair {
-        content_key: asset.content_key.clone(),
-        media_kind: sync_media_kind_label(&asset.media_kind).to_string(),
-        asset_id: asset.asset_id.clone(),
-        canonical: canonical_side.clone(),
-        duplicate: to_duplicate_side(legacy),
-        incomplete: note.is_some(),
-        incomplete_note: note,
-      });
-      used_legacy.insert(legacy_key);
-      break;
     }
   }
 
-  pairs.sort_by(|a, b| a.content_key.cmp(&b.content_key));
-  for pair in &mut pairs {
-    enrich_pair_thumbs(app, pair);
+  let mut result: Vec<DuplicateGroup> = groups
+    .into_values()
+    .filter(|g| !g.duplicates.is_empty())
+    .map(|g| DuplicateGroup {
+      ambiguous_stem: stem_counts.get(&g.content_key).copied().unwrap_or(0) > 1,
+      content_key: g.content_key,
+      media_kind: g.media_kind,
+      asset_id: g.asset_id,
+      canonical: g.canonical,
+      duplicates: g.duplicates,
+    })
+    .collect();
+
+  result.sort_by(|a, b| {
+    a.content_key
+      .cmp(&b.content_key)
+      .then_with(|| a.asset_id.cmp(&b.asset_id))
+  });
+  for group in &mut result {
+    enrich_group_thumbs(app, group);
   }
-  Ok(pairs)
+  Ok(result)
 }
 
 #[cfg(test)]

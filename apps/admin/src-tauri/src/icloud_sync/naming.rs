@@ -79,6 +79,41 @@ pub fn sync_asset_filename(
   format_asset_filename(index, asset_id, &stem, &ext)
 }
 
+/// 同步落盘 basename 是否含 `{index}_{id8}_` 新格式
+pub fn is_new_format_sync_filename(filename: &str) -> bool {
+  let Some(stem) = Path::new(filename)
+    .file_stem()
+    .and_then(|s| s.to_str())
+  else {
+    return false;
+  };
+  if stem.len() < 15 || stem.as_bytes().get(5) != Some(&b'_') {
+    return false;
+  }
+  let rest = &stem[6..];
+  let Some((token, _after)) = rest.split_once('_') else {
+    return false;
+  };
+  token.len() == 8 && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// 旧版同步落盘：`{index:05d}_{stem}.ext`（无 id8）
+pub fn is_legacy_sync_filename(filename: &str) -> bool {
+  sync_index_from_filename(filename).is_some() && !is_new_format_sync_filename(filename)
+}
+
+/// 从同步落盘 basename 解析五位序号；非同步命名则 None
+pub fn sync_index_from_filename(filename: &str) -> Option<u32> {
+  let stem = Path::new(filename)
+    .file_stem()
+    .and_then(|s| s.to_str())?;
+  if stem.len() >= 5 && stem[..5].chars().all(|c| c.is_ascii_digit()) {
+    stem[..5].parse().ok()
+  } else {
+    None
+  }
+}
+
 /// 去掉同步落盘 stem 上的 `{index}_` 与可选 `{id8}_`，供重复检测 content_key
 pub fn strip_sync_filename_stem_prefix(stem: &str) -> String {
   let lower = stem.to_lowercase();
@@ -116,6 +151,15 @@ mod tests {
       format_asset_filename(1, "asset-uuid-1", "x", "jpg"),
       format_asset_filename(1, "asset-uuid-1", "x", "jpg")
     );
+  }
+
+  #[test]
+  fn legacy_vs_new_format_detection() {
+    let id8 = asset_id_token("A1");
+    let new_name = format!("00042_{id8}_IMG_0027.HEIC");
+    assert!(is_new_format_sync_filename(&new_name));
+    assert!(is_legacy_sync_filename("00042_IMG_0027.HEIC"));
+    assert!(!is_legacy_sync_filename(&new_name));
   }
 
   #[test]

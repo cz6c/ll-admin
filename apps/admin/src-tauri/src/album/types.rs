@@ -119,10 +119,19 @@ pub struct DuplicateFileSide {
   pub thumb_path: Option<String>,
 }
 
-/// 一组本地重复：左保留 sync 正本，右为可删 legacy
+/// 重复清理：一组内单个可删 legacy 副本
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DuplicatePair {
+pub struct DuplicateLegacyItem {
+  pub duplicate: DuplicateFileSide,
+  pub incomplete: bool,
+  pub incomplete_note: Option<String>,
+}
+
+/// 一组本地重复：一个 sync 正本 + 多个可删 legacy 副本
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateGroup {
   /// 匹配键（original_filename stem 归一）
   pub content_key: String,
   /// `photo` / `video` / `live`
@@ -132,9 +141,7 @@ pub struct DuplicatePair {
   /// 应用同步落盘（保留）
   pub canonical: DuplicateFileSide,
   /// 旧下载副本（默认勾选删除）
-  pub duplicate: DuplicateFileSide,
-  /// Live 等是否存在缺 part
-  pub incomplete: bool,
-  /// 不完整说明（如「旧下载缺配对视频」）
-  pub incomplete_note: Option<String>,
+  pub duplicates: Vec<DuplicateLegacyItem>,
+  /// 同 stem 存在多个 sync 正本，按 stem 匹配可能不准
+  pub ambiguous_stem: bool,
 }

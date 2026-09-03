@@ -15,6 +15,7 @@ mod task;
 mod types;
 
 pub use naming::strip_sync_filename_stem_prefix;
+pub use naming::{is_legacy_sync_filename, is_new_format_sync_filename};
 
 use std::path::PathBuf;
 use std::sync::Mutex;

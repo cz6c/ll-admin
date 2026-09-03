@@ -55,15 +55,22 @@ export interface DuplicateFileSide {
   thumbPath?: string;
 }
 
-/** 重复清理：一组 sync 正本 vs legacy 副本 */
-export interface DuplicatePair {
+/** 重复清理：一组内单个可删 legacy 副本 */
+export interface DuplicateLegacyItem {
+  duplicate: DuplicateFileSide;
+  incomplete: boolean;
+  incompleteNote?: string;
+}
+
+/** 重复清理：一个 sync 正本 + 多个 legacy 副本 */
+export interface DuplicateGroup {
   contentKey: string;
   mediaKind: "photo" | "video" | "live" | string;
   assetId: string;
   canonical: DuplicateFileSide;
-  duplicate: DuplicateFileSide;
-  incomplete: boolean;
-  incompleteNote?: string;
+  duplicates: DuplicateLegacyItem[];
+  /** 同 stem 存在多个 sync 正本，按 stem 匹配可能不准 */
+  ambiguousStem: boolean;
 }
 
 /** 查看器扁平化后的单项：文件 + 所属目录名 */

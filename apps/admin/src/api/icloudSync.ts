@@ -511,7 +511,7 @@ export function retryIcloudSyncCloudDeletes() {
   return invoke<IcloudSyncRetryCloudDeletesResult>("icloud_sync_retry_cloud_deletes");
 }
 
-/** 删除本地文件及 media.db 索引（不触碰 iCloud sync） */
+/** 删除本地媒体：原文件进系统回收站，缩略图等缓存永久删除（不触碰 iCloud sync） */
 export function deleteAlbumLocal(paths: string[]) {
   return invoke<number>("album_delete_local", { paths });
 }

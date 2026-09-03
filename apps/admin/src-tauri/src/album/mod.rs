@@ -5,6 +5,7 @@
 mod db;
 mod duplicates;
 mod ffmpeg;
+mod fs_delete;
 mod heic_decode;
 mod scan_state;
 mod scanner;
@@ -23,6 +24,8 @@ use scan_state::ScanCancelToken;
 use settings::album_dir;
 use tauri::{AppHandle, State};
 use watcher::start_watching;
+
+use fs_delete::{purge_cache_file, trash_original_file};
 
 /// 相册运行时状态：扫描取消令牌、文件监听器、后台缩略图任务句柄、写副作用世代
 pub struct AlbumState {
@@ -275,7 +278,8 @@ fn append_playback_deletes(
 }
 
 /// 删除本地媒体文件及 media.db 索引（不触碰 iCloud sync assets）
-/// @param paths 主文件绝对路径；Live Photo 会一并删除 video_path 与播放代理
+/// @param paths 主文件绝对路径；Live Photo 会一并处理 video_path 与播放代理
+/// @note 原文件（主路径 + Live mov）→ 回收站；thumb/preview/playback 缓存 → 永久删除
 #[tauri::command]
 pub fn album_delete_local(
   app: AppHandle,
@@ -295,25 +299,40 @@ pub fn album_delete_local(
       continue;
     }
     let (thumb, preview, video, playback) = db::get_media_companion_paths(&conn, path)?;
-    let mut to_remove: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
-    if let Some(v) = video.filter(|s| !s.is_empty() && s != path) {
-      to_remove.push(std::path::PathBuf::from(v.clone()));
-      append_playback_deletes(&mut to_remove, &album_data_dir, &v, None);
+
+    // 原媒体：主文件 + Live 配对 mov → 回收站
+    let mut originals: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
+    let video_path = video.filter(|s| !s.is_empty() && s != path);
+    if let Some(ref v) = video_path {
+      originals.push(std::path::PathBuf::from(v));
     }
+
+    // 派生缓存：thumb / preview / playback（含磁盘探测到的 _play.mp4）→ 永久删
+    let mut caches: Vec<std::path::PathBuf> = Vec::new();
     for p in [thumb, preview, playback].into_iter().flatten() {
       if !p.is_empty() {
         let pb = std::path::PathBuf::from(&p);
-        if !to_remove.iter().any(|x| x == &pb) {
-          to_remove.push(pb);
+        if !caches.iter().any(|x| x == &pb) {
+          caches.push(pb);
         }
       }
     }
-    append_playback_deletes(&mut to_remove, &album_data_dir, path, None);
-    for p in &to_remove {
-      if p.is_file() {
-        std::fs::remove_file(p).map_err(|e| format!("删除文件失败 {}: {e}", p.display()))?;
-      }
+    if let Some(ref v) = video_path {
+      append_playback_deletes(&mut caches, &album_data_dir, v, None);
     }
+    append_playback_deletes(&mut caches, &album_data_dir, path, None);
+
+    for p in &originals {
+      trash_original_file(p)?;
+    }
+    for p in &caches {
+      // 避免把已列入 originals 的路径再永久删一遍（极端情况下 path 被误记为 playback）
+      if originals.iter().any(|o| o == p) {
+        continue;
+      }
+      purge_cache_file(p);
+    }
+
     if db::delete_media_by_path(&conn, path)? {
       deleted += 1;
     }

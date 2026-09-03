@@ -40,6 +40,39 @@ function allDuplicatePaths(list: DuplicateGroup[]): string[] {
   return paths;
 }
 
+/** 高中置信默认勾选；低置信（仅 stem、大小不一致）不选 */
+function defaultSelectedPaths(list: DuplicateGroup[]): string[] {
+  const paths: string[] = [];
+  for (const group of list) {
+    for (const item of group.duplicates) {
+      if (item.confidence !== "low") {
+        paths.push(duplicatePath(item));
+      }
+    }
+  }
+  return paths;
+}
+
+function iterDuplicateItems(list: DuplicateGroup[]): DuplicateLegacyItem[] {
+  const items: DuplicateLegacyItem[] = [];
+  for (const group of list) {
+    items.push(...group.duplicates);
+  }
+  return items;
+}
+
+const confidenceCounts = computed(() => {
+  let high = 0;
+  let medium = 0;
+  let low = 0;
+  for (const item of iterDuplicateItems(groups.value)) {
+    if (item.confidence === "high") high += 1;
+    else if (item.confidence === "medium") medium += 1;
+    else low += 1;
+  }
+  return { high, medium, low };
+});
+
 const totalDuplicates = computed(() => allDuplicatePaths(groups.value).length);
 
 const hasAmbiguousStem = computed(() => groups.value.some(g => g.ambiguousStem));
@@ -63,7 +96,7 @@ async function loadGroups() {
   try {
     const result = await findAlbumLocalDuplicates();
     groups.value = result;
-    selectedPaths.value = new Set(allDuplicatePaths(result));
+    selectedPaths.value = new Set(defaultSelectedPaths(result));
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "扫描重复文件失败";
   } finally {
@@ -88,6 +121,20 @@ function toggleAll(checked: boolean) {
   } else {
     selectedPaths.value = new Set();
   }
+}
+
+function selectHighAndMedium() {
+  selectedPaths.value = new Set(defaultSelectedPaths(groups.value));
+}
+
+function deselectLowConfidence() {
+  const next = new Set(selectedPaths.value);
+  for (const item of iterDuplicateItems(groups.value)) {
+    if (item.confidence === "low") {
+      next.delete(duplicatePath(item));
+    }
+  }
+  selectedPaths.value = next;
 }
 
 function toggleGroupDuplicates(group: DuplicateGroup, checked: boolean) {
@@ -159,7 +206,7 @@ async function onDeleteSelected() {
     <div class="dup-modal-layout">
       <div class="dup-modal-top">
         <p class="dup-intro">
-          按 iCloud 同步正本分组：每组保留左侧 1 份，右侧为可删的旧 icloudpd 或 sync 目录内旧命名副本。
+          按 stem 初筛后分级：高/中（大小一致，高另需内容一致）默认勾选；低（大小不一致，多为同名不同图）默认不选。
         </p>
 
         <a-spin :spinning="loading">
@@ -180,6 +227,13 @@ async function onDeleteSelected() {
             <a-checkbox :checked="allSelected" :indeterminate="indeterminate" @change="(e: { target: { checked: boolean } }) => toggleAll(e.target.checked)">
               全选副本（{{ selectedPaths.size }} / {{ totalDuplicates }}）
             </a-checkbox>
+            <span class="dup-conf-stats">
+              高 {{ confidenceCounts.high }} · 中 {{ confidenceCounts.medium }} · 低 {{ confidenceCounts.low }}
+            </span>
+            <a-space :size="8" class="dup-conf-actions">
+              <a-button size="small" @click="selectHighAndMedium()">只选高中</a-button>
+              <a-button size="small" @click="deselectLowConfidence()">取消低置信</a-button>
+            </a-space>
           </div>
         </a-spin>
       </div>
@@ -223,7 +277,20 @@ async function onDeleteSelected() {
 }
 
 .dup-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
   margin-bottom: 10px;
+}
+
+.dup-conf-stats {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.dup-conf-actions {
+  margin-left: auto;
 }
 
 /** 唯一滚动区：占满弹窗剩余高度，说明/全选固定在上方 */

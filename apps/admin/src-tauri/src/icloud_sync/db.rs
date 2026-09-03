@@ -1731,6 +1731,8 @@ pub fn clear_local_binding(
 
 /// 刷新 catalog 时：已同步但本地文件缺失的行降级为 cloud_only（待同步）
 /// @returns 降级行数
+/// @note 生产路径走 `…_in_catalog`；本全量版供 cloud_assets 单测复用
+#[allow(dead_code)]
 pub fn reconcile_synced_missing_local_files(
   conn: &Connection,
   apple_id: &str,

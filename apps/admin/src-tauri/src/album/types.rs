@@ -119,6 +119,18 @@ pub struct DuplicateFileSide {
   pub thumb_path: Option<String>,
 }
 
+/// 重复清理：匹配置信度（低→中→高逐级判定，仅中档才算内容哈希）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DuplicateMatchConfidence {
+  /// stem 相同，主文件或 Live 配对大小不一致
+  Low,
+  /// stem 相同且大小一致（哈希未算或不一致）
+  Medium,
+  /// 在中档基础上主文件（及 Live mov）内容哈希一致
+  High,
+}
+
 /// 重复清理：一组内单个可删 legacy 副本
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +138,11 @@ pub struct DuplicateLegacyItem {
   pub duplicate: DuplicateFileSide,
   pub incomplete: bool,
   pub incomplete_note: Option<String>,
+  pub confidence: DuplicateMatchConfidence,
+  /// 正本主文件字节数（Live 为 still）
+  pub canonical_size: u64,
+  /// 副本主文件字节数
+  pub duplicate_size: u64,
 }
 
 /// 一组本地重复：一个 sync 正本 + 多个可删 legacy 副本

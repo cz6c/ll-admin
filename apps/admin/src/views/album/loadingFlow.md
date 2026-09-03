@@ -73,7 +73,7 @@ flowchart LR
 | `album_scan(root, thumbSize, force?)` | dirty/force 决策 → discover 或 load_groups；按需起 pipeline |
 | `album_cancel_scan` | 取消缩略图 pipeline（离页时调用；force 全扫由 album_scan 内部 cancel） |
 | `album_get/save_settings` | `rootDir` 等；改 rootDir 会 dirty=true 强制下次全扫 |
-| `album_delete_local` | 删本地文件 + thumb/preview/playback 缓存 + media.db；不碰 sync 注册表 |
+| `album_delete_local` | 原媒体（主文件+Live mov）→ 系统回收站；thumb/preview/playback → 永久删；清 media.db；不碰 sync 注册表 |
 | `album_find_local_duplicates` | sync 正本 vs legacy 重复组（见「清理重复下载」） |
 
 ### 缓存路径
@@ -122,12 +122,13 @@ hash ← version + file_stem + modified + size
 
 | 概念 | 规则 |
 |------|------|
-| 结构 | 一正本 + **多副本** 分组（`DuplicateGroup`）；sync 内外 legacy 全部列出 |
-| 正本 | `state.db` 中 `cloud_state=synced` 且 `dest_path` 在盘的**新命名**文件 |
-| Legacy | ① sync 目录外旧 icloudpd；② sync 目录内旧命名 `{index}_{stem}` |
-| 匹配键 | stem 归一（去序号/id8 前缀）；**不要求序号一致** |
-| stem 歧义 | 多个正本共用 stem 时组上标 `ambiguousStem`，UI 顶部 warning |
-| Live | 一张实况 = 一组；删副本时 still+mov 打包 |
+| 结构 | 一正本 + 多副本分组；副本带置信度 |
+| 置信度 | **低**：stem 同、大小不一致（默认不选）→ **中**：大小一致 → **高**：在中档上内容哈希一致（中/高默认选） |
+| 性能 | 仅中档候选读盘算哈希；低档不算哈希 |
+| 正本 | `state.db` synced + 新命名 `dest_path` 在盘 |
+| Legacy | sync 外 icloudpd + sync 内旧命名；匹配 stem |
+| stem 歧义 | 多正本同 stem 时组标 `ambiguousStem` |
+| Live | still+mov 分别比大小/哈希；缺 part 标 incomplete |
 | 缺 part | 不阻塞匹配；UI 标「旧下载缺配对视频」等 |
 
 删除所选 → `deleteAlbumLocal`（legacy 路径）→ `album_scan(force:true)` 刷新宫格。

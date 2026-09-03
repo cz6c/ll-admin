@@ -27,7 +27,7 @@ export async function resolveDuplicateThumb(path: string): Promise<string | null
 }
 
 /**
- * 删除本地 legacy 重复文件（不触碰 iCloud sync 注册表）
+ * 删除本地媒体：原文件进系统回收站，缩略图等缓存永久删除（不触碰 iCloud sync 注册表）
  */
 export async function deleteAlbumLocal(paths: string[]): Promise<number> {
   return invoke<number>("album_delete_local", { paths });

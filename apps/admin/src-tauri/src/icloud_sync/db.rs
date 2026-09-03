@@ -1349,16 +1349,18 @@ pub fn collect_synced_keys_for_cloud_delete(
   Ok(rows)
 }
 
-const MAX_CLOUD_DELETE_ATTEMPTS: u32 = 6;
+/// 单条 sidecar 删云失败累计上限：达到后进入 failed_delete（1 次正式 + 2 次自动重试）
+const MAX_CLOUD_DELETE_ATTEMPTS: u32 = 3;
 
-/// 启动时：中断的 deleting 行退回 pending 并 attempts++
+/// 启动时：中断的 deleting 行退回 pending
+/// @note 不 ++attempts：进程被杀/重启不应吞掉正式重试额度
 pub fn reset_interrupted_cloud_deletes(conn: &Connection) -> Result<u32, String> {
   let now = chrono::Utc::now().timestamp();
   let changed = conn
     .execute(
       r#"
       UPDATE cloud_delete_queue
-      SET status = 'pending', attempts = attempts + 1, updated_at = ?1
+      SET status = 'pending', updated_at = ?1
       WHERE status = 'deleting'
       "#,
       params![now],
@@ -2012,7 +2014,7 @@ pub fn finalize_cloud_delete_success(
   Ok(())
 }
 
-/// 云删 API 失败：attempts++，≥6 次则 failed_delete
+/// 云删 API 失败：attempts++，≥ MAX_CLOUD_DELETE_ATTEMPTS 则 failed_delete
 pub fn finalize_cloud_delete_failure(
   conn: &Connection,
   queue_id: i64,

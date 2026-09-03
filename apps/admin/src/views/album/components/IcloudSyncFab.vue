@@ -111,11 +111,20 @@ function guardCloudManageAction(): boolean {
 }
 
 const cloudTableColumns = [
-  { title: "序号", dataIndex: "indexNum", width: 60 },
+  { title: "列表序号", dataIndex: "listSeq", width: 72 },
+  { title: "文件序号", dataIndex: "indexNum", width: 72 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "文件名", dataIndex: "originalFilename" },
   { title: "状态", dataIndex: "cloudState", width: 150 }
 ];
+
+/**
+ * 当前筛选结果下的跨页列表序号（便于对照「共 N 条」查漏）
+ * @param rowIndexInPage 当前页内 0-based 行下标
+ */
+function cloudListSeq(rowIndexInPage: number): number {
+  return (cloudPage.value - 1) * cloudPageSize.value + rowIndexInPage + 1;
+}
 
 /** 状态 Tab 配置；download_failed 仅在 summary 有计数时展示 */
 const cloudStateFilterTabs = computed(() =>
@@ -199,7 +208,8 @@ async function refreshCloudAssets() {
     cloudTotal.value = list.total;
     cloudSummary.value = summary;
   } catch (e) {
-    errorMsg.value = formatIcloudSyncError(e);
+    // 列表加载失败用轻提示，避免底栏粘住历史错误
+    message.error(formatIcloudSyncError(e));
   } finally {
     loadingCloud.value = false;
   }
@@ -227,21 +237,42 @@ const ICLOUD_REMOVE_HINT =
   "只删除 iCloud 上的副本，电脑里的文件会保留。照片会先进入 iCloud「最近删除」，通常约 30 天后才彻底释放空间；此期间可在 iPhone 或 iCloud.com 恢复。";
 
 /**
- * 格式化「从 iCloud 移除」入队结果（区分缺 CPL / 本地缺失）
+ * 格式化「从 iCloud 移除」入队结果（区分缺 CPL / 本地缺失，文案可行动）
  */
 function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): string {
   const parts = [`已安排从 iCloud 移除 ${result.accepted} 项`];
   if (result.rejectedLocalMissing > 0) {
-    parts.push(`${result.rejectedLocalMissing} 项因本地文件缺失已跳过`);
+    parts.push(
+      `${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先「刷新 iCloud 状态」核对）`
+    );
   }
   if (result.rejectedMissingCpl > 0) {
-    parts.push(`${result.rejectedMissingCpl} 项缺 CPL 元数据（请先「开始同步」刷新图库）`);
+    parts.push(
+      `${result.rejectedMissingCpl} 项缺云端元数据（请先「开始同步」或「刷新 iCloud 状态」）`
+    );
   }
   const other = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
   if (other > 0) {
     parts.push(`${other} 项无法入队`);
   }
   return parts.join("，");
+}
+
+/** 入队结果：有跳过项用 warning，全部成功用 success */
+function notifyDeleteEnqueueResult(result: IcloudSyncDeleteAssetsResult) {
+  const text = formatDeleteEnqueueMessage(result);
+  if (result.rejected > 0) message.warning(text);
+  else message.success(text);
+}
+
+/**
+ * 删云相关操作失败：轻提示，不写抽屉底栏（避免与进行中任务矛盾粘住）
+ * @note 「没有可删除…」属可纠正条件，用 warning
+ */
+function notifyDeleteOpError(e: unknown) {
+  const text = formatIcloudSyncError(e);
+  if (text.includes("没有可删除")) message.warning(text);
+  else message.error(text);
 }
 
 /** Modal 共用：1.5s 冷却 + 最近删除说明 */
@@ -284,16 +315,17 @@ function confirmDeleteCloud() {
     content: ICLOUD_REMOVE_HINT,
     onConfirm: async () => {
       deletingCloud.value = true;
+      errorMsg.value = "";
       try {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
-        message.success(formatDeleteEnqueueMessage(result));
+        notifyDeleteEnqueueResult(result);
         cloudSelectedKeys.value = [];
         cloudFilter.value = "cloud_delete_queued";
         cloudPage.value = 1;
         await refreshCloudAssets();
         if (result.jobId > 0) await bindActiveTask(result.jobId);
       } catch (e) {
-        errorMsg.value = formatIcloudSyncError(e);
+        notifyDeleteOpError(e);
         throw e;
       } finally {
         deletingCloud.value = false;
@@ -316,16 +348,17 @@ function confirmDeleteAllSynced() {
     content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
     onConfirm: async () => {
       deletingAllSynced.value = true;
+      errorMsg.value = "";
       try {
         const result = await deleteAllSyncedIcloudAssets();
-        message.success(formatDeleteEnqueueMessage(result));
+        notifyDeleteEnqueueResult(result);
         cloudSelectedKeys.value = [];
         cloudFilter.value = "cloud_delete_queued";
         cloudPage.value = 1;
         await refreshCloudAssets();
         if (result.jobId > 0) await bindActiveTask(result.jobId);
       } catch (e) {
-        errorMsg.value = formatIcloudSyncError(e);
+        notifyDeleteOpError(e);
         throw e;
       } finally {
         deletingAllSynced.value = false;
@@ -349,7 +382,7 @@ async function onCancelCloudDeletes() {
     cloudSelectedKeys.value = [];
     await refreshCloudAssets();
   } catch (e) {
-    errorMsg.value = formatIcloudSyncError(e);
+    notifyDeleteOpError(e);
   } finally {
     cancellingCloudDelete.value = false;
   }
@@ -369,7 +402,7 @@ async function onRetryCloudDeletes() {
       if (result.jobId > 0) await bindActiveTask(result.jobId);
     }
   } catch (e) {
-    errorMsg.value = formatIcloudSyncError(e);
+    notifyDeleteOpError(e);
   } finally {
     retryingCloudDelete.value = false;
   }
@@ -529,8 +562,11 @@ onMounted(() => {
             }"
             @change="onCloudTableChange"
           >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.dataIndex === 'indexNum'">
+            <template #bodyCell="{ column, record, index }">
+              <template v-if="column.dataIndex === 'listSeq'">
+                {{ cloudListSeq(index) }}
+              </template>
+              <template v-else-if="column.dataIndex === 'indexNum'">
                 {{ String((record as CloudListDisplayRow).indexNum).padStart(5, "0") }}
               </template>
               <template v-else-if="column.dataIndex === 'sortKey'">

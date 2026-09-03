@@ -96,7 +96,7 @@ flowchart LR
   C --> D[worker delete_assets]
   D --> E{ok?}
   E -->|是| F[cloud_state → deleted_cloud_pending]
-  E -->|否≥6| G[failed_delete]
+  E -->|否≥3| G[failed_delete]
 ```
 
 | 步 | 发生什么 | 用户看到 |
@@ -167,7 +167,7 @@ flowchart LR
 | `synced` | 已同步 | 已下载且 catalog 未报改/删 |
 | `cloud_delete_queued` | 待移除 | 用户删云已入队 |
 | `deleted_cloud_pending` | 已移除 | catalog 报删或删云 API 成功 |
-| `failed_delete` | 移除失败 | 云删 ≥6 次仍失败 |
+| `failed_delete` | 移除失败 | 云删单条 ≥3 次仍失败（中断回退不计次） |
 
 **派生（不写库，仅列表展示 / 筛选）**
 

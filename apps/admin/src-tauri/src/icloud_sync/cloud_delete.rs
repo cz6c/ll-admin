@@ -280,7 +280,10 @@ fn start_cloud_delete_task(
   reason: &str,
 ) -> Result<IcloudSyncDeleteAssetsResult, String> {
   if keys.is_empty() {
-    return Err("没有可删除的云资产".to_string());
+    return Err(
+      "没有可删除的云资产：本地文件缺失或缺少云端元数据。可先「刷新 iCloud 状态」后再试。"
+        .to_string(),
+    );
   }
 
   let db_path = state_db_path(app)?;
@@ -302,7 +305,10 @@ fn start_cloud_delete_task(
   let summary = enqueue_cloud_deletes(&conn, job_id, apple_id, keys, reason)?;
   if summary.accepted == 0 {
     discard_cloud_delete_job(&conn, job_id)?;
-    return Err("没有可删除的云资产".to_string());
+    return Err(
+      "没有可删除的云资产：本地文件缺失或缺少云端元数据。可先「刷新 iCloud 状态」后再试。"
+        .to_string(),
+    );
   }
 
   conn

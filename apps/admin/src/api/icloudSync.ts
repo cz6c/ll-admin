@@ -234,16 +234,6 @@ export interface IcloudSyncRetryCloudDeletesResult {
   jobId: number;
 }
 
-/** 一次性旧同步文件名补救结果（全库迁完后可移除入口） */
-export interface IcloudSyncMigrateLegacyFilenamesResult {
-  renamed: number;
-  alreadyNew: number;
-  skippedNoFile: number;
-  skippedTargetExists: number;
-  failed: number;
-  errors: string[];
-}
-
 /** 云态变更后刷新 summary / 列表（catalog、下载完成等） */
 export const ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT = "icloud-sync://cloud-state-changed";
 
@@ -443,11 +433,6 @@ export function getIcloudSyncActiveTask() {
 /** 仅刷新 iCloud 目录统计，不下载；与同步/删云互斥 */
 export function refreshIcloudSyncCatalog(view: IcloudSyncJobView = "library") {
   return invoke<IcloudSyncStartJobResult>("icloud_sync_refresh_catalog", { view });
-}
-
-/** 一次性将旧版 `{index}_{stem}` 同步文件重命名为含 id8 的新格式（需 state.db） */
-export function migrateLegacyIcloudSyncFilenames() {
-  return invoke<IcloudSyncMigrateLegacyFilenamesResult>("icloud_sync_migrate_legacy_filenames");
 }
 
 /** 分页加载跨 job 云资产列表（抽屉主列表；Live 在应用层合并展示） */

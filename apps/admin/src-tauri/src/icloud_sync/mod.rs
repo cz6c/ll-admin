@@ -6,8 +6,6 @@ mod catalog_diff;
 pub mod cloud_assets;
 pub mod cloud_delete;
 mod db;
-/// 一次性旧文件名补救；全库迁完后可删除
-pub(crate) mod filename_migrate;
 mod keyring_store;
 mod naming;
 pub mod queue;

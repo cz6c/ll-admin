@@ -79,29 +79,6 @@ pub fn sync_asset_filename(
   format_asset_filename(index, asset_id, &stem, &ext)
 }
 
-/// 旧版落盘文件名（无 id8）；仅 filename_migrate 比对用
-pub fn format_legacy_asset_filename(index: u32, stem: &str, ext: &str) -> String {
-  let stem = sanitize_filename(stem);
-  let ext = ext.trim_start_matches('.');
-  format!("{index:05}_{stem}.{ext}")
-}
-
-/// 文件名是否已是 `{index}_{id8}_{stem}.ext` 新格式（filename_migrate / 测试用）
-#[allow(dead_code)]
-pub fn is_new_format_sync_filename(filename: &str) -> bool {
-  let Some(stem) = Path::new(filename).file_stem().and_then(|s| s.to_str()) else {
-    return false;
-  };
-  if stem.len() < 15 || stem.as_bytes().get(5) != Some(&b'_') {
-    return false;
-  }
-  let rest = &stem[6..];
-  let Some((token, _after)) = rest.split_once('_') else {
-    return false;
-  };
-  token.len() == 8 && token.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
 /// 去掉同步落盘 stem 上的 `{index}_` 与可选 `{id8}_`，供重复检测 content_key
 pub fn strip_sync_filename_stem_prefix(stem: &str) -> String {
   let lower = stem.to_lowercase();
@@ -139,14 +116,6 @@ mod tests {
       format_asset_filename(1, "asset-uuid-1", "x", "jpg"),
       format_asset_filename(1, "asset-uuid-1", "x", "jpg")
     );
-  }
-
-  #[test]
-  fn detects_new_vs_legacy_format() {
-    let id8 = asset_id_token("A1");
-    let new_name = format!("00042_{id8}_IMG_0027.HEIC");
-    assert!(is_new_format_sync_filename(&new_name));
-    assert!(!is_new_format_sync_filename("00042_IMG_0027.HEIC"));
   }
 
   #[test]

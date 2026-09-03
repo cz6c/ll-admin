@@ -79,7 +79,6 @@ pub fn run() {
       icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
       icloud_sync::cloud_delete::icloud_sync_cancel_cloud_delete,
       icloud_sync::cloud_delete::icloud_sync_retry_cloud_deletes,
-      icloud_sync::filename_migrate::icloud_sync_migrate_legacy_filenames,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

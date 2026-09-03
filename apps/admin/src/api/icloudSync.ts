@@ -171,13 +171,14 @@ export interface IcloudSyncLoadAssetsResult {
   total: number;
 }
 
+/** cloud_state Tab 角标（逻辑资产；Live still+mov=1） */
 export interface IcloudSyncCloudStateSummary {
   cloudOnly: number;
   synced: number;
   deletedCloudPending: number;
   cloudDeleteQueued: number;
   failedDelete: number;
-  /** 活跃同步任务内 download_status=failed 的行数；任务结束后为 0 */
+  /** 活跃同步任务内失败的逻辑资产数（Live=1）；任务结束后为 0 */
   downloadFailed: number;
   /** 最近一次 catalog diff 时间戳（秒） */
   lastCatalogAt?: number | null;
@@ -215,6 +216,7 @@ export interface IcloudSyncDeleteAssetItem {
   part: string;
 }
 
+/** 删云入队结果；计数均为逻辑资产（Live still+mov=1） */
 export interface IcloudSyncDeleteAssetsResult {
   accepted: number;
   rejected: number;
@@ -226,10 +228,12 @@ export interface IcloudSyncDeleteAssetsResult {
 }
 
 export interface IcloudSyncCancelCloudDeleteResult {
+  /** 取消的逻辑资产数（Live=1） */
   cancelled: number;
 }
 
 export interface IcloudSyncRetryCloudDeletesResult {
+  /** 重新入队的逻辑资产数（Live=1） */
   retried: number;
   jobId: number;
 }

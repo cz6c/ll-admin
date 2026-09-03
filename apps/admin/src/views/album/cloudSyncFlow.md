@@ -120,8 +120,8 @@ flowchart LR
 2. catalog 落库顺序：**prepare_catalog_keys_temp → diff（apply）→ mark_catalog_deletions → reconcile（in-catalog）→ enqueue_outstanding**（reconcile 必须在 enqueue 前，否则降级行进不了队列）。
 3. catalog 后 **必须** 调用 `enqueue_outstanding_for_full_sync`，避免 discard/unchanged diff 后孤儿 `cloud_only` 无 pending。
 4. 下载循环只用 `auth_probe`，**禁止**带密码 `auth`。
-5. **active job** 内 `done + pending + failed = total`（按 **part 行**）；sync job 结束 `finalize_job_download` 写快照并释放 `download_status`。
-6. Live = still + mov 两行同 `index_num`；列表 UI 隐藏 mov 行。
+5. **active job** 内 `done + pending + failed = total`（**UI / job 快照按逻辑资产**，Live still+mov=1；下载/删云 queue 仍按 part 行）；sync job 结束 `finalize_job_download` 写快照并释放 `download_status`。
+6. Live = still + mov 两行同 `index_num`；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
 7. CDN **410/404 ≠ session** → 单文件 lookup 重试。
 8. **`assets` 跨 job 唯一** `(apple_id, asset_id, part)`。
 9. 用户删云 → `cloud_delete_queued`；catalog 报删 → `deleted_cloud_pending`；**禁止混用**。
@@ -186,7 +186,7 @@ flowchart LR
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
 | `icloud_sync_logout` | 清 sidecar + session（**不**动 job 行） |
 | `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选） |
-| `icloud_sync_get_cloud_state_summary` | Tab 角标计数 |
+| `icloud_sync_get_cloud_state_summary` | Tab 角标计数（逻辑资产；Live=1） |
 | `icloud_sync_delete_assets` / `delete_all_synced` | 删云入队 |
 | `icloud_sync_cancel_cloud_delete` / `retry_cloud_deletes` | 撤 pending / 重试失败 |
 

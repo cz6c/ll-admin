@@ -760,20 +760,24 @@ pub fn upsert_catalog_assets(
   Ok(())
 }
 
-/// catalog 结束：写入 job 快照 total/pending
+/// catalog 结束：写入 job 快照 total/pending（按逻辑资产，Live still+mov=1）
 pub fn set_job_catalog_counts(conn: &Connection, job_id: i64) -> Result<(), String> {
-  let pending: i64 = conn
-    .query_row(
-      "SELECT COUNT(*) FROM assets WHERE active_job_id = ?1 AND download_status = ?2",
-      params![job_id, AssetStatus::Pending.as_str()],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("统计 catalog pending 失败: {e}"))?;
-  let p = i32::try_from(pending).map_err(|_| "pending 超出 i32".to_string())?;
+  let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
+  let total = done + failed + pending;
   conn
     .execute(
-      "UPDATE jobs SET total_count = ?1, pending_count = ?1, done_count = 0, failed_count = 0 WHERE id = ?2",
-      params![p, job_id],
+      r#"
+      UPDATE jobs SET
+        total_count = ?1, pending_count = ?2, done_count = ?3, failed_count = ?4
+      WHERE id = ?5
+      "#,
+      params![
+        i32::try_from(total).unwrap_or(i32::MAX),
+        i32::try_from(pending).unwrap_or(i32::MAX),
+        i32::try_from(done).unwrap_or(i32::MAX),
+        i32::try_from(failed).unwrap_or(i32::MAX),
+        job_id
+      ],
     )
     .map_err(|e| format!("写入 job catalog 计数失败: {e}"))?;
   Ok(())
@@ -1113,7 +1117,19 @@ pub fn job_has_assets(conn: &Connection, job_id: i64) -> Result<bool, String> {
   Ok(job.map(|j| j.total_count > 0).unwrap_or(false))
 }
 
-/// 按状态统计资产数量：(done, failed, pending)
+/// 同一逻辑资产（asset_id）多 part 时的展示态：有 pending 优先，否则 failed，否则 done
+fn fold_download_statuses(statuses: &[AssetStatus]) -> AssetStatus {
+  if statuses.iter().any(|s| *s == AssetStatus::Pending) {
+    AssetStatus::Pending
+  } else if statuses.iter().any(|s| *s == AssetStatus::Failed) {
+    AssetStatus::Failed
+  } else {
+    AssetStatus::Done
+  }
+}
+
+/// 按状态统计**逻辑资产**数量：(done, failed, pending)
+/// Live still+mov 同 asset_id 计 1；下载循环仍按 part 行处理。
 pub fn count_assets_by_status(
   conn: &Connection,
   job_id: i64,
@@ -1125,27 +1141,34 @@ pub fn count_assets_by_status(
   }
   let mut stmt = conn
     .prepare(
-      "SELECT download_status, COUNT(*) FROM assets WHERE active_job_id = ?1 AND download_status IS NOT NULL GROUP BY download_status",
+      "SELECT asset_id, download_status FROM assets WHERE active_job_id = ?1 AND download_status IS NOT NULL",
     )
     .map_err(|e| format!("准备统计查询失败: {e}"))?;
   let rows = stmt
     .query_map(params![job_id], |row| {
-      Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
     .map_err(|e| format!("统计 assets 失败: {e}"))?
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| format!("解析统计行失败: {e}"))?;
 
+  let mut by_asset: std::collections::HashMap<String, Vec<AssetStatus>> =
+    std::collections::HashMap::new();
+  for (asset_id, status) in rows {
+    let Some(st) = AssetStatus::parse(&status) else {
+      continue;
+    };
+    by_asset.entry(asset_id).or_default().push(st);
+  }
+
   let mut done = 0u32;
   let mut failed = 0u32;
   let mut pending = 0u32;
-  for (status, count) in rows {
-    let n = u32::try_from(count).unwrap_or(u32::MAX);
-    match AssetStatus::parse(&status) {
-      Some(AssetStatus::Done) => done = n,
-      Some(AssetStatus::Failed) => failed = n,
-      Some(AssetStatus::Pending) => pending = n,
-      None => {}
+  for statuses in by_asset.values() {
+    match fold_download_statuses(statuses) {
+      AssetStatus::Done => done = done.saturating_add(1),
+      AssetStatus::Failed => failed = failed.saturating_add(1),
+      AssetStatus::Pending => pending = pending.saturating_add(1),
     }
   }
   Ok((done, failed, pending))
@@ -1281,14 +1304,16 @@ pub struct CloudDeleteQueueRow {
   pub cpl_asset_change_tag: Option<String>,
 }
 
-/// 入队删云结果（rejected = missing_cpl + local_missing + 其它跳过）
+/// 入队删云结果（UI 按逻辑资产计；rejected = missing_cpl + local_missing + 其它跳过）
 #[derive(Debug, Clone, Default)]
 pub struct EnqueueCloudDeleteResult {
+  /// 至少有一个 part 入队成功的逻辑资产数（Live=1）
   pub accepted: u32,
+  /// 无任何 part 入队成功的逻辑资产数
   pub rejected: u32,
-  /// 缺 catalog 落库的 CPL 元数据
+  /// 缺 catalog 落库的 CPL 元数据（按逻辑资产）
   pub rejected_missing_cpl: u32,
-  /// dest_path 空或磁盘无文件（腾空间前必须本地在）
+  /// dest_path 空或磁盘无文件（按逻辑资产）
   pub rejected_local_missing: u32,
 }
 
@@ -1360,29 +1385,51 @@ pub fn count_global_pending_downloads(conn: &Connection) -> Result<u32, String> 
   Ok(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-/// 云删任务进度（按 job_id 统计 queue）
+/// 删云 queue 同行逻辑资产的展示态：有 pending/deleting 优先，否则 failed，否则 done
+fn fold_cloud_delete_queue_statuses(statuses: &[&str]) -> &'static str {
+  if statuses
+    .iter()
+    .any(|s| *s == "pending" || *s == "deleting")
+  {
+    "pending"
+  } else if statuses.iter().any(|s| *s == "failed") {
+    "failed"
+  } else {
+    "done"
+  }
+}
+
+/// 云删任务进度（按 job_id 统计 queue；Live still+mov 同 asset_id 计 1）
 pub fn refresh_cloud_delete_job_counts(conn: &Connection, job_id: i64) -> Result<(), String> {
-  let mut done = 0i64;
-  let mut failed = 0i64;
-  let mut pending = 0i64;
   let mut stmt = conn
-    .prepare(
-      "SELECT status, COUNT(*) FROM cloud_delete_queue WHERE job_id = ?1 GROUP BY status",
-    )
+    .prepare("SELECT asset_id, status FROM cloud_delete_queue WHERE job_id = ?1")
     .map_err(|e| format!("准备删云任务统计失败: {e}"))?;
   let rows = stmt
-    .query_map(params![job_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
-    .map_err(|e| format!("查询删云任务统计失败: {e}"))?;
-  for row in rows {
-    let (status, n) = row.map_err(|e| format!("解析删云任务统计失败: {e}"))?;
-    match status.as_str() {
-      "done" => done = n,
-      "failed" => failed = n,
-      "pending" | "deleting" => pending += n,
-      _ => {}
+    .query_map(params![job_id], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|e| format!("查询删云任务统计失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析删云任务统计失败: {e}"))?;
+
+  let mut by_asset: std::collections::HashMap<String, Vec<String>> =
+    std::collections::HashMap::new();
+  for (asset_id, status) in rows {
+    by_asset.entry(asset_id).or_default().push(status);
+  }
+
+  let mut done = 0u32;
+  let mut failed = 0u32;
+  let mut pending = 0u32;
+  for statuses in by_asset.values() {
+    let refs: Vec<&str> = statuses.iter().map(String::as_str).collect();
+    match fold_cloud_delete_queue_statuses(&refs) {
+      "done" => done = done.saturating_add(1),
+      "failed" => failed = failed.saturating_add(1),
+      _ => pending = pending.saturating_add(1),
     }
   }
-  let total = u32::try_from(done + failed + pending).unwrap_or(u32::MAX);
+  let total = done.saturating_add(failed).saturating_add(pending);
   let stored_total: i32 = conn
     .query_row(
       "SELECT COALESCE(total_count, 0) FROM jobs WHERE id = ?1",
@@ -1403,9 +1450,9 @@ pub fn refresh_cloud_delete_job_counts(conn: &Connection, job_id: i64) -> Result
       "#,
       params![
         i32::try_from(total_count).unwrap_or(i32::MAX),
-        done,
-        failed,
-        pending,
+        i32::try_from(done).unwrap_or(i32::MAX),
+        i32::try_from(failed).unwrap_or(i32::MAX),
+        i32::try_from(pending).unwrap_or(i32::MAX),
         job_id
       ],
     )
@@ -1482,6 +1529,7 @@ pub fn expand_live_delete_pair(
 }
 
 /// 用户发起删云：INSERT queue + cloud_state=cloud_delete_queued（须绑定 job_id）
+/// 返回计数按逻辑资产（Live still+mov 计 1）；queue 仍按 part 入队。
 pub fn enqueue_cloud_deletes(
   conn: &Connection,
   job_id: i64,
@@ -1490,7 +1538,15 @@ pub fn enqueue_cloud_deletes(
   reason: &str,
 ) -> Result<EnqueueCloudDeleteResult, String> {
   let now = chrono::Utc::now().timestamp();
-  let mut result = EnqueueCloudDeleteResult::default();
+  #[derive(Clone, Copy)]
+  enum PartOutcome {
+    Accepted,
+    RejectedMissingCpl,
+    RejectedLocalMissing,
+    RejectedOther,
+  }
+  let mut outcomes: std::collections::HashMap<String, Vec<PartOutcome>> =
+    std::collections::HashMap::new();
   let tx = conn
     .unchecked_transaction()
     .map_err(|e| format!("开启云删入队事务失败: {e}"))?;
@@ -1510,23 +1566,33 @@ pub fn enqueue_cloud_deletes(
       .map_err(|e| format!("读取 asset 云态失败: {e}"))?;
 
     let Some((cloud_state, dest_path, cpl_name, cpl_tag)) = row else {
-      result.rejected += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedOther);
       continue;
     };
     // 无 CPLAsset 元数据无法定点删云（需重新 catalog）；禁止扫库补齐
     if cpl_name.as_deref().map(str::trim).unwrap_or("").is_empty() {
-      result.rejected += 1;
-      result.rejected_missing_cpl += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedMissingCpl);
       continue;
     }
     if cloud_state == CloudState::CloudDeleteQueued.as_str() {
-      result.accepted += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::Accepted);
       continue;
     }
     // 腾空间：本地文件必须在盘；避免「云删了、本地也没了」
     if !local_file_ready_for_cloud_delete(dest_path.as_deref()) {
-      result.rejected += 1;
-      result.rejected_local_missing += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedLocalMissing);
       continue;
     }
 
@@ -1555,7 +1621,10 @@ pub fn enqueue_cloud_deletes(
       .map_err(|e| format!("写入 cloud_delete_queue 失败: {e}"))?;
 
     if inserted == 0 {
-      result.accepted += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::Accepted);
     } else {
       tx.execute(
         r#"
@@ -1570,21 +1639,48 @@ pub fn enqueue_cloud_deletes(
         ],
       )
       .map_err(|e| format!("更新 asset cloud_delete_queued 失败: {e}"))?;
-      result.accepted += 1;
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::Accepted);
     }
   }
 
   tx.commit().map_err(|e| format!("提交云删入队事务失败: {e}"))?;
+
+  let mut result = EnqueueCloudDeleteResult::default();
+  for part_outcomes in outcomes.values() {
+    if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::Accepted))
+    {
+      result.accepted = result.accepted.saturating_add(1);
+      continue;
+    }
+    result.rejected = result.rejected.saturating_add(1);
+    if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::RejectedMissingCpl))
+    {
+      result.rejected_missing_cpl = result.rejected_missing_cpl.saturating_add(1);
+    } else if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::RejectedLocalMissing))
+    {
+      result.rejected_local_missing = result.rejected_local_missing.saturating_add(1);
+    }
+  }
   Ok(result)
 }
 
 /// 撤销 pending 云删：删 queue 行并恢复 prev_cloud_state
+/// @returns 取消成功的逻辑资产数（Live still+mov 计 1）
 pub fn cancel_cloud_deletes(
   conn: &Connection,
   apple_id: &str,
   keys: &[(String, String)],
 ) -> Result<u32, String> {
-  let mut cancelled = 0u32;
+  let mut cancelled_assets = std::collections::HashSet::new();
   let tx = conn
     .unchecked_transaction()
     .map_err(|e| format!("开启取消云删事务失败: {e}"))?;
@@ -1628,14 +1724,15 @@ pub fn cancel_cloud_deletes(
       ],
     )
     .map_err(|e| format!("恢复 asset cloud_state 失败: {e}"))?;
-    cancelled += 1;
+    cancelled_assets.insert(asset_id.clone());
   }
 
   tx.commit().map_err(|e| format!("提交取消云删事务失败: {e}"))?;
-  Ok(cancelled)
+  Ok(u32::try_from(cancelled_assets.len()).unwrap_or(u32::MAX))
 }
 
 /// 将 failed_delete 资产重新入队
+/// @returns 重新入队的逻辑资产数（Live still+mov 计 1）
 pub fn retry_failed_cloud_deletes(conn: &Connection, apple_id: &str) -> Result<u32, String> {
   let now = chrono::Utc::now().timestamp();
   let mut stmt = conn
@@ -1666,7 +1763,7 @@ pub fn retry_failed_cloud_deletes(conn: &Connection, apple_id: &str) -> Result<u
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| format!("解析 failed_delete 行失败: {e}"))?;
 
-  let mut retried = 0u32;
+  let mut retried_assets = std::collections::HashSet::new();
   for (asset_id, part, prev, dest_path, cpl_name, cpl_tag) in rows {
     if cpl_name.as_deref().map(str::trim).unwrap_or("").is_empty() {
       continue;
@@ -1699,9 +1796,9 @@ pub fn retry_failed_cloud_deletes(conn: &Connection, apple_id: &str) -> Result<u
       ],
     )
     .map_err(|e| format!("更新 failed_delete 为 queued 失败: {e}"))?;
-    retried += 1;
+    retried_assets.insert(asset_id);
   }
-  Ok(retried)
+  Ok(u32::try_from(retried_assets.len()).unwrap_or(u32::MAX))
 }
 
 /// 移除本地绑定：清 dest_path，cloud_state→cloud_only（不删盘）
@@ -2108,6 +2205,124 @@ mod tests {
       .query_row("SELECT COUNT(*) FROM cloud_delete_queue", [], |r| r.get(0))
       .expect("q");
     assert_eq!(queued, 0);
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn enqueue_live_pair_counts_as_one_accepted() {
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    let dir = std::env::temp_dir().join(format!(
+      "icloud-enqueue-live-{}",
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let still = dir.join("a.heic");
+    let mov = dir.join("a.mov");
+    std::fs::write(&still, b"s").unwrap();
+    std::fs::write(&mov, b"m").unwrap();
+    for (part, dest, name) in [
+      ("still", still.to_str().unwrap(), "a.HEIC"),
+      ("mov", mov.to_str().unwrap(), "a.MOV"),
+    ] {
+      conn
+        .execute(
+          r#"
+          INSERT INTO assets(
+            apple_id, asset_id, sort_key, original_filename, media_kind,
+            index_num, part, download_status, cloud_state, dest_path,
+            cpl_asset_record_name, cpl_asset_change_tag
+          ) VALUES('user@icloud.com', 'L1', '2024', ?1, 'live', 1, ?2, NULL, 'synced', ?3,
+                   ?4, 'tag')
+          "#,
+          params![name, part, dest, format!("CPL-L1-{part}")],
+        )
+        .expect("insert live part");
+    }
+
+    let job_id = test_cloud_delete_job(&conn);
+    let summary = enqueue_cloud_deletes(
+      &conn,
+      job_id,
+      "user@icloud.com",
+      &[
+        ("L1".into(), "still".into()),
+        ("L1".into(), "mov".into()),
+      ],
+      "test",
+    )
+    .expect("enqueue");
+    assert_eq!(summary.accepted, 1, "UI logical count");
+    let queued: i64 = conn
+      .query_row("SELECT COUNT(*) FROM cloud_delete_queue", [], |r| r.get(0))
+      .expect("q");
+    assert_eq!(queued, 2, "queue still has two parts");
+
+    refresh_cloud_delete_job_counts(&conn, job_id).expect("counts");
+    let (done, failed, pending, total) = {
+      let job = get_job(&conn, job_id).unwrap().unwrap();
+      (
+        job.done_count,
+        job.failed_count,
+        job.pending_count,
+        job.total_count,
+      )
+    };
+    assert_eq!((done, failed, pending), (0, 0, 1));
+    assert!(total >= 1);
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn count_assets_by_status_folds_live_parts() {
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    let job_id = insert_job(
+      &conn,
+      TaskType::Sync,
+      JobView::Library,
+      "/tmp/out",
+      "user@icloud.com",
+      JobStatus::Running,
+      1,
+      "sync",
+    )
+    .expect("job");
+    for (part, status) in [("still", "done"), ("mov", "pending")] {
+      conn
+        .execute(
+          r#"
+          INSERT INTO assets(
+            apple_id, asset_id, sort_key, original_filename, media_kind,
+            index_num, part, download_status, active_job_id, cloud_state
+          ) VALUES('user@icloud.com', 'L1', '2024', 'a.HEIC', 'live', 1, ?1, ?2, ?3, 'cloud_only')
+          "#,
+          params![part, status, job_id],
+        )
+        .expect("insert");
+    }
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          index_num, part, download_status, active_job_id, cloud_state
+        ) VALUES('user@icloud.com', 'P1', '2024', 'b.jpg', 'photo', 2, 'full', 'done', ?1, 'synced')
+        "#,
+        params![job_id],
+      )
+      .expect("photo");
+
+    let (done, failed, pending) = count_assets_by_status(&conn, job_id).expect("count");
+    assert_eq!(done, 1);
+    assert_eq!(failed, 0);
+    assert_eq!(pending, 1, "live still done + mov pending → one pending");
+
     let _ = std::fs::remove_file(path);
   }
 

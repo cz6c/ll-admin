@@ -275,12 +275,12 @@ fn build_sync_asset_row(
   })
 }
 
-/// 活跃 sync job 内 download_status=failed 计数（任务结束 finalize 后归零）
+/// 活跃 sync job 内 download_status=failed 的逻辑资产数（Live=1；任务结束 finalize 后归零）
 fn count_download_failed(conn: &Connection, apple_id: &str) -> Result<u32, String> {
   let count: i64 = conn
     .query_row(
       r#"
-      SELECT COUNT(*) FROM assets a
+      SELECT COUNT(DISTINCT a.asset_id) FROM assets a
       INNER JOIN jobs j ON j.id = a.active_job_id
       WHERE a.apple_id = ?1
         AND a.download_status = 'failed'
@@ -450,18 +450,21 @@ fn load_sync_assets_download_failed(
   })
 }
 
+/// cloud_state Tab 角标：按列表展示条数（Live still+mov=1，态取更差一侧）
 pub fn get_cloud_state_summary(
   conn: &Connection,
   apple_id: &str,
 ) -> Result<IcloudSyncCloudStateSummary, String> {
   let mut stmt = conn
-    .prepare(
-      "SELECT cloud_state, COUNT(*) FROM assets WHERE apple_id = ?1 GROUP BY cloud_state",
-    )
+    .prepare("SELECT asset_id, part, cloud_state FROM assets WHERE apple_id = ?1")
     .map_err(|e| format!("准备 cloud_state 汇总失败: {e}"))?;
   let rows = stmt
     .query_map(params![apple_id], |row| {
-      Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+      Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, String>(2)?,
+      ))
     })
     .map_err(|e| format!("查询 cloud_state 汇总失败: {e}"))?
     .collect::<Result<Vec<_>, _>>()
@@ -475,6 +478,15 @@ pub fn get_cloud_state_summary(
     )
     .unwrap_or(None);
 
+  let mut by_asset: std::collections::HashMap<String, Vec<(String, String)>> =
+    std::collections::HashMap::new();
+  for (asset_id, part, cloud_state) in rows {
+    by_asset
+      .entry(asset_id)
+      .or_default()
+      .push((part, cloud_state));
+  }
+
   let mut summary = IcloudSyncCloudStateSummary {
     cloud_only: 0,
     synced: 0,
@@ -485,15 +497,30 @@ pub fn get_cloud_state_summary(
     last_catalog_at,
   };
   summary.download_failed = count_download_failed(conn, apple_id)?;
-  for (state, count) in rows {
-    let n = u32::try_from(count).unwrap_or(u32::MAX);
-    match CloudState::parse(&state) {
-      Some(CloudState::CloudOnly) => summary.cloud_only = n,
-      Some(CloudState::Synced) => summary.synced = n,
-      Some(CloudState::DeletedCloudPending) => summary.deleted_cloud_pending = n,
-      Some(CloudState::CloudDeleteQueued) => summary.cloud_delete_queued = n,
-      Some(CloudState::FailedDelete) => summary.failed_delete = n,
-      None => {}
+
+  for parts in by_asset.values() {
+    let still = parts.iter().find(|(p, _)| p == "still").map(|(_, s)| s.as_str());
+    let mov = parts.iter().find(|(p, _)| p == "mov").map(|(_, s)| s.as_str());
+    let display_states: Vec<String> = if let (Some(ss), Some(ms)) = (still, mov) {
+      vec![worse_cloud_display(ss, ms)]
+    } else {
+      parts.iter().map(|(_, s)| s.clone()).collect()
+    };
+    for state in display_states {
+      match CloudState::parse(&state) {
+        Some(CloudState::CloudOnly) => summary.cloud_only = summary.cloud_only.saturating_add(1),
+        Some(CloudState::Synced) => summary.synced = summary.synced.saturating_add(1),
+        Some(CloudState::DeletedCloudPending) => {
+          summary.deleted_cloud_pending = summary.deleted_cloud_pending.saturating_add(1)
+        }
+        Some(CloudState::CloudDeleteQueued) => {
+          summary.cloud_delete_queued = summary.cloud_delete_queued.saturating_add(1)
+        }
+        Some(CloudState::FailedDelete) => {
+          summary.failed_delete = summary.failed_delete.saturating_add(1)
+        }
+        None => {}
+      }
     }
   }
   Ok(summary)
@@ -852,6 +879,46 @@ mod tests {
     assert_eq!(page.items[0].asset_id, "F1");
     assert_eq!(page.items[0].download_status.as_deref(), Some("failed"));
 
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn cloud_state_summary_counts_live_as_one() {
+    let (path, conn) = temp_db();
+    let dir = std::env::temp_dir().join(format!(
+      "icloud-summary-live-{}",
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let still = dir.join("live.jpg");
+    let mov = dir.join("live.mov");
+    std::fs::write(&still, b"s").unwrap();
+    std::fs::write(&mov, b"m").unwrap();
+
+    insert_live_synced(
+      &conn,
+      "L1",
+      "2024-06-01T12:00:00Z",
+      still.to_str().unwrap(),
+      mov.to_str().unwrap(),
+    );
+    // still synced、mov cloud_only → 展示取更差一侧 cloud_only，计 1
+    conn
+      .execute(
+        "UPDATE assets SET cloud_state = 'cloud_only' WHERE asset_id = 'L1' AND part = 'mov'",
+        [],
+      )
+      .expect("downgrade mov");
+    insert_synced(&conn, "P1", "2024-06-02", still.to_str().unwrap());
+
+    let summary = get_cloud_state_summary(&conn, "u@x.com").expect("summary");
+    assert_eq!(summary.synced, 1, "photo only");
+    assert_eq!(summary.cloud_only, 1, "live pair as one with worse state");
+
+    let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(path);
   }
 }

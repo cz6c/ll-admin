@@ -72,6 +72,7 @@ pub struct IcloudSyncDeleteAssetItem {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncDeleteAssetsResult {
+  /// 逻辑资产数（Live still+mov=1）
   pub accepted: u32,
   pub rejected: u32,
   pub rejected_missing_cpl: u32,
@@ -82,12 +83,14 @@ pub struct IcloudSyncDeleteAssetsResult {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncCancelCloudDeleteResult {
+  /// 逻辑资产数（Live=1）
   pub cancelled: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncRetryCloudDeletesResult {
+  /// 逻辑资产数（Live=1）
   pub retried: u32,
   pub job_id: i64,
 }

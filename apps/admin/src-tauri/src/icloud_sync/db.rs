@@ -873,6 +873,64 @@ pub fn mark_asset_outcome(
     .map_err(|e| format!("更新 asset 状态失败: {e}"))
 }
 
+/// 旧文件名补救：synced 行最小字段集
+#[derive(Debug, Clone)]
+pub struct SyncedAssetPathRow {
+  pub id: i64,
+  pub asset_id: String,
+  pub index_num: i32,
+  pub original_filename: String,
+  pub part: String,
+  pub dest_path: Option<String>,
+}
+
+/// 列出 cloud_state=synced 的资产，供 filename_migrate 一次性 rename
+pub fn list_synced_assets_for_path_migrate(
+  conn: &Connection,
+) -> Result<Vec<SyncedAssetPathRow>, String> {
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT id, asset_id, index_num, original_filename, part, dest_path
+      FROM assets
+      WHERE cloud_state = ?1
+      ORDER BY id ASC
+      "#,
+    )
+    .map_err(|e| format!("准备 synced 迁移查询失败: {e}"))?;
+
+  let rows = stmt
+    .query_map([CloudState::Synced.as_str()], |row| {
+      Ok(SyncedAssetPathRow {
+        id: row.get(0)?,
+        asset_id: row.get(1)?,
+        index_num: row.get(2)?,
+        original_filename: row.get(3)?,
+        part: row.get(4)?,
+        dest_path: row.get(5)?,
+      })
+    })
+    .map_err(|e| format!("查询 synced 迁移行失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析 synced 迁移行失败: {e}"))?;
+  Ok(rows)
+}
+
+/// 仅更新 dest_path，不改 download_status / cloud_state
+pub fn set_asset_dest_path(
+  conn: &Connection,
+  asset_row_id: i64,
+  dest_path: &str,
+) -> Result<(), String> {
+  conn
+    .execute(
+      "UPDATE assets SET dest_path = ?1 WHERE id = ?2",
+      params![dest_path, asset_row_id],
+    )
+    .map(|_| ())
+    .map_err(|e| format!("更新 dest_path 失败: {e}"))
+}
+
 /// 读取任务
 pub fn get_job(conn: &Connection, job_id: i64) -> Result<Option<JobRow>, String> {
   conn

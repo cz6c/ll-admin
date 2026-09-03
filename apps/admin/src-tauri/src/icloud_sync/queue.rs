@@ -25,7 +25,7 @@ use super::db::{
   reset_failed_to_pending, set_job_catalog_counts,
   state_db_path, update_job_status,
 };
-use super::naming::format_asset_filename;
+use super::naming::sync_asset_filename;
 use super::settings::{
   load_settings, normalize_concurrency, resolve_default_output_dir,
 };
@@ -356,28 +356,13 @@ fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
 }
 
 fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
-  let (stem, ext) = filename_stem_ext(&asset.original_filename);
-  let ext = match asset.part {
-    AssetPart::Mov => "mov".to_string(),
-    _ => ext,
-  };
-  let name = format_asset_filename(asset.index_num as u32, &stem, &ext);
+  let name = sync_asset_filename(
+    asset.index_num as u32,
+    &asset.asset_id,
+    &asset.original_filename,
+    asset.part,
+  );
   Path::new(output_dir).join(name)
-}
-
-fn filename_stem_ext(filename: &str) -> (String, String) {
-  let path = Path::new(filename);
-  let stem = path
-    .file_stem()
-    .and_then(|s| s.to_str())
-    .unwrap_or("asset")
-    .to_string();
-  let ext = path
-    .extension()
-    .and_then(|s| s.to_str())
-    .unwrap_or("bin")
-    .to_string();
-  (stem, ext)
 }
 
 fn emit_progress(
@@ -424,7 +409,7 @@ fn local_dest_ready(dest: &Path) -> bool {
 }
 
 /// 磁盘已有有效文件时补记 done，避免重复下载与进度卡在最后一张。
-/// 仅精确匹配 `{index:05d}_{sanitized_stem}.{ext}`；原名参与路径以便顺序变化时校验。
+/// 仅精确匹配 `{index:05d}_{id8}_{sanitized_stem}.{ext}`。
 fn mark_asset_done_if_on_disk(
   conn: &rusqlite::Connection,
   asset: &AssetRow,

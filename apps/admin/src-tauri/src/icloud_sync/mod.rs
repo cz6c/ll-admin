@@ -6,6 +6,8 @@ mod catalog_diff;
 pub mod cloud_assets;
 pub mod cloud_delete;
 mod db;
+/// 一次性旧文件名补救；全库迁完后可删除
+pub(crate) mod filename_migrate;
 mod keyring_store;
 mod naming;
 pub mod queue;
@@ -13,6 +15,8 @@ mod settings;
 mod sidecar;
 mod task;
 mod types;
+
+pub use naming::strip_sync_filename_stem_prefix;
 
 use std::path::PathBuf;
 use std::sync::Mutex;

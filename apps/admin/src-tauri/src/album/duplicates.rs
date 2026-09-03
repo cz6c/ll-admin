@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
+use crate::icloud_sync::strip_sync_filename_stem_prefix;
 use crate::icloud_sync::{list_synced_local_rows, resolve_sync_output_dir};
 
 use super::types::{DuplicateFileSide, DuplicatePair, ALBUM_CACHE_VERSION};
@@ -23,26 +24,9 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// iCloud 同步落盘五位序号前缀，如 `00042_`
-fn icloud_index_prefix(stem: &str) -> Option<&str> {
-  if stem.len() >= 6
-    && stem.as_bytes().get(5) == Some(&b'_')
-    && stem[..5].chars().all(|c| c.is_ascii_digit())
-  {
-    Some(&stem[..5])
-  } else {
-    None
-  }
-}
-
-/// 文件名 stem 归一为匹配键：去序号前缀、小写
+/// 文件名 stem 归一为匹配键：去同步落盘的 index/id8 前缀、小写
 fn content_key_from_stem(stem: &str) -> String {
-  let lower = stem.to_lowercase();
-  if let Some(prefix) = icloud_index_prefix(&lower) {
-    lower[prefix.len()..].trim_start_matches('_').to_string()
-  } else {
-    lower
-  }
+  strip_sync_filename_stem_prefix(stem)
 }
 
 fn content_key_from_filename(name: &str) -> String {

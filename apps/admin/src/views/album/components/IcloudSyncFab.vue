@@ -11,6 +11,7 @@ import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
   loadIcloudSyncCloudList,
+  migrateLegacyIcloudSyncFilenames,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
   cancelIcloudSyncCloudDelete,
@@ -77,6 +78,7 @@ const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deletingAllSynced = ref(false);
+const migratingFilenames = ref(false);
 const cancellingCloudDelete = ref(false);
 const retryingCloudDelete = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
@@ -416,6 +418,44 @@ const iconName = computed(() => {
 /** 下载中显示进度环，其余状态显示图标 */
 const showProgress = computed(() => fabState.value.percent > 0 && fabState.value.percent < 100);
 
+async function onMigrateLegacyFilenames() {
+  if (!guardCloudManageAction()) return;
+  Modal.confirm({
+    title: "升级同步文件名格式",
+    content:
+      "将把已同步文件从旧格式「序号_原名」重命名为「序号_id8_原名」，并更新本地状态库。请确保无同步/删云任务进行中。全库完成后可不再使用此功能。",
+    okText: "开始补救",
+    cancelText: "取消",
+    onOk: async () => {
+      migratingFilenames.value = true;
+      errorMsg.value = "";
+      try {
+        const result = await migrateLegacyIcloudSyncFilenames();
+        const parts = [
+          result.renamed > 0 ? `已重命名 ${result.renamed}` : "",
+          result.alreadyNew > 0 ? `已是新格式 ${result.alreadyNew}` : "",
+          result.skippedNoFile > 0 ? `文件缺失 ${result.skippedNoFile}` : "",
+          result.skippedTargetExists > 0 ? `目标冲突 ${result.skippedTargetExists}` : "",
+          result.failed > 0 ? `失败 ${result.failed}` : ""
+        ].filter(Boolean);
+        if (result.failed > 0 || result.skippedTargetExists > 0) {
+          message.warning(parts.join(" · ") || "补救完成，部分项需查看详情");
+          if (result.errors.length > 0) {
+            errorMsg.value = result.errors.slice(0, 5).join("\n");
+          }
+        } else {
+          message.success(parts.join(" · ") || "无需补救");
+        }
+        await refreshCloudAssets();
+      } catch (e) {
+        errorMsg.value = formatIcloudSyncError(e);
+      } finally {
+        migratingFilenames.value = false;
+      }
+    }
+  });
+}
+
 async function onLogout() {
   loggingOut.value = true;
   errorMsg.value = "";
@@ -490,6 +530,17 @@ onMounted(() => {
           <div class="flex items-center gap-2">
             <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
               <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新 iCloud 状态 </a-button>
+            </a-tooltip>
+            <a-tooltip
+              v-bind="
+                canManageCloudSpace
+                  ? { title: '一次性将旧同步文件名升级为含 id8 的新格式（需 state.db）' }
+                  : { title: TASK_BUSY_HINT }
+              "
+            >
+              <a-button :loading="migratingFilenames" :disabled="!canManageCloudSpace" @click="onMigrateLegacyFilenames()">
+                升级文件名
+              </a-button>
             </a-tooltip>
             <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
               <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">

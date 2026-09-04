@@ -60,6 +60,7 @@ pub fn run() {
       album::album_open_dir,
       icloud_sync::icloud_sync_ping,
       icloud_sync::icloud_sync_get_settings,
+      icloud_sync::icloud_sync_migrate_filenames,
       icloud_sync::icloud_sync_save_settings,
       icloud_sync::icloud_sync_set_credentials,
       icloud_sync::icloud_sync_logout,

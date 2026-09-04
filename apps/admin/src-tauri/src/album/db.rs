@@ -406,6 +406,68 @@ pub fn delete_media_by_path(conn: &Connection, path: &str) -> Result<bool, Strin
   Ok(n > 0)
 }
 
+/**
+ * 源文件改名后更新 media 主键与伴生路径（缩略图/预览/播放代理/Live video_path）
+ * @returns true 若更新了索引行；无旧行时 false（未扫过则无需处理）
+ */
+pub fn relocate_media_path(
+  conn: &Connection,
+  old_path: &str,
+  new_path: &str,
+  new_name: &str,
+  new_size: u64,
+  new_modified: i64,
+  thumb_path: Option<&str>,
+  preview_path: Option<&str>,
+  playback_path: Option<&str>,
+) -> Result<bool, String> {
+  if old_path == new_path {
+    return Ok(false);
+  }
+
+  // 目标 path 若已有脏行（旧索引残留），先删以免 PRIMARY KEY 冲突
+  if old_path != new_path {
+    let _ = conn.execute("DELETE FROM media WHERE path = ?1", params![new_path]);
+  }
+
+  let n = conn
+    .execute(
+      r#"
+      UPDATE media SET
+        path = ?1,
+        name = ?2,
+        size = ?3,
+        modified = ?4,
+        thumb_path = ?5,
+        preview_path = ?6,
+        playback_path = ?7,
+        fail_count = 0
+      WHERE path = ?8
+      "#,
+      params![
+        new_path,
+        new_name,
+        new_size as i64,
+        new_modified,
+        thumb_path,
+        preview_path,
+        playback_path,
+        old_path,
+      ],
+    )
+    .map_err(|e| format!("更新媒体 path 失败: {e}"))?;
+
+  // Live：静帧行上的 video_path 指向 mov；mov 改名后须同步
+  conn
+    .execute(
+      "UPDATE media SET video_path = ?1 WHERE video_path = ?2",
+      params![new_path, old_path],
+    )
+    .map_err(|e| format!("更新 video_path 失败: {e}"))?;
+
+  Ok(n > 0)
+}
+
 /// 读取某根目录下所有 path → fail_count（供 pipeline 跳过反复失败的坏文件）
 pub fn load_fail_counts(
   conn: &Connection,

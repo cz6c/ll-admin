@@ -140,10 +140,14 @@ hash ← version + file_stem + modified + size
 
 任一命中即 `kind=livephoto`，MOV 从列表剔除：
 
-- stem 相同，或去掉 `_hevc` / `_heic` / `_mov` 后相同  
-- iCloud 五位序号前缀相同（如 `00003_`）
+- **新格式**（`{capture}_{id8}_…`）：still/mov **同一 id8**（同 asset）优先配对  
+- **旧 index+id8**（`{index}_{id8}_…`）：同样按 id8  
+- **content stem 全名**：去掉同步前缀后 stem 相同，或 mov 去掉 `_hevc` / `_heic` / `_mov` 后与静帧相同  
+- **禁止**仅因五位序号相同配对
 
 未配对 MOV 仍为 `video`。
+
+同步落盘命名（当前）：`{unix_secs}_{id8}_{stem}.{ext}`。旧 `{index:05}_…` / 过渡 `{YYYYMMDDTHHMMSS}_…` 用抽屉「释放云空间 → 迁移文件名」一次性改写（同步搬迁 `media.db` 路径与 thumb/preview/playback 缓存，避免宫格丢图）；`index_num` 列已于 schema v5 删除。
 
 ### HEIC / ffmpeg
 

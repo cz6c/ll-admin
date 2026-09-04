@@ -281,8 +281,6 @@ impl TaskType {
 pub struct SyncAssetRow {
   pub asset_id: String,
   pub part: String,
-  /// catalog 全局序号（Live still+mov 共享；与落盘 `{index:05d}_` 一致）
-  pub index_num: i32,
   /// catalog 排序键：Library=拍摄时间(capture_at)，Recents=加入时间(added_at)
   pub sort_key: String,
   /// 拍摄时间 ISO8601（与 sort_key 解耦；Recents 视图下 sort_key 可能为 added_at）
@@ -342,6 +340,7 @@ pub struct JobRow {
   pub output_dir: String,
   pub apple_id: String,
   pub status: JobStatus,
+  /// 已弃用占位：schema v5 无 jobs.mode；恒为 full
   pub mode: String,
   pub created_at: i64,
   pub finished_at: Option<i64>,
@@ -369,7 +368,6 @@ pub struct AssetRow {
   pub original_filename: String,
   pub media_kind: MediaKind,
   pub live_pair_id: Option<String>,
-  pub index_num: i32,
   pub part: AssetPart,
   pub download_status: Option<AssetStatus>,
   pub active_job_id: Option<i64>,
@@ -389,7 +387,6 @@ pub struct AssetRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncFailedAssetRow {
-  pub index_num: i32,
   pub part: String,
   pub original_filename: String,
   pub last_error: String,
@@ -400,7 +397,6 @@ pub struct IcloudSyncFailedAssetRow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncAssetTaskRow {
-  pub index_num: i32,
   pub part: String,
   pub original_filename: String,
   /// `pending` | `done` | `failed`

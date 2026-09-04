@@ -204,7 +204,7 @@ fn validate_catalog_item(item: &CatalogItem, view: JobView) -> Result<(), String
   Ok(())
 }
 
-/// 将已排序 catalog 转为 SQLite 资产行；Live still+mov 共享 index_num
+/// 将已排序 catalog 转为 SQLite 资产行；Live still+mov 同 asset 仍各一行
 pub fn catalog_to_asset_rows(
   view: JobView,
   items: &[CatalogItem],
@@ -213,8 +213,7 @@ pub fn catalog_to_asset_rows(
   sort_and_validate_catalog(&mut sorted, view)?;
 
   let mut rows = Vec::new();
-  for (idx, item) in sorted.iter().enumerate() {
-    let index_num = i32::try_from(idx + 1).map_err(|_| "index 超出 i32 范围".to_string())?;
+  for item in sorted.iter() {
     for part in &item.parts {
       let asset_part = map_catalog_part(item.media_kind, part)?;
       rows.push(AssetRow {
@@ -229,7 +228,6 @@ pub fn catalog_to_asset_rows(
         original_filename: item.filename.clone(),
         media_kind: item.media_kind,
         live_pair_id: item.live_pair_id.clone(),
-        index_num,
         part: asset_part,
         download_status: Some(AssetStatus::Pending),
         active_job_id: None,
@@ -358,7 +356,7 @@ fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
 
 fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
   let name = sync_asset_filename(
-    asset.index_num as u32,
+    asset.capture_at.as_deref(),
     &asset.asset_id,
     &asset.original_filename,
     asset.part,
@@ -1129,7 +1127,6 @@ pub fn icloud_sync_start_job(
     &apple_id,
     JobStatus::Pending,
     created_at,
-    "full",
   )?;
 
   let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id)?;
@@ -1369,7 +1366,6 @@ pub fn icloud_sync_refresh_catalog(
     &apple_id,
     JobStatus::Cataloging,
     created_at,
-    "catalog_only",
   )?;
   emit_task_status(&app, &conn, job_id);
 
@@ -1459,7 +1455,7 @@ mod tests {
     }
   }
 
-  /// 2 normal + 1 live → live still/mov 共享 index 3
+  /// 2 normal + 1 live → 共 4 行
   #[test]
   fn assign_indices_two_normal_one_live_shared_index() {
     let items = vec![
@@ -1476,13 +1472,8 @@ mod tests {
     let live_rows: Vec<_> = rows.iter().filter(|r| r.asset_id == "L1").collect();
 
     assert_eq!(p1.len(), 1);
-    assert_eq!(p1[0].index_num, 1);
-
     assert_eq!(p2.len(), 1);
-    assert_eq!(p2[0].index_num, 2);
-
     assert_eq!(live_rows.len(), 2);
-    assert!(live_rows.iter().all(|r| r.index_num == 3));
     assert_eq!(live_rows[0].part, AssetPart::Still);
     assert_eq!(live_rows[1].part, AssetPart::Mov);
   }
@@ -1517,8 +1508,10 @@ mod tests {
     let rows = catalog_to_asset_rows(JobView::Recents, &items).expect("rows");
     let p1 = rows.iter().find(|r| r.asset_id == "P1").expect("p1");
     let p2 = rows.iter().find(|r| r.asset_id == "P2").expect("p2");
-    assert_eq!(p1.index_num, 1);
-    assert_eq!(p2.index_num, 2);
+    // Recents：sort_key = added_at
+    assert_eq!(p1.sort_key, "2024-01-01T00:00:00Z");
+    assert_eq!(p2.sort_key, "2024-01-02T00:00:00Z");
+    assert!(p1.sort_key < p2.sort_key);
   }
 
   #[test]
@@ -1569,7 +1562,6 @@ mod tests {
       "user@icloud.com",
       JobStatus::Pending,
       1,
-      "full",
     )
     .expect("job");
 
@@ -1585,7 +1577,6 @@ mod tests {
       original_filename: "微信图片_20260821145301_14_2.jpg".into(),
       media_kind: MediaKind::Photo,
       live_pair_id: None,
-      index_num: 31,
       part: AssetPart::Full,
       download_status: Some(AssetStatus::Pending),
       active_job_id: None,

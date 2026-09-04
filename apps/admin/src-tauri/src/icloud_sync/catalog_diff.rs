@@ -102,7 +102,6 @@ mod tests {
       original_filename: filename.into(),
       media_kind: MediaKind::Photo,
       live_pair_id: None,
-      index_num: 1,
       part: AssetPart::Full,
       download_status: Some(AssetStatus::Done),
       active_job_id: None,

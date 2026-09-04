@@ -138,8 +138,6 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
 
       ...base,
 
-      indexNum: still?.indexNum ?? mov?.indexNum ?? base.indexNum,
-
       liveMovFilename: still?.liveMovFilename ?? mov?.originalFilename ?? base.liveMovFilename,
 
       liveMovDownloadStatus: still?.liveMovDownloadStatus ?? mov?.downloadStatus ?? base.liveMovDownloadStatus

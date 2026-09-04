@@ -7,6 +7,8 @@ pub mod cloud_assets;
 pub mod cloud_delete;
 mod db;
 mod keyring_store;
+/// 一次性文件名迁移；全员迁完后可删本模块与前端入口
+mod migrate_sync_filenames;
 mod naming;
 pub mod queue;
 mod settings;
@@ -15,7 +17,8 @@ mod task;
 mod types;
 
 pub use naming::strip_sync_filename_stem_prefix;
-pub use naming::{is_legacy_sync_filename, is_new_format_sync_filename};
+pub use naming::{is_legacy_sync_filename, is_new_format_sync_filename, sync_id8_from_filename};
+pub use migrate_sync_filenames::MigrateSyncFilenamesResult;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -201,6 +204,14 @@ pub struct IcloudSyncPingResult {
 #[tauri::command]
 pub fn icloud_sync_get_settings(app: AppHandle) -> Result<IcloudSyncSettings, String> {
   load_settings(&app)
+}
+
+/**
+ * 一次性：旧 index 文件名 → capture+id8；迁完可删本命令与 migrate_sync_filenames 模块
+ */
+#[tauri::command]
+pub fn icloud_sync_migrate_filenames(app: AppHandle) -> Result<MigrateSyncFilenamesResult, String> {
+  migrate_sync_filenames::migrate_sync_filenames_to_capture(&app)
 }
 
 #[tauri::command]

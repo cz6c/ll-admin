@@ -14,6 +14,7 @@ import {
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
   retryIcloudSyncCloudDeletes,
+  migrateIcloudSyncFilenames,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetsResult
@@ -92,6 +93,8 @@ const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deletingAllSynced = ref(false);
 const retryingCloudDelete = ref(false);
+/** 一次性文件名迁移；迁完可删本状态与按钮 */
+const migratingFilenames = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
 /** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云/取消须用此 Map */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
@@ -171,7 +174,6 @@ function guardCloudManageAction(): boolean {
 
 const cloudTableColumns = [
   { title: "序号", dataIndex: "listSeq", width: 80 },
-  { title: "文件序号", dataIndex: "indexNum", width: 100 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "文件名", dataIndex: "originalFilename" },
   { title: "状态", dataIndex: "cloudState", width: 150 }
@@ -474,6 +476,39 @@ async function onRetryCloudDeletes() {
   }
 }
 
+/**
+ * 一次性：旧 `{index}_…` → `{capture}_{id8}_…`；迁完可删本函数与工具栏按钮
+ */
+function confirmMigrateFilenames() {
+  if (!guardCloudManageAction()) return;
+  Modal.confirm({
+    title: "迁移本地同步文件名？",
+    content:
+      "将已下载文件从旧序号命名改为「拍摄时间+短码」命名。会同步更新相册索引与缩略图缓存，避免改名后宫格丢图。仅处理数据库已绑定的文件；完成后本入口可删除。",
+    okText: "开始迁移",
+    cancelText: "取消",
+    onOk: () => onMigrateFilenames()
+  });
+}
+
+async function onMigrateFilenames() {
+  migratingFilenames.value = true;
+  try {
+    const result = await migrateIcloudSyncFilenames();
+    const parts = [`已重命名 ${result.renamed} 项`, `跳过 ${result.skipped} 项`];
+    if (result.failed > 0) parts.push(`失败 ${result.failed} 项`);
+    if (result.failed > 0) message.warning(parts.join("，"));
+    else message.success(parts.join("，"));
+    if (result.errors?.length) {
+      console.warn("[icloud] migrate filenames:", result.errors);
+    }
+  } catch (e) {
+    message.error(formatIcloudSyncError(e));
+  } finally {
+    migratingFilenames.value = false;
+  }
+}
+
 watch(jobStatus, (status, prev) => {
   if (status === "done" && prev !== "done" && isCloudDeleteTask.value && drawerOpen.value) {
     cloudFilter.value = "deleted_cloud_pending";
@@ -620,6 +655,22 @@ onMounted(() => {
                 <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
                   <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
                 </a-tooltip>
+                <!-- 一次性迁移入口；全员迁完后可删本按钮与 confirmMigrateFilenames -->
+                <a-tooltip
+                  v-bind="
+                    canManageCloudSpace
+                      ? { title: '将旧序号文件名改为拍摄时间命名（一次性）' }
+                      : { title: TASK_BUSY_HINT }
+                  "
+                >
+                  <a-button
+                    :loading="migratingFilenames"
+                    :disabled="!canManageCloudSpace || migratingFilenames"
+                    @click="confirmMigrateFilenames()"
+                  >
+                    迁移文件名
+                  </a-button>
+                </a-tooltip>
                 <a-button
                   v-if="cloudSummary?.failedDelete"
                   type="link"
@@ -665,9 +716,6 @@ onMounted(() => {
               <template #bodyCell="{ column, record, index }">
                 <template v-if="column.dataIndex === 'listSeq'">
                   {{ cloudListSeq(index) }}
-                </template>
-                <template v-else-if="column.dataIndex === 'indexNum'">
-                  {{ String((record as CloudListDisplayRow).indexNum).padStart(5, "0") }}
                 </template>
                 <template v-else-if="column.dataIndex === 'sortKey'">
                   {{ formatSortKeyTime((record as CloudListDisplayRow).captureAt ?? (record as CloudListDisplayRow).sortKey) }}

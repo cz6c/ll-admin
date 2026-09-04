@@ -45,7 +45,7 @@ fn resolve_live_mov_display_filename(still_filename: &str, mov_original: &str) -
   if !mov_original.is_empty() && mov_original != still_filename {
     return mov_original.to_string();
   }
-  // 不用 dest_path basename：落盘名为 {index:05d}_{stem}.mov，仅用于本地路径
+  // 不用 dest_path basename：落盘名为 {capture}_{id8}_{stem}.ext，仅用于本地路径
   derive_live_mov_filename(still_filename)
 }
 
@@ -191,7 +191,6 @@ impl SortKeyDateFilter {
 type CloudListRowRaw = (
   String,
   String,
-  i32,
   String,
   Option<String>,
   Option<String>,
@@ -224,7 +223,6 @@ fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRow
     row.get(12)?,
     row.get(13)?,
     row.get(14)?,
-    row.get(15)?,
   ))
 }
 
@@ -236,7 +234,6 @@ fn build_sync_asset_row(
   let (
     asset_id,
     part,
-    index_num,
     sort_key,
     capture_at,
     added_at,
@@ -256,7 +253,6 @@ fn build_sync_asset_row(
   Ok(SyncAssetRow {
     asset_id,
     part,
-    index_num,
     sort_key,
     capture_at,
     added_at,
@@ -326,7 +322,7 @@ pub fn load_sync_assets(
   let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
   let list_sql = format!(
     r#"
-    SELECT asset_id, part, index_num, sort_key, capture_at, added_at, latitude, longitude,
+    SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
     FROM assets
@@ -403,7 +399,7 @@ fn load_sync_assets_download_failed(
   let count_sql = format!("SELECT COUNT(*) FROM assets WHERE {where_clause}");
   let list_sql = format!(
     r#"
-    SELECT asset_id, part, index_num, sort_key, capture_at, added_at, latitude, longitude,
+    SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
     FROM assets
@@ -595,8 +591,8 @@ mod tests {
         r#"
         INSERT INTO assets(
           apple_id, asset_id, sort_key, original_filename, media_kind,
-          index_num, part, download_status, cloud_state, dest_path
-        ) VALUES('u@x.com', ?1, ?2, ?3, 'photo', 1, 'full', NULL, 'synced', ?4)
+          part, download_status, cloud_state, dest_path
+        ) VALUES('u@x.com', ?1, ?2, ?3, 'photo', 'full', NULL, 'synced', ?4)
         "#,
         params![asset_id, sort_key, format!("{asset_id}.jpg"), dest],
       )
@@ -623,8 +619,8 @@ mod tests {
         r#"
         INSERT INTO assets(
           apple_id, asset_id, sort_key, original_filename, media_kind,
-          index_num, part, download_status, cloud_state, dest_path
-        ) VALUES('u@x.com', 'OK', '2024-01-01', 'ok.jpg', 'photo', 1, 'full', NULL, 'synced', ?1)
+          part, download_status, cloud_state, dest_path
+        ) VALUES('u@x.com', 'OK', '2024-01-01', 'ok.jpg', 'photo', 'full', NULL, 'synced', ?1)
         "#,
         params![present.to_str().unwrap()],
       )
@@ -634,8 +630,8 @@ mod tests {
         r#"
         INSERT INTO assets(
           apple_id, asset_id, sort_key, original_filename, media_kind,
-          index_num, part, download_status, cloud_state, dest_path
-        ) VALUES('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 2, 'full', NULL, 'synced', ?1)
+          part, download_status, cloud_state, dest_path
+        ) VALUES('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 'full', NULL, 'synced', ?1)
         "#,
         params![gone.to_str().unwrap()],
       )
@@ -724,8 +720,8 @@ mod tests {
           r#"
           INSERT INTO assets(
             apple_id, asset_id, sort_key, original_filename, media_kind,
-            index_num, part, download_status, cloud_state, dest_path
-          ) VALUES('u@x.com', ?1, ?2, ?3, 'live', 1, ?4, NULL, 'synced', ?5)
+            part, download_status, cloud_state, dest_path
+          ) VALUES('u@x.com', ?1, ?2, ?3, 'live', ?4, NULL, 'synced', ?5)
           "#,
           params![asset_id, sort_key, filename, part, dest],
         )
@@ -755,8 +751,8 @@ mod tests {
           r#"
           INSERT INTO assets(
             apple_id, asset_id, sort_key, original_filename, media_kind,
-            index_num, part, download_status, cloud_state, dest_path
-          ) VALUES('u@x.com', 'L3', '2024-06-01', 'IMG_0027.HEIC', 'live', 2, ?1, NULL, 'synced', ?2)
+            part, download_status, cloud_state, dest_path
+          ) VALUES('u@x.com', 'L3', '2024-06-01', 'IMG_0027.HEIC', 'live', ?1, NULL, 'synced', ?2)
           "#,
           params![part, dest],
         )
@@ -780,8 +776,8 @@ mod tests {
           r#"
           INSERT INTO assets(
             apple_id, asset_id, sort_key, original_filename, media_kind,
-            index_num, part, download_status, cloud_state, dest_path
-          ) VALUES('u@x.com', 'L2', '2024-06-01', 'IMG_1.HEIC', 'live', 1, ?1, NULL, 'cloud_only', NULL)
+            part, download_status, cloud_state, dest_path
+          ) VALUES('u@x.com', 'L2', '2024-06-01', 'IMG_1.HEIC', 'live', ?1, NULL, 'cloud_only', NULL)
           "#,
           params![part],
         )
@@ -841,8 +837,8 @@ mod tests {
       .execute(
         r#"
         INSERT INTO jobs(
-          id, task_type, view, output_dir, apple_id, status, mode, created_at
-        ) VALUES(1, 'sync', 'library', '/tmp/out', 'u@x.com', 'running', 'full', 1)
+          id, task_type, view, output_dir, apple_id, status, created_at
+        ) VALUES(1, 'sync', 'library', '/tmp/out', 'u@x.com', 'running', 1)
         "#,
         [],
       )
@@ -852,8 +848,8 @@ mod tests {
         r#"
         INSERT INTO assets(
           apple_id, asset_id, sort_key, original_filename, media_kind,
-          index_num, part, download_status, active_job_id, cloud_state
-        ) VALUES('u@x.com', 'F1', '2024-01-01', 'a.jpg', 'photo', 1, 'full', 'failed', 1, 'cloud_only')
+          part, download_status, active_job_id, cloud_state
+        ) VALUES('u@x.com', 'F1', '2024-01-01', 'a.jpg', 'photo', 'full', 'failed', 1, 'cloud_only')
         "#,
         [],
       )
@@ -863,8 +859,8 @@ mod tests {
         r#"
         INSERT INTO assets(
           apple_id, asset_id, sort_key, original_filename, media_kind,
-          index_num, part, download_status, cloud_state
-        ) VALUES('u@x.com', 'F2', '2024-01-02', 'b.jpg', 'photo', 2, 'full', 'failed', 'cloud_only')
+          part, download_status, cloud_state
+        ) VALUES('u@x.com', 'F2', '2024-01-02', 'b.jpg', 'photo', 'full', 'failed', 'cloud_only')
         "#,
         [],
       )

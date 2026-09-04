@@ -299,7 +299,6 @@ fn start_cloud_delete_task(
     apple_id,
     JobStatus::Running,
     created_at,
-    "cloud_delete",
   )?;
 
   let summary = enqueue_cloud_deletes(&conn, job_id, apple_id, keys, reason)?;
@@ -581,7 +580,6 @@ pub fn icloud_sync_retry_cloud_deletes(
     &apple_id,
     JobStatus::Running,
     created_at,
-    "cloud_delete_retry",
   )?;
   conn
     .execute(

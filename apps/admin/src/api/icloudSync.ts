@@ -110,7 +110,6 @@ export interface IcloudSyncProgressPayload {
 
 /** 失败资产摘要（同步页表格） */
 export interface IcloudSyncFailedAssetRow {
-  indexNum: number;
   part: string;
   originalFilename: string;
   lastError: string;
@@ -119,7 +118,6 @@ export interface IcloudSyncFailedAssetRow {
 
 /** 单文件任务行（全量任务表格） */
 export interface IcloudSyncAssetTaskRow {
-  indexNum: number;
   part: string;
   originalFilename: string;
   /** pending | done | failed */
@@ -137,8 +135,6 @@ export interface IcloudSyncListAssetTasksResult {
 export interface IcloudSyncSyncAssetRow {
   assetId: string;
   part: string;
-  /** catalog 全局序号（Live still+mov 共享；与落盘 `{index:05d}_` 一致） */
-  indexNum: number;
   /**
    * catalog 排序键：Library≈拍摄时间，Recents≈加入图库时间（ISO8601）
    * 列表排序仍用此字段；展示拍摄时间优先用 captureAt
@@ -514,6 +510,22 @@ export function cancelIcloudSyncCloudDelete(items: IcloudSyncDeleteAssetItem[]) 
 /** 将 failed_delete 重新入队 */
 export function retryIcloudSyncCloudDeletes() {
   return invoke<IcloudSyncRetryCloudDeletesResult>("icloud_sync_retry_cloud_deletes");
+}
+
+/** 一次性文件名迁移结果（旧 index → capture+id8；迁完可删入口） */
+export interface IcloudSyncMigrateFilenamesResult {
+  renamed: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
+/**
+ * 一次性：将已绑定 dest_path 的旧 index 文件名迁到 `{capture}_{id8}_…`
+ * @note 全员迁完后可删除本 API、Rust migrate 模块与 UI 按钮
+ */
+export function migrateIcloudSyncFilenames() {
+  return invoke<IcloudSyncMigrateFilenamesResult>("icloud_sync_migrate_filenames");
 }
 
 /** 删除本地媒体：原文件进系统回收站，缩略图等缓存永久删除（不触碰 iCloud sync） */

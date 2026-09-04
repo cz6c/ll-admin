@@ -10,6 +10,8 @@ use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
+use crate::icloud_sync::{strip_sync_filename_stem_prefix, sync_id8_from_filename};
+
 use super::db;
 use super::scan_state::ScanCancelToken;
 use super::thumbnail;
@@ -109,17 +111,6 @@ fn file_stem_lower(name: &str) -> String {
     .to_lowercase()
 }
 
-fn icloud_index_prefix(stem: &str) -> Option<String> {
-  if stem.len() >= 6
-    && stem.as_bytes().get(5) == Some(&b'_')
-    && stem[..5].chars().all(|c| c.is_ascii_digit())
-  {
-    Some(stem[..5].to_string())
-  } else {
-    None
-  }
-}
-
 const LIVE_MOV_STEM_SUFFIXES: &[&str] = &["_hevc", "_heic", "_mov"];
 
 fn mov_stem_to_image_stem(mov_stem: &str) -> String {
@@ -134,25 +125,34 @@ fn mov_stem_to_image_stem(mov_stem: &str) -> String {
 
 struct MovCandidate {
   path: String,
-  stem: String,
-  index_prefix: Option<String>,
+  /// 去掉同步前缀后的 content stem（小写）
+  content_stem: String,
+  /// 新格式 `{unix_secs}_{id8}_…` 的 id8；旧命名为 None
+  id8: Option<String>,
 }
 
-fn mov_matches_image_stem(mov: &MovCandidate, image_stem: &str) -> bool {
-  mov.stem == image_stem || mov_stem_to_image_stem(&mov.stem) == image_stem
+/// content stem 全名匹配（含 Live mov 的 _hevc/_heic/_mov 后缀归一）
+fn content_stems_match(image_content: &str, mov_content: &str) -> bool {
+  if image_content == mov_content {
+    return true;
+  }
+  mov_stem_to_image_stem(mov_content) == image_content
 }
 
+/**
+ * 同目录 Live 配对：优先 id8（同 asset），否则 content stem 全名；
+ * 禁止仅用五位序号——多次同步后 index 会撞号，误配风险高
+ */
 pub(crate) fn pair_live_photos(files: &mut Vec<MediaFile>) {
   let mov_candidates: Vec<MovCandidate> = files
     .iter()
     .filter(|f| f.ext == "mov")
     .map(|f| {
       let stem = file_stem_lower(&f.name);
-      let index_prefix = icloud_index_prefix(&stem);
       MovCandidate {
         path: f.path.clone(),
-        stem,
-        index_prefix,
+        content_stem: strip_sync_filename_stem_prefix(&stem),
+        id8: sync_id8_from_filename(&f.name),
       }
     })
     .collect();
@@ -164,16 +164,21 @@ pub(crate) fn pair_live_photos(files: &mut Vec<MediaFile>) {
       continue;
     }
     let image_stem = file_stem_lower(&file.name);
-    let image_index = icloud_index_prefix(&image_stem);
+    let image_content = strip_sync_filename_stem_prefix(&image_stem);
+    let image_id8 = sync_id8_from_filename(&file.name);
 
     let matched_mov = mov_candidates
       .iter()
       .filter(|m| !consumed_movs.contains(&m.path))
       .find(|m| {
-        mov_matches_image_stem(m, &image_stem)
-          || (image_index.is_some()
-            && m.index_prefix.is_some()
-            && image_index == m.index_prefix)
+        // 1) 新格式：同一 asset 的 still/mov 共享 id8
+        if let (Some(ref a), Some(ref b)) = (&image_id8, &m.id8) {
+          if a == b {
+            return true;
+          }
+        }
+        // 2) content stem 全名（旧 icloudpd / 归一 _HEVC 等）
+        content_stems_match(&image_content, &m.content_stem)
       });
 
     if let Some(mov) = matched_mov {
@@ -572,7 +577,8 @@ mod tests {
   }
 
   #[test]
-  fn pair_icloud_sync_index_prefix_when_stems_differ() {
+  fn pair_legacy_sync_stem_after_index_strip() {
+    // 旧格式：去五位后 stem 全名 + _HEVC 归一即可，不靠「仅序号」
     let mut files = vec![
       image_file("00003_IMG_0027.HEIC"),
       mov_file("00003_IMG_0027_HEVC.MOV"),
@@ -580,6 +586,30 @@ mod tests {
     pair_live_photos(&mut files);
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn pair_new_format_by_shared_id8() {
+    let mut files = vec![
+      image_file("20240115T120000_abcd1234_IMG_0027.HEIC"),
+      mov_file("20240115T120000_abcd1234_IMG_0027.MOV"),
+    ];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].kind, MediaKind::LivePhoto);
+  }
+
+  #[test]
+  fn same_index_different_id8_does_not_pair() {
+    // 旧 index 撞号时，绝不能仅因 00003_ 相同就配成 Live
+    let mut files = vec![
+      image_file("00003_aaaaaaaa_PHOTO_A.HEIC"),
+      mov_file("00003_bbbbbbbb_CLIP_B.MOV"),
+    ];
+    pair_live_photos(&mut files);
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].kind, MediaKind::Image);
+    assert_eq!(files[1].kind, MediaKind::Video);
   }
 
   #[test]

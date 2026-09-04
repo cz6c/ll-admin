@@ -126,6 +126,7 @@ hash ← version + file_stem + modified + size
 |------|------|
 | 结构 | 一正本 + 多副本分组；副本带置信度 |
 | 置信度 | **低**：stem 同、大小不一致（默认不选）→ **中**：大小一致 → **高**：在中档上内容哈希一致（中/高默认选） |
+| 列表排序 | 组列表与组内副本均按置信度 **高→低**（同档再比高置信条数 / contentKey） |
 | 性能 | 仅中档候选读盘算哈希；低档不算哈希 |
 | 正本 | `state.db` synced + 新命名 `dest_path` 在盘 |
 | Legacy | sync 外 icloudpd + sync 内旧命名；匹配 stem |

@@ -683,6 +683,32 @@ fn try_push_legacy_duplicate(
   used_legacy.insert(legacy_key);
 }
 
+/// 置信度展示序：高 → 中 → 低（数值越小越靠前）
+fn confidence_sort_rank(confidence: DuplicateMatchConfidence) -> u8 {
+  match confidence {
+    DuplicateMatchConfidence::High => 0,
+    DuplicateMatchConfidence::Medium => 1,
+    DuplicateMatchConfidence::Low => 2,
+  }
+}
+
+fn group_best_confidence_rank(group: &DuplicateGroup) -> u8 {
+  group
+    .duplicates
+    .iter()
+    .map(|item| confidence_sort_rank(item.confidence))
+    .min()
+    .unwrap_or(2)
+}
+
+fn group_high_confidence_count(group: &DuplicateGroup) -> usize {
+  group
+    .duplicates
+    .iter()
+    .filter(|item| matches!(item.confidence, DuplicateMatchConfidence::High))
+    .count()
+}
+
 /// 扫描相册根目录，找出 sync 正本与 legacy 重复组（一正本多副本）
 pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, String> {
   let album_settings = settings::load_settings(app)?;
@@ -755,9 +781,21 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
     })
     .collect();
 
+  // 组列表与组内副本均按置信度高→低，便于清理弹窗优先处理高置信项
+  for group in &mut result {
+    group
+      .duplicates
+      .sort_by_key(|item| confidence_sort_rank(item.confidence));
+  }
   result.sort_by(|a, b| {
-    a.content_key
-      .cmp(&b.content_key)
+    group_best_confidence_rank(a)
+      .cmp(&group_best_confidence_rank(b))
+      .then_with(|| {
+        let high_a = group_high_confidence_count(a);
+        let high_b = group_high_confidence_count(b);
+        high_b.cmp(&high_a)
+      })
+      .then_with(|| a.content_key.cmp(&b.content_key))
       .then_with(|| a.asset_id.cmp(&b.asset_id))
   });
   for group in &mut result {

@@ -244,7 +244,7 @@ function _useIcloudSyncJob() {
       return "iCloud 副本已移除，本地文件保留。可在「释放iCloud空间」查看。";
     }
     if (isDone.value && isSyncTask.value && outputDir.value) {
-      return `照片已在本地。有新增时再点「同步到本地」；也可切换到「释放iCloud空间」移除 iCloud 副本。文件夹：${outputDir.value}`;
+      return `照片已在本地。有新增时再点「同步到本地」；也可切换到「释放iCloud空间」移除 iCloud 副本。`;
     }
     if (showEmptyGuide.value && isLoggedIn.value) {
       return "移除 iCloud 存储请切换到下方「释放iCloud空间」";

@@ -357,6 +357,7 @@ fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
 fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
   let name = sync_asset_filename(
     asset.capture_at.as_deref(),
+    &asset.apple_id,
     &asset.asset_id,
     &asset.original_filename,
     asset.part,
@@ -408,7 +409,7 @@ fn local_dest_ready(dest: &Path) -> bool {
 }
 
 /// 磁盘已有有效文件时补记 done，避免重复下载与进度卡在最后一张。
-/// 仅精确匹配 `{index:05d}_{id8}_{sanitized_stem}.{ext}`。
+/// 仅精确匹配当前落盘名 `{unix}_{apple8}_{id16}.{ext}`。
 fn mark_asset_done_if_on_disk(
   conn: &rusqlite::Connection,
   asset: &AssetRow,
@@ -1567,7 +1568,7 @@ mod tests {
 
     let mut asset = AssetRow {
       id: 0,
-      apple_id: String::new(),
+      apple_id: "user@icloud.com".into(),
       asset_id: "A31".into(),
       sort_key: "2026-01-01".into(),
       capture_at: None,

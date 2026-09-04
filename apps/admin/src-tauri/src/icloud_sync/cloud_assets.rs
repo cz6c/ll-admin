@@ -45,7 +45,7 @@ fn resolve_live_mov_display_filename(still_filename: &str, mov_original: &str) -
   if !mov_original.is_empty() && mov_original != still_filename {
     return mov_original.to_string();
   }
-  // 不用 dest_path basename：落盘名为 {capture}_{id8}_{stem}.ext，仅用于本地路径
+  // 不用 dest_path basename：落盘名为 {unix}_{apple8}_{id16}.ext，仅用于本地路径
   derive_live_mov_filename(still_filename)
 }
 

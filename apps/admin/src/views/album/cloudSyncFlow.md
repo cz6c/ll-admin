@@ -31,8 +31,8 @@ flowchart LR
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
 | 抽屉二分栏 | 顶部为**全局进度/主操作**（单任务）；其下 **同步到本地** / **释放iCloud空间** 共用列表，Tab 子集按场景裁剪（拉取：全部/待同步/已同步/同步失败；释放：全部/待移除（已同步）/已移除/移除失败）。取消删云任务走进度区「取消任务」 |
-| 本地排序 | 落盘 `{unix_secs}_{id8}_{stem}.ext`，相册按文件名字典序近 Library 拍摄序；schema v5 已删除 `index_num` 列 |
-| 文件名迁移 | 一次性 `icloud_sync_migrate_filenames`：旧 `{index}_…` → capture 格式；迁完可删模块/按钮 |
+| 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；schema v5 已删除 `index_num` 列 |
+| 文件名迁移 | 一次性 `icloud_sync_migrate_filenames`：全部历史格式 → 当前格式；旧格式识别仅在迁移模块，迁完可删模块/按钮 |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |

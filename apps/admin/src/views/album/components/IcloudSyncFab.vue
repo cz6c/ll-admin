@@ -477,14 +477,14 @@ async function onRetryCloudDeletes() {
 }
 
 /**
- * 一次性：旧 `{index}_…` → `{capture}_{id8}_…`；迁完可删本函数与工具栏按钮
+ * 一次性：旧同步落盘名 → `{unix}_{apple8}_{id16}`；迁完可删本函数与工具栏按钮
  */
 function confirmMigrateFilenames() {
   if (!guardCloudManageAction()) return;
   Modal.confirm({
     title: "迁移本地同步文件名？",
     content:
-      "将已下载文件从旧序号命名改为「拍摄时间+短码」命名。会同步更新相册索引与缩略图缓存，避免改名后宫格丢图。仅处理数据库已绑定的文件；完成后本入口可删除。",
+      "将已下载文件改为「拍摄时间 + 账号短码 + 资产短码」命名（换号同目录不撞名）。会同步更新相册索引与缩略图缓存。仅处理数据库已绑定的文件；全员迁完后可删除本入口。",
     okText: "开始迁移",
     cancelText: "取消",
     onOk: () => onMigrateFilenames()

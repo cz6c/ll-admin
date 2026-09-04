@@ -9,16 +9,18 @@ mod db;
 mod keyring_store;
 /// 一次性文件名迁移；全员迁完后可删本模块与前端入口
 mod migrate_sync_filenames;
-mod naming;
+pub(crate) mod naming;
 pub mod queue;
 mod settings;
 mod sidecar;
 mod task;
-mod types;
+pub(crate) mod types;
 
-pub use naming::strip_sync_filename_stem_prefix;
-pub use naming::{is_legacy_sync_filename, is_new_format_sync_filename, sync_id8_from_filename};
-pub use migrate_sync_filenames::MigrateSyncFilenamesResult;
+pub use naming::is_sync_filename;
+/// 迁移过渡期导出；删 `migrate_sync_filenames` 时同步去掉 album 侧引用
+pub use migrate_sync_filenames::{
+  is_pre_v3_sync_filename, legacy_content_stem_for_dedup, MigrateSyncFilenamesResult,
+};
 
 use std::path::PathBuf;
 use std::sync::Mutex;

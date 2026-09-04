@@ -11,8 +11,8 @@ use tauri::AppHandle;
 use walkdir::WalkDir;
 
 use crate::icloud_sync::{
-  is_legacy_sync_filename, is_new_format_sync_filename, list_synced_local_rows,
-  resolve_sync_output_dir, strip_sync_filename_stem_prefix,
+  is_pre_v3_sync_filename, is_sync_filename, legacy_content_stem_for_dedup,
+  list_synced_local_rows, resolve_sync_output_dir,
 };
 
 use super::types::{
@@ -31,9 +31,9 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// 文件名 stem 归一为匹配键：去同步落盘的 index/id8 前缀、小写
+/// 文件名 stem 归一为匹配键：迁移过渡期去掉历史同步前缀；迁完可改为直接小写 stem
 fn content_key_from_stem(stem: &str) -> String {
-  strip_sync_filename_stem_prefix(stem)
+  legacy_content_stem_for_dedup(stem)
 }
 
 fn content_key_from_filename(name: &str) -> String {
@@ -311,7 +311,7 @@ fn scan_sync_dir_legacy_orphans(
     else {
       continue;
     };
-    if !Path::new(path).is_file() || !is_new_format_sync_filename(path) {
+    if !Path::new(path).is_file() || !is_sync_filename(path) {
       continue;
     }
     canonical_by_key
@@ -343,7 +343,7 @@ fn scan_sync_dir_legacy_orphans(
       .and_then(|n| n.to_str())
       .unwrap_or_default()
       .to_string();
-    if !is_legacy_sync_filename(&name) {
+    if !is_pre_v3_sync_filename(&name) {
       continue;
     }
     let ext = get_ext(path);

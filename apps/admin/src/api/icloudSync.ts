@@ -445,6 +445,8 @@ export function loadIcloudSyncAssets(
     /** YYYY-MM-DD，按拍摄日期（captureAt，无则 sortKey）筛选 */
     dateFrom?: string;
     dateTo?: string;
+    /** 云端原名 original_filename 子串模糊（大小写不敏感） */
+    filenameKeyword?: string;
   } = {}
 ) {
   return invoke<IcloudSyncLoadAssetsResult>("icloud_sync_load_assets", {
@@ -452,7 +454,8 @@ export function loadIcloudSyncAssets(
     limit: options.limit ?? 50,
     cloudState: options.cloudState && options.cloudState !== "all" ? options.cloudState : null,
     dateFrom: options.dateFrom?.trim() || null,
-    dateTo: options.dateTo?.trim() || null
+    dateTo: options.dateTo?.trim() || null,
+    filenameKeyword: options.filenameKeyword?.trim() || null
   });
 }
 

@@ -32,7 +32,7 @@ import {
 } from "@/utils/icloudSyncCloudList";
 import { Modal, message } from "ant-design-vue";
 import dayjs, { type Dayjs } from "dayjs";
-import { useResizeObserver, useThrottleFn } from "@vueuse/core";
+import { useDebounceFn, useResizeObserver, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
@@ -83,6 +83,8 @@ const DRAWER_MODE_OPTIONS = [
 const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
+/** 文件名模糊搜索（对 original_filename） */
+const cloudFilenameKeyword = ref("");
 const cloudPage = ref(1);
 const cloudPageSize = ref(50);
 const cloudTotal = ref(0);
@@ -283,7 +285,8 @@ async function refreshCloudAssets() {
       offset: (cloudPage.value - 1) * cloudPageSize.value,
       limit: cloudPageSize.value,
       cloudState: filter,
-      ...cloudDateBounds()
+      ...cloudDateBounds(),
+      filenameKeyword: cloudFilenameKeyword.value.trim() || undefined
     });
     cloudRows.value = list.items.map(row => {
       const displayRow: IcloudSyncCloudListRow = { ...row, rowKey: row.assetId };
@@ -310,6 +313,11 @@ function onCloudFilterChange() {
   clearCloudSelection();
   void refreshCloudAssets();
 }
+
+/** 文件名输入防抖刷新（与 Tab/日期筛选共用重置页码） */
+const onCloudFilenameKeywordChange = useDebounceFn(() => {
+  onCloudFilterChange();
+}, 300);
 
 function onCloudTableChange(pagination: { current?: number; pageSize?: number }) {
   if (pagination.current) cloudPage.value = pagination.current;
@@ -606,6 +614,14 @@ onMounted(() => {
 
           <div class="toolbar-actions">
             <div class="toolbar-left">
+              <a-input
+                v-model:value="cloudFilenameKeyword"
+                class="cloud-filename-search"
+                allow-clear
+                placeholder="文件名"
+                spellcheck="false"
+                @change="onCloudFilenameKeywordChange"
+              />
               <a-range-picker
                 v-model:value="cloudDateRange"
                 class="cloud-date-range"
@@ -812,6 +828,12 @@ onMounted(() => {
   gap: 8px;
   flex-wrap: wrap;
 }
+.cloud-filename-search {
+  width: 180px;
+}
+.cloud-date-range {
+  width: 260px;
+}
 .tab-count-badge {
   :deep(.ant-badge-count) {
     min-width: 16px;
@@ -824,9 +846,6 @@ onMounted(() => {
 }
 :deep(.ant-tabs-tab-active) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
   background: var(--color-primary);
-}
-.cloud-date-range {
-  width: 260px;
 }
 .cloud-table-wrap {
   flex: 1;

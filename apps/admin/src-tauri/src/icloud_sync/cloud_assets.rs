@@ -32,6 +32,13 @@ fn push_cloud_list_where(parts: &mut Vec<String>) {
   parts.push(LIVE_MOV_LIST_HIDDEN.to_string());
 }
 
+/// 文件名模糊：`original_filename` 大小写不敏感子串；空串不加条件
+fn push_filename_keyword(parts: &mut Vec<String>, keyword: Option<&str>) -> Option<String> {
+  let kw = keyword.map(str::trim).filter(|s| !s.is_empty())?;
+  parts.push("instr(lower(original_filename), lower(?)) > 0".to_string());
+  Some(kw.to_string())
+}
+
 /// catalog 常给 still/mov 同一 filename；列表展示 mov 时用云端原名或从 still 推导 .MOV
 fn derive_live_mov_filename(still_filename: &str) -> String {
   let stem = Path::new(still_filename)
@@ -298,6 +305,7 @@ pub fn load_sync_assets(
   cloud_state_filter: Option<&str>,
   date_from: Option<&str>,
   date_to: Option<&str>,
+  filename_keyword: Option<&str>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let date_filter = SortKeyDateFilter::parse(date_from, date_to);
   let filter = cloud_state_filter
@@ -305,7 +313,14 @@ pub fn load_sync_assets(
     .filter(|s| !s.is_empty() && *s != "all")
     .map(|s| if s == "modified_cloud" { "cloud_only" } else { s });
   if filter == Some("download_failed") {
-    return load_sync_assets_download_failed(conn, apple_id, offset, limit, &date_filter);
+    return load_sync_assets_download_failed(
+      conn,
+      apple_id,
+      offset,
+      limit,
+      &date_filter,
+      filename_keyword,
+    );
   }
 
   let lim = i64::from(limit.clamp(1, 200));
@@ -316,6 +331,7 @@ pub fn load_sync_assets(
     where_parts.push("cloud_state = ?".to_string());
   }
   date_filter.push_where(&mut where_parts);
+  let filename_kw = push_filename_keyword(&mut where_parts, filename_keyword);
   push_cloud_list_where(&mut where_parts);
   let where_clause = where_parts.join(" AND ");
 
@@ -338,6 +354,9 @@ pub fn load_sync_assets(
     count_params.push(Box::new(st.to_string()));
   }
   date_filter.push_params(&mut count_params);
+  if let Some(ref kw) = filename_kw {
+    count_params.push(Box::new(kw.clone()));
+  }
   let count_refs: Vec<&dyn rusqlite::ToSql> = count_params.iter().map(|p| p.as_ref()).collect();
   let total: i64 = conn
     .query_row(&count_sql, count_refs.as_slice(), |row| row.get(0))
@@ -348,6 +367,9 @@ pub fn load_sync_assets(
     list_params.push(Box::new(st.to_string()));
   }
   date_filter.push_params(&mut list_params);
+  if let Some(ref kw) = filename_kw {
+    list_params.push(Box::new(kw.clone()));
+  }
   list_params.push(Box::new(lim));
   list_params.push(Box::new(off));
   let list_refs: Vec<&dyn rusqlite::ToSql> = list_params.iter().map(|p| p.as_ref()).collect();
@@ -382,6 +404,7 @@ fn load_sync_assets_download_failed(
   offset: u32,
   limit: u32,
   date_filter: &SortKeyDateFilter,
+  filename_keyword: Option<&str>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let lim = i64::from(limit.clamp(1, 200));
   let off = i64::from(offset);
@@ -393,6 +416,7 @@ fn load_sync_assets_download_failed(
     "EXISTS (SELECT 1 FROM jobs j WHERE j.id = assets.active_job_id AND j.task_type = 'sync')".to_string(),
   ];
   date_filter.push_where(&mut where_parts);
+  let filename_kw = push_filename_keyword(&mut where_parts, filename_keyword);
   push_cloud_list_where(&mut where_parts);
   let where_clause = where_parts.join(" AND ");
 
@@ -412,6 +436,9 @@ fn load_sync_assets_download_failed(
 
   let mut count_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(apple_id.to_string())];
   date_filter.push_params(&mut count_params);
+  if let Some(ref kw) = filename_kw {
+    count_params.push(Box::new(kw.clone()));
+  }
   let count_refs: Vec<&dyn rusqlite::ToSql> = count_params.iter().map(|p| p.as_ref()).collect();
   let total: i64 = conn
     .query_row(&count_sql, count_refs.as_slice(), |row| row.get(0))
@@ -419,6 +446,9 @@ fn load_sync_assets_download_failed(
 
   let mut list_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(apple_id.to_string())];
   date_filter.push_params(&mut list_params);
+  if let Some(ref kw) = filename_kw {
+    list_params.push(Box::new(kw.clone()));
+  }
   list_params.push(Box::new(lim));
   list_params.push(Box::new(off));
   let list_refs: Vec<&dyn rusqlite::ToSql> = list_params.iter().map(|p| p.as_ref()).collect();
@@ -531,6 +561,7 @@ pub fn icloud_sync_load_assets(
   cloud_state: Option<String>,
   date_from: Option<String>,
   date_to: Option<String>,
+  filename_keyword: Option<String>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let settings = load_settings(&app)?;
   let apple_id = settings.apple_id.trim();
@@ -551,6 +582,7 @@ pub fn icloud_sync_load_assets(
     filter,
     date_from.as_deref(),
     date_to.as_deref(),
+    filename_keyword.as_deref(),
   )
 }
 
@@ -689,6 +721,7 @@ mod tests {
       Some("synced"),
       Some("2024-01-01"),
       Some("2024-01-31"),
+      None,
     )
     .expect("jan");
     assert_eq!(jan.total, 1);
@@ -702,9 +735,25 @@ mod tests {
       Some("synced"),
       Some("2024-02-01"),
       Some("2024-03-31"),
+      None,
     )
     .expect("feb_mar");
     assert_eq!(feb_mar.total, 2);
+
+    let by_name = load_sync_assets(
+      &conn,
+      "u@x.com",
+      0,
+      50,
+      Some("synced"),
+      None,
+      None,
+      Some("D2"),
+    )
+    .expect("by_name");
+    // insert_synced 文件名为 `{asset_id}.jpg`
+    assert_eq!(by_name.total, 1);
+    assert_eq!(by_name.items[0].asset_id, "D2");
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(path);
@@ -759,7 +808,7 @@ mod tests {
         .expect("insert live with dest");
     }
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L3").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_0027.MOV"));
 
@@ -783,7 +832,7 @@ mod tests {
         )
         .expect("insert live same name");
     }
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None, None).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L2").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_1.MOV"));
     let _ = std::fs::remove_file(path);
@@ -814,7 +863,7 @@ mod tests {
     );
     insert_synced(&conn, "P1", "2024-06-02", still.to_str().unwrap());
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None).expect("page");
     assert_eq!(page.total, 2, "live pair counts as one row");
     assert_eq!(page.items.len(), 2);
     assert!(page.items.iter().all(|r| r.part != "mov"));
@@ -870,7 +919,7 @@ mod tests {
     assert_eq!(summary.download_failed, 1);
 
     let page =
-      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None).expect("page");
+      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None, None).expect("page");
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].asset_id, "F1");
     assert_eq!(page.items[0].download_status.as_deref(), Some("failed"));

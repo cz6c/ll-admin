@@ -1,7 +1,6 @@
 //! iCloud 同步落盘命名（当前唯一格式）
-//! 职责：`{unix_secs}_{apple8}_{id16}.{ext}` 生成与解析；换号同目录靠 apple8 隔离
-//! 适用：下载落盘、相册 Live 配对（仅认本格式）
-//! @note 旧格式识别与一次性改名见 `migrate_sync_filenames`（迁完可删）
+//! 职责：生成 `{unix_secs}_{apple8}_{id16}.{ext}`；换号同目录靠 apple8 隔离
+//! 适用：下载落盘；相册 Live 按完整 stem 配对（本模块不解析旧名）
 
 use std::path::Path;
 
@@ -92,39 +91,6 @@ pub fn sync_asset_filename(
   format_asset_filename(capture_at, apple_id, asset_id, &ext)
 }
 
-fn is_unix_secs_prefix(s: &str) -> bool {
-  let len = s.len();
-  (9..=12).contains(&len) && s.chars().all(|c| c.is_ascii_digit())
-}
-
-fn is_hex_token(s: &str, len: usize) -> bool {
-  s.len() == len && s.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-/// 是否为当前同步落盘格式 `{unix}_{apple8}_{id16}.ext`
-pub fn is_sync_filename(filename: &str) -> bool {
-  sync_asset_token_from_filename(filename).is_some()
-}
-
-/// 从当前格式 basename 解析 id16（Live 配对用）；非本格式返回 None
-pub fn sync_asset_token_from_filename(filename: &str) -> Option<String> {
-  let stem = Path::new(filename).file_stem().and_then(|s| s.to_str())?;
-  let mut parts = stem.split('_');
-  let unix = parts.next()?;
-  let apple8 = parts.next()?;
-  let id16 = parts.next()?;
-  if parts.next().is_some() {
-    return None;
-  }
-  if !is_unix_secs_prefix(unix) {
-    return None;
-  }
-  if !is_hex_token(apple8, 8) || !is_hex_token(id16, 16) {
-    return None;
-  }
-  Some(id16.to_ascii_lowercase())
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -148,19 +114,6 @@ mod tests {
     let apple8 = apple_id_token("user@icloud.com");
     let id16 = asset_id_token16("asset-uuid-1");
     assert_eq!(name, format!("1705321845_{apple8}_{id16}.jpg"));
-    assert!(is_sync_filename(&name));
-    assert_eq!(
-      sync_asset_token_from_filename(&name).as_deref(),
-      Some(id16.as_str())
-    );
-  }
-
-  #[test]
-  fn old_formats_are_not_current_sync_names() {
-    assert!(!is_sync_filename("00042_IMG_0027.HEIC"));
-    assert!(!is_sync_filename("00042_abcd1234_IMG_0027.HEIC"));
-    assert!(!is_sync_filename("1705321845_abcd1234_IMG_0027.HEIC"));
-    assert!(!is_sync_filename("20240115T120000_abcd1234_x.HEIC"));
   }
 
   #[test]

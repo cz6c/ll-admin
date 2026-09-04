@@ -1,5 +1,5 @@
-//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd / 同步目录内旧命名副本
-//! 职责：按 content_key 匹配正本（sync dest_path）与可删 legacy；Live 按一张实况成组
+//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd 等副本
+//! 职责：按 content_key（original_filename / 磁盘 stem）匹配正本与可删 legacy；Live 按一张实况成组
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
 
 use std::collections::{HashMap, HashSet};
@@ -10,10 +10,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
-use crate::icloud_sync::{
-  is_pre_v3_sync_filename, is_sync_filename, legacy_content_stem_for_dedup,
-  list_synced_local_rows, resolve_sync_output_dir,
-};
+use crate::icloud_sync::{list_synced_local_rows, resolve_sync_output_dir};
 
 use super::types::{
   DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence,
@@ -31,9 +28,9 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// 文件名 stem 归一为匹配键：迁移过渡期去掉历史同步前缀；迁完可改为直接小写 stem
+/// 文件名 stem 归一为匹配键（小写）；正本侧通常来自库内 original_filename
 fn content_key_from_stem(stem: &str) -> String {
-  legacy_content_stem_for_dedup(stem)
+  stem.to_lowercase()
 }
 
 fn content_key_from_filename(name: &str) -> String {
@@ -290,112 +287,6 @@ fn scan_legacy_assets(
   }
 
   index
-}
-
-/// 同步目录内旧命名文件：DB 已有新格式正本且 content_key（stem）一致时可删
-fn scan_sync_dir_legacy_orphans(
-  sync_output: &Path,
-  canonical_paths: &HashSet<String>,
-  canonical_assets: &[CanonicalAsset],
-) -> Vec<(CanonicalAsset, LegacyAsset)> {
-  if !sync_output.is_dir() {
-    return Vec::new();
-  }
-
-  let mut canonical_by_key: HashMap<String, CanonicalAsset> = HashMap::new();
-  for asset in canonical_assets {
-    let Some(path) = asset
-      .still_path
-      .as_deref()
-      .or(asset.mov_path.as_deref())
-    else {
-      continue;
-    };
-    if !Path::new(path).is_file() || !is_sync_filename(path) {
-      continue;
-    }
-    canonical_by_key
-      .entry(asset.content_key.clone())
-      .or_insert_with(|| asset.clone());
-  }
-
-  if canonical_by_key.is_empty() {
-    return Vec::new();
-  }
-
-  let mut dir_files: Vec<MediaFile> = Vec::new();
-  for entry in WalkDir::new(sync_output)
-    .min_depth(1)
-    .max_depth(1)
-    .into_iter()
-    .filter_map(|e| e.ok())
-  {
-    if !entry.file_type().is_file() {
-      continue;
-    }
-    let path = entry.path();
-    let path_key = normalize_path_key(&path.to_string_lossy());
-    if canonical_paths.contains(&path_key) {
-      continue;
-    }
-    let name = path
-      .file_name()
-      .and_then(|n| n.to_str())
-      .unwrap_or_default()
-      .to_string();
-    if !is_pre_v3_sync_filename(&name) {
-      continue;
-    }
-    let ext = get_ext(path);
-    if !is_image(&ext) && !is_video(&ext) {
-      continue;
-    }
-    dir_files.push(MediaFile {
-      path: path.to_string_lossy().to_string(),
-      name,
-      kind: if is_image(&ext) {
-        MediaKind::Image
-      } else {
-        MediaKind::Video
-      },
-      size: 0,
-      modified: 0,
-      ext,
-      thumb_path: None,
-      preview_path: None,
-      playback_path: None,
-      video_path: None,
-    });
-  }
-
-  pair_live_photos(&mut dir_files);
-
-  let mut out: Vec<(CanonicalAsset, LegacyAsset)> = Vec::new();
-  let mut used_legacy: HashSet<String> = HashSet::new();
-
-  for file in dir_files {
-    let legacy_key = normalize_path_key(&file.path);
-    if used_legacy.contains(&legacy_key) {
-      continue;
-    }
-    let key = content_key_from_filename(&file.name);
-    let Some(canonical) = canonical_by_key.get(&key).cloned() else {
-      continue;
-    };
-    let legacy = LegacyAsset {
-      path: file.path,
-      name: file.name,
-      ext: file.ext,
-      video_path: file.video_path,
-    };
-    if overlaps_canonical(&legacy, canonical_paths) {
-      continue;
-    }
-    used_legacy.insert(legacy_key);
-    out.push((canonical, legacy));
-  }
-
-  out
 }
 
 fn canonical_to_side(asset: &CanonicalAsset) -> DuplicateFileSide {
@@ -730,8 +621,6 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
   }
 
   let legacy_index = scan_legacy_assets(&root_path, &sync_output, &canonical_paths);
-  let sync_orphans =
-    scan_sync_dir_legacy_orphans(&sync_output, &canonical_paths, &canonical_assets);
 
   let mut stem_counts: HashMap<String, usize> = HashMap::new();
   for asset in &canonical_assets {
@@ -742,16 +631,6 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
 
   let mut groups: HashMap<String, GroupBuilder> = HashMap::new();
   let mut used_legacy: HashSet<String> = HashSet::new();
-
-  for (asset, legacy) in sync_orphans {
-    try_push_legacy_duplicate(
-      &mut groups,
-      &asset,
-      &legacy,
-      &canonical_paths,
-      &mut used_legacy,
-    );
-  }
 
   for asset in &canonical_assets {
     let Some(candidates) = legacy_index.get(&asset.content_key) else {
@@ -809,9 +688,9 @@ mod tests {
   use super::*;
 
   #[test]
-  fn content_key_strips_index_prefix() {
-    assert_eq!(content_key_from_filename("00042_IMG_0027.HEIC"), "img_0027");
+  fn content_key_is_lowercase_stem() {
     assert_eq!(content_key_from_filename("IMG_0027.HEIC"), "img_0027");
+    assert_eq!(content_key_from_filename("00042_IMG_0027.HEIC"), "00042_img_0027");
   }
 
   #[test]

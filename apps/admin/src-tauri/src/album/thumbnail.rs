@@ -112,62 +112,6 @@ fn thumb_cache_file(cache_dir: &Path, path: &str, modified: i64, target: u32) ->
   cache_dir.join(format!("{key}.webp"))
 }
 
-/**
- * 源文件改名后，把已有缓存文件迁到新 stem 对应的 cache_key 路径
- * @note 小图优化时 thumb 可能等于原图 path，此时直接指向 new_path；迁失败则保留旧绝对路径仍可展示
- */
-pub fn relocate_derived_caches(
-  cache_dir: &Path,
-  old_path: &str,
-  new_path: &str,
-  new_modified: i64,
-  thumb_size: u32,
-  thumb_path: Option<String>,
-  preview_path: Option<String>,
-  playback_path: Option<String>,
-) -> (Option<String>, Option<String>, Option<String>) {
-  let move_one = |from: Option<String>, to: PathBuf| -> Option<String> {
-    let Some(from) = from.filter(|s| !s.trim().is_empty()) else {
-      return None;
-    };
-    if from == old_path {
-      return Some(new_path.to_string());
-    }
-    let from_p = Path::new(&from);
-    if !from_p.is_file() {
-      return None;
-    }
-    if to.as_path() == from_p {
-      return Some(from);
-    }
-    if to.is_file() {
-      let _ = std::fs::remove_file(from_p);
-      return Some(to.to_string_lossy().into_owned());
-    }
-    if let Some(parent) = to.parent() {
-      let _ = std::fs::create_dir_all(parent);
-    }
-    match std::fs::rename(from_p, &to) {
-      Ok(()) => Some(to.to_string_lossy().into_owned()),
-      Err(_) => Some(from),
-    }
-  };
-
-  let new_thumb = move_one(
-    thumb_path,
-    thumb_cache_file(cache_dir, new_path, new_modified, thumb_size),
-  );
-  let new_preview = move_one(
-    preview_path,
-    preview_cache_file(cache_dir, new_path, new_modified),
-  );
-  let new_playback = move_one(
-    playback_path,
-    playback_cache_file(cache_dir, new_path, new_modified),
-  );
-  (new_thumb, new_preview, new_playback)
-}
-
 fn save_thumb_webp(img: &image::DynamicImage, cache_file: &Path) -> Option<String> {
   let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
   match rgb.save_with_format(cache_file, ImageFormat::WebP) {
@@ -372,38 +316,5 @@ mod tests {
       preview_cache_file(dir, path, 100),
       preview_cache_file(dir, path, 101)
     );
-  }
-
-  #[test]
-  fn relocate_derived_caches_moves_webp_to_new_stem_key() {
-    let dir = std::env::temp_dir().join(format!(
-      "album_reloc_cache_{}",
-      std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let old_path = "E:\\photos\\00031_deadbeef_IMG.HEIC";
-    let new_path = "E:\\photos\\1705321845_deadbeef_IMG.HEIC";
-    let modified = 1_700_000_000_i64;
-    let old_thumb = thumb_cache_file(&dir, old_path, modified, 158);
-    std::fs::write(&old_thumb, b"webp").unwrap();
-    let (thumb, _, _) = relocate_derived_caches(
-      &dir,
-      old_path,
-      new_path,
-      modified,
-      158,
-      Some(old_thumb.to_string_lossy().into_owned()),
-      None,
-      None,
-    );
-    let expected = thumb_cache_file(&dir, new_path, modified, 158);
-    assert_eq!(thumb.as_deref(), Some(expected.to_str().unwrap()));
-    assert!(expected.is_file());
-    assert!(!old_thumb.is_file());
-    let _ = std::fs::remove_dir_all(&dir);
   }
 }

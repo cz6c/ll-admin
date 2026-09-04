@@ -129,7 +129,7 @@ hash ← version + file_stem + modified + size
 | 列表排序 | 组列表与组内副本均按置信度 **高→低**（同档再比高置信条数 / contentKey） |
 | 性能 | 仅中档候选读盘算哈希；低档不算哈希 |
 | 正本 | `state.db` synced + 新命名 `dest_path` 在盘 |
-| Legacy | sync 外 icloudpd + sync 内旧命名；匹配 stem |
+| Legacy | sync 外 icloudpd 等；匹配 original_filename / 磁盘 stem |
 | stem 歧义 | 多正本同 stem 时组标 `ambiguousStem` |
 | Live | still+mov 分别比大小/哈希；缺 part 标 incomplete |
 | 缺 part | 不阻塞匹配；UI 标「旧下载缺配对视频」等 |
@@ -141,7 +141,7 @@ hash ← version + file_stem + modified + size
 统一规则（同步 / 非同步相同）：去扩展名后的**完整 stem** 相等，或 mov stem 去掉 `_hevc` / `_heic` / `_mov` 后与静帧 stem 相等 → `kind=livephoto`，MOV 从列表剔除。  
 同步落盘 still/mov 共享 `{unix}_{apple8}_{id16}` stem，自然成对。未配对 MOV 仍为 `video`。
 
-同步落盘命名（当前）：`{unix_secs}_{apple8}_{id16}.{ext}`。历史 `{index}_…` / `{unix}_{id8}_{stem}` / `{YYYYMMDDTHHMMSS}_{id8}_…` 用抽屉「释放云空间 → 迁移文件名」一次性改写（同步搬迁 `media.db` 路径与 thumb/preview/playback 缓存）；`index_num` 列已于 schema v5 删除。
+同步落盘命名（当前）：`{unix_secs}_{apple8}_{id16}.{ext}`。`index_num` 列已于 schema v5 删除。
 
 ### HEIC / ffmpeg
 

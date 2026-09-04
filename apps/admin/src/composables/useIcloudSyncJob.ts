@@ -1,6 +1,6 @@
 /**
  * iCloud 统一任务状态
- * 职责：同步 / 删云 / 刷新 catalog 单任务模型、事件监听、主按钮与 FAB 状态
+ * 职责：同步 / 删云 / 刷新 catalog 单任务模型；主按钮「同步到本地」串联刷新+下载
  * 适用：IcloudSyncFab · IcloudSyncStatusCard · IcloudSyncAuthModal（退出）
  */
 
@@ -44,7 +44,12 @@ export interface IcloudSyncPrimaryAction {
   loading: boolean;
   disabled: boolean;
   handler: () => void | Promise<void>;
+  /** 悬停提示（如主按钮说明） */
+  tip?: string;
 }
+
+/** 「同步到本地」主路径 tip：UI 自动串联刷新 + 入队下载 */
+const SYNC_TO_LOCAL_TIP = "将先更新 iCloud 状态，再把待同步项同步到本地";
 
 function maskAppleId(raw: string): string {
   const id = raw.trim();
@@ -72,6 +77,11 @@ function _useIcloudSyncJob() {
   const outputDir = ref("");
   const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, failed: 0, pending: 0, filename: "" });
   const refreshingCatalog = ref(false);
+  /**
+   * catalog 完成后自动入队下载（仅「同步到本地」主路径置位；
+   * 「仅更新状态」不得置位，避免误下载）
+   */
+  let pendingAutoStartAfterCatalog = false;
 
   const catalogStartedAt = ref<number | null>(null);
   const downloadStartedAt = ref<number | null>(null);
@@ -113,9 +123,7 @@ function _useIcloudSyncJob() {
     if (isPausedSession.value) return sessionReauthReady.value;
     return isPausedUser.value;
   });
-  const isRunning = computed(
-    () => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value
-  );
+  const isRunning = computed(() => jobStatus.value === "running" || starting.value || resuming.value || isCataloging.value);
   const canPause = computed(() => {
     if (!isRunning.value || pausing.value || isCataloging.value) return false;
     return isSyncTask.value || isCloudDeleteTask.value;
@@ -131,7 +139,12 @@ function _useIcloudSyncJob() {
   const canManageCloudSpace = computed(() => !hasIncompleteTask.value);
   const canCancelJob = computed(() => hasIncompleteTask.value && !isCataloging.value && !discarding.value);
   const showEmptyGuide = computed(() => !hasActiveJob.value && !isRunning.value);
-  const showProgressBar = computed(() => hasActiveJob.value && (progress.value.total > 0 || isCataloging.value));
+  /** 仅同步下载 / 删云任务显示进度条；刷新 catalog 扫描只用文案，不用条 */
+  const showProgressBar = computed(() => {
+    if (!hasActiveJob.value || isCataloging.value || isCatalogTask.value) return false;
+    if (!(isSyncTask.value || isCloudDeleteTask.value)) return false;
+    return progress.value.total > 0;
+  });
 
   const progressPercent = computed(() => {
     if (!progress.value.total) return 0;
@@ -205,8 +218,9 @@ function _useIcloudSyncJob() {
       if (isCloudDeleteTask.value) return "正在从 iCloud 移除…";
       return "正在同步";
     }
-    if (showEmptyGuide.value && !isLoggedIn.value) return "登录后即可开始同步";
-    if (showEmptyGuide.value) return "准备就绪，可开始同步";
+    if (showEmptyGuide.value && !isLoggedIn.value) return "登录后即可同步";
+    // 空闲：标题不重复按钮文案；说明只补一句分栏指引
+    if (showEmptyGuide.value) return "准备就绪";
     return jobStatusLabel.value;
   });
 
@@ -219,19 +233,24 @@ function _useIcloudSyncJob() {
       return "登录状态已失效，已完成文件的进度已保留。请先重新登录后再继续同步。";
     }
     if (isCataloging.value && isCatalogTask.value) {
-      return `正在对比 iCloud 图库与本地注册表；已用时 ${catalogElapsedText.value}。`;
+      // starting=true 表示「同步到本地」串联路径，catalog 后会自动下载
+      const suffix = starting.value ? "完成后将自动开始下载。" : "";
+      return `正在对比 iCloud 图库与本地注册表；已用时 ${catalogElapsedText.value}。${suffix}`;
     }
     if (isCataloging.value) {
-      return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}，完成后自动开始同步。`;
+      return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}。`;
     }
     if (isDone.value && isCloudDeleteTask.value) {
-      return "iCloud 副本已移除，本地文件保留。可在下方「iCloud 已删除」查看。";
+      return "iCloud 副本已移除，本地文件保留。可在「释放iCloud空间」查看。";
     }
     if (isDone.value && isSyncTask.value && outputDir.value) {
-      return `照片已在本地。可再次「开始同步」拉取新增或尚未同步的照片；也可从 iCloud 移除副本以释放空间。文件夹：${outputDir.value}`;
+      return `照片已在本地。有新增时再点「同步到本地」；也可切换到「释放iCloud空间」移除 iCloud 副本。文件夹：${outputDir.value}`;
+    }
+    if (showEmptyGuide.value && isLoggedIn.value) {
+      return "移除 iCloud 存储请切换到下方「释放iCloud空间」";
     }
     if (showEmptyGuide.value) {
-      return "流程：登录 Apple ID → 点击开始同步；iCloud 列表可单独「刷新 iCloud 状态」更新待同步统计。";
+      return "";
     }
     if (jobStatus.value === "running" && progress.value.filename) {
       const prefix = isCloudDeleteTask.value ? "当前移除" : "当前";
@@ -321,6 +340,7 @@ function _useIcloudSyncJob() {
   }
 
   function clearActiveJob() {
+    pendingAutoStartAfterCatalog = false;
     storeJobId(null);
     taskType.value = null;
     jobStatus.value = null;
@@ -352,6 +372,18 @@ function _useIcloudSyncJob() {
       downloadStartedAt.value = Date.now();
     }
     syncCatalogTimer();
+    // 「同步到本地」：catalog 成功后自动入队下载；失败则结束串联
+    if (pendingAutoStartAfterCatalog && status.taskType === "catalog") {
+      if (status.status === "done") {
+        pendingAutoStartAfterCatalog = false;
+        void startDownloadAfterCatalog();
+        return;
+      }
+      if (status.status === "failed") {
+        pendingAutoStartAfterCatalog = false;
+        starting.value = false;
+      }
+    }
     if (status.status === "done") {
       progress.value = { done: status.total, total: status.total, failed: 0, pending: 0, filename: "" };
       try {
@@ -368,6 +400,7 @@ function _useIcloudSyncJob() {
     return status;
   }
 
+  /** 仅入队下载（不 catalog）；供串联路径与内部调用 */
   async function onStart() {
     starting.value = true;
     errorMsg.value = "";
@@ -380,15 +413,75 @@ function _useIcloudSyncJob() {
       const result = await startIcloudSyncJob();
       storeJobId(result.jobId);
       taskType.value = "sync";
-      jobStatus.value = "cataloging";
-      catalogStartedAt.value = Date.now();
-      downloadStartedAt.value = null;
+      jobStatus.value = "pending";
+      catalogStartedAt.value = null;
+      downloadStartedAt.value = Date.now();
       syncCatalogTimer();
       progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
       void refreshJobStatus(result.jobId);
     } catch (e) {
       errorMsg.value = formatIcloudSyncError(e);
     } finally {
+      starting.value = false;
+    }
+  }
+
+  /**
+   * catalog 成功后的入队下载；starting 已由 onSyncToLocal 置位，此处不再重复置位
+   * @note 无 cloud_only 时 start_job 会报错，由 errorMsg 展示
+   */
+  async function startDownloadAfterCatalog() {
+    errorMsg.value = "";
+    try {
+      const check = await validateIcloudSyncReady();
+      if (check.ok === false) {
+        errorMsg.value = check.message;
+        return;
+      }
+      const result = await startIcloudSyncJob();
+      storeJobId(result.jobId);
+      taskType.value = "sync";
+      jobStatus.value = "pending";
+      catalogStartedAt.value = null;
+      downloadStartedAt.value = Date.now();
+      syncCatalogTimer();
+      progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
+      void refreshJobStatus(result.jobId);
+    } catch (e) {
+      errorMsg.value = formatIcloudSyncError(e);
+    } finally {
+      starting.value = false;
+    }
+  }
+
+  /**
+   * 主路径「同步到本地」：先 catalog/diff，成功后再入队下载
+   * @note 与「仅更新状态」(onRefreshCatalog) 分离，避免只刷新也触发下载
+   */
+  async function onSyncToLocal() {
+    if (starting.value || refreshingCatalog.value || hasIncompleteTask.value) return;
+    starting.value = true;
+    errorMsg.value = "";
+    try {
+      const check = await validateIcloudSyncReady();
+      if (check.ok === false) {
+        errorMsg.value = check.message;
+        starting.value = false;
+        return;
+      }
+      pendingAutoStartAfterCatalog = true;
+      const result = await refreshIcloudSyncCatalog();
+      storeJobId(result.jobId);
+      taskType.value = "catalog";
+      jobStatus.value = "cataloging";
+      catalogStartedAt.value = Date.now();
+      progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
+      syncCatalogTimer();
+      void refreshJobStatus(result.jobId);
+      // starting 保持 true，直至 startDownloadAfterCatalog / catalog failed
+    } catch (e) {
+      pendingAutoStartAfterCatalog = false;
+      errorMsg.value = formatIcloudSyncError(e);
       starting.value = false;
     }
   }
@@ -432,7 +525,7 @@ function _useIcloudSyncJob() {
         await discardIcloudSyncJob(jobId);
       }
       clearActiveJob();
-      await onStart();
+      await onSyncToLocal();
     } catch (e) {
       errorMsg.value = formatIcloudSyncError(e);
     } finally {
@@ -480,16 +573,12 @@ function _useIcloudSyncJob() {
   }
 
   function confirmCancelJob() {
-    const title = isCloudDeleteTask.value
-      ? "取消移除任务？"
-      : isCatalogTask.value
-        ? "取消刷新 iCloud 目录？"
-        : "取消同步任务？";
+    const title = isCloudDeleteTask.value ? "取消移除任务？" : isCatalogTask.value ? "取消刷新 iCloud 目录？" : "取消同步任务？";
     const content = isCloudDeleteTask.value
       ? "将撤销尚未完成的 iCloud 移除队列；已移除的项不会恢复。"
       : isCatalogTask.value
         ? "将停止当前 iCloud 目录刷新；已有 cloud_state 统计会保留。"
-        : "将丢弃当前任务的同步进度（已同步到本地的文件会保留）。之后可重新「开始同步」。";
+        : "将丢弃当前任务的同步进度（已同步到本地的文件会保留）。之后可重新「同步到本地」。";
     Modal.confirm({
       title,
       content,
@@ -525,7 +614,7 @@ function _useIcloudSyncJob() {
     onLoggedOut();
   }
 
-  /** 主按钮：登录 / 开始 / 暂停 / 继续 / 重新开始 */
+  /** 主按钮：登录 / 同步到本地 / 暂停 / 继续 / 重新开始 */
   const primaryAction = computed((): IcloudSyncPrimaryAction | null => {
     if (jobAccountMismatch.value) {
       return {
@@ -533,16 +622,18 @@ function _useIcloudSyncJob() {
         kind: "primary",
         loading: discarding.value || starting.value,
         disabled: discarding.value || starting.value,
+        tip: SYNC_TO_LOCAL_TIP,
         handler: onDiscardAndRestart
       };
     }
     if (isDone.value) {
       return {
-        label: isCloudDeleteTask.value ? "开始同步" : "开始同步",
+        label: "同步到本地",
         kind: "primary",
         loading: starting.value,
         disabled: starting.value || hasIncompleteTask.value,
-        handler: onStart
+        tip: SYNC_TO_LOCAL_TIP,
+        handler: onSyncToLocal
       };
     }
     if (isFailed.value) {
@@ -551,6 +642,7 @@ function _useIcloudSyncJob() {
         kind: "primary",
         loading: discarding.value || starting.value,
         disabled: discarding.value || starting.value,
+        tip: SYNC_TO_LOCAL_TIP,
         handler: onDiscardAndRestart
       };
     }
@@ -608,11 +700,12 @@ function _useIcloudSyncJob() {
       };
     }
     return {
-      label: "开始同步",
+      label: "同步到本地",
       kind: "primary",
       loading: starting.value,
       disabled: starting.value,
-      handler: onStart
+      tip: SYNC_TO_LOCAL_TIP,
+      handler: onSyncToLocal
     };
   });
 
@@ -734,6 +827,7 @@ function _useIcloudSyncJob() {
     refreshingCatalog,
     bindActiveTask,
     onRefreshCatalog,
+    onSyncToLocal,
     primaryAction,
     hydrateFromStorage,
     loadAccountContext,

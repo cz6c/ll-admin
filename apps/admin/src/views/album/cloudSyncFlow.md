@@ -1,12 +1,12 @@
 # iCloud 同步 — 下载 / 云态 / 删云
 
-> **产品目的：** iCloud 空间不够 → **单向拉取到本地** → **显式删云腾空间** → 过一段时间再 **开始同步**，如此往复。  
+> **产品目的：** iCloud 空间不够 → **单向同步到本地** → **显式删云腾空间** → 再 **同步到本地**，如此往复。  
 > **职责：** catalog 落库 → 可续传下载 → 抽屉云管理 → 用户显式删云。  
 > **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncStatusCard` · `useIcloudSyncJob`  
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
-> **对齐：** 2026-09-02（schema v4 产品元数据 · diff 批处理优化 · changeTag 判据 · 全局单任务 · card Tabs）
+> **对齐：** 2026-09-04（UI：同步到本地串联刷新+下载 · 拉取/释放二分栏 · 进度条仅任务）
 
 姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md)
 
@@ -18,17 +18,20 @@
 
 ```mermaid
 flowchart LR
-  A[开始同步] --> B[本地相册可浏览]
-  B --> C[抽屉删云：全部或部分已拉取项]
+  A[同步到本地] --> B[本地相册可浏览]
+  B --> C[释放iCloud空间：全部或部分已拉取项]
   C --> D[iCloud 腾出空间]
-  D --> E[再次开始同步]
+  D --> E[再次同步到本地]
   E --> A
 ```
 
 | 原则 | 含义 |
 |------|------|
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
-| 单一拉取入口 | **仅「开始同步」**；无「检查新照片」等并行路径 |
+| 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
+| 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
+| 抽屉二分栏 | 顶部为**全局进度/主操作**（单任务）；其下 **同步到本地** / **释放iCloud空间** 共用列表，Tab 子集按场景裁剪（拉取：全部/待同步/已同步/同步失败；释放：全部/待移除（已同步）/已移除/移除失败）。取消删云任务走进度区「取消任务」 |
+| 进度条 | 仅同步下载 / 删云任务；刷新扫描只用文案 |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
@@ -41,13 +44,13 @@ flowchart LR
 
 | 操作 | 何时出现 | 行为 |
 |------|----------|------|
-| **开始同步** | 空闲 / 上次 `done` | 新 sync job → catalog → diff → mark 删 → reconcile → 补入队 → 下载 |
+| **同步到本地** | 空闲 / 上次 `done` | UI 串联：catalog job → 成功后 `start_job` 入队下载 |
+| **刷新状态** | 释放栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载（拉取栏靠「同步到本地」自带刷新） |
 | **暂停同步** | `running` | 协作暂停 worker → `paused_user` |
 | **继续同步** | `paused_user` / 重登后 `paused_session` | resume；**不** re-catalog |
 | **取消任务** | 未完成且非 `cataloging` | `discard_task`；已下文件保留；summary 计数保留 |
-| **重新开始** | `failed` / 账号不一致 | discard → 开始同步 |
-| **刷新 iCloud 状态** | 无未完成任务 | 仅 catalog diff（`TaskType::Catalog`），不下载 |
-| **释放 iCloud 空间** | 无未完成任务 | 抽屉下拉删云 |
+| **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
+| **释放iCloud空间** | 抽屉「释放」分栏 | 有勾选→移除所选；无勾选→移除全部已同步 |
 | **退出登录** | 抽屉 / 登录弹窗 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
 | **换号登录** | 登录弹窗换 Apple ID | discard 旧 job + 清前端 jobId |
@@ -64,11 +67,13 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  A[开始同步] --> B[catalog 全量枚举]
+  R[同步到本地 / 仅更新状态] --> B[catalog 全量枚举]
   B --> C[diff 落库]
   C --> D[mark 删除]
   D --> E[reconcile 本地缺失]
-  E --> F[补入队孤儿]
+  E --> S{主路径?}
+  S -->|同步到本地| F[cloud_only 入队]
+  S -->|仅更新状态| Z[done]
   F --> G[auth_probe]
   G --> H[download_batch]
   H --> I{pending 空?}
@@ -78,14 +83,13 @@ flowchart LR
 
 | 步 | 发生什么 | 用户看到 |
 |----|----------|----------|
-| 1 | `start_job` → `cataloging`，立刻返回 `jobId` | FAB 云图标呼吸动画 |
-| 2 | sidecar `catalog` 全量枚举 → diff 落库（含 `cpl_asset_*` + 产品元数据） | 「扫描图库…」 |
-| 3 | **`mark_catalog_deletions`**：库内有、catalog 无 → `deleted_cloud_pending` | — |
-| 4 | **`reconcile_synced_missing_local_files_in_catalog`**：本次 catalog 内 `synced` 且 `dest_path` 不在盘 → `cloud_only` | （无单独态，并入「待同步」） |
-| 5 | **`enqueue_outstanding_for_full_sync`**：catalog 内仍 `cloud_only` 且无 pending 的行补入队 | total 更新 |
-| 6 | `auth_probe` → `running` | 水球进度 % |
-| 7 | 组批 → `download_batch` | 进度推进 |
-| 8 | pending 空 → `done`；session 失效 → `paused_session` | 主按钮切换 |
+| 0 | **刷新**：`catalog` 全量枚举 → diff 落库（含元数据）→ mark 删 → reconcile；**不**入队 | 文案「正在刷新…」（无进度条） |
+| 1 | `start_job` → 将当前 `cloud_only` 绑到 sync job，立刻返回 `jobId` | FAB / 状态卡进度 |
+| 2 | `auth_probe` → `running` | 进度 % |
+| 3 | 组批 → `download_batch` | 进度推进 |
+| 4 | pending 空 → `done`；session 失效 → `paused_session` | 主按钮切换 |
+
+无待同步项时 `start_job` 报错。UI「同步到本地」自动先刷新再入队；「释放iCloud空间 · 刷新状态」只做步骤 0。
 
 ### B. 删云主路径（腾空间）
 
@@ -103,22 +107,22 @@ flowchart LR
 |----|----------|----------|
 | 1 | Modal 确认（Live 默认成对 still+mov） | 冷却 1.5s |
 | 2 | 读库 CPL + **本地 `dest_path` 必须 is_file** | 缺文件则 reject（需先同步或刷新 reconcile） |
-| 3 | worker 调 sidecar | 等待删云；可撤销 pending |
+| 3 | worker 调 sidecar | 等待删云；取消整任务用进度区「取消任务」 |
 | 4 | 成功 → **保留 assets 行**，`cloud_state=deleted_cloud_pending` | Tab「已移除」 |
 
 **门禁：** `canManageCloudSpace` 为假时禁用删云 / 刷新 catalog（与全局单任务互斥）。
 
 ### C. 刷新 iCloud 目录
 
-与「开始同步」共用 `persist_catalog_delta`（含 reconcile + 补入队），但 **不 spawn 下载**；job 类型为 `TaskType::Catalog`，完成后即 `done`。
+与「同步到本地」后端仍分离：共用 `persist_catalog_delta(..., enqueue=false)`（diff + reconcile，**不**写 pending），job 类型为 `TaskType::Catalog`，完成后即 `done`。UI 主路径在 catalog `done` 后自动调 `start_job`；「仅更新状态」则停在此处。
 
 ---
 
 ## 硬规则（改代码勿破）
 
-1. **每个 sync job catalog 一次**；`resume_job` **不** re-catalog。再次拉取 → **新** `start_job`。
-2. catalog 落库顺序：**prepare_catalog_keys_temp → diff（apply）→ mark_catalog_deletions → reconcile（in-catalog）→ enqueue_outstanding**（reconcile 必须在 enqueue 前，否则降级行进不了队列）。
-3. catalog 后 **必须** 调用 `enqueue_outstanding_for_full_sync`，避免 discard/unchanged diff 后孤儿 `cloud_only` 无 pending。
+1. **每个 sync job 不 catalog**；diff 仅「刷新 iCloud 状态」。再次拉取新增 → 先刷新再 **新** `start_job`。
+2. catalog（刷新）落库顺序：**prepare_catalog_keys_temp → diff（apply，不入队）→ mark_catalog_deletions → reconcile（in-catalog）**；**开始同步**再 `enqueue_cloud_only_for_sync`。
+3. 开始同步前若无 `cloud_only` 可入队 → 拒绝并提示先刷新；catalog 后孤儿 `cloud_only` 靠下次「开始同步」入队。
 4. 下载循环只用 `auth_probe`，**禁止**带密码 `auth`。
 5. **active job** 内 `done + pending + failed = total`（**UI / job 快照按逻辑资产**，Live still+mov=1；下载/删云 queue 仍按 part 行）；sync job 结束 `finalize_job_download` 写快照并释放 `download_status`。
 6. Live = still + mov 两行同 `index_num`；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
@@ -179,8 +183,8 @@ flowchart LR
 
 | 命令 | 作用 |
 |------|------|
-| `icloud_sync_start_job` | sync：catalog + reconcile + diff + 补入队 + 下载 |
-| `icloud_sync_refresh_catalog` | catalog only：同上落库路径，不下载 |
+| `icloud_sync_start_job` | sync：将已有 `cloud_only` 入队 + 下载（不 catalog） |
+| `icloud_sync_refresh_catalog` | catalog only：diff + reconcile 落库，不入队下载 |
 | `icloud_sync_active_task` | 当前账号未完成任务状态（sync / 删云 / catalog 统一） |
 | `icloud_sync_resume_job` / `pause_job` | 续传 / 暂停 |
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
@@ -210,10 +214,10 @@ sidecar catalog 全量枚举
   → load_existing_baselines
   → classify_catalog_rows
   → prepare_catalog_keys_temp（写入 TEMP 表，供后续批 SQL 复用）
-  → apply_catalog_delta
+  → apply_catalog_delta（刷新：不入队；仅更新 cloud_state）
   → mark_catalog_deletions（单条 UPDATE + NOT EXISTS temp）
   → reconcile_synced_missing_local_files_in_catalog（仅 temp 内 synced 行 + is_file）
-  → enqueue_outstanding_for_full_sync（单条 UPDATE + EXISTS temp）
+  →（开始同步时）enqueue_cloud_only_for_sync
   → set_job_catalog_counts → emit cloud-state-changed
 ```
 

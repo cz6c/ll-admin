@@ -386,6 +386,7 @@ export function pingIcloudSync() {
 }
 
 /** 新建同步任务：catalog → diff → 入队 → 下载（固定 full 模式） */
+/** 开始同步：将已刷新的 cloud_only 入队并下载（不 catalog；无待同步项会报错） */
 export function startIcloudSyncJob(view: IcloudSyncJobView = "library") {
   return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view });
 }
@@ -434,7 +435,7 @@ export function getIcloudSyncActiveTask() {
   return invoke<IcloudSyncJobStatusResult | null>("icloud_sync_active_task");
 }
 
-/** 仅刷新 iCloud 目录统计，不下载；与同步/删云互斥 */
+/** 仅刷新 iCloud 目录（catalog/diff），不入队下载；与同步/删云互斥 */
 export function refreshIcloudSyncCatalog(view: IcloudSyncJobView = "library") {
   return invoke<IcloudSyncStartJobResult>("icloud_sync_refresh_catalog", { view });
 }

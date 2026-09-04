@@ -503,12 +503,14 @@ pub fn load_existing_baselines(
   Ok(rows)
 }
 
-/// 按 catalog diff 结果写入 assets；仅 added/modified 入下载队列
+/// 按 catalog diff 结果写入 assets。
+/// `queue_downloads=true` 时 added/modified 写入 pending（旧「扫完即下」）；刷新目录应为 false，仅更新云态。
 pub fn apply_catalog_delta(
   conn: &Connection,
   job_id: i64,
   apple_id: &str,
   classified: &[(AssetRow, CatalogDeltaKind)],
+  queue_downloads: bool,
 ) -> Result<CatalogApplySummary, String> {
   let now = chrono::Utc::now().timestamp();
   let mut summary = CatalogApplySummary::default();
@@ -517,11 +519,19 @@ pub fn apply_catalog_delta(
     .unchecked_transaction()
     .map_err(|e| format!("开启事务失败: {e}"))?;
 
+  let (dl_status, dl_job): (Option<&str>, Option<i64>) = if queue_downloads {
+    (Some(AssetStatus::Pending.as_str()), Some(job_id))
+  } else {
+    (None, None)
+  };
+
   for (row, kind) in classified {
     match kind {
       CatalogDeltaKind::Added => {
         summary.added += 1;
-        summary.enqueued += 1;
+        if queue_downloads {
+          summary.enqueued += 1;
+        }
         tx.execute(
           r#"
           INSERT INTO assets(
@@ -536,7 +546,7 @@ pub fn apply_catalog_delta(
             media_kind = excluded.media_kind,
             live_pair_id = excluded.live_pair_id,
             index_num = CASE WHEN assets.index_num > 0 THEN assets.index_num ELSE excluded.index_num END,
-            download_status = 'pending',
+            download_status = excluded.download_status,
             active_job_id = excluded.active_job_id,
             cloud_state = 'cloud_only',
             last_catalog_at = excluded.last_catalog_at,
@@ -556,8 +566,8 @@ pub fn apply_catalog_delta(
             row.live_pair_id,
             row.index_num,
             row.part.as_str(),
-            AssetStatus::Pending.as_str(),
-            job_id,
+            dl_status,
+            dl_job,
             CloudState::CloudOnly.as_str(),
             now,
             row.cpl_asset_record_name,
@@ -572,7 +582,9 @@ pub fn apply_catalog_delta(
       }
       CatalogDeltaKind::Modified => {
         summary.modified += 1;
-        summary.enqueued += 1;
+        if queue_downloads {
+          summary.enqueued += 1;
+        }
         tx.execute(
           r#"
           UPDATE assets SET
@@ -581,16 +593,16 @@ pub fn apply_catalog_delta(
             media_kind = ?3,
             live_pair_id = ?4,
             last_catalog_at = ?5,
-            download_status = 'pending',
-            active_job_id = ?6,
+            download_status = ?6,
+            active_job_id = ?7,
             cloud_state = 'cloud_only',
-            cpl_asset_record_name = COALESCE(?7, cpl_asset_record_name),
-            cpl_asset_change_tag = COALESCE(?8, cpl_asset_change_tag),
-            capture_at = ?9,
-            added_at = ?10,
-            latitude = ?11,
-            longitude = ?12
-          WHERE apple_id = ?13 AND asset_id = ?14 AND part = ?15
+            cpl_asset_record_name = COALESCE(?8, cpl_asset_record_name),
+            cpl_asset_change_tag = COALESCE(?9, cpl_asset_change_tag),
+            capture_at = ?10,
+            added_at = ?11,
+            latitude = ?12,
+            longitude = ?13
+          WHERE apple_id = ?14 AND asset_id = ?15 AND part = ?16
           "#,
           params![
             row.sort_key,
@@ -598,7 +610,8 @@ pub fn apply_catalog_delta(
             row.media_kind.as_str(),
             row.live_pair_id,
             now,
-            job_id,
+            dl_status,
+            dl_job,
             row.cpl_asset_record_name,
             row.cpl_asset_change_tag,
             row.capture_at,
@@ -652,7 +665,7 @@ pub fn apply_catalog_delta(
   Ok(summary)
 }
 
-/// catalog 后补入队：`cloud_only` 孤儿行（需先 `prepare_catalog_keys_temp`）
+/// catalog 后补入队：`cloud_only` 且仍在本次 catalog keys 内的孤儿行（需先 `prepare_catalog_keys_temp`）
 pub fn enqueue_outstanding_for_full_sync(
   conn: &Connection,
   job_id: i64,
@@ -680,6 +693,31 @@ pub fn enqueue_outstanding_for_full_sync(
       params![job_id, apple_id],
     )
     .map_err(|e| format!("full 同步补入队失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
+}
+
+/// 「开始同步」入队：将当前账号全部 `cloud_only` 绑到 sync job（不依赖 catalog temp；须先刷新落库）
+pub fn enqueue_cloud_only_for_sync(
+  conn: &Connection,
+  job_id: i64,
+  apple_id: &str,
+) -> Result<u32, String> {
+  let changed = conn
+    .execute(
+      r#"
+      UPDATE assets SET download_status = 'pending', active_job_id = ?1
+      WHERE apple_id = ?2
+        AND cloud_state = 'cloud_only'
+        AND (
+          active_job_id IS NULL
+          OR active_job_id != ?1
+          OR download_status IS NULL
+          OR download_status != 'pending'
+        )
+      "#,
+      params![job_id, apple_id],
+    )
+    .map_err(|e| format!("cloud_only 入队失败: {e}"))?;
   Ok(u32::try_from(changed).unwrap_or(0))
 }
 
@@ -2888,7 +2926,7 @@ mod tests {
       cpl_asset_change_tag: None,
     };
     let classified = vec![(row, CatalogDeltaKind::Unchanged)];
-    let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified).expect("delta");
+    let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified, true).expect("delta");
     assert_eq!(summary.enqueued, 0);
     assert_eq!(summary.unchanged, 1);
     assert_eq!(summary.unchanged_skipped, 1);

@@ -1,7 +1,7 @@
 <!--
   iCloud 同步浮动触发区
-  职责：右下角常驻 FAB 体现同步状态（图标/进度环/标签），点击展开右侧抽屉承载全部同步功能
-  主流程：hydrate → FAB 状态显示 → StatusCard 进度/主按钮 → 云资产单列表（腾空间）
+  职责：右下角 FAB；抽屉顶部全局进度，其下「拉取 / 释放」分栏共用列表
+  主流程：hydrate → FAB → StatusCard（全局）→ 分栏列表（拉取只读 / 释放可删）
 -->
 <script setup lang="ts">
 import IcloudSyncAuthModal from "./IcloudSyncAuthModal.vue";
@@ -13,7 +13,6 @@ import {
   loadIcloudSyncCloudList,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
-  cancelIcloudSyncCloudDelete,
   retryIcloudSyncCloudDeletes,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
@@ -26,7 +25,9 @@ import {
   cloudFilterTabLabel,
   cloudStateLabel,
   cloudStateColor,
-  CLOUD_LIST_STATE_FILTER_OPTIONS,
+  CLOUD_LIST_PULL_FILTER_OPTIONS,
+  CLOUD_LIST_FREE_FILTER_OPTIONS,
+  type CloudListStateFilterOption,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import { Modal, message } from "ant-design-vue";
@@ -36,6 +37,9 @@ import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
+
+/** 抽屉场景：拉取与腾空间互斥展示 */
+type DrawerMode = "pull" | "free";
 
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
@@ -53,9 +57,12 @@ const {
   downloadProgressTick,
   canManageCloudSpace,
   refreshingCatalog,
+  starting,
   bindActiveTask,
   onRefreshCatalog,
   isCloudDeleteTask,
+  isSyncTask,
+  hasIncompleteTask,
   jobStatus,
   onLoggedIn,
   onLoggedOut,
@@ -64,9 +71,16 @@ const {
 } = useIcloudSyncJob();
 
 const drawerOpen = ref(false);
+const drawerMode = ref<DrawerMode>("pull");
 const loggingOut = ref(false);
 
-const cloudFilter = ref<IcloudSyncCloudStateFilter>("all");
+const DRAWER_MODE_OPTIONS = [
+  { label: "同步到本地", value: "pull" },
+  { label: "释放iCloud空间", value: "free" }
+];
+
+/** 释放空间默认看「待移除（已同步）」；拉取栏默认「待同步」 */
+const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
 const cloudPage = ref(1);
@@ -77,7 +91,6 @@ const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deletingAllSynced = ref(false);
-const cancellingCloudDelete = ref(false);
 const retryingCloudDelete = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
 /** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云/取消须用此 Map */
@@ -123,20 +136,19 @@ function refreshSelectedRowsFromPage(rows: CloudListDisplayRow[]) {
 
 /** 跨页已勾选行（含他页快照）；缺快照的 key 忽略 */
 function selectedCloudRows(): CloudListDisplayRow[] {
-  return cloudSelectedKeys.value
-    .map(key => cloudSelectedRowsByKey.value.get(key))
-    .filter((row): row is CloudListDisplayRow => !!row);
+  return cloudSelectedKeys.value.map(key => cloudSelectedRowsByKey.value.get(key)).filter((row): row is CloudListDisplayRow => !!row);
 }
 
 const cloudRowSelection = computed(() =>
-  canManageCloudSpace.value
+  drawerMode.value === "free" && canManageCloudSpace.value
     ? {
         selectedRowKeys: cloudSelectedKeys.value,
         onChange: (keys: (string | number)[], rows: CloudListDisplayRow[]) => {
           mergeCloudPageSelection(keys, rows);
         },
         getCheckboxProps: (record: { cloudState: string }) => ({
-          disabled: record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only"
+          // 排队中 / 已移除 / 待同步 不可再选删；取消排队走进度区「取消任务」
+          disabled: record.cloudState === "deleted_cloud_pending" || record.cloudState === "cloud_only" || record.cloudState === "cloud_delete_queued"
         })
       }
     : undefined
@@ -173,10 +185,38 @@ function cloudListSeq(rowIndexInPage: number): number {
   return (cloudPage.value - 1) * cloudPageSize.value + rowIndexInPage + 1;
 }
 
-/** 状态 Tab 配置；download_failed 仅在 summary 有计数时展示 */
-const cloudStateFilterTabs = computed(() =>
-  CLOUD_LIST_STATE_FILTER_OPTIONS.filter(tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0)
-);
+/**
+ * 按分栏返回 Tab：拉取 / 释放子集不同（严格四态，不含「移除中」）
+ */
+const cloudStateFilterTabs = computed((): CloudListStateFilterOption[] => {
+  if (drawerMode.value === "pull") {
+    return CLOUD_LIST_PULL_FILTER_OPTIONS.filter(tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0);
+  }
+  return CLOUD_LIST_FREE_FILTER_OPTIONS;
+});
+
+/** 当前分栏允许的 filter 集合 */
+function allowedFiltersForMode(mode: DrawerMode): Set<IcloudSyncCloudStateFilter> {
+  const tabs = mode === "pull" ? CLOUD_LIST_PULL_FILTER_OPTIONS : CLOUD_LIST_FREE_FILTER_OPTIONS;
+  return new Set(tabs.map(t => t.value));
+}
+
+/** 分栏默认筛选项 */
+function defaultFilterForMode(mode: DrawerMode): IcloudSyncCloudStateFilter {
+  return mode === "pull" ? "cloud_only" : "synced";
+}
+
+/** 切换分栏或 summary 变化后，校正非法 / 已消失的 filter */
+function ensureFilterForMode(mode: DrawerMode = drawerMode.value) {
+  const prev = cloudFilter.value;
+  const allowed = allowedFiltersForMode(mode);
+  if (!allowed.has(cloudFilter.value)) {
+    cloudFilter.value = defaultFilterForMode(mode);
+  } else if (cloudFilter.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
+    cloudFilter.value = defaultFilterForMode(mode);
+  }
+  if (cloudFilter.value !== prev) cloudPage.value = 1;
+}
 
 /** Tab 角标数字；0 返回 null */
 function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | null {
@@ -186,7 +226,16 @@ function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | n
   return count;
 }
 
-const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value || cancellingCloudDelete.value || retryingCloudDelete.value);
+const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value || retryingCloudDelete.value);
+
+/** 有勾选 → 移除所选；否则 → 移除全部已同步 */
+const freeSpacePrimaryLabel = computed(() => (cloudSelectedKeys.value.length > 0 ? `移除所选（${cloudSelectedKeys.value.length}）` : "移除全部已同步"));
+
+const freeSpacePrimaryDisabled = computed(() => {
+  if (!canManageCloudSpace.value || deleteBusy.value) return true;
+  if (cloudSelectedKeys.value.length > 0) return false;
+  return !cloudSummary.value?.synced;
+});
 
 const cloudTableWrapRef = ref<HTMLElement | null>(null);
 const tableScrollY = ref(320);
@@ -195,13 +244,10 @@ useResizeObserver(cloudTableWrapRef, ([entry]) => {
   tableScrollY.value = Math.max(160, Math.floor(entry.contentRect.height - 88));
 });
 
-function onDeleteMenuClick(info: { key: string | number }) {
+function onFreeSpacePrimaryClick() {
   if (!guardCloudManageAction()) return;
-  const key = String(info.key);
-  if (key === "selected") confirmDeleteCloud();
-  else if (key === "allSynced") confirmDeleteAllSynced();
-  else if (key === "cancel") void onCancelCloudDeletes();
-  else if (key === "retry") void onRetryCloudDeletes();
+  if (cloudSelectedKeys.value.length > 0) confirmDeleteCloud();
+  else confirmDeleteAllSynced();
 }
 
 /**
@@ -225,17 +271,15 @@ function cloudDateBounds(): { dateFrom?: string; dateTo?: string } {
   };
 }
 
+/** 拉取栏只需要 summary，避免空跑整表 — 两侧均有列表后统一走 refreshCloudAssets */
 async function refreshCloudAssets() {
   if (!isLoggedIn.value) return;
   loadingCloud.value = true;
   try {
     const summary = await getIcloudSyncCloudStateSummary();
+    cloudSummary.value = summary;
+    ensureFilterForMode();
     let filter = cloudFilter.value;
-    // 同步失败为活跃 job 派生态；任务结束或无失败项时自动退回「全部」
-    if (filter === "download_failed" && !(summary.downloadFailed > 0)) {
-      filter = "all";
-      cloudFilter.value = "all";
-    }
     const list = await loadIcloudSyncCloudList({
       offset: (cloudPage.value - 1) * cloudPageSize.value,
       limit: cloudPageSize.value,
@@ -253,7 +297,6 @@ async function refreshCloudAssets() {
       };
     });
     cloudTotal.value = list.total;
-    cloudSummary.value = summary;
     refreshSelectedRowsFromPage(cloudRows.value);
   } catch (e) {
     // 列表加载失败用轻提示，避免底栏粘住历史错误
@@ -275,9 +318,10 @@ function onCloudTableChange(pagination: { current?: number; pageSize?: number })
   void refreshCloudAssets();
 }
 
-/** 抽屉打开且已登录时刷新云列表 */
+/** 抽屉打开且已登录时刷新列表（两分栏均有表） */
 function refreshCloudIfVisible() {
-  if (drawerOpen.value && isLoggedIn.value) void refreshCloudAssets();
+  if (!drawerOpen.value || !isLoggedIn.value) return;
+  void refreshCloudAssets();
 }
 
 /** iCloud 移除说明：本地保留 + 最近删除（Modal 与提示共用） */
@@ -290,10 +334,10 @@ const ICLOUD_REMOVE_HINT =
 function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): string {
   const parts = [`已安排从 iCloud 移除 ${result.accepted} 项`];
   if (result.rejectedLocalMissing > 0) {
-    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先「刷新 iCloud 状态」核对）`);
+    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先在「释放iCloud空间」刷新状态核对）`);
   }
   if (result.rejectedMissingCpl > 0) {
-    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据（请先「开始同步」或「刷新 iCloud 状态」）`);
+    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据（请先「同步到本地」或在「释放iCloud空间」刷新状态）`);
   }
   const other = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
   if (other > 0) {
@@ -346,9 +390,7 @@ function openDeleteConfirmModal(opts: { title: string; content: string; onConfir
 /** 从 iCloud 移除确认 Modal：1.5s 冷却后才可点确认（设计 §安全） */
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
-  const selected = selectedCloudRows().filter(
-    row => row.cloudState !== "cloud_delete_queued" && row.cloudState !== "deleted_cloud_pending"
-  );
+  const selected = selectedCloudRows().filter(row => row.cloudState !== "cloud_delete_queued" && row.cloudState !== "deleted_cloud_pending");
   if (selected.length === 0) {
     message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
     return;
@@ -364,7 +406,8 @@ function confirmDeleteCloud() {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
         notifyDeleteEnqueueResult(result);
         clearCloudSelection();
-        cloudFilter.value = "cloud_delete_queued";
+        // 排队态无独立 Tab；任务进度看上方状态卡，「全部」可见 Tag
+        cloudFilter.value = "all";
         cloudPage.value = 1;
         await refreshCloudAssets();
         if (result.jobId > 0) await bindActiveTask(result.jobId);
@@ -397,7 +440,7 @@ function confirmDeleteAllSynced() {
         const result = await deleteAllSyncedIcloudAssets();
         notifyDeleteEnqueueResult(result);
         clearCloudSelection();
-        cloudFilter.value = "cloud_delete_queued";
+        cloudFilter.value = "all";
         cloudPage.value = 1;
         await refreshCloudAssets();
         if (result.jobId > 0) await bindActiveTask(result.jobId);
@@ -409,27 +452,6 @@ function confirmDeleteAllSynced() {
       }
     }
   });
-}
-
-async function onCancelCloudDeletes() {
-  if (!guardCloudManageAction()) return;
-  const selected = selectedCloudRows().filter(row => row.cloudState === "cloud_delete_queued");
-  if (selected.length === 0) {
-    message.warning("请先在「等待移除」中勾选要取消的项");
-    return;
-  }
-  cancellingCloudDelete.value = true;
-  errorMsg.value = "";
-  try {
-    const result = await cancelIcloudSyncCloudDelete(cloudListRowsToAssetItems(selected));
-    message.success(`已取消 ${result.cancelled} 项的 iCloud 移除`);
-    clearCloudSelection();
-    await refreshCloudAssets();
-  } catch (e) {
-    notifyDeleteOpError(e);
-  } finally {
-    cancellingCloudDelete.value = false;
-  }
 }
 
 async function onRetryCloudDeletes() {
@@ -463,6 +485,28 @@ watch(jobStatus, (status, prev) => {
 
 watch(canManageCloudSpace, ok => {
   if (!ok) clearCloudSelection();
+});
+
+/** 任务类型变化时自动切到对应分栏 */
+watch(
+  () => ({ deleteTask: isCloudDeleteTask.value, syncTask: isSyncTask.value, busy: hasIncompleteTask.value }),
+  ({ deleteTask, syncTask, busy }) => {
+    if (!busy) return;
+    if (deleteTask) drawerMode.value = "free";
+    else if (syncTask) drawerMode.value = "pull";
+  }
+);
+
+/** 「同步到本地」串联阶段 taskType 仍为 catalog，用 starting 切回拉取栏 */
+watch(starting, v => {
+  if (v) drawerMode.value = "pull";
+});
+
+watch(drawerMode, mode => {
+  clearCloudSelection();
+  cloudPage.value = 1;
+  cloudFilter.value = defaultFilterForMode(mode);
+  refreshCloudIfVisible();
 });
 
 watch(drawerOpen, open => {
@@ -522,7 +566,7 @@ onMounted(() => {
     v-model:open="drawerOpen"
     title="iCloud 同步"
     placement="right"
-    width="1024"
+    :width="920"
     class="icloud-sync-drawer"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
   >
@@ -535,104 +579,114 @@ onMounted(() => {
     </template>
 
     <div class="drawer-body">
+      <!-- 进度/主操作在分栏之上：全局单任务，与当前 Tab 无关 -->
       <div class="upper-panel">
         <IcloudSyncStatusCard />
       </div>
 
-      <div v-if="isLoggedIn" class="cloud-toolbar">
-        <a-tabs v-model:activeKey="cloudFilter" type="card" class="filter-tabs" @change="onCloudFilterChange">
-          <a-tab-pane v-for="tab in cloudStateFilterTabs" :key="tab.value">
-            <template #tab>
-              <span class="filter-tab-label">
-                {{ cloudFilterTabLabel(tab) }}
-                <a-badge
-                  v-if="summaryTabCountNum(tab.countKey)"
-                  :count="summaryTabCountNum(tab.countKey)!"
-                  :overflow-count="9999"
-                  :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
-                  :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
-                />
-              </span>
-            </template>
-          </a-tab-pane>
-        </a-tabs>
-        <div class="toolbar-actions">
-          <a-range-picker
-            v-model:value="cloudDateRange"
-            class="cloud-date-range"
-            :placeholder="['拍摄时间起始', '拍摄时间结束']"
-            allow-clear
-            @change="onCloudFilterChange"
-          />
-          <div class="flex items-center gap-2">
-            <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-              <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新 iCloud 状态 </a-button>
-            </a-tooltip>
-            <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-              <a-dropdown :trigger="['click']" :disabled="!canManageCloudSpace">
-                <a-button type="primary" danger :loading="deleteBusy" :disabled="!canManageCloudSpace">释放 iCloud 空间</a-button>
-                <template #overlay>
-                  <a-menu @click="onDeleteMenuClick">
-                    <a-menu-item key="selected" :disabled="cloudSelectedKeys.length === 0">
-                      移除所选{{ cloudSelectedKeys.length ? `（${cloudSelectedKeys.length}）` : "" }}（保留本地）
-                    </a-menu-item>
-                    <a-menu-item key="allSynced" :disabled="!cloudSummary?.synced">全部已同步项从 iCloud 移除</a-menu-item>
-                    <a-menu-item v-if="cloudSummary?.cloudDeleteQueued" key="cancel" :disabled="cloudSelectedKeys.length === 0">取消待移除</a-menu-item>
-                    <a-menu-item v-if="cloudSummary?.failedDelete" key="retry">重试移除失败项</a-menu-item>
-                  </a-menu>
-                </template>
-              </a-dropdown>
-            </a-tooltip>
-          </div>
-        </div>
-      </div>
+      <a-segmented v-model:value="drawerMode" class="mode-switch" :options="DRAWER_MODE_OPTIONS" block />
 
-      <div v-if="isLoggedIn" ref="cloudTableWrapRef" class="cloud-table-wrap">
-        <a-spin :spinning="loadingCloud" class="cloud-table-spin">
-          <a-table
-            :columns="cloudTableColumns"
-            :data-source="cloudRows"
-            :row-selection="cloudRowSelection"
-            size="small"
-            bordered
-            row-key="rowKey"
-            :scroll="{ y: tableScrollY }"
-            :pagination="{
-              current: cloudPage,
-              pageSize: cloudPageSize,
-              total: cloudTotal,
-              size: 'small',
-              showSizeChanger: true,
-              pageSizeOptions: ['30', '50', '100'],
-              showTotal: (total: number) =>
-                cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`
-            }"
-            @change="onCloudTableChange"
-          >
-            <template #bodyCell="{ column, record, index }">
-              <template v-if="column.dataIndex === 'listSeq'">
-                {{ cloudListSeq(index) }}
-              </template>
-              <template v-else-if="column.dataIndex === 'indexNum'">
-                {{ String((record as CloudListDisplayRow).indexNum).padStart(5, "0") }}
-              </template>
-              <template v-else-if="column.dataIndex === 'sortKey'">
-                {{ formatSortKeyTime((record as CloudListDisplayRow).captureAt ?? (record as CloudListDisplayRow).sortKey) }}
-              </template>
-              <template v-else-if="column.dataIndex === 'cloudState'">
-                <a-tag :color="(record as CloudListDisplayRow).displayStateColor">
-                  {{ (record as CloudListDisplayRow).displayStateLabel }}
-                </a-tag>
-              </template>
-              <template v-else-if="column.dataIndex === 'originalFilename'">
-                <span class="filename-text" :title="(record as CloudListDisplayRow).displayFilename">
-                  {{ (record as CloudListDisplayRow).displayFilename }}
+      <template v-if="isLoggedIn">
+        <div class="cloud-toolbar">
+          <a-tabs v-model:activeKey="cloudFilter" size="small" class="filter-tabs" @change="onCloudFilterChange">
+            <a-tab-pane v-for="tab in cloudStateFilterTabs" :key="tab.value">
+              <template #tab>
+                <span class="filter-tab-label">
+                  {{ cloudFilterTabLabel(tab) }}
+                  <a-badge
+                    v-if="summaryTabCountNum(tab.countKey)"
+                    :count="summaryTabCountNum(tab.countKey)!"
+                    :overflow-count="9999"
+                    :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
+                    :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
+                  />
                 </span>
               </template>
-            </template>
-          </a-table>
-        </a-spin>
-      </div>
+            </a-tab-pane>
+          </a-tabs>
+
+          <div class="toolbar-actions">
+            <div class="toolbar-left">
+              <a-range-picker
+                v-model:value="cloudDateRange"
+                class="cloud-date-range"
+                :placeholder="['拍摄时间起始', '拍摄时间结束']"
+                allow-clear
+                @change="onCloudFilterChange"
+              />
+            </div>
+            <div class="toolbar-right">
+              <template v-if="drawerMode === 'free'">
+                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                  <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
+                </a-tooltip>
+                <a-button
+                  v-if="cloudSummary?.failedDelete"
+                  type="link"
+                  size="small"
+                  :loading="retryingCloudDelete"
+                  :disabled="!canManageCloudSpace"
+                  @click="onRetryCloudDeletes()"
+                >
+                  重试失败
+                </a-button>
+                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                  <a-button type="primary" danger :loading="deleteBusy" :disabled="freeSpacePrimaryDisabled" @click="onFreeSpacePrimaryClick()">
+                    {{ freeSpacePrimaryLabel }}
+                  </a-button>
+                </a-tooltip>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div ref="cloudTableWrapRef" class="cloud-table-wrap">
+          <a-spin :spinning="loadingCloud" class="cloud-table-spin">
+            <a-table
+              :columns="cloudTableColumns"
+              :data-source="cloudRows"
+              :row-selection="cloudRowSelection"
+              size="small"
+              bordered
+              row-key="rowKey"
+              :scroll="{ y: tableScrollY }"
+              :pagination="{
+                current: cloudPage,
+                pageSize: cloudPageSize,
+                total: cloudTotal,
+                size: 'small',
+                showSizeChanger: true,
+                pageSizeOptions: ['30', '50', '100'],
+                showTotal: (total: number) =>
+                  drawerMode === 'free' && cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`
+              }"
+              @change="onCloudTableChange"
+            >
+              <template #bodyCell="{ column, record, index }">
+                <template v-if="column.dataIndex === 'listSeq'">
+                  {{ cloudListSeq(index) }}
+                </template>
+                <template v-else-if="column.dataIndex === 'indexNum'">
+                  {{ String((record as CloudListDisplayRow).indexNum).padStart(5, "0") }}
+                </template>
+                <template v-else-if="column.dataIndex === 'sortKey'">
+                  {{ formatSortKeyTime((record as CloudListDisplayRow).captureAt ?? (record as CloudListDisplayRow).sortKey) }}
+                </template>
+                <template v-else-if="column.dataIndex === 'cloudState'">
+                  <a-tag :color="(record as CloudListDisplayRow).displayStateColor">
+                    {{ (record as CloudListDisplayRow).displayStateLabel }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.dataIndex === 'originalFilename'">
+                  <span class="filename-text" :title="(record as CloudListDisplayRow).displayFilename">
+                    {{ (record as CloudListDisplayRow).displayFilename }}
+                  </span>
+                </template>
+              </template>
+            </a-table>
+          </a-spin>
+        </div>
+      </template>
 
       <a-alert v-if="errorMsg" type="error" :message="errorMsg" show-icon class="drawer-error" />
     </div>
@@ -715,6 +769,10 @@ onMounted(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  gap: 14px;
+}
+.mode-switch {
+  flex-shrink: 0;
 }
 .drawer-error {
   flex-shrink: 0;
@@ -723,7 +781,7 @@ onMounted(() => {
 .upper-panel {
   flex-shrink: 0;
   padding: 14px 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--color-fill-quaternary, rgba(0, 0, 0, 0.02));
   border: 1px solid var(--color-border-secondary, rgba(0, 0, 0, 0.06));
 }
@@ -731,7 +789,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 .filter-tabs {
-  margin-top: 16px;
   :deep(.ant-tabs-nav) {
     margin-bottom: 0;
   }
@@ -748,7 +805,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .tab-count-badge {
   :deep(.ant-badge-count) {
@@ -767,7 +833,6 @@ onMounted(() => {
   width: 260px;
 }
 .cloud-table-wrap {
-  margin-top: 12px;
   flex: 1;
   min-height: 0;
   overflow: hidden;

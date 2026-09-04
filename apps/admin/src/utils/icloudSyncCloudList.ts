@@ -251,17 +251,39 @@ export interface CloudListStateFilterOption {
 }
 
 /**
- * iCloud 列表可筛选状态（顺序即 Tab 展示顺序）
+ * iCloud 列表可筛选状态（顺序即历史全量 Tab；分栏请用下方 PULL/FREE 子集）
  * @note modified_cloud 已收敛进 cloud_only；download_failed 为活跃 sync job 派生态
  */
 export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "all", tabLabel: "全部" },
-  { value: "cloud_only", countKey: "cloudOnly" },
-  { value: "download_failed", countKey: "downloadFailed", dangerCount: true },
-  { value: "synced", countKey: "synced" },
-  { value: "cloud_delete_queued", countKey: "cloudDeleteQueued" },
-  { value: "deleted_cloud_pending", countKey: "deletedCloudPending" },
-  { value: "failed_delete", countKey: "failedDelete", dangerCount: true }
+  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
+  { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true },
+  { value: "synced", countKey: "synced", tabLabel: "已同步" },
+  { value: "cloud_delete_queued", countKey: "cloudDeleteQueued", tabLabel: "待移除" },
+  { value: "deleted_cloud_pending", countKey: "deletedCloudPending", tabLabel: "已移除" },
+  { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
+];
+
+/**
+ * 「同步到本地」分栏 Tab：全部 / 待同步 / 已同步 / 同步失败
+ * @note 不含删云态，避免与释放栏心智混杂
+ */
+export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
+  { value: "all", tabLabel: "全部" },
+  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
+  { value: "synced", countKey: "synced", tabLabel: "已同步" },
+  { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true }
+];
+
+/**
+ * 「释放iCloud空间」分栏 Tab：全部 / 待移除（已同步） / 已移除 / 移除失败
+ * @note 排队中 cloud_delete_queued 不单独占 Tab；取消整任务走进度区「取消任务」
+ */
+export const CLOUD_LIST_FREE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
+  { value: "all", tabLabel: "全部" },
+  { value: "synced", countKey: "synced", tabLabel: "待移除（已同步）" },
+  { value: "deleted_cloud_pending", countKey: "deletedCloudPending", tabLabel: "已移除" },
+  { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
 ];
 
 /** 状态筛选完整文案；all 为筛选用，其余与表格状态列 Tag 一致 */

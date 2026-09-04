@@ -318,7 +318,7 @@ watch(open, value => {
             show-icon
             class="mb-16px"
             message="即将切换 Apple ID"
-            description="旧账号的同步任务将无法续传，请在新账号下「开始同步」。"
+            description="旧账号的同步任务将无法续传，请在新账号下「同步到本地」。"
           />
 
           <section class="section">

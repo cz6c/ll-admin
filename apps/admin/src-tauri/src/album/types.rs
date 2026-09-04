@@ -68,6 +68,8 @@ pub struct MediaFile {
   pub playback_path: Option<String>,
   /// 实况照片配对的视频路径（仅 LivePhoto 有值）
   pub video_path: Option<String>,
+  /// 拍摄时间（ISO/可解析串）；缩略图就绪后由 sync/EXIF 写入 media.db
+  pub capture_at: Option<String>,
 }
 
 /// 目录分组
@@ -101,6 +103,8 @@ pub struct AlbumThumbReadyPayload {
   pub path: String,
   pub thumb_path: Option<String>,
   pub preview_path: Option<String>,
+  /// 缩略图后解析到的拍摄时间；仅回填 capture_at 时前两个路径可为 None
+  pub capture_at: Option<String>,
 }
 
 /// 重复清理弹窗：单侧文件（正本或 legacy）

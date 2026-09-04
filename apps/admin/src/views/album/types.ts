@@ -22,6 +22,8 @@ export interface AlbumThumbReadyPayload {
   path: string;
   thumbPath?: string;
   previewPath?: string;
+  /** 缩略图就绪后回填的拍摄时间 */
+  captureAt?: string;
 }
 
 export type MediaKind = "image" | "video" | "livephoto";
@@ -36,6 +38,8 @@ export interface MediaFile {
   thumbPath?: string;
   previewPath?: string;
   videoPath?: string;
+  /** 拍摄时间（sync/EXIF，缩略图后写入） */
+  captureAt?: string;
 }
 
 export interface MediaGroup {

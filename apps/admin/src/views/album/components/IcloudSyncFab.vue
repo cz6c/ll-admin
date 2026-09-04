@@ -79,8 +79,17 @@ const DRAWER_MODE_OPTIONS = [
   { label: "释放iCloud空间", value: "free" }
 ];
 
-/** 释放空间默认看「待移除（已同步）」；拉取栏默认「待同步」 */
-const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
+/** 两套 Tab 各自缓存，切分栏互不影响 */
+const pullFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
+const freeFilter = ref<IcloudSyncCloudStateFilter>("synced");
+/** 当前分栏正在使用的筛选项 */
+const cloudFilter = computed({
+  get: () => (drawerMode.value === "pull" ? pullFilter.value : freeFilter.value),
+  set: (value: IcloudSyncCloudStateFilter) => {
+    if (drawerMode.value === "pull") pullFilter.value = value;
+    else freeFilter.value = value;
+  }
+});
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
 /** 文件名模糊搜索（对 original_filename） */
@@ -174,7 +183,7 @@ function guardCloudManageAction(): boolean {
 const cloudTableColumns = [
   { title: "序号", dataIndex: "listSeq", width: 80 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
-  { title: "文件名", dataIndex: "originalFilename" },
+  { title: "原文件名", dataIndex: "originalFilename" },
   { title: "状态", dataIndex: "cloudState", width: 150 }
 ];
 
@@ -207,16 +216,17 @@ function defaultFilterForMode(mode: DrawerMode): IcloudSyncCloudStateFilter {
   return mode === "pull" ? "cloud_only" : "synced";
 }
 
-/** 切换分栏或 summary 变化后，校正非法 / 已消失的 filter */
+/** 校正当前分栏缓存的 Tab（仅非法 / 已消失的角标项） */
 function ensureFilterForMode(mode: DrawerMode = drawerMode.value) {
-  const prev = cloudFilter.value;
   const allowed = allowedFiltersForMode(mode);
-  if (!allowed.has(cloudFilter.value)) {
-    cloudFilter.value = defaultFilterForMode(mode);
-  } else if (cloudFilter.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
-    cloudFilter.value = defaultFilterForMode(mode);
+  const current = mode === "pull" ? pullFilter : freeFilter;
+  const prev = current.value;
+  if (!allowed.has(current.value)) {
+    current.value = defaultFilterForMode(mode);
+  } else if (current.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
+    current.value = defaultFilterForMode(mode);
   }
-  if (cloudFilter.value !== prev) cloudPage.value = 1;
+  if (current.value !== prev) cloudPage.value = 1;
 }
 
 /** Tab 角标数字；0 返回 null */
@@ -509,10 +519,11 @@ watch(starting, v => {
   if (v) drawerMode.value = "pull";
 });
 
-watch(drawerMode, mode => {
+watch(drawerMode, () => {
   clearCloudSelection();
   cloudPage.value = 1;
-  cloudFilter.value = defaultFilterForMode(mode);
+  // 各分栏 Tab 独立缓存；仅校正当前栏非法项（如同步失败角标已消失）
+  ensureFilterForMode();
   refreshCloudIfVisible();
 });
 
@@ -618,7 +629,7 @@ onMounted(() => {
                 v-model:value="cloudFilenameKeyword"
                 class="cloud-filename-search"
                 allow-clear
-                placeholder="文件名"
+                placeholder="原文件名"
                 spellcheck="false"
                 @change="onCloudFilenameKeywordChange"
               />

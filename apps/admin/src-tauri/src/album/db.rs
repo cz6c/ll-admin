@@ -42,7 +42,8 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         preview_path TEXT,
         video_path TEXT,
         scanned_at INTEGER NOT NULL,
-        fail_count INTEGER NOT NULL DEFAULT 0
+        fail_count INTEGER NOT NULL DEFAULT 0,
+        capture_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_media_root ON media(root);
       CREATE INDEX IF NOT EXISTS idx_media_root_rel ON media(root, rel_dir);
@@ -55,6 +56,8 @@ fn migrate(conn: &Connection) -> Result<(), String> {
     [],
   );
   let _ = conn.execute("ALTER TABLE media ADD COLUMN playback_path TEXT", []);
+  // 拍摄时间：缩略图就绪后由 sync/EXIF 回填；文件变更时在 upsert 中清空
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN capture_at TEXT", []);
   Ok(())
 }
 
@@ -66,7 +69,7 @@ pub fn load_indexed_paths(
 ) -> Result<HashMap<String, IndexedRow>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, size, modified, thumb_path, preview_path, playback_path FROM media WHERE root = ?1",
+      "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
 
@@ -79,6 +82,7 @@ pub fn load_indexed_paths(
         thumb_path: row.get(3)?,
         preview_path: row.get(4)?,
         playback_path: row.get(5)?,
+        capture_at: row.get(6)?,
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -97,6 +101,7 @@ pub struct IndexedRow {
   pub thumb_path: Option<String>,
   pub preview_path: Option<String>,
   pub playback_path: Option<String>,
+  pub capture_at: Option<String>,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -105,7 +110,7 @@ pub struct IndexedRow {
 pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir
+      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir, capture_at
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -142,6 +147,8 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let preview_path = preview_path.filter(|p| Path::new(p).is_file());
       let playback_path: Option<String> = row.get(8)?;
       let playback_path = playback_path.filter(|p| Path::new(p).is_file());
+      let capture_at: Option<String> = row.get(11)?;
+      let capture_at = capture_at.filter(|s| !s.trim().is_empty());
       Ok((rel_dir, dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -153,6 +160,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         preview_path,
         playback_path,
         video_path: row.get(9)?,
+        capture_at,
       }))
     })
     .map_err(|e| format!("查询缓存失败: {e}"))?;
@@ -237,6 +245,12 @@ fn upsert_media_impl(
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.fail_count
           ELSE 0
+        END,
+        -- 文件内容变了则清空拍摄时间，等下次缩略图后再解析
+        capture_at = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.capture_at
+          ELSE NULL
         END
       ",
       params![
@@ -332,6 +346,53 @@ pub fn update_cache_paths_batch(
   tx.commit()
     .map_err(|e| format!("提交缓存更新事务失败: {e}"))?;
   Ok(())
+}
+
+/// 批量写入拍摄时间（缩略图就绪后调用；不覆盖已有非空值由调用方过滤）
+pub fn update_capture_at_batch(
+  conn: &Connection,
+  updates: &[(String, String)],
+) -> Result<(), String> {
+  if updates.is_empty() {
+    return Ok(());
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启拍摄时间更新事务失败: {e}"))?;
+  for (path, capture_at) in updates {
+    tx.execute(
+      "UPDATE media SET capture_at = ?2 WHERE path = ?1",
+      params![path, capture_at],
+    )
+    .map_err(|e| format!("更新拍摄时间失败: {e}"))?;
+  }
+  tx.commit()
+    .map_err(|e| format!("提交拍摄时间更新事务失败: {e}"))?;
+  Ok(())
+}
+
+/// 已有缩略图/预览但尚未写入拍摄时间的路径（供 pipeline 回填）
+pub fn list_paths_missing_capture_at(
+  conn: &Connection,
+  root: &str,
+) -> Result<Vec<String>, String> {
+  let mut stmt = conn
+    .prepare(
+      "SELECT path FROM media
+       WHERE root = ?1
+         AND (capture_at IS NULL OR trim(capture_at) = '')
+         AND (
+           (thumb_path IS NOT NULL AND trim(thumb_path) != '')
+           OR (preview_path IS NOT NULL AND trim(preview_path) != '')
+         )",
+    )
+    .map_err(|e| format!("准备缺拍摄时间查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![root], |row| row.get::<_, String>(0))
+    .map_err(|e| format!("查询缺拍摄时间失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+  Ok(rows)
 }
 
 /// 写入 HEVC 播放代理路径；普通视频绑 path 行，Live mov 绑 video_path 匹配的行

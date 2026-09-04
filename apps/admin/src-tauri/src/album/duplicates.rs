@@ -256,6 +256,7 @@ fn scan_legacy_assets(
       preview_path: None,
       playback_path: None,
       video_path: None,
+      capture_at: None,
     });
   }
 

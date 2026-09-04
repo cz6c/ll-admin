@@ -10,6 +10,7 @@ use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
+use super::capture_at::CaptureAtResolver;
 use super::db;
 use super::scan_state::ScanCancelToken;
 use super::thumbnail;
@@ -37,6 +38,7 @@ fn emit_thumb_ready(
   path: &str,
   thumb_path: Option<String>,
   preview_path: Option<String>,
+  capture_at: Option<String>,
 ) {
   let _ = app.emit(
     ALBUM_THUMB_READY_EVENT,
@@ -44,8 +46,50 @@ fn emit_thumb_ready(
       path: path.to_string(),
       thumb_path,
       preview_path,
+      capture_at,
     },
   );
+}
+
+/// 缩略图已就绪后解析并写入拍摄时间，再推前端
+fn persist_capture_at_for_paths(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  resolver: &CaptureAtResolver,
+  paths: &[String],
+) {
+  if paths.is_empty() {
+    return;
+  }
+  let mut updates: Vec<(String, String)> = Vec::new();
+  for path in paths {
+    if let Some(capture) = resolver.resolve(path) {
+      updates.push((path.clone(), capture));
+    }
+  }
+  if updates.is_empty() {
+    return;
+  }
+  let _ = db::update_capture_at_batch(conn, &updates);
+  for (path, capture_at) in updates {
+    emit_thumb_ready(app, &path, None, None, Some(capture_at));
+  }
+}
+
+/// 对「已有缩略图但缺 capture_at」的行回填（含小图复用原图、上次扫描已出图）
+fn backfill_missing_capture_at(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  root: &str,
+  resolver: &CaptureAtResolver,
+) {
+  let Ok(paths) = db::list_paths_missing_capture_at(conn, root) else {
+    return;
+  };
+  const BATCH: usize = 64;
+  for chunk in paths.chunks(BATCH) {
+    persist_capture_at_for_paths(app, conn, resolver, chunk);
+  }
 }
 
 /// 支持的图片扩展名
@@ -237,6 +281,7 @@ pub fn discover_groups(
     let mut thumb_path = None;
     let mut preview_path = None;
     let mut playback_path = None;
+    let mut capture_at = None;
     if let Some(row) = indexed.get(&file_path) {
       if row.size == size && row.modified == modified {
         if row
@@ -260,6 +305,11 @@ pub fn discover_groups(
         {
           playback_path = row.playback_path.clone();
         }
+        capture_at = row
+          .capture_at
+          .as_ref()
+          .filter(|s| !s.trim().is_empty())
+          .cloned();
       }
     }
 
@@ -293,6 +343,7 @@ pub fn discover_groups(
       preview_path,
       playback_path,
       video_path: None,
+      capture_at,
     });
     discovered += 1;
     if discovered % 20 == 0 {
@@ -410,7 +461,15 @@ pub fn run_thumbnail_pipeline(
     emit_scan_progress(&app, "thumbnails", 0, thumb_total);
   }
 
+  let resolver = CaptureAtResolver::new(&app);
+
   if pending.is_empty() {
+    // 无待生成缩略图：仍回填已有图缺拍摄时间的行
+    if still_current() {
+      if let Some(conn) = &conn {
+        backfill_missing_capture_at(&app, conn, &root, &resolver);
+      }
+    }
     return;
   }
 
@@ -436,6 +495,7 @@ pub fn run_thumbnail_pipeline(
   // 分批提交缓存更新与失败标记，减少事务次数
   const BATCH: usize = 64;
   let mut update_buf: Vec<(String, Option<String>, Option<String>)> = Vec::with_capacity(BATCH);
+  let mut capture_buf: Vec<String> = Vec::with_capacity(BATCH);
   let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
 
   for (path, outcome) in pending.into_iter().zip(outcomes.into_iter()) {
@@ -452,11 +512,12 @@ pub fn run_thumbnail_pipeline(
       let thumb_path = outcome.thumb_path.clone();
       let preview_path = outcome.preview_path.clone();
       update_buf.push((path.clone(), thumb_path.clone(), preview_path.clone()));
-      emit_thumb_ready(&app, &path, thumb_path, preview_path);
+      capture_buf.push(path.clone());
+      emit_thumb_ready(&app, &path, thumb_path, preview_path, None);
     } else {
       // 真实生成失败：标记失败计数，下次扫描按阈值跳过
       fail_buf.push(path.clone());
-      emit_thumb_ready(&app, &path, None, None);
+      emit_thumb_ready(&app, &path, None, None, None);
     }
 
     let flush_updates = update_buf.len() >= BATCH;
@@ -468,8 +529,11 @@ pub fn run_thumbnail_pipeline(
       if flush_updates {
         if let Some(conn) = &conn {
           let _ = db::update_cache_paths_batch(conn, &update_buf);
+          // 缩略图写库后再解析拍摄时间（sync → EXIF）
+          persist_capture_at_for_paths(&app, conn, &resolver, &capture_buf);
         }
         update_buf.clear();
+        capture_buf.clear();
       }
       if flush_fails {
         if let Some(conn) = &conn {
@@ -488,6 +552,7 @@ pub fn run_thumbnail_pipeline(
   if !update_buf.is_empty() {
     if let Some(conn) = &conn {
       let _ = db::update_cache_paths_batch(conn, &update_buf);
+      persist_capture_at_for_paths(&app, conn, &resolver, &capture_buf);
     }
   }
   if !fail_buf.is_empty() {
@@ -495,6 +560,12 @@ pub fn run_thumbnail_pipeline(
       for p in &fail_buf {
         let _ = db::mark_thumb_failed(conn, p);
       }
+    }
+  }
+  // 已有缩略图、本轮未进 pending 的缺字段回填
+  if still_current() {
+    if let Some(conn) = &conn {
+      backfill_missing_capture_at(&app, conn, &root, &resolver);
     }
   }
 }
@@ -515,6 +586,7 @@ mod tests {
       preview_path: None,
       playback_path: None,
       video_path: None,
+      capture_at: None,
     }
   }
 
@@ -530,6 +602,7 @@ mod tests {
       preview_path: None,
       playback_path: None,
       video_path: None,
+      capture_at: None,
     }
   }
 

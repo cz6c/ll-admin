@@ -2,6 +2,7 @@
 //! 职责：扫描本地目录媒体文件、按子目录分组、识别实况照片；后台缩略图与增量索引
 //! 适用：admin CS（Tauri）个人工具
 
+mod capture_at;
 mod db;
 mod duplicates;
 mod ffmpeg;

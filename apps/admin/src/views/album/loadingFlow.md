@@ -33,7 +33,8 @@ flowchart LR
 | 2b | **load_groups**：从 SQLite 读分组列表，秒返；**不打断**进行中的 pipeline | loading 几乎无感 |
 | 3 | 返回 `MediaGroup[]`，启动 watcher（trailing 2s debounce → 置 dirty） | **宫格出现**（虚拟滚动） |
 | 4 | **pipeline**：全扫必起；cache_hit 仅当旧任务已结束/无任务时补跑缺图 | 顶部进度条；占位 → 实图 |
-| 5 | 每条成功：`update_cache_paths` + `album://thumb-ready` | 对应卡片刷新 |
+| 5 | 每条成功：`update_cache_paths` → 再写 `capture_at`（sync→EXIF）+ `album://thumb-ready` | 对应卡片刷新；预览可显示拍摄时间 |
+| 5b | pipeline 末尾：已有缩略图但缺 `capture_at` 的行回填 | 升级后旧库逐步补全 |
 | 6 | 点击卡片 → Viewer（图 / 视频 / Live） | 全屏预览 |
 | 6b | 目录树节点右键 → 在资源管理器中打开 | 系统文件夹窗口 |
 | 6c | 目录侧栏右缘拖拽改宽（localStorage 记忆；拖中宫格布局节流） | 主区列数/格宽重算 |

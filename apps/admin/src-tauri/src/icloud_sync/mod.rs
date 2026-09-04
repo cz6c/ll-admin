@@ -22,7 +22,9 @@ use tauri::{AppHandle, State};
 
 pub use cloud_delete::init_cloud_delete_worker;
 pub use queue::SidecarClientHandle;
-use db::{open_db, state_db_path};
+use db::open_db;
+/// 供 album 只读打开 sync 库（查 dest_path → capture_at）
+pub(crate) use db::state_db_path;
 use settings::{
   clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain,
   require_consent, resolve_default_output_dir, save_settings, session_has_files,

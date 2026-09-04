@@ -6,6 +6,7 @@
 import LivePhotoPlayer from "./LivePhotoPlayer.vue";
 import { useAlbumPlaybackSrc } from "@/composables/useAlbumPlayback";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import dayjs from "dayjs";
 import type { FlatFile, MediaFile, MediaGroup } from "../types";
 
 const props = defineProps<{
@@ -83,6 +84,16 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
   return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
 }
+
+/** 拍摄时间展示；无效/空则不显示 */
+function formatCaptureAt(raw: string | undefined): string | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  const d = dayjs(s);
+  return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : s;
+}
+
+const captureLabel = computed(() => formatCaptureAt(current.value?.file.captureAt));
 
 function onMediaError() {
   loadFailed.value = true;
@@ -181,7 +192,10 @@ onBeforeUnmount(() => {
 
     <div v-if="current" class="viewer-info">
       <span class="info-name">{{ current.file.name }}</span>
-      <span class="info-meta"> {{ current.groupName }} · {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }} </span>
+      <span class="info-meta">
+        <template v-if="captureLabel"> {{ captureLabel }} · </template>
+        {{ current.groupName }} · {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }}
+      </span>
     </div>
   </div>
 </template>

@@ -241,6 +241,7 @@ function applyThumbReady(payload: AlbumThumbReadyPayload) {
   if (!file) return;
   if (payload.thumbPath) file.thumbPath = payload.thumbPath;
   if (payload.previewPath) file.previewPath = payload.previewPath;
+  if (payload.captureAt) file.captureAt = payload.captureAt;
 }
 
 async function loadSettings() {

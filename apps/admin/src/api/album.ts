@@ -41,6 +41,19 @@ export async function deleteAlbumLocal(paths: string[]): Promise<number> {
 }
 
 /**
+ * 读取相册设置中的根目录（展示相对路径等）
+ * @returns rootDir；未配置为空字符串
+ */
+export async function getAlbumRootDir(): Promise<string> {
+  try {
+    const settings = await invoke<{ rootDir: string }>("album_get_settings");
+    return settings.rootDir?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * 在系统资源管理器中打开相册子目录
  * @param relPath 树节点 key（`.` 为相册根）
  */

@@ -4,7 +4,7 @@
  */
 <script setup lang="ts">
 import DuplicateGroupCard from "./DuplicateGroupCard.vue";
-import { deleteAlbumLocal, findAlbumLocalDuplicates } from "@/api/album";
+import { deleteAlbumLocal, findAlbumLocalDuplicates, getAlbumRootDir } from "@/api/album";
 import { DUP_LIST_SCROLL_KEY } from "../duplicateListScroll";
 import { message } from "ant-design-vue";
 import type { DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
@@ -23,6 +23,8 @@ const error = ref("");
 const groups = shallowRef<DuplicateGroup[]>([]);
 const selectedPaths = ref<Set<string>>(new Set());
 const listScrollRef = ref<HTMLElement | null>(null);
+/** 相册根：列表路径相对展示用 */
+const albumRoot = ref("");
 
 provide(DUP_LIST_SCROLL_KEY, listScrollRef);
 
@@ -141,7 +143,9 @@ async function loadGroups() {
   groups.value = [];
   selectedPaths.value = new Set();
   try {
-    const result = prepareDuplicateGroups(await findAlbumLocalDuplicates());
+    const [root, raw] = await Promise.all([getAlbumRootDir(), findAlbumLocalDuplicates()]);
+    albumRoot.value = root;
+    const result = prepareDuplicateGroups(raw);
     groups.value = result;
     selectedPaths.value = new Set(defaultSelectedPaths(result));
   } catch (e: unknown) {
@@ -351,9 +355,10 @@ async function onDeleteSelected() {
         <DuplicateGroupCard
           v-for="group in groups"
           :key="group.assetId"
-          v-memo="[group.assetId, group.duplicates.length, group.canonical.path, groupSelectionToken(group)]"
+          v-memo="[group.assetId, group.duplicates.length, group.canonical.path, groupSelectionToken(group), albumRoot]"
           :group="group"
           :selected-paths="selectedPaths"
+          :album-root="albumRoot"
           @toggle-member="toggleMember"
           @toggle-group="checked => toggleGroupMembers(group, checked)"
         />

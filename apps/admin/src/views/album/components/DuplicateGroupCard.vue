@@ -5,11 +5,14 @@
 <script setup lang="ts">
 import DuplicateLazyThumb from "./DuplicateLazyThumb.vue";
 import { DUP_GROUP_HSCROLL_KEY } from "../duplicateListScroll";
+import { toAlbumRelativePath } from "../albumDisplayPath";
 import type { DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const props = defineProps<{
   group: DuplicateGroup;
   selectedPaths: ReadonlySet<string>;
+  /** 相册根；用于路径相对展示，缺省则仍显示绝对路径 */
+  albumRoot?: string;
 }>();
 
 const emit = defineEmits<{
@@ -46,10 +49,14 @@ function sideLabel(kind: string): string {
   return "照片";
 }
 
-function formatPaths(path: string, videoPath?: string): string[] {
-  const lines = [path];
-  if (videoPath?.trim()) lines.push(videoPath);
-  return lines;
+function formatPaths(path: string, videoPath?: string): { display: string; absolute: string }[] {
+  const abs = [path];
+  if (videoPath?.trim()) abs.push(videoPath);
+  const root = props.albumRoot ?? "";
+  return abs.map(absolute => ({
+    absolute,
+    display: toAlbumRelativePath(absolute, root)
+  }));
 }
 
 function formatBytes(bytes: number): string {
@@ -155,9 +162,9 @@ function groupHeaderTitle(): string {
               v-for="(line, i) in formatPaths(row.side.path, row.side.videoPath)"
               :key="i"
               class="dup-path"
-              :title="line"
+              :title="line.absolute"
             >
-              {{ line }}
+              {{ line.display }}
             </div>
           </div>
         </div>

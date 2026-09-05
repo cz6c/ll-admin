@@ -6,7 +6,7 @@
 > **前置：** 设置页已配 `rootDir`；HEIC/视频建议捆绑 `ffmpeg` + `ffprobe`  
 > **对齐：** 2026-09-05
 
-姊妹文档：[云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
+姊妹文档：[云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md) · [表目录](./schemaCatalog.md)
 
 
 ---
@@ -85,7 +85,7 @@ Viewer / LivePhotoPlayer：**优先**已有 `playbackPath`；缺失再懒转码�
 | A | 本文方案落盘 | ✅ |
 | B | 单独视频分辨率→打开时 ffprobe；EXIF 只补时间+机型；扫描不写海报尺寸 | ✅ |
 | C | Live mov 扫描预热；Viewer 优先 playbackPath | ✅ |
-| E | 性能：Live 预热 2～4 路并行；缺口早退；meta 限并发；一次 ffprobe；批量写库 | ✅ |
+| E | 性能：Live 预热限并发+线程帽；缺口早退；meta 限并发；一次 ffprobe；批量写库 | ✅ |
 
 
 ---
@@ -200,7 +200,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 2. 收集缺 thumb / HEIC 缺 preview；**无缺口且 meta/尺寸/Live 代理均齐 → 整段早退**。  
 3. 并行②展示；视频抽帧**不写**海报尺寸。  
 4. ③ 限并发（约 4）仅补时间/机型；图尺寸批量 `image_dimensions`。  
-5. Live④ **2～4 路并行**预热 `_play.mp4`，批量写 `playback_path`。  
+5. Live④ **最多 2 路并行**预热 `_play.mp4`（单进程 `-threads 2`），批量写 `playback_path`。  
 6. 打开单独视频：`ensure_playback` **一次** ffprobe（codec + 分辨率）。  
 7. 写副作用前校验 `pipeline_epoch`。
 
@@ -213,8 +213,8 @@ hash ← stem + modified + size（目录代际在 v{N}）
 | 范围 | 相册根**全量**媒体（含 sync 落盘目录） |
 | 归组 | 主文件 **BLAKE3** 相同成组（先同 `size` 预筛再算哈希）；**不再**以文件名 stem 为主键 |
 | 指纹缓存 | 写 `media.content_hash` + `hash_algo=blake3`；`size`/`modified` 变则清空；弹窗内懒算 |
-| 正本 | 组内**优先** sync 库已绑定 `dest_path`；否则改时更新者 |
-| 置信度 | 高：主文件（及 Live mov）哈希一致；中：主文件同但 mov 缺/不一致 |
+| 正本 | **落库** → **完整 Live（有 mov）** → 修改时间较新 |
+| 一致程度 | **完全一致**（主文件及 Live mov 哈希同）/ **部分一致**（主画面同但 mov 缺或不一致） |
 | Live | 同目录成对；归组看 still 哈希，再比 mov |
 | 歧义 | 同组多个不同 `asset_id` → `ambiguousStem` |
 
@@ -234,7 +234,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 | HEIC | **不加 `-map`**；超时 60s；回退 WIC |
 | 视频首帧 | `-frames:v 1` → tmp.jpg → 封面（**不作**正式分辨率） |
 | 视频分辨率 | 打开 `ensure_playback` 时 **一次** ffprobe `codec_name,width,height` |
-| 播放代理 | HEVC/MOV → H.264 `_play.mp4`；单独视频懒、**Live 扫描期 2～4 路预热** |
+| 播放代理 | HEVC/MOV → H.264 `_play.mp4`；单独视频懒、**Live 扫描期最多 2 路预热**（防整机内存尖峰） |
 
 ### Viewer
 

@@ -281,7 +281,8 @@ pub fn generate_thumbnails_batch_with_progress(
   let parallelism = std::thread::available_parallelism()
     .map(|n| n.get())
     .unwrap_or(4)
-    .clamp(2, 8)
+    // 上限 4：每路可能起 ffmpeg 解 HEIC/抽帧，过高易内存尖峰拖垮系统
+    .clamp(2, 4)
     .min(paths.len());
   let chunk_size = paths.len().div_ceil(parallelism);
 

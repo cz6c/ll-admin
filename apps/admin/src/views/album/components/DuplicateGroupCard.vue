@@ -1,10 +1,10 @@
 <!--
-  重复清理：单组正本 + 多副本
-  布局：左右侧栏同构（side-head → thumb → paths），首张副本缩略图与左侧顶对齐
+  重复清理：单组横向成员条
+  职责：建议正本 + 副本同一横滑列表；均可勾选（外层保证每组至少留 1）
 -->
 <script setup lang="ts">
 import DuplicateLazyThumb from "./DuplicateLazyThumb.vue";
-import type { DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
+import type { DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const props = defineProps<{
   group: DuplicateGroup;
@@ -12,11 +12,24 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  toggleDuplicate: [path: string, checked: boolean];
+  toggleMember: [path: string, checked: boolean];
   toggleGroup: [checked: boolean];
 }>();
 
 defineOptions({ name: "DuplicateGroupCard" });
+
+type RowKind = "canonical" | "duplicate";
+
+interface MemberRow {
+  kind: RowKind;
+  path: string;
+  side: DuplicateFileSide;
+  confidence?: DuplicateMatchConfidence;
+  incomplete?: boolean;
+  incompleteNote?: string;
+  /** 该侧主文件字节数 */
+  sizeBytes?: number;
+}
 
 function duplicatePath(item: DuplicateLegacyItem): string {
   return item.duplicate.path;
@@ -34,40 +47,65 @@ function formatPaths(path: string, videoPath?: string): string[] {
   return lines;
 }
 
-const dupCount = computed(() => props.group.duplicates.length);
-
-const selectedInGroup = computed(
-  () => props.group.duplicates.filter(item => props.selectedPaths.has(duplicatePath(item))).length
-);
-
-const groupAllSelected = computed(
-  () => dupCount.value > 0 && selectedInGroup.value === dupCount.value
-);
-
-const groupIndeterminate = computed(
-  () => selectedInGroup.value > 0 && selectedInGroup.value < dupCount.value
-);
-
-function groupHeaderTitle(): string {
-  return `${sideLabel(props.group.mediaKind)} · ${props.group.contentKey} · ${dupCount.value} 个副本`;
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function confidenceLabel(level: DuplicateMatchConfidence): string {
-  if (level === "high") return "高置信";
-  if (level === "medium") return "中置信";
-  return "低置信";
+function matchLevelLabel(level: DuplicateMatchConfidence): string {
+  if (level === "high") return "完全一致";
+  return "部分一致";
 }
 
-function confidenceColor(level: DuplicateMatchConfidence): string {
+function matchLevelColor(level: DuplicateMatchConfidence): string {
   if (level === "high") return "green";
-  if (level === "medium") return "blue";
-  return "default";
+  return "blue";
+}
+
+const memberRows = computed((): MemberRow[] => {
+  const canonSize = props.group.duplicates[0]?.canonicalSize;
+  const rows: MemberRow[] = [
+    {
+      kind: "canonical",
+      path: props.group.canonical.path,
+      side: props.group.canonical,
+      sizeBytes: canonSize
+    }
+  ];
+  for (const item of props.group.duplicates) {
+    rows.push({
+      kind: "duplicate",
+      path: duplicatePath(item),
+      side: item.duplicate,
+      confidence: item.confidence,
+      incomplete: item.incomplete,
+      incompleteNote: item.incompleteNote,
+      sizeBytes: item.duplicateSize
+    });
+  }
+  return rows;
+});
+
+const memberCount = computed(() => memberRows.value.length);
+
+/** 本组最大可勾选数 = n-1（至少留 1） */
+const maxSelectable = computed(() => Math.max(0, memberCount.value - 1));
+
+const selectedInGroup = computed(
+  () => memberRows.value.filter(row => props.selectedPaths.has(row.path)).length
+);
+
+const groupAllSelected = computed(
+  () => maxSelectable.value > 0 && selectedInGroup.value === maxSelectable.value
+);
+
+const groupIndeterminate = computed(
+  () => selectedInGroup.value > 0 && selectedInGroup.value < maxSelectable.value
+);
+
+function groupHeaderTitle(): string {
+  return `${sideLabel(props.group.mediaKind)} · ${props.group.contentKey} · ${memberCount.value} 项`;
 }
 </script>
 
@@ -75,74 +113,51 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   <article class="dup-group-card">
     <header class="dup-group-head">
       <span class="dup-group-title">{{ groupHeaderTitle() }}</span>
-      <a-tag v-if="group.ambiguousStem" color="orange" class="dup-ambiguous-tag">多正本</a-tag>
+      <a-tag v-if="group.ambiguousStem" color="orange" class="dup-ambiguous-tag">多落库</a-tag>
       <a-checkbox
         class="dup-group-check"
         :checked="groupAllSelected"
         :indeterminate="groupIndeterminate"
         @change="(e: { target: { checked: boolean } }) => emit('toggleGroup', e.target.checked)"
       >
-        本组副本（{{ selectedInGroup }} / {{ dupCount }}）
+        本组可删（{{ selectedInGroup }} / {{ maxSelectable }}）
       </a-checkbox>
     </header>
 
-    <div class="dup-group-body">
-      <div class="dup-side dup-keep">
-        <div class="dup-side-head">
-          <span class="dup-tag dup-tag-keep">保留</span>
-          <span>{{ sideLabel(group.mediaKind) }}</span>
-        </div>
-        <DuplicateLazyThumb :side="group.canonical" :is-live="group.mediaKind === 'live'" />
-        <div class="dup-paths">
-          <div
-            v-for="(line, i) in formatPaths(group.canonical.path, group.canonical.videoPath)"
-            :key="i"
-            class="dup-path"
-            :title="line"
-          >
-            {{ line }}
+    <ul class="dup-member-list">
+      <li v-for="row in memberRows" :key="row.path" class="dup-member-row">
+        <div class="dup-side">
+          <div class="dup-side-head">
+            <a-checkbox
+              class="dup-item-check"
+              :checked="selectedPaths.has(row.path)"
+              @change="(e: { target: { checked: boolean } }) => emit('toggleMember', row.path, e.target.checked)"
+            />
+            <span v-if="row.kind === 'canonical'" class="dup-tag dup-tag-keep">建议保留</span>
+            <span v-else class="dup-tag dup-tag-delete">可删</span>
+            <span>{{ sideLabel(group.mediaKind) }}</span>
+            <a-tag v-if="row.confidence" :color="matchLevelColor(row.confidence)" class="dup-conf-tag">
+              {{ matchLevelLabel(row.confidence) }}
+            </a-tag>
+            <a-tag v-if="row.incomplete" color="orange" class="dup-incomplete-tag">
+              {{ row.incompleteNote || "不完整" }}
+            </a-tag>
+          </div>
+          <DuplicateLazyThumb :side="row.side" :is-live="group.mediaKind === 'live'" />
+          <div v-if="row.sizeBytes != null" class="dup-size-hint">{{ formatBytes(row.sizeBytes) }}</div>
+          <div class="dup-paths">
+            <div
+              v-for="(line, i) in formatPaths(row.side.path, row.side.videoPath)"
+              :key="i"
+              class="dup-path"
+              :title="line"
+            >
+              {{ line }}
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="dup-duplicates">
-        <ul class="dup-dup-list">
-          <li v-for="(item, idx) in group.duplicates" :key="duplicatePath(item)" class="dup-dup-row">
-            <!-- 与左侧同构：head → thumb → paths，避免左侧勾选列把缩略图挤偏 -->
-            <div class="dup-side dup-delete">
-              <div class="dup-side-head">
-                <a-checkbox
-                  class="dup-item-check"
-                  :checked="selectedPaths.has(duplicatePath(item))"
-                  @change="(e: { target: { checked: boolean } }) => emit('toggleDuplicate', duplicatePath(item), e.target.checked)"
-                />
-                <span class="dup-tag dup-tag-delete">删除 {{ idx + 1 }}</span>
-                <a-tag :color="confidenceColor(item.confidence)" class="dup-conf-tag">
-                  {{ confidenceLabel(item.confidence) }}
-                </a-tag>
-                <span class="dup-size-hint">
-                  {{ formatBytes(item.canonicalSize) }} → {{ formatBytes(item.duplicateSize) }}
-                </span>
-                <a-tag v-if="item.incomplete" color="orange" class="dup-incomplete-tag">
-                  {{ item.incompleteNote || "不完整" }}
-                </a-tag>
-              </div>
-              <DuplicateLazyThumb :side="item.duplicate" :is-live="group.mediaKind === 'live'" />
-              <div class="dup-paths">
-                <div
-                  v-for="(line, i) in formatPaths(item.duplicate.path, item.duplicate.videoPath)"
-                  :key="i"
-                  class="dup-path"
-                  :title="line"
-                >
-                  {{ line }}
-                </div>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </div>
+      </li>
+    </ul>
   </article>
 </template>
 
@@ -153,9 +168,9 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   padding: 12px 14px;
   margin-bottom: 10px;
   min-width: 0;
-  overflow-x: hidden;
+  overflow: hidden;
   content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+  contain-intrinsic-size: auto 300px;
   contain: layout style paint;
 }
 
@@ -187,13 +202,31 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   font-size: 12px;
 }
 
-.dup-group-body {
-  display: grid;
-  /* 等宽列，左右缩略图水平起点一致 */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  min-width: 0;
+/** 同组横向滚动 */
+.dup-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dup-member-row {
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--fill-color, rgba(0, 0, 0, 0.02));
 }
 
 .dup-side {
@@ -202,32 +235,10 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   flex-direction: column;
 }
 
-.dup-duplicates {
-  min-width: 0;
-}
-
-.dup-dup-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.dup-dup-row {
-  min-width: 0;
-  padding: 0;
-
-  & + & {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px dashed var(--border-color);
-  }
-}
-
 .dup-side-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  /* 固定一行高度，保证左右 thumb 顶边对齐（标签换行时仍占满 min 高度） */
+  gap: 6px;
   min-height: 24px;
   margin-bottom: 8px;
   font-size: 12px;
@@ -268,12 +279,13 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
 }
 
 .dup-size-hint {
+  margin-top: 6px;
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
 
 .dup-paths {
-  margin-top: 8px;
+  margin-top: 6px;
   min-width: 0;
 }
 
@@ -284,16 +296,5 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-@media (max-width: 640px) {
-  .dup-group-body {
-    grid-template-columns: 1fr;
-  }
-
-  .dup-group-check {
-    margin-left: 0;
-    width: 100%;
-  }
 }
 </style>

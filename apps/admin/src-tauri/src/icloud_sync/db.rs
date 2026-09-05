@@ -1,7 +1,8 @@
 //! iCloud 同步 SQLite 断点库
-//! 职责：jobs/assets 绿field schema、pending/done 查询与状态更新
+//! 职责：jobs/assets 终态 schema、pending/done 查询与状态更新
 //! 适用：队列 catalog 落库与串行 download 续传
-//! @note 已知 v2/v3/v4 升级失败时中止且不清空；仅无法识别的旧形态才重建空库
+//! @note schema 版本用 `PRAGMA user_version`；已知 2→5 升级失败时中止且不清空；
+//!       仅无业务表时建终态，或 user_version∈{0,1} 的不可识别旧形态才重建空库
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +18,7 @@ use super::types::{
   JobRow, JobStatus, JobView, MediaKind, TaskType,
 };
 
+/// 应用期望的 state.db schema 代际（写入 `PRAGMA user_version`）
 const SCHEMA_VERSION: i32 = 5;
 
 /// icloud_sync SQLite 路径
@@ -24,7 +26,7 @@ pub fn state_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   Ok(icloud_sync_dir(app)?.join("state.db"))
 }
 
-/// 打开或创建 state.db；确保为绿field 终态 schema（不匹配则丢弃重建）
+/// 打开或创建 state.db；按 `user_version` 链式迁移到终态
 pub fn open_db(db_path: &Path) -> Result<Connection, String> {
   if let Some(parent) = db_path.parent() {
     std::fs::create_dir_all(parent).map_err(|e| format!("创建 SQLite 目录失败: {e}"))?;
@@ -34,41 +36,47 @@ pub fn open_db(db_path: &Path) -> Result<Connection, String> {
   Ok(conn)
 }
 
-fn schema_version(conn: &Connection) -> Result<Option<i32>, String> {
-  let exists: bool = conn
-    .query_row(
-      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'",
-      [],
-      |_| Ok(true),
-    )
-    .optional()
-    .map_err(|e| format!("探测 schema_meta 失败: {e}"))?
-    .unwrap_or(false);
-  if !exists {
-    return Ok(None);
+fn user_version(conn: &Connection) -> Result<i32, String> {
+  conn
+    .query_row("PRAGMA user_version", [], |row| row.get(0))
+    .map_err(|e| format!("读取 user_version 失败: {e}"))
+}
+
+fn set_user_version(conn: &Connection, version: i32) -> Result<(), String> {
+  // PRAGMA 不支持绑定参数
+  conn
+    .execute_batch(&format!("PRAGMA user_version = {version};"))
+    .map_err(|e| format!("写入 user_version={version} 失败: {e}"))
+}
+
+/// 一次性兼容：旧库只有 `schema_meta.version` 时灌入 pragma 并删表
+fn absorb_legacy_schema_meta(conn: &Connection) -> Result<(), String> {
+  if !table_exists(conn, "schema_meta")? {
+    return Ok(());
   }
-  let version: Option<i32> = conn
-    .query_row(
-      "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = 'version'",
-      [],
-      |row| row.get(0),
-    )
-    .optional()
-    .map_err(|e| format!("读取 schema 版本失败: {e}"))?;
-  Ok(version)
+  let cur = user_version(conn)?;
+  if cur == 0 {
+    let meta_ver: Option<i32> = conn
+      .query_row(
+        "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = 'version'",
+        [],
+        |row| row.get(0),
+      )
+      .optional()
+      .map_err(|e| format!("读取旧 schema_meta.version 失败: {e}"))?;
+    if let Some(v) = meta_ver {
+      set_user_version(conn, v)?;
+      log::info!("icloud_sync state.db: schema_meta.version={v} → user_version");
+    }
+  }
+  conn
+    .execute("DROP TABLE IF EXISTS schema_meta", [])
+    .map_err(|e| format!("删除旧 schema_meta 失败: {e}"))?;
+  Ok(())
 }
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
-  let table_exists: bool = conn
-    .query_row(
-      "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
-      params![table],
-      |_| Ok(true),
-    )
-    .optional()
-    .map_err(|e| format!("探测表 {table} 失败: {e}"))?
-    .unwrap_or(false);
-  if !table_exists {
+  if !table_exists(conn, table)? {
     return Ok(false);
   }
   let mut stmt = conn
@@ -95,52 +103,11 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool, String> {
   Ok(exists)
 }
 
-fn is_greenfield_schema(conn: &Connection) -> Result<bool, String> {
+fn needs_v5_cleanup(conn: &Connection) -> Result<bool, String> {
   Ok(
-    schema_version(conn)? == Some(SCHEMA_VERSION)
-      && column_exists(conn, "assets", "apple_id")?
-      && column_exists(conn, "assets", "cloud_state")?
-      && column_exists(conn, "assets", "cpl_asset_record_name")?
-      && column_exists(conn, "assets", "capture_at")?
-      && !column_exists(conn, "assets", "index_num")?
-      && !column_exists(conn, "jobs", "mode")?
-      && !table_exists(conn, "cloud_cursors")?
-      && column_exists(conn, "jobs", "task_type")?
-      && column_exists(conn, "cloud_delete_queue", "cpl_asset_record_name")?
-      && column_exists(conn, "cloud_delete_queue", "job_id")?,
-  )
-}
-
-fn is_v4_schema(conn: &Connection) -> Result<bool, String> {
-  Ok(
-    schema_version(conn)? == Some(4)
-      && column_exists(conn, "assets", "apple_id")?
-      && column_exists(conn, "assets", "cloud_state")?
-      && column_exists(conn, "assets", "capture_at")?
-      && column_exists(conn, "assets", "index_num")?
-      && column_exists(conn, "jobs", "task_type")?
-      && column_exists(conn, "cloud_delete_queue", "job_id")?,
-  )
-}
-
-fn is_v3_schema(conn: &Connection) -> Result<bool, String> {
-  Ok(
-    schema_version(conn)? == Some(3)
-      && column_exists(conn, "assets", "apple_id")?
-      && column_exists(conn, "assets", "cloud_state")?
-      && !column_exists(conn, "assets", "capture_at")?
-      && column_exists(conn, "jobs", "task_type")?
-      && column_exists(conn, "cloud_delete_queue", "job_id")?,
-  )
-}
-
-fn is_v2_schema(conn: &Connection) -> Result<bool, String> {
-  Ok(
-    schema_version(conn)? == Some(2)
-      && column_exists(conn, "assets", "apple_id")?
-      && column_exists(conn, "assets", "cloud_state")?
-      && column_exists(conn, "jobs", "task_type")?
-      && column_exists(conn, "cloud_delete_queue", "job_id")?,
+    column_exists(conn, "assets", "index_num")?
+      || column_exists(conn, "jobs", "mode")?
+      || table_exists(conn, "cloud_cursors")?,
   )
 }
 
@@ -152,30 +119,40 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<(), String> {
       [],
     )
     .map_err(|e| format!("合并 modified_cloud 失败: {e}"))?;
-  conn
-    .execute(
-      "UPDATE schema_meta SET value = '3' WHERE key = 'version'",
-      [],
-    )
-    .map_err(|e| format!("更新 schema 版本失败: {e}"))?;
+  set_user_version(conn, 3)?;
   log::info!("icloud_sync state.db migrated v2 → v3 (modified_cloud → cloud_only)");
   Ok(())
 }
 
 /// v3→v4：产品元数据分列（拍摄/加入时间、GPS）
 fn migrate_v3_to_v4(conn: &Connection) -> Result<(), String> {
+  // 幂等：已有列则跳过 ADD（避免仅靠版本时重复打开失败）
+  if !column_exists(conn, "assets", "capture_at")? {
+    conn
+      .execute("ALTER TABLE assets ADD COLUMN capture_at TEXT", [])
+      .map_err(|e| format!("v3→v4 添加 capture_at 失败: {e}"))?;
+  }
+  if !column_exists(conn, "assets", "added_at")? {
+    conn
+      .execute("ALTER TABLE assets ADD COLUMN added_at TEXT", [])
+      .map_err(|e| format!("v3→v4 添加 added_at 失败: {e}"))?;
+  }
+  if !column_exists(conn, "assets", "latitude")? {
+    conn
+      .execute("ALTER TABLE assets ADD COLUMN latitude REAL", [])
+      .map_err(|e| format!("v3→v4 添加 latitude 失败: {e}"))?;
+  }
+  if !column_exists(conn, "assets", "longitude")? {
+    conn
+      .execute("ALTER TABLE assets ADD COLUMN longitude REAL", [])
+      .map_err(|e| format!("v3→v4 添加 longitude 失败: {e}"))?;
+  }
   conn
     .execute_batch(
-      r#"
-      ALTER TABLE assets ADD COLUMN capture_at TEXT;
-      ALTER TABLE assets ADD COLUMN added_at TEXT;
-      ALTER TABLE assets ADD COLUMN latitude REAL;
-      ALTER TABLE assets ADD COLUMN longitude REAL;
-      CREATE INDEX IF NOT EXISTS idx_assets_capture_at ON assets(apple_id, capture_at);
-      UPDATE schema_meta SET value = '4' WHERE key = 'version';
-      "#,
+      "CREATE INDEX IF NOT EXISTS idx_assets_capture_at ON assets(apple_id, capture_at);",
     )
-    .map_err(|e| format!("v3→v4 迁移失败: {e}"))?;
+    .map_err(|e| format!("v3→v4 创建 capture_at 索引失败: {e}"))?;
+  set_user_version(conn, 4)?;
   log::info!("icloud_sync state.db migrated v3 → v4 (product catalog metadata columns)");
   Ok(())
 }
@@ -191,12 +168,7 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<(), String> {
   let needs_drop_cursors = table_exists(conn, "cloud_cursors")?;
 
   if !needs_drop_index && !needs_drop_mode && !needs_drop_cursors {
-    conn
-      .execute(
-        "UPDATE schema_meta SET value = '5' WHERE key = 'version'",
-        [],
-      )
-      .map_err(|e| format!("v4→v5 抬版本失败: {e}"))?;
+    set_user_version(conn, 5)?;
     log::info!("icloud_sync state.db migrated v4 → v5 (already clean shape)");
     return Ok(());
   }
@@ -308,13 +280,6 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<(), String> {
         .execute("DROP TABLE IF EXISTS cloud_cursors", [])
         .map_err(|e| format!("v4→v5 删除 cloud_cursors 失败: {e}"))?;
     }
-
-    conn
-      .execute(
-        "UPDATE schema_meta SET value = '5' WHERE key = 'version'",
-        [],
-      )
-      .map_err(|e| format!("v4→v5 抬版本失败: {e}"))?;
     Ok(())
   };
 
@@ -341,6 +306,7 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<(), String> {
       conn
         .execute_batch("COMMIT;")
         .map_err(|e| format!("v4→v5 提交失败: {e}"))?;
+      set_user_version(conn, 5)?;
       log::info!(
         "icloud_sync state.db migrated v4 → v5 (drop index_num/mode/cloud_cursors; assets={after_assets}, jobs={after_jobs})"
       );
@@ -353,54 +319,35 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<(), String> {
   }
 }
 
-fn migrate_known_versions_to_greenfield(conn: &Connection) -> Result<(), String> {
-  if is_v2_schema(conn)? {
-    migrate_v2_to_v3(conn)?;
-  }
-  if is_v3_schema(conn)? {
-    migrate_v3_to_v4(conn)?;
-  }
-  let ver = schema_version(conn)?;
-  let needs_v5_cleanup = column_exists(conn, "assets", "index_num")?
-    || column_exists(conn, "jobs", "mode")?
-    || table_exists(conn, "cloud_cursors")?;
-  if is_v4_schema(conn)? || ver == Some(4) || needs_v5_cleanup {
-    migrate_v4_to_v5(conn)?;
+/// 按 user_version 链式升到 SCHEMA_VERSION
+fn migrate_to_current(conn: &Connection) -> Result<(), String> {
+  loop {
+    let cur = user_version(conn)?;
+    if cur >= SCHEMA_VERSION {
+      break;
+    }
+    match cur {
+      2 => migrate_v2_to_v3(conn)?,
+      3 => migrate_v3_to_v4(conn)?,
+      4 => migrate_v4_to_v5(conn)?,
+      other => {
+        return Err(format!(
+          "icloud_sync state.db 无法从 user_version={other} 自动升级（期望 2..=4）"
+        ));
+      }
+    }
+    let next = user_version(conn)?;
+    if next <= cur {
+      return Err(format!(
+        "icloud_sync state.db 迁移未抬升版本：{cur} → {next}"
+      ));
+    }
   }
   Ok(())
 }
 
-/// 绿field：只建终态表。
-/// @note 已知 v2/v3/v4（及 version∈{2,3,4}）迁移失败时 **禁止** 重建空库，避免丢 assets/jobs
-fn ensure_schema(conn: &Connection) -> Result<(), String> {
-  if is_greenfield_schema(conn)? {
-    return Ok(());
-  }
-
-  let ver = schema_version(conn)?;
-  let needs_v5_cleanup = column_exists(conn, "assets", "index_num").unwrap_or(false)
-    || column_exists(conn, "jobs", "mode").unwrap_or(false)
-    || table_exists(conn, "cloud_cursors").unwrap_or(false);
-  let on_known_upgrade = is_v2_schema(conn)?
-    || is_v3_schema(conn)?
-    || is_v4_schema(conn)?
-    || matches!(ver, Some(2 | 3 | 4))
-    || (ver == Some(5) && needs_v5_cleanup);
-
-  if on_known_upgrade {
-    migrate_known_versions_to_greenfield(conn)?;
-    if is_greenfield_schema(conn)? {
-      return Ok(());
-    }
-    return Err(format!(
-      "icloud_sync state.db 迁移后仍非终态（version={ver:?}），已中止且未清空数据库"
-    ));
-  }
-
-  log::warn!(
-    "icloud_sync state.db schema 非绿field 终态（version={:?}），将重建空库",
-    ver
-  );
+/// 终态建表（无 schema_meta；版本只写 pragma）
+fn create_final_schema(conn: &Connection) -> Result<(), String> {
   conn
     .execute_batch(
       r#"
@@ -411,11 +358,6 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       DROP TABLE IF EXISTS jobs;
       DROP TABLE IF EXISTS schema_meta;
       PRAGMA foreign_keys = ON;
-
-      CREATE TABLE schema_meta (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL
-      );
 
       CREATE TABLE jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -485,12 +427,62 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       );
       CREATE INDEX idx_cloud_delete_status ON cloud_delete_queue(apple_id, status);
       CREATE INDEX idx_cloud_delete_job ON cloud_delete_queue(job_id, status);
-
-      INSERT INTO schema_meta(key, value) VALUES('version', '5');
       "#,
     )
     .map_err(|e| format!("初始化 SQLite schema 失败: {e}"))?;
+  set_user_version(conn, SCHEMA_VERSION)?;
   Ok(())
+}
+
+/// 只信 `PRAGMA user_version` 驱动迁移；不再做绿field 复合列探测门禁
+fn ensure_schema(conn: &Connection) -> Result<(), String> {
+  absorb_legacy_schema_meta(conn)?;
+  let cur = user_version(conn)?;
+  let has_business = table_exists(conn, "assets")? || table_exists(conn, "jobs")?;
+
+  if !has_business {
+    create_final_schema(conn)?;
+    return Ok(());
+  }
+
+  if cur > SCHEMA_VERSION {
+    return Err(format!(
+      "icloud_sync state.db user_version={cur} 新于应用 SCHEMA_VERSION={SCHEMA_VERSION}，请升级客户端"
+    ));
+  }
+
+  // 已知链：2→3→4→5
+  if (2..SCHEMA_VERSION).contains(&cur) {
+    migrate_to_current(conn)?;
+  }
+
+  let cur = user_version(conn)?;
+  if cur == SCHEMA_VERSION {
+    // 版本已到但结构残留（历史半迁移）：幂等收尾，失败则中止不清空
+    if needs_v5_cleanup(conn)? {
+      migrate_v4_to_v5(conn)?;
+      if needs_v5_cleanup(conn)? {
+        return Err(
+          "icloud_sync state.db user_version=5 但清理 index_num/mode/cloud_cursors 失败，已中止且未清空"
+            .into(),
+        );
+      }
+    }
+    return Ok(());
+  }
+
+  // 0/1 或其它不可识别：仅此时允许重建空库（与旧「version=1 怪形态」一致）
+  if matches!(cur, 0 | 1) {
+    log::warn!(
+      "icloud_sync state.db 不可识别 user_version={cur}，将重建空库"
+    );
+    create_final_schema(conn)?;
+    return Ok(());
+  }
+
+  Err(format!(
+    "icloud_sync state.db 迁移后仍非终态（user_version={cur}），已中止且未清空数据库"
+  ))
 }
 
 /// 插入任务行，返回自增 id
@@ -2773,9 +2765,17 @@ mod tests {
 
     let conn = open_db(&path).expect("migrate");
     let version: i32 = conn
-      .query_row("SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key='version'", [], |r| r.get(0))
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
       .expect("ver");
     assert_eq!(version, SCHEMA_VERSION);
+    let has_meta: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("meta");
+    assert_eq!(has_meta, 0, "应吸收并删除 schema_meta");
     let has_capture: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='capture_at'",
@@ -2839,6 +2839,18 @@ mod tests {
       )
       .expect("cursors");
     assert_eq!(has_cursors, 0, "greenfield schema v5 must not have cloud_cursors");
+    let version: i32 = conn
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
+      .expect("user_version");
+    assert_eq!(version, SCHEMA_VERSION);
+    let has_meta: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("meta");
+    assert_eq!(has_meta, 0);
     let _ = std::fs::remove_file(path);
   }
 
@@ -2908,13 +2920,17 @@ mod tests {
 
     let conn = open_db(&path).expect("migrate v4 to v5");
     let version: i32 = conn
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
+      .expect("ver");
+    assert_eq!(version, SCHEMA_VERSION);
+    let has_meta: i64 = conn
       .query_row(
-        "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key='version'",
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
         [],
         |r| r.get(0),
       )
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
+      .expect("meta");
+    assert_eq!(has_meta, 0);
     let has_index_num: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='index_num'",
@@ -3009,13 +3025,17 @@ mod tests {
 
     let conn = open_db(&path).expect("bump to v5");
     let version: i32 = conn
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
+      .expect("ver");
+    assert_eq!(version, SCHEMA_VERSION);
+    let has_meta: i64 = conn
       .query_row(
-        "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key='version'",
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
         [],
         |r| r.get(0),
       )
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
+      .expect("meta");
+    assert_eq!(has_meta, 0);
     let assets_n: i64 = conn
       .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
       .expect("assets");
@@ -3054,6 +3074,10 @@ mod tests {
     drop(conn);
 
     let conn = open_db(&path).expect("open rebuilds");
+    let version: i32 = conn
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
+      .expect("ver");
+    assert_eq!(version, SCHEMA_VERSION);
     let has_apple: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='apple_id'",

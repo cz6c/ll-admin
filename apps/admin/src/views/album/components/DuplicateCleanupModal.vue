@@ -1,6 +1,6 @@
 /**
  * 清理重复下载弹窗
- * 职责：平铺分组列表 + 视口 lazy 缩略图；content-visibility 减轻长列表滚动开销
+ * 职责：平铺分组 + 视口 lazy 缩略图；同组横向滚动；每组删除至少留 1 项，正本删后晋升
  */
 <script setup lang="ts">
 import DuplicateGroupCard from "./DuplicateGroupCard.vue";
@@ -30,15 +30,19 @@ function duplicatePath(item: DuplicateLegacyItem): string {
   return item.duplicate.path;
 }
 
-/** 置信度展示序：高 → 中 → 低 */
+/** 组内全部主路径（含建议正本） */
+function groupMemberPaths(group: DuplicateGroup): string[] {
+  return [group.canonical.path, ...group.duplicates.map(duplicatePath)];
+}
+
+/** 一致程度排序：完全一致 → 部分一致 */
 const CONFIDENCE_RANK: Record<DuplicateMatchConfidence, number> = {
   high: 0,
-  medium: 1,
-  low: 2
+  medium: 1
 };
 
 /**
- * 组内副本按置信度从高到低排序；同档保持相对顺序
+ * 组内副本按一致程度排序；同档保持相对顺序
  */
 function sortDuplicatesByConfidence(items: DuplicateLegacyItem[]): DuplicateLegacyItem[] {
   return [...items].sort(
@@ -46,9 +50,9 @@ function sortDuplicatesByConfidence(items: DuplicateLegacyItem[]): DuplicateLega
   );
 }
 
-/** 组的最高置信度档（数值越小越高） */
+/** 组内最佳一致程度（数值越小越好） */
 function groupBestConfidenceRank(group: DuplicateGroup): number {
-  let best = CONFIDENCE_RANK.low;
+  let best = CONFIDENCE_RANK.medium;
   for (const item of group.duplicates) {
     const rank = CONFIDENCE_RANK[item.confidence];
     if (rank < best) best = rank;
@@ -57,7 +61,7 @@ function groupBestConfidenceRank(group: DuplicateGroup): number {
 }
 
 /**
- * 组列表按置信度从高到低：先比组内最高档，再比高置信副本数，最后 contentKey
+ * 组列表：先比最佳一致程度，再比「完全一致」副本数，最后 contentKey
  */
 function sortGroupsByConfidence(list: DuplicateGroup[]): DuplicateGroup[] {
   return [...list].sort((a, b) => {
@@ -72,7 +76,7 @@ function sortGroupsByConfidence(list: DuplicateGroup[]): DuplicateGroup[] {
   });
 }
 
-/** 组内副本排序 + 组列表按置信度排序 */
+/** 组内/组间按一致程度整理 */
 function prepareDuplicateGroups(list: DuplicateGroup[]): DuplicateGroup[] {
   return sortGroupsByConfidence(
     list.map(group => ({
@@ -82,24 +86,12 @@ function prepareDuplicateGroups(list: DuplicateGroup[]): DuplicateGroup[] {
   );
 }
 
-function allDuplicatePaths(list: DuplicateGroup[]): string[] {
-  const paths: string[] = [];
-  for (const group of list) {
-    for (const item of group.duplicates) {
-      paths.push(duplicatePath(item));
-    }
-  }
-  return paths;
-}
-
-/** 高中置信默认勾选；低置信保留兼容默认不选 */
+/** 默认可删路径：各组除建议正本外的全部副本 */
 function defaultSelectedPaths(list: DuplicateGroup[]): string[] {
   const paths: string[] = [];
   for (const group of list) {
     for (const item of group.duplicates) {
-      if (item.confidence !== "low") {
-        paths.push(duplicatePath(item));
-      }
+      paths.push(duplicatePath(item));
     }
   }
   return paths;
@@ -113,19 +105,22 @@ function iterDuplicateItems(list: DuplicateGroup[]): DuplicateLegacyItem[] {
   return items;
 }
 
+/** 每组最多勾选 n-1；全选 = 各组去掉建议正本 */
+function maxSelectablePaths(list: DuplicateGroup[]): string[] {
+  return defaultSelectedPaths(list);
+}
+
 const confidenceCounts = computed(() => {
   let high = 0;
   let medium = 0;
-  let low = 0;
   for (const item of iterDuplicateItems(groups.value)) {
     if (item.confidence === "high") high += 1;
-    else if (item.confidence === "medium") medium += 1;
-    else low += 1;
+    else medium += 1;
   }
-  return { high, medium, low };
+  return { high, medium };
 });
 
-const totalDuplicates = computed(() => allDuplicatePaths(groups.value).length);
+const maxSelectableCount = computed(() => maxSelectablePaths(groups.value).length);
 
 const hasAmbiguousStem = computed(() => groups.value.some(g => g.ambiguousStem));
 
@@ -134,8 +129,8 @@ const ambiguousGroupCount = computed(() => groups.value.filter(g => g.ambiguousS
 /** 仅当该组勾选状态变化时触发子组件更新（配合 v-memo） */
 function groupSelectionToken(group: DuplicateGroup): string {
   let token = "";
-  for (const item of group.duplicates) {
-    token += selectedPaths.value.has(duplicatePath(item)) ? "1" : "0";
+  for (const path of groupMemberPaths(group)) {
+    token += selectedPaths.value.has(path) ? "1" : "0";
   }
   return token;
 }
@@ -160,7 +155,22 @@ watch(open, val => {
   if (val) void loadGroups();
 });
 
-function toggleDuplicate(path: string, checked: boolean) {
+/**
+ * 勾选成员：同组不得全选光（至少留 1 项未勾选）
+ */
+function toggleMember(path: string, checked: boolean) {
+  const group = groups.value.find(g => groupMemberPaths(g).includes(path));
+  if (!group) return;
+
+  const members = groupMemberPaths(group);
+  if (checked) {
+    const nextSelected = members.filter(p => p === path || selectedPaths.value.has(p));
+    if (nextSelected.length >= members.length) {
+      message.warning("同组至少保留一项，不能全部勾选删除");
+      return;
+    }
+  }
+
   const next = new Set(selectedPaths.value);
   if (checked) next.add(path);
   else next.delete(path);
@@ -169,7 +179,8 @@ function toggleDuplicate(path: string, checked: boolean) {
 
 function toggleAll(checked: boolean) {
   if (checked) {
-    selectedPaths.value = new Set(allDuplicatePaths(groups.value));
+    // 全选可删项：每组留建议正本
+    selectedPaths.value = new Set(maxSelectablePaths(groups.value));
   } else {
     selectedPaths.value = new Set();
   }
@@ -177,41 +188,99 @@ function toggleAll(checked: boolean) {
 
 function selectByConfidence(level: DuplicateMatchConfidence) {
   const next = new Set(selectedPaths.value);
-  for (const item of iterDuplicateItems(groups.value)) {
-    if (item.confidence === level) {
-      next.add(duplicatePath(item));
+  for (const group of groups.value) {
+    const members = groupMemberPaths(group);
+    for (const item of group.duplicates) {
+      if (item.confidence !== level) continue;
+      const path = duplicatePath(item);
+      const selectedInGroup = members.filter(p => p === path || next.has(p)).length;
+      // 勾上后若达到全组数量则跳过，保证至少留 1
+      if (selectedInGroup >= members.length) continue;
+      next.add(path);
     }
   }
   selectedPaths.value = next;
 }
 
-function toggleGroupDuplicates(group: DuplicateGroup, checked: boolean) {
+/**
+ * 本组勾选：勾选时选中除建议正本外全部；取消则清空本组
+ */
+function toggleGroupMembers(group: DuplicateGroup, checked: boolean) {
   const next = new Set(selectedPaths.value);
-  for (const item of group.duplicates) {
-    const path = duplicatePath(item);
-    if (checked) next.add(path);
-    else next.delete(path);
+  const members = groupMemberPaths(group);
+  if (checked) {
+    for (const path of members) {
+      if (path === group.canonical.path) next.delete(path);
+      else next.add(path);
+    }
+  } else {
+    for (const path of members) next.delete(path);
   }
   selectedPaths.value = next;
 }
 
 const allSelected = computed(
-  () => totalDuplicates.value > 0 && selectedPaths.value.size === totalDuplicates.value
+  () => maxSelectableCount.value > 0 && selectedPaths.value.size === maxSelectableCount.value
 );
 const indeterminate = computed(
-  () => selectedPaths.value.size > 0 && selectedPaths.value.size < totalDuplicates.value
+  () => selectedPaths.value.size > 0 && selectedPaths.value.size < maxSelectableCount.value
 );
+
+/**
+ * 删除后重组：正本被删则晋升首个剩余副本；仅剩 1 项则不再作为重复组展示
+ */
+function applyDeleteToGroups(list: DuplicateGroup[], pathSet: Set<string>): DuplicateGroup[] {
+  const next: DuplicateGroup[] = [];
+  for (const group of list) {
+    const canonDeleted = pathSet.has(group.canonical.path);
+    const remainDups = group.duplicates.filter(item => !pathSet.has(duplicatePath(item)));
+
+    if (!canonDeleted) {
+      if (remainDups.length === 0) continue;
+      next.push({ ...group, duplicates: remainDups });
+      continue;
+    }
+
+    // 正本已删：晋升第一个剩余副本为新正本
+    if (remainDups.length === 0) continue;
+    if (remainDups.length === 1) continue; // 只剩一份，不再是重复组
+    const [promoted, ...rest] = remainDups;
+    next.push({
+      ...group,
+      assetId: `${group.assetId}::${promoted.duplicate.path}`,
+      canonical: promoted.duplicate,
+      duplicates: rest.map(item => ({
+        ...item,
+        canonicalSize: promoted.duplicateSize
+      }))
+    });
+  }
+  return prepareDuplicateGroups(next);
+}
 
 async function onDeleteSelected() {
   const paths = [...selectedPaths.value];
   if (paths.length === 0) return;
 
+  const pathSet = new Set(paths);
+  for (const group of groups.value) {
+    const members = groupMemberPaths(group);
+    const selectedInGroup = members.filter(p => pathSet.has(p)).length;
+    if (selectedInGroup >= members.length) {
+      message.warning(`「${group.contentKey}」组不能全部删除，请至少保留一项`);
+      return;
+    }
+  }
+
   deleting.value = true;
   error.value = "";
   try {
-    const pathSet = new Set(paths);
     const extraMov: string[] = [];
     for (const group of groups.value) {
+      if (pathSet.has(group.canonical.path)) {
+        const mov = group.canonical.videoPath?.trim();
+        if (mov) extraMov.push(mov);
+      }
       for (const item of group.duplicates) {
         if (!pathSet.has(duplicatePath(item))) continue;
         const mov = item.duplicate.videoPath?.trim();
@@ -220,17 +289,9 @@ async function onDeleteSelected() {
     }
     await deleteAlbumLocal([...paths, ...extraMov]);
 
-    groups.value = prepareDuplicateGroups(
-      groups.value
-        .map(group => ({
-          ...group,
-          duplicates: group.duplicates.filter(item => !pathSet.has(duplicatePath(item)))
-        }))
-        .filter(group => group.duplicates.length > 0)
-    );
-
-    selectedPaths.value = new Set();
-    message.success(`已删除 ${paths.length} 个重复副本`);
+    groups.value = applyDeleteToGroups(groups.value, pathSet);
+    selectedPaths.value = new Set(defaultSelectedPaths(groups.value));
+    message.success(`已删除 ${paths.length} 项`);
     emit("deleted");
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "删除失败";
@@ -256,7 +317,7 @@ async function onDeleteSelected() {
     <div class="dup-modal-layout">
       <div class="dup-modal-top">
         <p class="dup-intro">
-          按文件内容（BLAKE3）归组：高置信（内容一致，含 Live 双轨）与中置信（主画面一致但配对视频不全）默认勾选；请对照缩略图后删除副本。
+          按内容（BLAKE3）归组；正本：落库 → 完整实况 → 更新时间。同组至少保留一项；「建议保留」也可勾选，删后自动晋升下一份。
         </p>
 
         <a-spin :spinning="loading">
@@ -267,23 +328,20 @@ async function onDeleteSelected() {
             type="warning"
             show-icon
             class="dup-alert"
-            message="部分组存在多正本"
-            :description="`有 ${ambiguousGroupCount} 组内含多个不同的同步落库项，删除前请对照缩略图与路径，确认要保留哪一份。`"
+            message="部分组存在多落库"
+            :description="`有 ${ambiguousGroupCount} 组内含多个不同的同步落库项，删除前请对照缩略图与路径。`"
           />
 
           <a-empty v-if="!loading && !error && groups.length === 0" description="未发现重复下载" />
 
           <div v-else-if="groups.length > 0" class="dup-toolbar">
             <a-checkbox :checked="allSelected" :indeterminate="indeterminate" @change="(e: { target: { checked: boolean } }) => toggleAll(e.target.checked)">
-              全选副本（{{ selectedPaths.size }} / {{ totalDuplicates }}）
+              全选可删（{{ selectedPaths.size }} / {{ maxSelectableCount }}）
             </a-checkbox>
-            <span class="dup-conf-stats">
-              高 {{ confidenceCounts.high }} · 中 {{ confidenceCounts.medium }} · 低 {{ confidenceCounts.low }}
-            </span>
+            <span class="dup-conf-stats">完全一致 {{ confidenceCounts.high }} · 部分一致 {{ confidenceCounts.medium }}</span>
             <a-space :size="8" class="dup-conf-actions">
-              <a-button size="small" @click="selectByConfidence('high')">勾选高置信</a-button>
-              <a-button size="small" @click="selectByConfidence('medium')">勾选中置信</a-button>
-              <a-button size="small" @click="selectByConfidence('low')">勾选低置信</a-button>
+              <a-button size="small" @click="selectByConfidence('high')">勾选完全一致</a-button>
+              <a-button size="small" @click="selectByConfidence('medium')">勾选部分一致</a-button>
             </a-space>
           </div>
         </a-spin>
@@ -293,11 +351,11 @@ async function onDeleteSelected() {
         <DuplicateGroupCard
           v-for="group in groups"
           :key="group.assetId"
-          v-memo="[group.assetId, group.duplicates.length, groupSelectionToken(group)]"
+          v-memo="[group.assetId, group.duplicates.length, group.canonical.path, groupSelectionToken(group)]"
           :group="group"
           :selected-paths="selectedPaths"
-          @toggle-duplicate="toggleDuplicate"
-          @toggle-group="checked => toggleGroupDuplicates(group, checked)"
+          @toggle-member="toggleMember"
+          @toggle-group="checked => toggleGroupMembers(group, checked)"
         />
       </div>
     </div>
@@ -344,7 +402,6 @@ async function onDeleteSelected() {
   margin-left: auto;
 }
 
-/** 唯一滚动区：占满弹窗剩余高度，说明/全选固定在上方 */
 .dup-list {
   flex: 1;
   min-height: 0;

@@ -62,8 +62,8 @@ fn emit_thumb_ready(
 
 /// EXIF/sync 回填并行度（每线程自开只读 sync 库）
 const META_PARALLEL: usize = 4;
-/// Live 预热转码并行度
-const LIVE_PROXY_PARALLEL: usize = 4;
+/// Live 预热转码并行度：每路 HEVC→H.264 吃满多核+大内存；>2 易拖垮整机
+const LIVE_PROXY_PARALLEL: usize = 2;
 
 /// 缩略图已就绪后：EXIF/sync 仅补空字段，再推前端（限并发读 EXIF）
 fn persist_meta_for_paths(
@@ -214,7 +214,7 @@ fn ensure_live_proxy_file(
   Some(cache_file.to_string_lossy().into_owned())
 }
 
-/// Live mov 扫描期预热 H.264 代理（2～4 路并行；单独视频仍懒转码）
+/// Live mov 扫描期预热 H.264 代理（限并发；单独视频仍懒转码）
 fn prewarm_live_playback(
   app: &AppHandle,
   conn: &rusqlite::Connection,
@@ -222,7 +222,7 @@ fn prewarm_live_playback(
   cache_dir: &Path,
   ffmpeg_bin: Option<&Path>,
   cancel: &ScanCancelToken,
-  still_current: &dyn Fn() -> bool,
+  still_current: &(dyn Fn() -> bool + Sync),
 ) {
   let jobs = live_proxy_jobs(conn, root);
   if jobs.is_empty() {
@@ -233,15 +233,10 @@ fn prewarm_live_playback(
     emit_scan_progress(app, "live-proxy", 0, total);
   }
 
-  let parallelism = LIVE_PROXY_PARALLEL
-    .min(jobs.len())
-    .max(1)
-    .min(
-      std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4),
-    );
+  let parallelism = LIVE_PROXY_PARALLEL.min(jobs.len()).max(1);
   let chunk_size = jobs.len().div_ceil(parallelism);
+  let done_counter = AtomicU32::new(0);
+  let done_ref = &done_counter;
   // (still_path, mov_path, proxy_path)
   let mut outcomes: Vec<(String, String, String)> = Vec::new();
 
@@ -250,6 +245,8 @@ fn prewarm_live_playback(
       .chunks(chunk_size)
       .map(|chunk| {
         let token = cancel.clone();
+        let app_progress = app.clone();
+        // done_ref / still_current 为 Copy 引用，可安全进多路 move 闭包
         s.spawn(move || {
           let mut ok: Vec<(String, String, String)> = Vec::new();
           for (still_path, mov_path) in chunk {
@@ -258,6 +255,11 @@ fn prewarm_live_playback(
             }
             if let Some(proxy) = ensure_live_proxy_file(ffmpeg_bin, cache_dir, mov_path) {
               ok.push((still_path.clone(), mov_path.clone(), proxy));
+            }
+            // 每完成一条就推进度（与缩略图一致），避免并行后只在首尾跳动
+            let done = done_ref.fetch_add(1, Ordering::Relaxed) + 1;
+            if still_current() {
+              emit_scan_progress(&app_progress, "live-proxy", done, total);
             }
           }
           ok

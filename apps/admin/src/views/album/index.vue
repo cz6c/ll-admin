@@ -199,10 +199,10 @@ const scanProgressPercent = computed(() => {
 const scanProgressLabel = computed(() => {
   const { phase, done, total } = scanProgress.value;
   if (phase === "live-proxy" && total > 0) {
-    return `准备实况播放 ${done} / ${total}`;
+    return `组装实况文件 ${done} / ${total}`;
   }
   if (phase === "thumbnails" && total > 0) {
-    return `生成缩略图 ${done} / ${total}`;
+    return `加载文件 ${done} / ${total}`;
   }
   if (done > 0) {
     return `扫描文件 ${done}${total > 0 ? ` / ${total}` : ""}`;
@@ -211,15 +211,11 @@ const scanProgressLabel = computed(() => {
 });
 
 const thumbsGenerating = computed(
-  () =>
-    (scanProgress.value.phase === "thumbnails" || scanProgress.value.phase === "live-proxy") &&
-    scanProgress.value.total > scanProgress.value.done
+  () => (scanProgress.value.phase === "thumbnails" || scanProgress.value.phase === "live-proxy") && scanProgress.value.total > scanProgress.value.done
 );
 
 /** 全页 loading 进度条：仅缩略图生成等慢过程；discover / live-proxy 不挡宫格 */
-const showFullPageScanProgress = computed(
-  () => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0
-);
+const showFullPageScanProgress = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0);
 
 function onTreeSelect(keys: string[]) {
   const key = keys[0];

@@ -315,7 +315,27 @@ fn fill_hashes_for_size_candidates(conn: Option<&Connection>, entries: &mut [Sca
   }
 }
 
-/// 组内正本：有落库优先；多条落库或皆无落库时取修改时间较新
+/// Live 完整度排序：完整实况 > 普通图/视频 > 缺 mov 的实况（数值越大越优先）
+fn live_completeness_rank(entry: &ScannedEntry) -> u8 {
+  let has_mov = entry
+    .video_path
+    .as_ref()
+    .is_some_and(|p| !p.trim().is_empty());
+  if entry.media_kind == "live" {
+    if has_mov {
+      2
+    } else {
+      0
+    }
+  } else if has_mov {
+    // 成对后仍可能 kind 未标 live，有 mov 视为完整实况
+    2
+  } else {
+    1
+  }
+}
+
+/// 组内正本：落库优先 → 完整 Live → 修改时间较新
 fn pick_canonical_index(entries: &[&ScannedEntry]) -> usize {
   debug_assert!(!entries.is_empty());
   let mut best = 0usize;
@@ -325,9 +345,15 @@ fn pick_canonical_index(entries: &[&ScannedEntry]) -> usize {
       (true, false) => true,
       (false, true) => false,
       _ => {
-        entry.modified > cur.modified
-          || (entry.modified == cur.modified
-            && normalize_path_key(&entry.path) < normalize_path_key(&cur.path))
+        let e_rank = live_completeness_rank(entry);
+        let c_rank = live_completeness_rank(cur);
+        if e_rank != c_rank {
+          e_rank > c_rank
+        } else {
+          entry.modified > cur.modified
+            || (entry.modified == cur.modified
+              && normalize_path_key(&entry.path) < normalize_path_key(&cur.path))
+        }
       }
     };
     if better {
@@ -351,23 +377,15 @@ fn local_group_id(hash: &str) -> String {
   format!("hash:{}", &hash[..hash.len().min(16)])
 }
 
-fn incomplete_note(canonical: &ScannedEntry, other: &ScannedEntry) -> Option<String> {
-  let is_live = canonical.media_kind == "live" || other.media_kind == "live";
-  if !is_live {
-    return None;
+fn entry_incomplete_note(entry: &ScannedEntry) -> Option<String> {
+  let has_mov = entry
+    .video_path
+    .as_ref()
+    .is_some_and(|p| !p.trim().is_empty());
+  if entry.media_kind == "live" && !has_mov {
+    return Some("缺配对视频".into());
   }
-  let c_mov = canonical.video_path.is_some();
-  let o_mov = other.video_path.is_some();
-  if c_mov && o_mov {
-    return None;
-  }
-  if !c_mov && o_mov {
-    return Some("正本侧缺配对视频".into());
-  }
-  if c_mov && !o_mov {
-    return Some("副本侧缺配对视频".into());
-  }
-  Some("Live 配对不完整".into())
+  None
 }
 
 /// 同主文件哈希已成组：非 Live → High；Live 再比 mov
@@ -484,7 +502,6 @@ fn confidence_sort_rank(confidence: DuplicateMatchConfidence) -> u8 {
   match confidence {
     DuplicateMatchConfidence::High => 0,
     DuplicateMatchConfidence::Medium => 1,
-    DuplicateMatchConfidence::Low => 2,
   }
 }
 
@@ -494,7 +511,7 @@ fn group_best_confidence_rank(group: &DuplicateGroup) -> u8 {
     .iter()
     .map(|item| confidence_sort_rank(item.confidence))
     .min()
-    .unwrap_or(2)
+    .unwrap_or(1)
 }
 
 fn group_high_confidence_count(group: &DuplicateGroup) -> usize {
@@ -526,7 +543,7 @@ fn build_group_from_bucket(bucket: &[&ScannedEntry], content_hash: &str) -> Opti
     if i == canon_idx {
       continue;
     }
-    let note = incomplete_note(canonical, entry);
+    let note = entry_incomplete_note(entry);
     let (confidence, canonical_size, duplicate_size) = classify_vs_canonical(canonical, entry);
     duplicates.push(DuplicateLegacyItem {
       duplicate: to_side(entry),
@@ -668,6 +685,81 @@ mod tests {
     let a = entry(r"E:\old\a.jpg", 10, Some("h"), false, None);
     let b = entry(r"E:\sync\b.jpg", 10, Some("h"), true, Some("A1"));
     assert_eq!(pick_canonical_index(&[&a, &b]), 1);
+  }
+
+  #[test]
+  fn pick_canonical_prefers_complete_live_over_incomplete() {
+    let incomplete = ScannedEntry {
+      path: r"E:\1\x.heic".into(),
+      name: "x.heic".into(),
+      ext: "heic".into(),
+      video_path: None,
+      display_key: "x".into(),
+      asset_id: None,
+      in_db: false,
+      media_kind: "live".into(),
+      size: 10,
+      modified: 999,
+      content_hash: Some("h".into()),
+      mov_hash: None,
+      mov_size: 0,
+      mov_modified: 0,
+    };
+    let complete = ScannedEntry {
+      path: r"E:\sync\x.heic".into(),
+      name: "x.heic".into(),
+      ext: "heic".into(),
+      video_path: Some(r"E:\sync\x.mov".into()),
+      display_key: "x".into(),
+      asset_id: None,
+      in_db: false,
+      media_kind: "live".into(),
+      size: 10,
+      modified: 1,
+      content_hash: Some("h".into()),
+      mov_hash: Some("m".into()),
+      mov_size: 2,
+      mov_modified: 1,
+    };
+    // 完整 Live 优先于「改时更新但缺 mov」
+    assert_eq!(pick_canonical_index(&[&incomplete, &complete]), 1);
+  }
+
+  #[test]
+  fn pick_canonical_in_db_beats_complete_live() {
+    let orphan_complete = ScannedEntry {
+      path: r"E:\old\x.heic".into(),
+      name: "x.heic".into(),
+      ext: "heic".into(),
+      video_path: Some(r"E:\old\x.mov".into()),
+      display_key: "x".into(),
+      asset_id: None,
+      in_db: false,
+      media_kind: "live".into(),
+      size: 10,
+      modified: 999,
+      content_hash: Some("h".into()),
+      mov_hash: Some("m".into()),
+      mov_size: 2,
+      mov_modified: 1,
+    };
+    let db_incomplete = ScannedEntry {
+      path: r"E:\sync\x.heic".into(),
+      name: "x.heic".into(),
+      ext: "heic".into(),
+      video_path: None,
+      display_key: "x".into(),
+      asset_id: Some("A".into()),
+      in_db: true,
+      media_kind: "live".into(),
+      size: 10,
+      modified: 1,
+      content_hash: Some("h".into()),
+      mov_hash: None,
+      mov_size: 0,
+      mov_modified: 0,
+    };
+    assert_eq!(pick_canonical_index(&[&orphan_complete, &db_incomplete]), 1);
   }
 
   #[test]

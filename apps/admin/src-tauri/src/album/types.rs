@@ -148,8 +148,6 @@ pub struct DuplicateFileSide {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DuplicateMatchConfidence {
-  /// 保留枚举兼容；内容归组下极少出现
-  Low,
   /// 主文件哈希相同，但 Live mov 缺失或 mov 哈希不一致
   Medium,
   /// 主文件（及 Live mov）内容哈希一致

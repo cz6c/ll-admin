@@ -576,7 +576,7 @@ onMounted(() => {
   <div class="fab-root">
     <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label" @click="drawerOpen = true">
       <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
-      <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="26" height="26" />
+      <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
     </a-button>
   </div>
 
@@ -734,17 +734,18 @@ onMounted(() => {
   width: 58px;
   height: 58px;
   padding: 0;
-  border: 2px solid currentColor;
   background: var(--color-bg-container, #fff);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s;
-  &:hover {
+  &:hover,
+  &:active {
     transform: scale(1.08);
     background: var(--color-bg-container, #fff);
-    border-color: currentColor;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 }
 .fab-default {

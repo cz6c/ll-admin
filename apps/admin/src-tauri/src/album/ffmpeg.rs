@@ -203,9 +203,19 @@ pub fn prefer_playback_proxy(ext: &str) -> bool {
 
 /// HEVC 等 → H.264 MP4，供 WebView 原生播放
 /// @note Live Photo MOV 常无音轨：`-map 0:a?` 可选；`-tag:v avc1` 提升 WebView 兼容
+/// @note `-threads 2`：预热多路并行时限制单进程线程数，避免嵌套打满 CPU/内存
 pub fn transcode_for_web_playback(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);
-  cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"]);
+  cmd.args([
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-threads",
+    "2",
+    "-y",
+    "-i",
+  ]);
   cmd.arg(input);
   cmd.args([
     "-map",
@@ -213,9 +223,11 @@ pub fn transcode_for_web_playback(ffmpeg: &Path, input: &Path, output: &Path) ->
     "-c:v",
     "libx264",
     "-preset",
-    "fast",
+    "veryfast",
     "-crf",
     "23",
+    "-threads",
+    "2",
     "-vf",
     "format=yuv420p",
     "-tag:v",
@@ -251,7 +263,14 @@ pub fn decode_heif_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::Dyna
 pub fn convert_heif_to_jpeg(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
-    "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-threads",
+    "2",
+    "-y",
+    "-i",
   ]);
   cmd.arg(input);
   cmd.args(["-frames:v", "1", "-q:v", "3"]);
@@ -263,7 +282,14 @@ pub fn convert_heif_to_jpeg(ffmpeg: &Path, input: &Path, output: &Path) -> bool 
 pub fn extract_video_poster(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
-    "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-threads",
+    "2",
+    "-y",
+    "-i",
   ]);
   cmd.arg(input);
   cmd.args([

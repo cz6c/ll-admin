@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
         <template v-if="captureLabel"> {{ captureLabel }} · </template>
         <template v-if="cameraLabel"> {{ cameraLabel }} · </template>
         <template v-if="resolutionLabel"> {{ resolutionLabel }} · </template>
-        {{ current.groupName }} · {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }}
+        {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }}
       </span>
     </div>
   </div>

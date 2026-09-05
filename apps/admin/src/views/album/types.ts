@@ -72,8 +72,8 @@ export interface DuplicateFileSide {
   thumbPath?: string;
 }
 
-/** 重复清理：主文件内容哈希相同后的细分置信度 */
-export type DuplicateMatchConfidence = "low" | "medium" | "high";
+/** 重复清理：主文件内容哈希相同后的细分（仅高/中） */
+export type DuplicateMatchConfidence = "medium" | "high";
 
 export interface DuplicateLegacyItem {
   duplicate: DuplicateFileSide;

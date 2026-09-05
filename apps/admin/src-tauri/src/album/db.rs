@@ -1,6 +1,6 @@
 //! 相册媒体 SQLite 索引
-//! 职责：扫描结果持久化、增量比对（path + modified + size）、缩略图/预览/播放代理缓存路径
-//! 适用：增量扫描、文件监听后的局部更新
+//! 职责：扫描结果持久化、增量比对（path + modified + size）、缩略图/预览/播放代理缓存路径、内容指纹
+//! 适用：增量扫描、文件监听后的局部更新、重复检测懒写哈希
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -43,7 +43,10 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         video_path TEXT,
         scanned_at INTEGER NOT NULL,
         fail_count INTEGER NOT NULL DEFAULT 0,
-        capture_at TEXT
+        capture_at TEXT,
+        camera TEXT,
+        width INTEGER,
+        height INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_media_root ON media(root);
       CREATE INDEX IF NOT EXISTS idx_media_root_rel ON media(root, rel_dir);
@@ -58,6 +61,12 @@ fn migrate(conn: &Connection) -> Result<(), String> {
   let _ = conn.execute("ALTER TABLE media ADD COLUMN playback_path TEXT", []);
   // 拍摄时间：缩略图就绪后由 sync/EXIF 回填；文件变更时在 upsert 中清空
   let _ = conn.execute("ALTER TABLE media ADD COLUMN capture_at TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN camera TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN width INTEGER", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN height INTEGER", []);
+  // 内容指纹：稳定 blake3 hex；size/modified 变化时在 upsert 中清空
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN content_hash TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN hash_algo TEXT", []);
   Ok(())
 }
 
@@ -69,7 +78,7 @@ pub fn load_indexed_paths(
 ) -> Result<HashMap<String, IndexedRow>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at FROM media WHERE root = ?1",
+      "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at, camera, width, height FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
 
@@ -83,6 +92,9 @@ pub fn load_indexed_paths(
         preview_path: row.get(4)?,
         playback_path: row.get(5)?,
         capture_at: row.get(6)?,
+        camera: row.get(7)?,
+        width: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
+        height: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -102,6 +114,9 @@ pub struct IndexedRow {
   pub preview_path: Option<String>,
   pub playback_path: Option<String>,
   pub capture_at: Option<String>,
+  pub camera: Option<String>,
+  pub width: Option<u32>,
+  pub height: Option<u32>,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -110,7 +125,7 @@ pub struct IndexedRow {
 pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir, capture_at
+      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir, capture_at, camera, width, height
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -149,6 +164,10 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let playback_path = playback_path.filter(|p| Path::new(p).is_file());
       let capture_at: Option<String> = row.get(11)?;
       let capture_at = capture_at.filter(|s| !s.trim().is_empty());
+      let camera: Option<String> = row.get(12)?;
+      let camera = camera.filter(|s| !s.trim().is_empty());
+      let width = row.get::<_, Option<i64>>(13)?.map(|v| v as u32).filter(|&v| v > 0);
+      let height = row.get::<_, Option<i64>>(14)?.map(|v| v as u32).filter(|&v| v > 0);
       Ok((rel_dir, dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -161,6 +180,9 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         playback_path,
         video_path: row.get(9)?,
         capture_at,
+        camera,
+        width,
+        height,
       }))
     })
     .map_err(|e| format!("查询缓存失败: {e}"))?;
@@ -246,10 +268,36 @@ fn upsert_media_impl(
             THEN media.fail_count
           ELSE 0
         END,
-        -- 文件内容变了则清空拍摄时间，等下次缩略图后再解析
+        -- 文件内容变了则清空拍摄时间/机型/尺寸，等下次缩略图后再解析
         capture_at = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.capture_at
+          ELSE NULL
+        END,
+        camera = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.camera
+          ELSE NULL
+        END,
+        width = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.width
+          ELSE NULL
+        END,
+        height = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.height
+          ELSE NULL
+        END,
+        -- 内容变了则清空指纹，下次重复检测再算
+        content_hash = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.content_hash
+          ELSE NULL
+        END,
+        hash_algo = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.hash_algo
           ELSE NULL
         END
       ",
@@ -323,12 +371,12 @@ pub fn sync_media_index(
   Ok(())
 }
 
-/// 事务内批量更新缩略图/预览路径（供 pipeline 每 chunk 提交一次）
-/// - thumb_path / preview_path 传 None 表示「不更新」（COALESCE 保留旧值）
+/// 事务内批量更新缩略图/预览路径与解码尺寸（供 pipeline 每 chunk 提交一次）
+/// - thumb/preview/宽高 传 None 表示「不更新」（COALESCE 保留旧值）
 /// - 成功更新时重置 fail_count
 pub fn update_cache_paths_batch(
   conn: &Connection,
-  updates: &[(String, Option<String>, Option<String>)],
+  updates: &[(String, Option<String>, Option<String>, Option<u32>, Option<u32>)],
 ) -> Result<(), String> {
   if updates.is_empty() {
     return Ok(());
@@ -336,10 +384,22 @@ pub fn update_cache_paths_batch(
   let tx = conn
     .unchecked_transaction()
     .map_err(|e| format!("开启缓存更新事务失败: {e}"))?;
-  for (path, thumb_path, preview_path) in updates {
+  for (path, thumb_path, preview_path, width, height) in updates {
     tx.execute(
-      "UPDATE media SET thumb_path = COALESCE(?2, thumb_path), preview_path = COALESCE(?3, preview_path), fail_count = 0 WHERE path = ?1",
-      params![path, thumb_path, preview_path],
+      "UPDATE media SET
+         thumb_path = COALESCE(?2, thumb_path),
+         preview_path = COALESCE(?3, preview_path),
+         width = COALESCE(?4, width),
+         height = COALESCE(?5, height),
+         fail_count = 0
+       WHERE path = ?1",
+      params![
+        path,
+        thumb_path,
+        preview_path,
+        width.map(|v| v as i64),
+        height.map(|v| v as i64)
+      ],
     )
     .map_err(|e| format!("更新缓存路径失败: {e}"))?;
   }
@@ -348,31 +408,99 @@ pub fn update_cache_paths_batch(
   Ok(())
 }
 
-/// 批量写入拍摄时间（缩略图就绪后调用；不覆盖已有非空值由调用方过滤）
-pub fn update_capture_at_batch(
+/// 批量补写 EXIF/sync 元数据：**仅填充仍为空的拍摄时间/机型**（尺寸不在此写）
+pub fn update_meta_fill_batch(
   conn: &Connection,
-  updates: &[(String, String)],
+  updates: &[(String, super::media_meta::MediaMetaFill)],
 ) -> Result<(), String> {
   if updates.is_empty() {
     return Ok(());
   }
   let tx = conn
     .unchecked_transaction()
-    .map_err(|e| format!("开启拍摄时间更新事务失败: {e}"))?;
-  for (path, capture_at) in updates {
+    .map_err(|e| format!("开启元数据更新事务失败: {e}"))?;
+  for (path, fill) in updates {
     tx.execute(
-      "UPDATE media SET capture_at = ?2 WHERE path = ?1",
-      params![path, capture_at],
+      "UPDATE media SET
+         capture_at = CASE
+           WHEN capture_at IS NULL OR trim(capture_at) = '' THEN ?2
+           ELSE capture_at
+         END,
+         camera = CASE
+           WHEN camera IS NULL OR trim(camera) = '' THEN ?3
+           ELSE camera
+         END
+       WHERE path = ?1",
+      params![path, fill.capture_at, fill.camera],
     )
-    .map_err(|e| format!("更新拍摄时间失败: {e}"))?;
+    .map_err(|e| format!("更新媒体元数据失败: {e}"))?;
   }
   tx.commit()
-    .map_err(|e| format!("提交拍摄时间更新事务失败: {e}"))?;
+    .map_err(|e| format!("提交元数据更新事务失败: {e}"))?;
   Ok(())
 }
 
-/// 已有缩略图/预览但尚未写入拍摄时间的路径（供 pipeline 回填）
-pub fn list_paths_missing_capture_at(
+/// 写入宽高（单独视频打开时 ffprobe 真源；可覆盖错误的海报尺寸）
+pub fn update_dimensions(
+  conn: &Connection,
+  path: &str,
+  width: u32,
+  height: u32,
+) -> Result<(), String> {
+  update_dimensions_batch(conn, &[(path.to_string(), width, height)])
+}
+
+/// 批量写入宽高（单事务）
+pub fn update_dimensions_batch(
+  conn: &Connection,
+  updates: &[(String, u32, u32)],
+) -> Result<(), String> {
+  if updates.is_empty() {
+    return Ok(());
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启分辨率批量事务失败: {e}"))?;
+  for (path, width, height) in updates {
+    if *width == 0 || *height == 0 {
+      continue;
+    }
+    tx.execute(
+      "UPDATE media SET width = ?2, height = ?3 WHERE path = ?1",
+      params![path, *width as i64, *height as i64],
+    )
+    .map_err(|e| format!("更新分辨率失败: {e}"))?;
+  }
+  tx.commit()
+    .map_err(|e| format!("提交分辨率批量事务失败: {e}"))?;
+  Ok(())
+}
+
+/// 是否存在缺拍摄时间/机型的已展示行（LIMIT 1，供 pipeline 早退）
+pub fn has_missing_meta(conn: &Connection, root: &str) -> Result<bool, String> {
+  conn
+    .query_row(
+      "SELECT 1 FROM media
+       WHERE root = ?1
+         AND (
+           (thumb_path IS NOT NULL AND trim(thumb_path) != '')
+           OR (preview_path IS NOT NULL AND trim(preview_path) != '')
+         )
+         AND (
+           capture_at IS NULL OR trim(capture_at) = ''
+           OR camera IS NULL OR trim(camera) = ''
+         )
+       LIMIT 1",
+      params![root],
+      |_| Ok(true),
+    )
+    .optional()
+    .map(|o| o.unwrap_or(false))
+    .map_err(|e| format!("探测缺元数据失败: {e}"))
+}
+
+/// 已有缩略图/预览但缺拍摄时间或机型的路径（尺寸：图靠解码/轻量探测，视频靠打开 probe）
+pub fn list_paths_missing_meta(
   conn: &Connection,
   root: &str,
 ) -> Result<Vec<String>, String> {
@@ -380,17 +508,110 @@ pub fn list_paths_missing_capture_at(
     .prepare(
       "SELECT path FROM media
        WHERE root = ?1
-         AND (capture_at IS NULL OR trim(capture_at) = '')
+         AND (
+           (thumb_path IS NOT NULL AND trim(thumb_path) != '')
+           OR (preview_path IS NOT NULL AND trim(preview_path) != '')
+         )
+         AND (
+           capture_at IS NULL OR trim(capture_at) = ''
+           OR camera IS NULL OR trim(camera) = ''
+         )",
+    )
+    .map_err(|e| format!("准备缺元数据查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![root], |row| row.get::<_, String>(0))
+    .map_err(|e| format!("查询缺元数据失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+  Ok(rows)
+}
+
+/// 是否存在非视频缺宽高（LIMIT 1）
+pub fn has_missing_image_dimensions(conn: &Connection, root: &str) -> Result<bool, String> {
+  conn
+    .query_row(
+      "SELECT 1 FROM media
+       WHERE root = ?1
+         AND kind != 'video'
+         AND (width IS NULL OR width <= 0 OR height IS NULL OR height <= 0)
+         AND (
+           (thumb_path IS NOT NULL AND trim(thumb_path) != '')
+           OR (preview_path IS NOT NULL AND trim(preview_path) != '')
+         )
+       LIMIT 1",
+      params![root],
+      |_| Ok(true),
+    )
+    .optional()
+    .map(|o| o.unwrap_or(false))
+    .map_err(|e| format!("探测缺图片尺寸失败: {e}"))
+}
+
+/// 非视频且缺宽高的路径（小图复用原图等未走解码时补 `image_dimensions`）
+pub fn list_paths_missing_image_dimensions(
+  conn: &Connection,
+  root: &str,
+) -> Result<Vec<String>, String> {
+  let mut stmt = conn
+    .prepare(
+      "SELECT path FROM media
+       WHERE root = ?1
+         AND kind != 'video'
+         AND (width IS NULL OR width <= 0 OR height IS NULL OR height <= 0)
          AND (
            (thumb_path IS NOT NULL AND trim(thumb_path) != '')
            OR (preview_path IS NOT NULL AND trim(preview_path) != '')
          )",
     )
-    .map_err(|e| format!("准备缺拍摄时间查询失败: {e}"))?;
+    .map_err(|e| format!("准备缺图片尺寸查询失败: {e}"))?;
   let rows = stmt
     .query_map(params![root], |row| row.get::<_, String>(0))
-    .map_err(|e| format!("查询缺拍摄时间失败: {e}"))?
+    .map_err(|e| format!("查询缺图片尺寸失败: {e}"))?
     .filter_map(|r| r.ok())
+    .collect();
+  Ok(rows)
+}
+
+/// 是否存在 Live 缺播放代理（LIMIT 1）
+pub fn has_live_missing_playback(conn: &Connection, root: &str) -> Result<bool, String> {
+  conn
+    .query_row(
+      "SELECT 1 FROM media
+       WHERE root = ?1
+         AND kind = 'livephoto'
+         AND video_path IS NOT NULL AND trim(video_path) != ''
+         AND (playback_path IS NULL OR trim(playback_path) = '')
+       LIMIT 1",
+      params![root],
+      |_| Ok(true),
+    )
+    .optional()
+    .map(|o| o.unwrap_or(false))
+    .map_err(|e| format!("探测缺 Live 代理失败: {e}"))
+}
+
+/// Live 缺播放代理：(still_path, video_path)；供扫描期预热
+pub fn list_live_missing_playback(
+  conn: &Connection,
+  root: &str,
+) -> Result<Vec<(String, String)>, String> {
+  let mut stmt = conn
+    .prepare(
+      "SELECT path, video_path FROM media
+       WHERE root = ?1
+         AND kind = 'livephoto'
+         AND video_path IS NOT NULL AND trim(video_path) != ''
+         AND (playback_path IS NULL OR trim(playback_path) = '')",
+    )
+    .map_err(|e| format!("准备缺 Live 代理查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![root], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|e| format!("查询缺 Live 代理失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .filter(|(still, mov)| Path::new(still).is_file() && Path::new(mov.trim()).is_file())
+    .map(|(still, mov)| (still, mov.trim().to_string()))
     .collect();
   Ok(rows)
 }
@@ -401,20 +622,37 @@ pub fn update_playback_path(
   source_path: &str,
   playback_path: &str,
 ) -> Result<(), String> {
-  let n = conn
-    .execute(
-      "UPDATE media SET playback_path = ?2 WHERE path = ?1",
-      params![source_path, playback_path],
-    )
-    .map_err(|e| format!("更新播放代理路径失败: {e}"))?;
-  if n == 0 {
-    conn
+  update_playback_path_batch(conn, &[(source_path.to_string(), playback_path.to_string())])
+}
+
+/// 批量写入播放代理（单事务；source 可为 path 或 Live 的 video_path）
+pub fn update_playback_path_batch(
+  conn: &Connection,
+  updates: &[(String, String)],
+) -> Result<(), String> {
+  if updates.is_empty() {
+    return Ok(());
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启播放代理批量事务失败: {e}"))?;
+  for (source_path, playback_path) in updates {
+    let n = tx
       .execute(
+        "UPDATE media SET playback_path = ?2 WHERE path = ?1",
+        params![source_path, playback_path],
+      )
+      .map_err(|e| format!("更新播放代理路径失败: {e}"))?;
+    if n == 0 {
+      tx.execute(
         "UPDATE media SET playback_path = ?2 WHERE video_path = ?1",
         params![source_path, playback_path],
       )
       .map_err(|e| format!("更新 Live 播放代理路径失败: {e}"))?;
+    }
   }
+  tx.commit()
+    .map_err(|e| format!("提交播放代理批量事务失败: {e}"))?;
   Ok(())
 }
 
@@ -483,4 +721,81 @@ pub fn load_fail_counts(
     .filter_map(|r| r.ok())
     .collect();
   Ok(rows)
+}
+
+/// 当前内容指纹算法名（写入 hash_algo；换算法须清空旧 content_hash 或 bump 迁移）
+pub const CONTENT_HASH_ALGO: &str = "blake3";
+
+/**
+ * 流式计算文件 BLAKE3，返回小写 hex
+ * @note 跨版本稳定，可供 media.db 持久化；大视频会读满整文件
+ */
+pub fn compute_blake3_hex(path: &str) -> Option<String> {
+  use std::io::Read;
+
+  let mut file = std::fs::File::open(path.trim()).ok()?;
+  let mut hasher = blake3::Hasher::new();
+  let mut buf = [0u8; 65536];
+  loop {
+    let n = file.read(&mut buf).ok()?;
+    if n == 0 {
+      break;
+    }
+    hasher.update(&buf[..n]);
+  }
+  Some(hasher.finalize().to_hex().to_string())
+}
+
+/**
+ * 读取库内有效内容指纹：algo 匹配且 size/modified 与调用方一致
+ * @returns 有效则 Some(hex)，否则 None（需重算）
+ */
+pub fn load_valid_content_hash(
+  conn: &Connection,
+  path: &str,
+  size: u64,
+  modified: i64,
+) -> Result<Option<String>, String> {
+  let row: Option<(Option<String>, Option<String>, i64, i64)> = conn
+    .query_row(
+      "SELECT content_hash, hash_algo, size, modified FROM media WHERE path = ?1",
+      params![path],
+      |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )
+    .optional()
+    .map_err(|e| format!("读取 content_hash 失败: {e}"))?;
+
+  let Some((hash, algo, db_size, db_modified)) = row else {
+    return Ok(None);
+  };
+  let hash = hash.filter(|s| !s.trim().is_empty());
+  let algo_ok = algo.as_deref() == Some(CONTENT_HASH_ALGO);
+  if hash.is_some() && algo_ok && db_size as u64 == size && db_modified == modified {
+    return Ok(hash);
+  }
+  Ok(None)
+}
+
+/**
+ * 将内容指纹写回 media 行（仅当 path 已在索引且 size/modified 仍匹配时更新）
+ * @note 行不存在或文件已变则 0 行更新，不报错（重复扫描可先于相册索引）
+ */
+pub fn save_content_hash(
+  conn: &Connection,
+  path: &str,
+  hash: &str,
+  size: u64,
+  modified: i64,
+) -> Result<(), String> {
+  conn
+    .execute(
+      r#"
+      UPDATE media
+      SET content_hash = ?1, hash_algo = ?2
+      WHERE path = ?3 AND size = ?4 AND modified = ?5
+      "#,
+      params![hash, CONTENT_HASH_ALGO, path, size as i64, modified],
+    )
+    .map_err(|e| format!("写入 content_hash 失败: {e}"))?;
+  Ok(())
 }

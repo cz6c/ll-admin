@@ -187,7 +187,7 @@ const displayGroups = computed<MediaGroup[]>(() => {
 
 const scanProgressPercent = computed(() => {
   const { phase, done, total } = scanProgress.value;
-  if (phase === "thumbnails" && total > 0) {
+  if ((phase === "thumbnails" || phase === "live-proxy") && total > 0) {
     return Math.min(100, Math.round((done / total) * 100));
   }
   if (phase === "discover" && scanProgress.value.total > 0) {
@@ -198,6 +198,9 @@ const scanProgressPercent = computed(() => {
 
 const scanProgressLabel = computed(() => {
   const { phase, done, total } = scanProgress.value;
+  if (phase === "live-proxy" && total > 0) {
+    return `准备实况播放 ${done} / ${total}`;
+  }
   if (phase === "thumbnails" && total > 0) {
     return `生成缩略图 ${done} / ${total}`;
   }
@@ -207,10 +210,16 @@ const scanProgressLabel = computed(() => {
   return "扫描中...";
 });
 
-const thumbsGenerating = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > scanProgress.value.done);
+const thumbsGenerating = computed(
+  () =>
+    (scanProgress.value.phase === "thumbnails" || scanProgress.value.phase === "live-proxy") &&
+    scanProgress.value.total > scanProgress.value.done
+);
 
-/** 全页 loading 进度条：仅缩略图生成等慢过程展示；discover 扫描只 spinner + 文案 */
-const showFullPageScanProgress = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0);
+/** 全页 loading 进度条：仅缩略图生成等慢过程；discover / live-proxy 不挡宫格 */
+const showFullPageScanProgress = computed(
+  () => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0
+);
 
 function onTreeSelect(keys: string[]) {
   const key = keys[0];
@@ -241,7 +250,12 @@ function applyThumbReady(payload: AlbumThumbReadyPayload) {
   if (!file) return;
   if (payload.thumbPath) file.thumbPath = payload.thumbPath;
   if (payload.previewPath) file.previewPath = payload.previewPath;
-  if (payload.captureAt) file.captureAt = payload.captureAt;
+  if (payload.playbackPath) file.playbackPath = payload.playbackPath;
+  // 元数据只补空：缩略图解码宽高优先于后续 EXIF 事件
+  if (payload.captureAt) file.captureAt ??= payload.captureAt;
+  if (payload.camera) file.camera ??= payload.camera;
+  if (payload.width) file.width ??= payload.width;
+  if (payload.height) file.height ??= payload.height;
 }
 
 async function loadSettings() {

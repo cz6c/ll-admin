@@ -19,6 +19,10 @@ pub struct ThumbnailOutcome {
   pub thumb_path: Option<String>,
   /// HEIC/HEIF 全尺寸预览 JPEG（扫描阶段生成，打开即可用）
   pub preview_path: Option<String>,
+  /// 源媒体像素宽（解码或轻量探测）；缓存命中且无法探测时为 None
+  pub width: Option<u32>,
+  /// 源媒体像素高
+  pub height: Option<u32>,
   /// 因扫描取消提前返回；勿计入 fail_count，否则重扫几次会误杀健康文件
   pub cancelled: bool,
 }
@@ -152,6 +156,15 @@ pub fn generate_thumbnail(
   let preview_ready = !is_heif || preview_file.is_file();
 
   if thumb_ready && preview_ready {
+    // 缓存命中未解码：栅格轻量探测尺寸；视频正式分辨率改打开时 ffprobe，此处不写
+    let (width, height) = if is_video_ext(&ext) {
+      (None, None)
+    } else {
+      image::image_dimensions(file_path)
+        .ok()
+        .map(|(w, h)| (Some(w), Some(h)))
+        .unwrap_or((None, None))
+    };
     return ThumbnailOutcome {
       thumb_path: Some(cache_file.to_string_lossy().into_owned()),
       preview_path: if is_heif {
@@ -159,6 +172,8 @@ pub fn generate_thumbnail(
       } else {
         None
       },
+      width,
+      height,
       ..Default::default()
     };
   }
@@ -227,9 +242,23 @@ pub fn generate_thumbnail(
     None
   };
 
+  // 宽高：优先整图解码结果；视频封面帧尺寸不作正式分辨率（打开时 ffprobe）
+  let (width, height) = if is_video_ext(&ext) {
+    (None, None)
+  } else if let Some(ref decoded) = img {
+    (Some(decoded.width()), Some(decoded.height()))
+  } else {
+    image::image_dimensions(file_path)
+      .ok()
+      .map(|(w, h)| (Some(w), Some(h)))
+      .unwrap_or((None, None))
+  };
+
   ThumbnailOutcome {
     thumb_path,
     preview_path,
+    width,
+    height,
     ..Default::default()
   }
 }

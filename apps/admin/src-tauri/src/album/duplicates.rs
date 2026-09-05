@@ -1,23 +1,22 @@
-//! 本地重复检测：应用 iCloud 同步落盘 vs 旧 icloudpd 等副本
-//! 职责：按 content_key（original_filename / 磁盘 stem）匹配正本与可删 legacy；Live 按一张实况成组
+//! 本地重复检测：相册根全量扫盘，按稳定内容哈希归组，组内落库优先正本
+//! 职责：同 size 预筛后懒算 BLAKE3（读/写 media.db）；不再以文件名 stem 为主键；
+//!       Live 仍成对，主文件哈希相同成组，再比 mov 哈希定置信度
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
 
 use std::collections::{HashMap, HashSet};
-use std::hash::Hasher;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use rusqlite::Connection;
 use tauri::AppHandle;
 use walkdir::WalkDir;
 
-use crate::icloud_sync::{list_synced_local_rows, resolve_sync_output_dir};
+use crate::icloud_sync::list_synced_local_rows;
 
-use super::types::{
-  DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence,
-  ALBUM_CACHE_VERSION,
-};
 use super::scanner::{pair_live_photos, SKIP_DIRS};
-use super::types::{MediaFile, MediaKind};
+use super::types::{
+  DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence, MediaFile,
+  MediaKind, ALBUM_CACHE_VERSION,
+};
 use super::{db, ffmpeg, settings, thumbnail};
 
 const IMAGE_EXTS: &[&str] = &[
@@ -28,9 +27,35 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// 文件名 stem 归一为匹配键（小写）；正本侧通常来自库内 original_filename
-fn content_key_from_stem(stem: &str) -> String {
-  stem.to_lowercase()
+/// sync 库落库元数据（按 dest_path 索引）
+struct DbPathMeta {
+  asset_id: String,
+  original_filename: String,
+  media_kind: String,
+  /// still / mov / full；展示原名优先取 still
+  part: String,
+}
+
+/// 全量扫盘后的一条逻辑媒体（Live 已成对）
+#[derive(Clone)]
+struct ScannedEntry {
+  path: String,
+  name: String,
+  ext: String,
+  video_path: Option<String>,
+  /// 展示用键（文件名 stem）；归组改用 content_hash
+  display_key: String,
+  asset_id: Option<String>,
+  in_db: bool,
+  media_kind: String,
+  size: u64,
+  modified: i64,
+  /// 主文件 BLAKE3；仅同 size 候选会填充
+  content_hash: Option<String>,
+  /// Live mov BLAKE3
+  mov_hash: Option<String>,
+  mov_size: u64,
+  mov_modified: i64,
 }
 
 fn content_key_from_filename(name: &str) -> String {
@@ -38,25 +63,11 @@ fn content_key_from_filename(name: &str) -> String {
     .file_stem()
     .and_then(|s| s.to_str())
     .unwrap_or(name);
-  content_key_from_stem(stem)
+  stem.to_lowercase()
 }
 
 fn normalize_path_key(path: &str) -> String {
   path.replace('\\', "/").to_lowercase()
-}
-
-fn path_is_under(path: &Path, ancestor: &Path) -> bool {
-  let p = normalize_path_key(&path.to_string_lossy());
-  let a = normalize_path_key(&ancestor.to_string_lossy());
-  if p == a {
-    return true;
-  }
-  if !p.starts_with(&a) {
-    return false;
-  }
-  p.as_bytes()
-    .get(a.len())
-    .is_some_and(|b| *b == b'/' || *b == b'\\')
 }
 
 fn get_ext(path: &Path) -> String {
@@ -75,128 +86,70 @@ fn is_video(ext: &str) -> bool {
   VIDEO_EXTS.contains(&ext)
 }
 
-/// 同步库中的一张逻辑资产（Live 聚合 still+mov）
-#[derive(Clone)]
-struct CanonicalAsset {
-  asset_id: String,
-  media_kind: String,
-  content_key: String,
-  still_path: Option<String>,
-  mov_path: Option<String>,
-  display_name: String,
-}
-
-struct LegacyAsset {
-  path: String,
-  name: String,
-  ext: String,
-  video_path: Option<String>,
-}
-
-fn sync_media_kind_label(kind: &str) -> &str {
-  match kind {
-    "video" => "video",
-    "live" => "live",
-    _ => "photo",
+fn path_meta(path: &Path) -> (u64, i64) {
+  match std::fs::metadata(path) {
+    Ok(m) => {
+      let size = m.len();
+      let modified = m
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+      (size, modified)
+    }
+    Err(_) => (0, 0),
   }
 }
 
-fn to_duplicate_side(entry: &LegacyAsset) -> DuplicateFileSide {
-  DuplicateFileSide {
-    path: entry.path.clone(),
-    name: entry.name.clone(),
-    ext: entry.ext.clone(),
-    video_path: entry.video_path.clone(),
-    thumb_path: None,
-  }
-}
-
-fn incomplete_note(
-  media_kind: &str,
-  canonical_still: bool,
-  canonical_mov: bool,
-  legacy_still: bool,
-  legacy_mov: bool,
+/**
+ * 取或算路径内容指纹，并尽量写回 media.db
+ * @note 库无该行时仅内存使用，不强制插入索引
+ */
+fn ensure_content_hash(
+  conn: Option<&Connection>,
+  path: &str,
+  size: u64,
+  modified: i64,
 ) -> Option<String> {
-  if media_kind != "live" {
+  if path.trim().is_empty() || size == 0 {
     return None;
   }
-  let canonical_full = canonical_still && canonical_mov;
-  let legacy_full = legacy_still && legacy_mov;
-  if canonical_full && legacy_full {
-    return None;
+  if let Some(conn) = conn {
+    if let Ok(Some(cached)) = db::load_valid_content_hash(conn, path, size, modified) {
+      return Some(cached);
+    }
   }
-  if !canonical_mov && legacy_mov {
-    return Some("应用侧缺配对视频".into());
+  let hash = db::compute_blake3_hex(path)?;
+  if let Some(conn) = conn {
+    let _ = db::save_content_hash(conn, path, &hash, size, modified);
   }
-  if canonical_mov && !legacy_mov {
-    return Some("旧下载缺配对视频".into());
-  }
-  if !canonical_still && legacy_still {
-    return Some("应用侧仅视频轨".into());
-  }
-  if canonical_still && !legacy_still {
-    return Some("旧下载仅视频轨".into());
-  }
-  Some("Live 配对不完整".into())
+  Some(hash)
 }
 
-fn load_canonical_assets(app: &AppHandle) -> Result<(HashSet<String>, Vec<CanonicalAsset>), String> {
+fn load_db_path_meta(app: &AppHandle) -> Result<HashMap<String, DbPathMeta>, String> {
   let rows = list_synced_local_rows(app)?;
-
-  let mut by_asset: HashMap<String, CanonicalAsset> = HashMap::new();
-  let mut canonical_paths: HashSet<String> = HashSet::new();
-
+  let mut map = HashMap::new();
   for row in rows {
-    let dest = row.dest_path.trim().to_string();
-    if dest.is_empty() || !Path::new(&dest).is_file() {
+    let dest = row.dest_path.trim();
+    if dest.is_empty() {
       continue;
     }
-    canonical_paths.insert(normalize_path_key(&dest));
-
-    let part = row.part.as_str();
-    let media_kind = row.media_kind.as_str();
-
-    let entry = by_asset
-      .entry(row.asset_id.clone())
-      .or_insert_with(|| {
-        let content_key = content_key_from_filename(&row.original_filename);
-        CanonicalAsset {
-          asset_id: row.asset_id.clone(),
-          media_kind: media_kind.to_string(),
-          content_key,
-          still_path: None,
-          mov_path: None,
-          display_name: row.original_filename.clone(),
-        }
-      });
-
-    match part {
-      "still" | "full" => {
-        entry.still_path = Some(dest);
-        if part == "still" {
-          entry.display_name = row.original_filename.clone();
-          entry.content_key = content_key_from_filename(&row.original_filename);
-        }
-      }
-      "mov" => {
-        entry.mov_path = Some(dest);
-      }
-      _ => {}
-    }
-    if media_kind == "live" {
-      entry.media_kind = "live".to_string();
-    }
+    map.insert(
+      normalize_path_key(dest),
+      DbPathMeta {
+        asset_id: row.asset_id,
+        original_filename: row.original_filename,
+        media_kind: row.media_kind,
+        part: row.part,
+      },
+    );
   }
-
-  Ok((canonical_paths, by_asset.into_values().collect()))
+  Ok(map)
 }
 
-fn scan_legacy_assets(
-  root: &Path,
-  sync_output: &Path,
-  canonical_paths: &HashSet<String>,
-) -> HashMap<String, Vec<LegacyAsset>> {
+/// 相册根全量扫媒体（含 sync 落盘目录）；同目录 Live 成对
+fn scan_all_media(root: &Path) -> Vec<MediaFile> {
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
 
   for entry in WalkDir::new(root)
@@ -204,10 +157,6 @@ fn scan_legacy_assets(
     .into_iter()
     .filter_entry(|e| {
       if e.file_type().is_dir() {
-        let path = e.path();
-        if path_is_under(path, sync_output) {
-          return false;
-        }
         let name = e.file_name().to_string_lossy();
         !SKIP_DIRS.contains(&name.as_ref())
       } else {
@@ -220,26 +169,19 @@ fn scan_legacy_assets(
       continue;
     }
     let path = entry.path();
-    if path_is_under(path, sync_output) {
-      continue;
-    }
-    let path_key = normalize_path_key(&path.to_string_lossy());
-    if canonical_paths.contains(&path_key) {
-      continue;
-    }
-
     let ext = get_ext(path);
     if !is_image(&ext) && !is_video(&ext) {
       continue;
     }
 
-    let parent = entry.path().parent().unwrap_or(root).to_path_buf();
+    let parent = path.parent().unwrap_or(root).to_path_buf();
     let name = path
       .file_name()
       .and_then(|n| n.to_str())
       .unwrap_or_default()
       .to_string();
     let file_path = path.to_string_lossy().to_string();
+    let (size, modified) = path_meta(path);
 
     dir_map.entry(parent).or_default().push(MediaFile {
       path: file_path,
@@ -249,202 +191,226 @@ fn scan_legacy_assets(
       } else {
         MediaKind::Video
       },
-      size: 0,
-      modified: 0,
+      size,
+      modified,
       ext,
       thumb_path: None,
       preview_path: None,
       playback_path: None,
       video_path: None,
       capture_at: None,
+      camera: None,
+      width: None,
+      height: None,
     });
   }
 
-  let mut index: HashMap<String, Vec<LegacyAsset>> = HashMap::new();
-
+  let mut out = Vec::new();
   for mut files in dir_map.into_values() {
     pair_live_photos(&mut files);
-    for file in files {
-      if canonical_paths.contains(&normalize_path_key(&file.path)) {
-        continue;
-      }
-      if let Some(ref vp) = file.video_path {
-        if canonical_paths.contains(&normalize_path_key(vp)) {
-          // still 可匹配，mov 已是正本时仍保留 still 侧 legacy
-        }
-      }
+    out.extend(files);
+  }
+  out
+}
 
-      let key = content_key_from_filename(&file.name);
+fn media_kind_label(kind: &MediaKind, db_kind: Option<&str>, has_video: bool) -> String {
+  if has_video || db_kind == Some("live") {
+    return "live".into();
+  }
+  if db_kind == Some("video") || matches!(kind, MediaKind::Video) {
+    return "video".into();
+  }
+  "photo".into()
+}
+
+fn build_scanned_entries(
+  files: Vec<MediaFile>,
+  db_meta: &HashMap<String, DbPathMeta>,
+) -> Vec<ScannedEntry> {
+  let mut entries = Vec::with_capacity(files.len());
+  let mut seen_paths: HashSet<String> = HashSet::new();
+
+  for file in files {
+    let path_key = normalize_path_key(&file.path);
+    if !seen_paths.insert(path_key.clone()) {
+      continue;
+    }
+    if let Some(ref vp) = file.video_path {
+      seen_paths.insert(normalize_path_key(vp));
+    }
+
+    let still_meta = db_meta.get(&path_key);
+    let mov_meta = file
+      .video_path
+      .as_ref()
+      .and_then(|vp| db_meta.get(&normalize_path_key(vp)));
+
+    let in_db = still_meta.is_some() || mov_meta.is_some();
+    // 展示原名：优先 still/full 行，避免 mov 行文件名干扰
+    let name_meta = still_meta
+      .filter(|m| m.part != "mov")
+      .or(still_meta)
+      .or(mov_meta);
+    let asset_id = name_meta.map(|m| m.asset_id.clone());
+    let db_kind = name_meta.map(|m| m.media_kind.as_str());
+
+    let display_key = if let Some(meta) = name_meta {
+      let key = content_key_from_filename(&meta.original_filename);
       if key.is_empty() {
-        continue;
+        content_key_from_filename(&file.name)
+      } else {
+        key
       }
-      index.entry(key).or_default().push(LegacyAsset {
-        path: file.path,
-        name: file.name,
-        ext: file.ext,
-        video_path: file.video_path,
-      });
+    } else {
+      content_key_from_filename(&file.name)
+    };
+
+    let (mov_size, mov_modified) = file
+      .video_path
+      .as_ref()
+      .map(|vp| path_meta(Path::new(vp)))
+      .unwrap_or((0, 0));
+
+    let has_video = file.video_path.is_some();
+    entries.push(ScannedEntry {
+      path: file.path,
+      name: file.name,
+      ext: file.ext,
+      video_path: file.video_path,
+      display_key,
+      asset_id,
+      in_db,
+      media_kind: media_kind_label(&file.kind, db_kind, has_video),
+      size: file.size,
+      modified: file.modified,
+      content_hash: None,
+      mov_hash: None,
+      mov_size,
+      mov_modified,
+    });
+  }
+
+  entries
+}
+
+/// 同主文件 size ≥2 才值得算哈希；为候选填充 content_hash / mov_hash
+fn fill_hashes_for_size_candidates(conn: Option<&Connection>, entries: &mut [ScannedEntry]) {
+  let mut size_counts: HashMap<u64, usize> = HashMap::new();
+  for e in entries.iter() {
+    if e.size > 0 {
+      *size_counts.entry(e.size).or_insert(0) += 1;
     }
   }
 
-  index
+  for entry in entries.iter_mut() {
+    if entry.size == 0 || size_counts.get(&entry.size).copied().unwrap_or(0) < 2 {
+      continue;
+    }
+    entry.content_hash = ensure_content_hash(conn, &entry.path, entry.size, entry.modified);
+    if let Some(ref vp) = entry.video_path {
+      if entry.mov_size > 0 {
+        entry.mov_hash = ensure_content_hash(conn, vp, entry.mov_size, entry.mov_modified);
+      }
+    }
+  }
 }
 
-fn canonical_to_side(asset: &CanonicalAsset) -> DuplicateFileSide {
-  let path = asset
-    .still_path
-    .clone()
-    .or_else(|| asset.mov_path.clone())
-    .unwrap_or_default();
-  let name = asset.display_name.clone();
-  let ext = Path::new(&name)
-    .extension()
-    .and_then(|e| e.to_str())
-    .unwrap_or("")
-    .to_lowercase();
+/// 组内正本：有落库优先；多条落库或皆无落库时取修改时间较新
+fn pick_canonical_index(entries: &[&ScannedEntry]) -> usize {
+  debug_assert!(!entries.is_empty());
+  let mut best = 0usize;
+  for (i, entry) in entries.iter().enumerate().skip(1) {
+    let cur = entries[best];
+    let better = match (entry.in_db, cur.in_db) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => {
+        entry.modified > cur.modified
+          || (entry.modified == cur.modified
+            && normalize_path_key(&entry.path) < normalize_path_key(&cur.path))
+      }
+    };
+    if better {
+      best = i;
+    }
+  }
+  best
+}
+
+fn to_side(entry: &ScannedEntry) -> DuplicateFileSide {
   DuplicateFileSide {
-    path,
-    name,
-    ext,
-    video_path: asset.mov_path.clone(),
+    path: entry.path.clone(),
+    name: entry.name.clone(),
+    ext: entry.ext.clone(),
+    video_path: entry.video_path.clone(),
     thumb_path: None,
   }
 }
 
-fn legacy_paths_set(entry: &LegacyAsset) -> HashSet<String> {
-  let mut set = HashSet::new();
-  set.insert(normalize_path_key(&entry.path));
-  if let Some(ref vp) = entry.video_path {
-    set.insert(normalize_path_key(vp));
-  }
-  set
+fn local_group_id(hash: &str) -> String {
+  format!("hash:{}", &hash[..hash.len().min(16)])
 }
 
-fn overlaps_canonical(entry: &LegacyAsset, canonical_paths: &HashSet<String>) -> bool {
-  legacy_paths_set(entry)
-    .iter()
-    .any(|p| canonical_paths.contains(p))
-}
-
-fn path_file_size(path: &str) -> Option<u64> {
-  let path = path.trim();
-  if path.is_empty() {
+fn incomplete_note(canonical: &ScannedEntry, other: &ScannedEntry) -> Option<String> {
+  let is_live = canonical.media_kind == "live" || other.media_kind == "live";
+  if !is_live {
     return None;
   }
-  let p = Path::new(path);
-  if !p.is_file() {
+  let c_mov = canonical.video_path.is_some();
+  let o_mov = other.video_path.is_some();
+  if c_mov && o_mov {
     return None;
   }
-  std::fs::metadata(p).ok().map(|m| m.len())
+  if !c_mov && o_mov {
+    return Some("正本侧缺配对视频".into());
+  }
+  if c_mov && !o_mov {
+    return Some("副本侧缺配对视频".into());
+  }
+  Some("Live 配对不完整".into())
 }
 
-fn paths_same_size(a: &str, b: &str) -> bool {
-  match (path_file_size(a), path_file_size(b)) {
-    (Some(x), Some(y)) => x == y,
-    _ => false,
-  }
-}
-
-/// 流式读取文件内容指纹；仅用于本地重复比对，不要求跨版本稳定
-fn path_content_fingerprint(path: &str) -> Option<u64> {
-  use std::collections::hash_map::DefaultHasher;
-
-  let mut file = std::fs::File::open(path.trim()).ok()?;
-  let mut hasher = DefaultHasher::new();
-  let mut buf = [0u8; 65536];
-  loop {
-    let n = file.read(&mut buf).ok()?;
-    if n == 0 {
-      break;
-    }
-    hasher.write(&buf[..n]);
-  }
-  Some(hasher.finish())
-}
-
-fn paths_same_content(a: &str, b: &str) -> bool {
-  match (path_content_fingerprint(a), path_content_fingerprint(b)) {
-    (Some(x), Some(y)) => x == y,
-    _ => false,
-  }
-}
-
-fn canonical_primary_path(asset: &CanonicalAsset) -> &str {
-  asset
-    .still_path
-    .as_deref()
-    .or(asset.mov_path.as_deref())
-    .unwrap_or("")
-}
-
-fn live_sizes_compatible(asset: &CanonicalAsset, legacy: &LegacyAsset) -> bool {
-  let c_still = asset.still_path.as_deref().unwrap_or("");
-  if !paths_same_size(c_still, &legacy.path) {
-    return false;
-  }
-  match (asset.mov_path.as_deref(), legacy.video_path.as_deref()) {
-    (Some(c), Some(l)) => paths_same_size(c, l),
-    (None, None) => true,
-    _ => false,
-  }
-}
-
-fn live_content_matches(asset: &CanonicalAsset, legacy: &LegacyAsset) -> bool {
-  let c_still = asset.still_path.as_deref().unwrap_or("");
-  if !paths_same_content(c_still, &legacy.path) {
-    return false;
-  }
-  match (asset.mov_path.as_deref(), legacy.video_path.as_deref()) {
-    (Some(c), Some(l)) => paths_same_content(c, l),
-    (None, None) => true,
-    _ => false,
-  }
-}
-
-/// 低→中→高：仅在中档（大小一致）时才读盘算哈希
-fn classify_duplicate_confidence(
-  asset: &CanonicalAsset,
-  legacy: &LegacyAsset,
+/// 同主文件哈希已成组：非 Live → High；Live 再比 mov
+fn classify_vs_canonical(
+  canonical: &ScannedEntry,
+  other: &ScannedEntry,
 ) -> (DuplicateMatchConfidence, u64, u64) {
-  let duplicate_size = path_file_size(&legacy.path).unwrap_or(0);
-  let canonical_size = path_file_size(canonical_primary_path(asset)).unwrap_or(0);
-
-  let sizes_ok = if asset.media_kind == "live" {
-    live_sizes_compatible(asset, legacy)
-  } else {
-    paths_same_size(canonical_primary_path(asset), &legacy.path)
-  };
-
-  if !sizes_ok {
+  let canonical_size = canonical.size;
+  let duplicate_size = other.size;
+  let is_live = canonical.media_kind == "live" || other.media_kind == "live";
+  if !is_live {
     return (
-      DuplicateMatchConfidence::Low,
+      DuplicateMatchConfidence::High,
       canonical_size,
       duplicate_size,
     );
   }
 
-  let content_ok = if asset.media_kind == "live" {
-    live_content_matches(asset, legacy)
-  } else {
-    paths_same_content(canonical_primary_path(asset), &legacy.path)
-  };
-
-  if content_ok {
-    (
+  match (
+    canonical.mov_hash.as_deref(),
+    other.mov_hash.as_deref(),
+    canonical.video_path.as_ref(),
+    other.video_path.as_ref(),
+  ) {
+    (Some(a), Some(b), _, _) if a == b => (
       DuplicateMatchConfidence::High,
       canonical_size,
       duplicate_size,
-    )
-  } else {
-    (
+    ),
+    (None, None, None, None) => (
+      DuplicateMatchConfidence::High,
+      canonical_size,
+      duplicate_size,
+    ),
+    // 一侧缺 mov 或哈希未算出：中档（主画面已相同）
+    _ => (
       DuplicateMatchConfidence::Medium,
       canonical_size,
       duplicate_size,
-    )
+    ),
   }
 }
 
-/// 解析 UI 缩略图：仅读 media.db 缓存或浏览器可直接显示的原图；批量扫描时不触发生成
 fn resolve_display_thumb_cached(app: &AppHandle, path: &str) -> Option<String> {
   if path.trim().is_empty() || !Path::new(path).is_file() {
     return None;
@@ -493,6 +459,8 @@ pub fn resolve_display_thumb_on_demand(app: &AppHandle, path: &str) -> Option<St
         path.to_string(),
         outcome.thumb_path.clone(),
         outcome.preview_path.clone(),
+        outcome.width,
+        outcome.height,
       )],
     );
   }
@@ -512,70 +480,6 @@ fn enrich_group_thumbs(app: &AppHandle, group: &mut DuplicateGroup) {
   }
 }
 
-struct GroupBuilder {
-  content_key: String,
-  media_kind: String,
-  asset_id: String,
-  canonical: DuplicateFileSide,
-  duplicates: Vec<DuplicateLegacyItem>,
-}
-
-/// 向分组追加一个 legacy 副本；已占用或非法则跳过
-fn try_push_legacy_duplicate(
-  groups: &mut HashMap<String, GroupBuilder>,
-  asset: &CanonicalAsset,
-  legacy: &LegacyAsset,
-  canonical_paths: &HashSet<String>,
-  used_legacy: &mut HashSet<String>,
-) {
-  let legacy_key = normalize_path_key(&legacy.path);
-  if used_legacy.contains(&legacy_key) {
-    return;
-  }
-  if overlaps_canonical(legacy, canonical_paths) {
-    return;
-  }
-  let canonical_side = canonical_to_side(asset);
-  if canonical_side.path.is_empty() {
-    return;
-  }
-  if normalize_path_key(&legacy.path) == normalize_path_key(&canonical_side.path) {
-    return;
-  }
-
-  let note = incomplete_note(
-    &asset.media_kind,
-    asset.still_path.is_some(),
-    asset.mov_path.is_some(),
-    true,
-    legacy.video_path.is_some(),
-  );
-
-  let (confidence, canonical_size, duplicate_size) =
-    classify_duplicate_confidence(asset, legacy);
-
-  let builder = groups
-    .entry(asset.asset_id.clone())
-    .or_insert_with(|| GroupBuilder {
-      content_key: asset.content_key.clone(),
-      media_kind: sync_media_kind_label(&asset.media_kind).to_string(),
-      asset_id: asset.asset_id.clone(),
-      canonical: canonical_side,
-      duplicates: Vec::new(),
-    });
-
-  builder.duplicates.push(DuplicateLegacyItem {
-    duplicate: to_duplicate_side(legacy),
-    incomplete: note.is_some(),
-    incomplete_note: note,
-    confidence,
-    canonical_size,
-    duplicate_size,
-  });
-  used_legacy.insert(legacy_key);
-}
-
-/// 置信度展示序：高 → 中 → 低（数值越小越靠前）
 fn confidence_sort_rank(confidence: DuplicateMatchConfidence) -> u8 {
   match confidence {
     DuplicateMatchConfidence::High => 0,
@@ -601,7 +505,65 @@ fn group_high_confidence_count(group: &DuplicateGroup) -> usize {
     .count()
 }
 
-/// 扫描相册根目录，找出 sync 正本与 legacy 重复组（一正本多副本）
+fn build_group_from_bucket(bucket: &[&ScannedEntry], content_hash: &str) -> Option<DuplicateGroup> {
+  if bucket.len() < 2 {
+    return None;
+  }
+
+  let canon_idx = pick_canonical_index(bucket);
+  let canonical = bucket[canon_idx];
+
+  let mut db_asset_ids: HashSet<&str> = HashSet::new();
+  for e in bucket {
+    if let Some(ref id) = e.asset_id {
+      db_asset_ids.insert(id.as_str());
+    }
+  }
+  let ambiguous_stem = db_asset_ids.len() > 1;
+
+  let mut duplicates = Vec::new();
+  for (i, entry) in bucket.iter().enumerate() {
+    if i == canon_idx {
+      continue;
+    }
+    let note = incomplete_note(canonical, entry);
+    let (confidence, canonical_size, duplicate_size) = classify_vs_canonical(canonical, entry);
+    duplicates.push(DuplicateLegacyItem {
+      duplicate: to_side(entry),
+      incomplete: note.is_some(),
+      incomplete_note: note,
+      confidence,
+      canonical_size,
+      duplicate_size,
+    });
+  }
+  if duplicates.is_empty() {
+    return None;
+  }
+
+  let asset_id = canonical
+    .asset_id
+    .clone()
+    .unwrap_or_else(|| local_group_id(content_hash));
+
+  // UI：优先展示可读原名 stem；无则截断哈希
+  let content_key = if canonical.display_key.is_empty() {
+    content_hash.chars().take(12).collect()
+  } else {
+    canonical.display_key.clone()
+  };
+
+  Some(DuplicateGroup {
+    ambiguous_stem,
+    content_key,
+    media_kind: canonical.media_kind.clone(),
+    asset_id,
+    canonical: to_side(canonical),
+    duplicates,
+  })
+}
+
+/// 扫描相册根：size 预筛 → 懒算/读库 BLAKE3 → 按主文件哈希归组
 pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, String> {
   let album_settings = settings::load_settings(app)?;
   let root = album_settings.root_dir.trim();
@@ -613,55 +575,39 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
     return Err(format!("相册根目录不存在: {root}"));
   }
 
-  let sync_output = resolve_sync_output_dir(app)?;
-  let sync_output = sync_output.unwrap_or_else(|| root_path.join("iCloudSync"));
-
-  let (canonical_paths, canonical_assets) = load_canonical_assets(app)?;
-  if canonical_assets.is_empty() {
+  let db_meta = load_db_path_meta(app)?;
+  let files = scan_all_media(&root_path);
+  let mut entries = build_scanned_entries(files, &db_meta);
+  if entries.len() < 2 {
     return Ok(Vec::new());
   }
 
-  let legacy_index = scan_legacy_assets(&root_path, &sync_output, &canonical_paths);
+  let album_data_dir = settings::album_dir(app).ok();
+  let media_conn = album_data_dir
+    .as_ref()
+    .and_then(|dir| db::open_db(dir).ok());
+  fill_hashes_for_size_candidates(media_conn.as_ref(), &mut entries);
 
-  let mut stem_counts: HashMap<String, usize> = HashMap::new();
-  for asset in &canonical_assets {
-    *stem_counts
-      .entry(asset.content_key.clone())
-      .or_insert(0) += 1;
-  }
-
-  let mut groups: HashMap<String, GroupBuilder> = HashMap::new();
-  let mut used_legacy: HashSet<String> = HashSet::new();
-
-  for asset in &canonical_assets {
-    let Some(candidates) = legacy_index.get(&asset.content_key) else {
+  // content_hash → 条目下标
+  let mut index: HashMap<String, Vec<usize>> = HashMap::new();
+  for (i, entry) in entries.iter().enumerate() {
+    let Some(ref hash) = entry.content_hash else {
       continue;
     };
-    for legacy in candidates {
-      try_push_legacy_duplicate(
-        &mut groups,
-        asset,
-        legacy,
-        &canonical_paths,
-        &mut used_legacy,
-      );
+    index.entry(hash.clone()).or_default().push(i);
+  }
+
+  let mut result: Vec<DuplicateGroup> = Vec::new();
+  for (hash, idxs) in index {
+    if idxs.len() < 2 {
+      continue;
+    }
+    let bucket: Vec<&ScannedEntry> = idxs.iter().map(|&i| &entries[i]).collect();
+    if let Some(group) = build_group_from_bucket(&bucket, &hash) {
+      result.push(group);
     }
   }
 
-  let mut result: Vec<DuplicateGroup> = groups
-    .into_values()
-    .filter(|g| !g.duplicates.is_empty())
-    .map(|g| DuplicateGroup {
-      ambiguous_stem: stem_counts.get(&g.content_key).copied().unwrap_or(0) > 1,
-      content_key: g.content_key,
-      media_kind: g.media_kind,
-      asset_id: g.asset_id,
-      canonical: g.canonical,
-      duplicates: g.duplicates,
-    })
-    .collect();
-
-  // 组列表与组内副本均按置信度高→低，便于清理弹窗优先处理高置信项
   for group in &mut result {
     group
       .duplicates
@@ -688,124 +634,127 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
 mod tests {
   use super::*;
 
-  #[test]
-  fn content_key_is_lowercase_stem() {
-    assert_eq!(content_key_from_filename("IMG_0027.HEIC"), "img_0027");
-    assert_eq!(content_key_from_filename("00042_IMG_0027.HEIC"), "00042_img_0027");
+  fn entry(
+    path: &str,
+    size: u64,
+    hash: Option<&str>,
+    in_db: bool,
+    asset_id: Option<&str>,
+  ) -> ScannedEntry {
+    ScannedEntry {
+      path: path.into(),
+      name: Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+        .into(),
+      ext: "jpg".into(),
+      video_path: None,
+      display_key: "img_1".into(),
+      asset_id: asset_id.map(str::to_string),
+      in_db,
+      media_kind: "photo".into(),
+      size,
+      modified: if in_db { 1 } else { 99 },
+      content_hash: hash.map(str::to_string),
+      mov_hash: None,
+      mov_size: 0,
+      mov_modified: 0,
+    }
   }
 
   #[test]
-  fn path_is_under_windows_style() {
-    let root = PathBuf::from(r"E:\Photos\iCloudSync");
-    assert!(path_is_under(
-      Path::new(r"E:\Photos\iCloudSync\00001_x.heic"),
-      &root
-    ));
-    assert!(!path_is_under(
-      Path::new(r"E:\Photos\iCloudSyncBackup\x.heic"),
-      &root
-    ));
+  fn pick_canonical_prefers_in_db() {
+    let a = entry(r"E:\old\a.jpg", 10, Some("h"), false, None);
+    let b = entry(r"E:\sync\b.jpg", 10, Some("h"), true, Some("A1"));
+    assert_eq!(pick_canonical_index(&[&a, &b]), 1);
   }
 
   #[test]
-  fn classify_low_when_sizes_differ() {
-    let dir = std::env::temp_dir().join(format!(
-      "dup_conf_low_{}",
-      std::process::id()
-    ));
+  fn build_group_by_hash_marks_db_canonical() {
+    let dir = std::env::temp_dir().join(format!("dup_hash_group_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let sync = dir.join("sync.jpg");
+    let old = dir.join("IMG_1.jpg");
+    std::fs::write(&sync, b"same-bytes").expect("write");
+    std::fs::write(&old, b"same-bytes").expect("write");
+
+    let sync_e = entry(
+      &sync.to_string_lossy(),
+      10,
+      Some("abc"),
+      true,
+      Some("AID"),
+    );
+    let old_e = entry(&old.to_string_lossy(), 10, Some("abc"), false, None);
+
+    let group = build_group_from_bucket(&[&old_e, &sync_e], "abc").expect("group");
+    assert_eq!(group.asset_id, "AID");
+    assert_eq!(group.canonical.path, sync_e.path);
+    assert_eq!(group.duplicates.len(), 1);
+    assert_eq!(group.duplicates[0].confidence, DuplicateMatchConfidence::High);
+
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn blake3_same_bytes_same_hex() {
+    let dir = std::env::temp_dir().join(format!("dup_blake3_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("mkdir");
     let a = dir.join("a.bin");
     let b = dir.join("b.bin");
-    std::fs::write(&a, b"aaa").expect("write");
-    std::fs::write(&b, b"bbbb").expect("write");
+    std::fs::write(&a, b"payload-xyz").expect("write");
+    std::fs::write(&b, b"payload-xyz").expect("write");
 
-    let asset = CanonicalAsset {
-      asset_id: "A".into(),
-      media_kind: "photo".into(),
-      content_key: "x".into(),
-      still_path: Some(a.to_string_lossy().into_owned()),
-      mov_path: None,
-      display_name: "x.jpg".into(),
-    };
-    let legacy = LegacyAsset {
-      path: b.to_string_lossy().into_owned(),
-      name: "b.bin".into(),
-      ext: "bin".into(),
-      video_path: None,
-    };
-
-    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
-    assert_eq!(conf, DuplicateMatchConfidence::Low);
+    let ha = db::compute_blake3_hex(&a.to_string_lossy()).expect("hash a");
+    let hb = db::compute_blake3_hex(&b.to_string_lossy()).expect("hash b");
+    assert_eq!(ha, hb);
+    assert_ne!(ha, db::compute_blake3_hex(&{
+      std::fs::write(dir.join("c.bin"), b"other").unwrap();
+      dir.join("c.bin").to_string_lossy().into_owned()
+    })
+    .unwrap());
 
     let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]
-  fn classify_high_when_same_size_and_content() {
-    let dir = std::env::temp_dir().join(format!(
-      "dup_conf_high_{}",
-      std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("mkdir");
-    let a = dir.join("a.bin");
-    let b = dir.join("b.bin");
-    std::fs::write(&a, b"same-bytes").expect("write");
-    std::fs::write(&b, b"same-bytes").expect("write");
-
-    let asset = CanonicalAsset {
-      asset_id: "A".into(),
-      media_kind: "photo".into(),
-      content_key: "x".into(),
-      still_path: Some(a.to_string_lossy().into_owned()),
-      mov_path: None,
-      display_name: "x.jpg".into(),
+  fn classify_live_mov_mismatch_is_medium() {
+    let c = ScannedEntry {
+      path: "a.jpg".into(),
+      name: "a.jpg".into(),
+      ext: "jpg".into(),
+      video_path: Some("a.mov".into()),
+      display_key: "a".into(),
+      asset_id: None,
+      in_db: true,
+      media_kind: "live".into(),
+      size: 1,
+      modified: 0,
+      content_hash: Some("h".into()),
+      mov_hash: Some("m1".into()),
+      mov_size: 2,
+      mov_modified: 0,
     };
-    let legacy = LegacyAsset {
-      path: b.to_string_lossy().into_owned(),
-      name: "b.bin".into(),
-      ext: "bin".into(),
-      video_path: None,
+    let o = ScannedEntry {
+      path: "b.jpg".into(),
+      name: "b.jpg".into(),
+      ext: "jpg".into(),
+      video_path: Some("b.mov".into()),
+      display_key: "b".into(),
+      asset_id: None,
+      in_db: false,
+      media_kind: "live".into(),
+      size: 1,
+      modified: 0,
+      content_hash: Some("h".into()),
+      mov_hash: Some("m2".into()),
+      mov_size: 2,
+      mov_modified: 0,
     };
-
-    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
-    assert_eq!(conf, DuplicateMatchConfidence::High);
-
-    let _ = std::fs::remove_dir_all(&dir);
-  }
-
-  #[test]
-  fn classify_medium_when_same_size_different_content() {
-    let dir = std::env::temp_dir().join(format!(
-      "dup_conf_med_{}",
-      std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("mkdir");
-    let a = dir.join("a.bin");
-    let b = dir.join("b.bin");
-    std::fs::write(&a, b"1111").expect("write");
-    std::fs::write(&b, b"2222").expect("write");
-
-    let asset = CanonicalAsset {
-      asset_id: "A".into(),
-      media_kind: "photo".into(),
-      content_key: "x".into(),
-      still_path: Some(a.to_string_lossy().into_owned()),
-      mov_path: None,
-      display_name: "x.jpg".into(),
-    };
-    let legacy = LegacyAsset {
-      path: b.to_string_lossy().into_owned(),
-      name: "b.bin".into(),
-      ext: "bin".into(),
-      video_path: None,
-    };
-
-    let (conf, _, _) = classify_duplicate_confidence(&asset, &legacy);
+    let (conf, _, _) = classify_vs_canonical(&c, &o);
     assert_eq!(conf, DuplicateMatchConfidence::Medium);
-
-    let _ = std::fs::remove_dir_all(&dir);
   }
 }

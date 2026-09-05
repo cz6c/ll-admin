@@ -5,17 +5,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup } from "@/views/album/types";
 
-/**
- * 确保视频可在 WebView 中播放：HEVC 转 H.264 MP4 缓存，H.264 等直接返回原路径
- * @param path 源视频绝对路径
- * @returns 可直接 `convertFileSrc` 的播放路径
- */
-export async function ensureAlbumPlayback(path: string): Promise<string> {
-  return invoke<string>("album_ensure_playback", { path });
+/** `album_ensure_playback` 返回：可播路径 + 可选编码分辨率 */
+export interface AlbumPlaybackResult {
+  path: string;
+  width?: number;
+  height?: number;
 }
 
 /**
- * 扫描 sync 正本与 legacy 重复组（不删盘）
+ * 确保视频可在 WebView 中播放：HEVC 转 H.264 MP4 缓存，H.264 等直接返回原路径
+ * 单独视频会顺带 ffprobe 分辨率并落库
+ * @param path 源视频绝对路径
+ */
+export async function ensureAlbumPlayback(path: string): Promise<AlbumPlaybackResult> {
+  return invoke<AlbumPlaybackResult>("album_ensure_playback", { path });
+}
+
+/**
+ * 扫描相册根全量重复组（组内落库优先正本；不删盘）
  */
 export async function findAlbumLocalDuplicates(): Promise<DuplicateGroup[]> {
   return invoke<DuplicateGroup[]>("album_find_local_duplicates");

@@ -41,6 +41,8 @@ const currentVideoPath = computed(() => {
 });
 const {
   playbackSrc: videoPlaybackSrc,
+  width: videoPlaybackWidth,
+  height: videoPlaybackHeight,
   loading: videoPlaybackLoading,
   error: videoPlaybackError
 } = useAlbumPlaybackSrc(currentVideoPath);
@@ -94,6 +96,35 @@ function formatCaptureAt(raw: string | undefined): string | null {
 }
 
 const captureLabel = computed(() => formatCaptureAt(current.value?.file.captureAt));
+
+const cameraLabel = computed(() => {
+  const s = (current.value?.file.camera ?? "").trim();
+  return s || null;
+});
+
+/** 分辨率：图/Live 用文件字段；单独视频优先打开时 ffprobe 结果 */
+const resolutionLabel = computed(() => {
+  const file = current.value?.file;
+  if (!file) return null;
+  if (file.kind === "video") {
+    const w = videoPlaybackWidth.value ?? file.width;
+    const h = videoPlaybackHeight.value ?? file.height;
+    if (!w || !h) return null;
+    return `${w}×${h}`;
+  }
+  const w = file.width;
+  const h = file.height;
+  if (!w || !h) return null;
+  return `${w}×${h}`;
+});
+
+// 单独视频打开后把分辨率写回内存，便于同会话内切回仍显示
+watch([videoPlaybackWidth, videoPlaybackHeight, current], () => {
+  const file = current.value?.file;
+  if (!file || file.kind !== "video") return;
+  if (videoPlaybackWidth.value) file.width ??= videoPlaybackWidth.value;
+  if (videoPlaybackHeight.value) file.height ??= videoPlaybackHeight.value;
+});
 
 function onMediaError() {
   loadFailed.value = true;
@@ -169,6 +200,7 @@ onBeforeUnmount(() => {
             :photo-path="current.file.path"
             :video-path="current.file.videoPath || ''"
             :photo-preview-path="current.file.previewPath"
+            :playback-path="current.file.playbackPath"
           />
         </div>
 
@@ -194,6 +226,8 @@ onBeforeUnmount(() => {
       <span class="info-name">{{ current.file.name }}</span>
       <span class="info-meta">
         <template v-if="captureLabel"> {{ captureLabel }} · </template>
+        <template v-if="cameraLabel"> {{ cameraLabel }} · </template>
+        <template v-if="resolutionLabel"> {{ resolutionLabel }} · </template>
         {{ current.groupName }} · {{ formatSize(current.file.size) }} · {{ currentIndex + 1 }} / {{ flatFiles.length }}
       </span>
     </div>

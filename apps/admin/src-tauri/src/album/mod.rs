@@ -2,7 +2,7 @@
 //! 职责：扫描本地目录媒体文件、按子目录分组、识别实况照片；后台缩略图与增量索引
 //! 适用：admin CS（Tauri）个人工具
 
-mod capture_at;
+mod media_meta;
 mod db;
 mod duplicates;
 mod ffmpeg;
@@ -255,6 +255,32 @@ fn persist_playback_path(album_data_dir: &std::path::Path, source_path: &str, ca
   }
 }
 
+/// 打开视频时一次 ffprobe 取 codec+分辨率；分辨率落库（仅 path 行存在时生效）
+fn probe_and_persist_video_stream(
+  album_data_dir: &std::path::Path,
+  source_path: &str,
+  ffprobe: Option<&std::path::Path>,
+) -> (Option<u32>, Option<u32>, Option<String>) {
+  let Some(ffprobe) = ffprobe else {
+    return (None, None, None);
+  };
+  let Some(info) =
+    ffmpeg::probe_video_stream_info(ffprobe, std::path::Path::new(source_path))
+  else {
+    return (None, None, None);
+  };
+  let (width, height) = match (info.width, info.height) {
+    (Some(w), Some(h)) => {
+      if let Ok(conn) = db::open_db(album_data_dir) {
+        let _ = db::update_dimensions(&conn, source_path, w, h);
+      }
+      (Some(w), Some(h))
+    }
+    _ => (None, None),
+  };
+  (width, height, info.codec)
+}
+
 fn append_playback_deletes(
   to_remove: &mut Vec<std::path::PathBuf>,
   album_data_dir: &std::path::Path,
@@ -347,7 +373,7 @@ pub fn album_delete_local(
   Ok(deleted)
 }
 
-/// 扫描 sync 正本与 legacy 重复组（不含删盘）
+/// 扫描相册根全量媒体重复组（组内落库优先正本；不含删盘）
 #[tauri::command]
 pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {
   duplicates::find_local_duplicates(&app)
@@ -363,8 +389,12 @@ pub fn album_resolve_duplicate_thumb(
 }
 
 /// 返回 WebView 可直接 `<video>` 播放的路径：H.264 等原生格式原样返回；HEVC 转 H.264 MP4 缓存
+/// 同时 ffprobe 编码分辨率并写入 media.db（单独视频信息面板用）
 #[tauri::command]
-pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<String, String> {
+pub async fn album_ensure_playback(
+  app: AppHandle,
+  path: String,
+) -> Result<types::AlbumPlaybackResult, String> {
   use std::path::PathBuf;
   use std::time::UNIX_EPOCH;
 
@@ -383,7 +413,11 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
     .unwrap_or("")
     .to_lowercase();
   if !thumbnail::is_video_ext(&ext) {
-    return Ok(path);
+    return Ok(types::AlbumPlaybackResult {
+      path,
+      width: None,
+      height: None,
+    });
   }
 
   let modified = std::fs::metadata(&src)
@@ -401,6 +435,9 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
 
   let cache_file = thumbnail::playback_cache_file(&cache_dir, &path, modified);
   let ffprobe_bin = ffmpeg::resolve_ffprobe_binary(&app);
+  // 一次 ffprobe：分辨率落库 + codec 决定是否转码（避免二次起进程）
+  let (width, height, codec) =
+    probe_and_persist_video_stream(&album_data_dir, &path, ffprobe_bin.as_deref());
 
   if cache_file.is_file()
     && std::fs::metadata(&cache_file)
@@ -414,7 +451,11 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
     if cache_ok {
       let cache_path = cache_file.to_string_lossy().into_owned();
       persist_playback_path(&album_data_dir, &path, &cache_path);
-      return Ok(cache_path);
+      return Ok(types::AlbumPlaybackResult {
+        path: cache_path,
+        width,
+        height,
+      });
     }
     let _ = std::fs::remove_file(&cache_file);
     log::warn!("album: 播放代理缓存无效，将重新转码: {}", cache_file.display());
@@ -422,16 +463,18 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
 
   let needs_transcode = if ffmpeg::prefer_playback_proxy(&ext) {
     true
-  } else if let Some(ref ffprobe) = ffprobe_bin {
-    ffmpeg::probe_video_codec(ffprobe, &src)
-      .map(|c| ffmpeg::needs_playback_transcode(&c))
-      .unwrap_or(false)
+  } else if let Some(ref c) = codec {
+    ffmpeg::needs_playback_transcode(c)
   } else {
     false
   };
 
   if !needs_transcode {
-    return Ok(path);
+    return Ok(types::AlbumPlaybackResult {
+      path,
+      width,
+      height,
+    });
   }
 
   let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(&app).ok_or_else(|| {
@@ -471,7 +514,11 @@ pub async fn album_ensure_playback(app: AppHandle, path: String) -> Result<Strin
   }
   let cache_path = cache_file.to_string_lossy().into_owned();
   persist_playback_path(&album_data_dir, &path, &cache_path);
-  Ok(cache_path)
+  Ok(types::AlbumPlaybackResult {
+    path: cache_path,
+    width,
+    height,
+  })
 }
 
 /// 将树节点相对路径解析为相册根下的绝对目录；拒绝 `..` 与越界

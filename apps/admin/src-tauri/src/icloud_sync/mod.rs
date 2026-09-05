@@ -14,7 +14,6 @@ mod sidecar;
 mod task;
 pub(crate) mod types;
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -27,8 +26,7 @@ use db::open_db;
 pub(crate) use db::state_db_path;
 use settings::{
   clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain,
-  require_consent, resolve_default_output_dir, save_settings, session_has_files,
-  session_has_files_for_apple_id,
+  require_consent, save_settings, session_has_files, session_has_files_for_apple_id,
 };
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
 use types::{CloudState, IcloudSyncSettings};
@@ -75,15 +73,6 @@ pub fn list_synced_local_rows(app: &AppHandle) -> Result<Vec<SyncedLocalRow>, St
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| format!("解析 synced 资产失败: {e}"))?;
   Ok(rows)
-}
-
-/// 同步落盘目录：settings.outputDir 或 `{albumRoot}/iCloudSync`
-pub fn resolve_sync_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
-  let settings = load_settings(app)?;
-  if !settings.output_dir.trim().is_empty() {
-    return Ok(Some(PathBuf::from(settings.output_dir.trim())));
-  }
-  resolve_default_output_dir(app)
 }
 
 /// 将 sidecar error 事件格式化为 `code` 或 `code: message` 供上层展示。

@@ -92,7 +92,7 @@ function allDuplicatePaths(list: DuplicateGroup[]): string[] {
   return paths;
 }
 
-/** 高中置信默认勾选；低置信（仅 stem、大小不一致）不选 */
+/** 高中置信默认勾选；低置信保留兼容默认不选 */
 function defaultSelectedPaths(list: DuplicateGroup[]): string[] {
   const paths: string[] = [];
   for (const group of list) {
@@ -256,7 +256,7 @@ async function onDeleteSelected() {
     <div class="dup-modal-layout">
       <div class="dup-modal-top">
         <p class="dup-intro">
-          按 stem 初筛后分级：高/中（大小一致，高另需内容一致）默认勾选；低（大小不一致，多为同名不同图）默认不选。
+          按文件内容（BLAKE3）归组：高置信（内容一致，含 Live 双轨）与中置信（主画面一致但配对视频不全）默认勾选；请对照缩略图后删除副本。
         </p>
 
         <a-spin :spinning="loading">
@@ -267,8 +267,8 @@ async function onDeleteSelected() {
             type="warning"
             show-icon
             class="dup-alert"
-            message="部分组存在 stem 歧义"
-            :description="`有 ${ambiguousGroupCount} 组正本共用相同文件名 stem，按 stem 匹配可能不准，删除前请对照缩略图与路径。`"
+            message="部分组存在多正本"
+            :description="`有 ${ambiguousGroupCount} 组内含多个不同的同步落库项，删除前请对照缩略图与路径，确认要保留哪一份。`"
           />
 
           <a-empty v-if="!loading && !error && groups.length === 0" description="未发现重复下载" />

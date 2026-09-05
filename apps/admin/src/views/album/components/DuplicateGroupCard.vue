@@ -75,7 +75,7 @@ function confidenceColor(level: DuplicateMatchConfidence): string {
   <article class="dup-group-card">
     <header class="dup-group-head">
       <span class="dup-group-title">{{ groupHeaderTitle() }}</span>
-      <a-tag v-if="group.ambiguousStem" color="orange" class="dup-ambiguous-tag">stem 歧义</a-tag>
+      <a-tag v-if="group.ambiguousStem" color="orange" class="dup-ambiguous-tag">多正本</a-tag>
       <a-checkbox
         class="dup-group-check"
         :checked="groupAllSelected"

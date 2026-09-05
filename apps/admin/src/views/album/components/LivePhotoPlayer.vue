@@ -17,6 +17,8 @@ const props = withDefaults(
     videoPath: string;
     /** HEIC/HEIF 全尺寸解码 JPEG 缓存路径 */
     photoPreviewPath?: string;
+    /** 扫描预热的 H.264 代理；有则跳过打开时转码 */
+    playbackPath?: string;
     /** 是否在静态帧左上角显示 Live 角标 */
     showBadge?: boolean;
   }>(),
@@ -28,8 +30,17 @@ defineOptions({ name: "LivePhotoPlayer" });
 const videoRef = ref<HTMLVideoElement | null>(null);
 const playing = ref(false);
 
-const sourceVideoPath = computed(() => props.videoPath?.trim() || undefined);
-const { playbackSrc, loading: playbackLoading, error: playbackError } = useAlbumPlaybackSrc(sourceVideoPath);
+/** 已有代理则不再 invoke ensure（扫描期预热优先） */
+const preferredPlaybackSrc = computed(() => {
+  const p = props.playbackPath?.trim();
+  return p ? convertFileSrc(p) : "";
+});
+const ensureSourcePath = computed(() => {
+  if (preferredPlaybackSrc.value) return undefined;
+  return props.videoPath?.trim() || undefined;
+});
+const { playbackSrc: ensuredSrc, loading: playbackLoading, error: playbackError } =
+  useAlbumPlaybackSrc(ensureSourcePath);
 
 /** HEIC/HEIF 在 WebView 中无法作为 img src 直接渲染 */
 function isHeifPath(path: string): boolean {
@@ -47,8 +58,8 @@ const photoSrc = computed(() => {
   return convertFileSrc(props.photoPath);
 });
 
-/** 实况 MOV 播放源（HEVC 经 Rust 转 H.264 代理） */
-const videoSrc = playbackSrc;
+/** 实况 MOV：优先扫描预热代理，否则懒转码 */
+const videoSrc = computed(() => preferredPlaybackSrc.value || ensuredSrc.value);
 
 /** 开始播放 MOV（悬停/按下）；转码未完成时不发起播放 */
 async function startPlay() {
@@ -73,7 +84,7 @@ function stopPlay() {
 }
 
 watch(
-  () => [props.photoPath, props.videoPath, props.photoPreviewPath] as const,
+  () => [props.photoPath, props.videoPath, props.photoPreviewPath, props.playbackPath] as const,
   () => {
     stopPlay();
   }

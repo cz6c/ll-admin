@@ -1,6 +1,7 @@
 /**
  * 相册视频播放路径解析
  * 职责：按需调用 Rust 将 HEVC 转 H.264 代理，供 `<video>` / LivePhotoPlayer 使用
+ * 单独视频打开时顺带带回 ffprobe 分辨率（Live mov 不写到 still 行）
  */
 import { ensureAlbumPlayback } from "@/api/album";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -12,6 +13,8 @@ import { isTauri } from "@/utils/tauri";
  */
 export function useAlbumPlaybackSrc(sourcePath: Ref<string | undefined>) {
   const playbackPath = ref("");
+  const width = ref<number | undefined>();
+  const height = ref<number | undefined>();
   const loading = ref(false);
   const error = ref<string | null>(null);
   let requestId = 0;
@@ -29,6 +32,8 @@ export function useAlbumPlaybackSrc(sourcePath: Ref<string | undefined>) {
 
       if (!path?.trim()) {
         playbackPath.value = "";
+        width.value = undefined;
+        height.value = undefined;
         loading.value = false;
         error.value = null;
         return;
@@ -39,14 +44,22 @@ export function useAlbumPlaybackSrc(sourcePath: Ref<string | undefined>) {
 
       try {
         if (isTauri()) {
-          playbackPath.value = await ensureAlbumPlayback(path);
+          const result = await ensureAlbumPlayback(path);
+          if (currentId !== requestId) return;
+          playbackPath.value = result.path;
+          width.value = result.width;
+          height.value = result.height;
         } else {
           playbackPath.value = path;
+          width.value = undefined;
+          height.value = undefined;
         }
       } catch (e: unknown) {
         if (currentId !== requestId) return;
         error.value = typeof e === "string" ? e : "视频播放准备失败";
         playbackPath.value = "";
+        width.value = undefined;
+        height.value = undefined;
       } finally {
         if (currentId === requestId) {
           loading.value = false;
@@ -56,5 +69,5 @@ export function useAlbumPlaybackSrc(sourcePath: Ref<string | undefined>) {
     { immediate: true }
   );
 
-  return { playbackSrc, playbackPath, loading, error };
+  return { playbackSrc, playbackPath, width, height, loading, error };
 }

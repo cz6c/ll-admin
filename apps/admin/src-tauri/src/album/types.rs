@@ -70,6 +70,12 @@ pub struct MediaFile {
   pub video_path: Option<String>,
   /// 拍摄时间（ISO/可解析串）；缩略图就绪后由 sync/EXIF 写入 media.db
   pub capture_at: Option<String>,
+  /// 拍摄设备（EXIF Make+Model）；仅缺省时由 EXIF 补写
+  pub camera: Option<String>,
+  /// 像素宽（优先缩略图解码）
+  pub width: Option<u32>,
+  /// 像素高（优先缩略图解码）
+  pub height: Option<u32>,
 }
 
 /// 目录分组
@@ -103,8 +109,23 @@ pub struct AlbumThumbReadyPayload {
   pub path: String,
   pub thumb_path: Option<String>,
   pub preview_path: Option<String>,
-  /// 缩略图后解析到的拍摄时间；仅回填 capture_at 时前两个路径可为 None
+  /// 缩略图后解析到的拍摄时间；仅回填元数据时路径字段可为 None
   pub capture_at: Option<String>,
+  pub camera: Option<String>,
+  pub width: Option<u32>,
+  pub height: Option<u32>,
+  /// Live mov / 视频播放代理；path 为 still（Live）或视频自身
+  pub playback_path: Option<String>,
+}
+
+/// `album_ensure_playback` 返回：可播放路径 + 可选 ffprobe 分辨率（单独视频落库用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumPlaybackResult {
+  /// WebView 可播路径（原文件或 `_play.mp4` 代理）
+  pub path: String,
+  pub width: Option<u32>,
+  pub height: Option<u32>,
 }
 
 /// 重复清理弹窗：单侧文件（正本或 legacy）
@@ -123,15 +144,15 @@ pub struct DuplicateFileSide {
   pub thumb_path: Option<String>,
 }
 
-/// 重复清理：匹配置信度（低→中→高逐级判定，仅中档才算内容哈希）
+/// 重复清理：匹配置信度（主文件内容哈希已相同后的细分）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DuplicateMatchConfidence {
-  /// stem 相同，主文件或 Live 配对大小不一致
+  /// 保留枚举兼容；内容归组下极少出现
   Low,
-  /// stem 相同且大小一致（哈希未算或不一致）
+  /// 主文件哈希相同，但 Live mov 缺失或 mov 哈希不一致
   Medium,
-  /// 在中档基础上主文件（及 Live mov）内容哈希一致
+  /// 主文件（及 Live mov）内容哈希一致
   High,
 }
 
@@ -149,20 +170,20 @@ pub struct DuplicateLegacyItem {
   pub duplicate_size: u64,
 }
 
-/// 一组本地重复：一个 sync 正本 + 多个可删 legacy 副本
+/// 一组本地重复：按主文件内容哈希归组后选出的正本 + 可删副本
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DuplicateGroup {
-  /// 匹配键（original_filename stem 归一）
+  /// 展示键（优先原名 stem；归组实际按 BLAKE3）
   pub content_key: String,
   /// `photo` / `video` / `live`
   pub media_kind: String,
-  /// iCloud asset_id（sync 正本）
+  /// 正本对应的 iCloud asset_id；无落库时为 `hash:{prefix}`
   pub asset_id: String,
-  /// 应用同步落盘（保留）
+  /// 保留侧（优先 sync 库已落库路径）
   pub canonical: DuplicateFileSide,
-  /// 旧下载副本（默认勾选删除）
+  /// 可删副本（默认可勾选删除）
   pub duplicates: Vec<DuplicateLegacyItem>,
-  /// 同 stem 存在多个 sync 正本，按 stem 匹配可能不准
+  /// 同组内存在多个不同落库 asset_id
   pub ambiguous_stem: bool,
 }

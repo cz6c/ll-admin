@@ -115,8 +115,16 @@ fn which_tool_in_path(name: &str) -> Option<PathBuf> {
   None
 }
 
-/// 读取视频流 codec_name（如 hevc / h264）；无视频流或失败返回 None
-pub fn probe_video_codec(ffprobe: &Path, input: &Path) -> Option<String> {
+/// 一次 ffprobe：编码名 + 宽高（打开视频时复用，避免多次起进程）
+#[derive(Debug, Clone, Default)]
+pub struct VideoStreamInfo {
+  pub codec: Option<String>,
+  pub width: Option<u32>,
+  pub height: Option<u32>,
+}
+
+/// 读取视频流 codec / width / height；失败返回 None（stdout 空或非成功）
+pub fn probe_video_stream_info(ffprobe: &Path, input: &Path) -> Option<VideoStreamInfo> {
   let mut cmd = Command::new(ffprobe);
   cmd.args([
     "-v",
@@ -124,7 +132,7 @@ pub fn probe_video_codec(ffprobe: &Path, input: &Path) -> Option<String> {
     "-select_streams",
     "v:0",
     "-show_entries",
-    "stream=codec_name",
+    "stream=codec_name,width,height",
     "-of",
     "csv=p=0",
   ]);
@@ -139,12 +147,40 @@ pub fn probe_video_codec(ffprobe: &Path, input: &Path) -> Option<String> {
   if !output.status.success() {
     return None;
   }
-  let codec = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-  if codec.is_empty() {
+  // 典型：`hevc,1920,1080`
+  let line = String::from_utf8_lossy(&output.stdout);
+  let line = line.trim();
+  if line.is_empty() {
+    return None;
+  }
+  let mut parts = line.split(|c| c == ',' || c == '\n' || c == '\r');
+  let codec_raw = parts.next()?.trim().to_lowercase();
+  let codec = if codec_raw.is_empty() {
     None
   } else {
-    Some(codec)
+    Some(codec_raw)
+  };
+  let width = parts
+    .next()
+    .and_then(|s| s.trim().parse::<u32>().ok())
+    .filter(|&w| w > 0);
+  let height = parts
+    .next()
+    .and_then(|s| s.trim().parse::<u32>().ok())
+    .filter(|&h| h > 0);
+  if codec.is_none() && width.is_none() && height.is_none() {
+    return None;
   }
+  Some(VideoStreamInfo {
+    codec,
+    width,
+    height,
+  })
+}
+
+/// 读取视频流 codec_name（如 hevc / h264）；无视频流或失败返回 None
+pub fn probe_video_codec(ffprobe: &Path, input: &Path) -> Option<String> {
+  probe_video_stream_info(ffprobe, input)?.codec
 }
 
 /// WebView2 `<video>` 是否需转码：HEVC 在 Windows 上常缺系统解码器

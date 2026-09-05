@@ -24,6 +24,11 @@ export interface AlbumThumbReadyPayload {
   previewPath?: string;
   /** 缩略图就绪后回填的拍摄时间 */
   captureAt?: string;
+  camera?: string;
+  width?: number;
+  height?: number;
+  /** Live mov / 视频 H.264 播放代理 */
+  playbackPath?: string;
 }
 
 export type MediaKind = "image" | "video" | "livephoto";
@@ -38,8 +43,16 @@ export interface MediaFile {
   thumbPath?: string;
   previewPath?: string;
   videoPath?: string;
+  /** HEVC→H.264 播放代理；Live 绑 still，值为 mov 的代理路径 */
+  playbackPath?: string;
   /** 拍摄时间（sync/EXIF，缩略图后写入） */
   captureAt?: string;
+  /** 拍摄设备（EXIF Make+Model） */
+  camera?: string;
+  /** 像素宽（优先缩略图解码） */
+  width?: number;
+  /** 像素高（优先缩略图解码） */
+  height?: number;
 }
 
 export interface MediaGroup {
@@ -59,7 +72,7 @@ export interface DuplicateFileSide {
   thumbPath?: string;
 }
 
-/** 重复清理：一组内单个可删 legacy 副本 */
+/** 重复清理：主文件内容哈希相同后的细分置信度 */
 export type DuplicateMatchConfidence = "low" | "medium" | "high";
 
 export interface DuplicateLegacyItem {
@@ -72,14 +85,16 @@ export interface DuplicateLegacyItem {
   duplicateSize: number;
 }
 
-/** 重复清理：一个 sync 正本 + 多个 legacy 副本 */
+/** 重复清理：全量按内容哈希归组；正本优先落库路径 */
 export interface DuplicateGroup {
+  /** 展示用（原名 stem）；实际归组按 BLAKE3 */
   contentKey: string;
   mediaKind: "photo" | "video" | "live" | string;
+  /** 落库 asset_id；无落库时为 hash:{prefix} */
   assetId: string;
   canonical: DuplicateFileSide;
   duplicates: DuplicateLegacyItem[];
-  /** 同 stem 存在多个 sync 正本，按 stem 匹配可能不准 */
+  /** 同组内多个不同落库 asset_id */
   ambiguousStem: boolean;
 }
 

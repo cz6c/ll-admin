@@ -1,8 +1,8 @@
 //! iCloud 同步 SQLite 断点库
 //! 职责：jobs/assets 终态 schema、pending/done 查询与状态更新
 //! 适用：队列 catalog 落库与串行 download 续传
-//! @note schema 版本用 `PRAGMA user_version`；已知 2→5 升级失败时中止且不清空；
-//!       仅无业务表时建终态，或 user_version∈{0,1} 的不可识别旧形态才重建空库
+//! @note schema 只认 `PRAGMA user_version = 5` 终态；已砍 v2–v4 链式迁移与 index_num 残留清理。
+//!       无业务表 → 建终态；user_version∈{0,1} 怪库 → 重建空库；其它非 5 → 报错不清空。
 
 use std::path::{Path, PathBuf};
 
@@ -18,7 +18,7 @@ use super::types::{
   JobRow, JobStatus, JobView, MediaKind, TaskType,
 };
 
-/// 应用期望的 state.db schema 代际（写入 `PRAGMA user_version`）
+/// 应用期望的 state.db schema 代际（历史迁移已收口，数字保持 5 以免现网重标定）
 const SCHEMA_VERSION: i32 = 5;
 
 /// icloud_sync SQLite 路径
@@ -26,7 +26,7 @@ pub fn state_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   Ok(icloud_sync_dir(app)?.join("state.db"))
 }
 
-/// 打开或创建 state.db；按 `user_version` 链式迁移到终态
+/// 打开或创建 state.db；仅接受终态 `user_version = SCHEMA_VERSION`
 pub fn open_db(db_path: &Path) -> Result<Connection, String> {
   if let Some(parent) = db_path.parent() {
     std::fs::create_dir_all(parent).map_err(|e| format!("创建 SQLite 目录失败: {e}"))?;
@@ -49,7 +49,7 @@ fn set_user_version(conn: &Connection, version: i32) -> Result<(), String> {
     .map_err(|e| format!("写入 user_version={version} 失败: {e}"))
 }
 
-/// 一次性兼容：旧库只有 `schema_meta.version` 时灌入 pragma 并删表
+/// 一次性兼容：旧库若仍有 `schema_meta`，把 version 灌入 pragma（仅当 user_version=0）并删表
 fn absorb_legacy_schema_meta(conn: &Connection) -> Result<(), String> {
   if !table_exists(conn, "schema_meta")? {
     return Ok(());
@@ -75,21 +75,6 @@ fn absorb_legacy_schema_meta(conn: &Connection) -> Result<(), String> {
   Ok(())
 }
 
-fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
-  if !table_exists(conn, table)? {
-    return Ok(false);
-  }
-  let mut stmt = conn
-    .prepare(&format!("PRAGMA table_info({table})"))
-    .map_err(|e| format!("读取表结构失败: {e}"))?;
-  let rows = stmt
-    .query_map([], |row| row.get::<_, String>(1))
-    .map_err(|e| format!("解析表结构失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("读取列名失败: {e}"))?;
-  Ok(rows.iter().any(|name| name == column))
-}
-
 fn table_exists(conn: &Connection, table: &str) -> Result<bool, String> {
   let exists: bool = conn
     .query_row(
@@ -101,249 +86,6 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool, String> {
     .map_err(|e| format!("探测表 {table} 失败: {e}"))?
     .unwrap_or(false);
   Ok(exists)
-}
-
-fn needs_v5_cleanup(conn: &Connection) -> Result<bool, String> {
-  Ok(
-    column_exists(conn, "assets", "index_num")?
-      || column_exists(conn, "jobs", "mode")?
-      || table_exists(conn, "cloud_cursors")?,
-  )
-}
-
-/// v2→v3：modified_cloud 并入 cloud_only（待同步统一态）
-fn migrate_v2_to_v3(conn: &Connection) -> Result<(), String> {
-  conn
-    .execute(
-      "UPDATE assets SET cloud_state = 'cloud_only' WHERE cloud_state = 'modified_cloud'",
-      [],
-    )
-    .map_err(|e| format!("合并 modified_cloud 失败: {e}"))?;
-  set_user_version(conn, 3)?;
-  log::info!("icloud_sync state.db migrated v2 → v3 (modified_cloud → cloud_only)");
-  Ok(())
-}
-
-/// v3→v4：产品元数据分列（拍摄/加入时间、GPS）
-fn migrate_v3_to_v4(conn: &Connection) -> Result<(), String> {
-  // 幂等：已有列则跳过 ADD（避免仅靠版本时重复打开失败）
-  if !column_exists(conn, "assets", "capture_at")? {
-    conn
-      .execute("ALTER TABLE assets ADD COLUMN capture_at TEXT", [])
-      .map_err(|e| format!("v3→v4 添加 capture_at 失败: {e}"))?;
-  }
-  if !column_exists(conn, "assets", "added_at")? {
-    conn
-      .execute("ALTER TABLE assets ADD COLUMN added_at TEXT", [])
-      .map_err(|e| format!("v3→v4 添加 added_at 失败: {e}"))?;
-  }
-  if !column_exists(conn, "assets", "latitude")? {
-    conn
-      .execute("ALTER TABLE assets ADD COLUMN latitude REAL", [])
-      .map_err(|e| format!("v3→v4 添加 latitude 失败: {e}"))?;
-  }
-  if !column_exists(conn, "assets", "longitude")? {
-    conn
-      .execute("ALTER TABLE assets ADD COLUMN longitude REAL", [])
-      .map_err(|e| format!("v3→v4 添加 longitude 失败: {e}"))?;
-  }
-  conn
-    .execute_batch(
-      "CREATE INDEX IF NOT EXISTS idx_assets_capture_at ON assets(apple_id, capture_at);",
-    )
-    .map_err(|e| format!("v3→v4 创建 capture_at 索引失败: {e}"))?;
-  set_user_version(conn, 4)?;
-  log::info!("icloud_sync state.db migrated v3 → v4 (product catalog metadata columns)");
-  Ok(())
-}
-
-/// v4→v5：一次到位
-/// - 删 `assets.index_num`
-/// - 删 `jobs.mode`（恒为 full，无增量模式）
-/// - 删空表 `cloud_cursors`（从未写入；incremental 已明确不做）
-/// @note 事务内执行；失败整段回滚，禁止半迁移后重建空库
-fn migrate_v4_to_v5(conn: &Connection) -> Result<(), String> {
-  let needs_drop_index = column_exists(conn, "assets", "index_num")?;
-  let needs_drop_mode = column_exists(conn, "jobs", "mode")?;
-  let needs_drop_cursors = table_exists(conn, "cloud_cursors")?;
-
-  if !needs_drop_index && !needs_drop_mode && !needs_drop_cursors {
-    set_user_version(conn, 5)?;
-    log::info!("icloud_sync state.db migrated v4 → v5 (already clean shape)");
-    return Ok(());
-  }
-
-  let before_assets: i64 = conn
-    .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
-    .map_err(|e| format!("v4→v5 统计 assets 失败: {e}"))?;
-  let before_jobs: i64 = conn
-    .query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get(0))
-    .map_err(|e| format!("v4→v5 统计 jobs 失败: {e}"))?;
-
-  conn
-    .execute_batch("BEGIN IMMEDIATE;")
-    .map_err(|e| format!("v4→v5 开启事务失败: {e}"))?;
-
-  let migrate_body = || -> Result<(), String> {
-    if needs_drop_index {
-      conn
-        .execute_batch(
-          r#"
-          DROP TABLE IF EXISTS assets_new;
-          CREATE TABLE assets_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            apple_id TEXT NOT NULL,
-            asset_id TEXT NOT NULL,
-            part TEXT NOT NULL,
-            sort_key TEXT NOT NULL,
-            original_filename TEXT NOT NULL,
-            media_kind TEXT NOT NULL,
-            live_pair_id TEXT,
-            dest_path TEXT,
-            last_error TEXT,
-            attempt_count INTEGER NOT NULL DEFAULT 0,
-            cloud_state TEXT NOT NULL DEFAULT 'cloud_only',
-            last_synced_at INTEGER,
-            last_catalog_at INTEGER,
-            download_status TEXT,
-            active_job_id INTEGER,
-            cpl_asset_record_name TEXT,
-            cpl_asset_change_tag TEXT,
-            capture_at TEXT,
-            added_at TEXT,
-            latitude REAL,
-            longitude REAL,
-            UNIQUE(apple_id, asset_id, part)
-          );
-          INSERT INTO assets_new(
-            id, apple_id, asset_id, part, sort_key, original_filename, media_kind, live_pair_id,
-            dest_path, last_error, attempt_count, cloud_state, last_synced_at, last_catalog_at,
-            download_status, active_job_id, cpl_asset_record_name, cpl_asset_change_tag,
-            capture_at, added_at, latitude, longitude
-          )
-          SELECT
-            id, apple_id, asset_id, part, sort_key, original_filename, media_kind, live_pair_id,
-            dest_path, last_error, attempt_count, cloud_state, last_synced_at, last_catalog_at,
-            download_status, active_job_id, cpl_asset_record_name, cpl_asset_change_tag,
-            capture_at, added_at, latitude, longitude
-          FROM assets;
-          DROP TABLE assets;
-          ALTER TABLE assets_new RENAME TO assets;
-          CREATE INDEX IF NOT EXISTS idx_assets_state ON assets(cloud_state);
-          CREATE INDEX IF NOT EXISTS idx_assets_dest ON assets(dest_path);
-          CREATE INDEX IF NOT EXISTS idx_assets_apple ON assets(apple_id);
-          CREATE INDEX IF NOT EXISTS idx_assets_active_job ON assets(active_job_id, download_status);
-          CREATE INDEX IF NOT EXISTS idx_assets_capture_at ON assets(apple_id, capture_at);
-          "#,
-        )
-        .map_err(|e| format!("v4→v5 重建 assets 失败: {e}"))?;
-    }
-
-    if needs_drop_mode {
-      conn
-        .execute_batch(
-          r#"
-          DROP TABLE IF EXISTS jobs_new;
-          CREATE TABLE jobs_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_type TEXT NOT NULL DEFAULT 'sync',
-            view TEXT NOT NULL,
-            output_dir TEXT NOT NULL,
-            apple_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            finished_at INTEGER,
-            total_count INTEGER NOT NULL DEFAULT 0,
-            done_count INTEGER NOT NULL DEFAULT 0,
-            failed_count INTEGER NOT NULL DEFAULT 0,
-            pending_count INTEGER NOT NULL DEFAULT 0
-          );
-          INSERT INTO jobs_new(
-            id, task_type, view, output_dir, apple_id, status, created_at, finished_at,
-            total_count, done_count, failed_count, pending_count
-          )
-          SELECT
-            id, COALESCE(task_type, 'sync'), view, output_dir, apple_id, status, created_at, finished_at,
-            COALESCE(total_count, 0), COALESCE(done_count, 0),
-            COALESCE(failed_count, 0), COALESCE(pending_count, 0)
-          FROM jobs;
-          DROP TABLE jobs;
-          ALTER TABLE jobs_new RENAME TO jobs;
-          CREATE INDEX IF NOT EXISTS idx_jobs_apple_status ON jobs(apple_id, status);
-          "#,
-        )
-        .map_err(|e| format!("v4→v5 重建 jobs 失败: {e}"))?;
-    }
-
-    if needs_drop_cursors {
-      conn
-        .execute("DROP TABLE IF EXISTS cloud_cursors", [])
-        .map_err(|e| format!("v4→v5 删除 cloud_cursors 失败: {e}"))?;
-    }
-    Ok(())
-  };
-
-  match migrate_body() {
-    Ok(()) => {
-      let after_assets: i64 = conn
-        .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
-        .map_err(|e| {
-          let _ = conn.execute_batch("ROLLBACK;");
-          format!("v4→v5 校验 assets 失败: {e}")
-        })?;
-      let after_jobs: i64 = conn
-        .query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get(0))
-        .map_err(|e| {
-          let _ = conn.execute_batch("ROLLBACK;");
-          format!("v4→v5 校验 jobs 失败: {e}")
-        })?;
-      if after_assets != before_assets || after_jobs != before_jobs {
-        let _ = conn.execute_batch("ROLLBACK;");
-        return Err(format!(
-          "v4→v5 行数不一致：assets {before_assets}→{after_assets}, jobs {before_jobs}→{after_jobs}"
-        ));
-      }
-      conn
-        .execute_batch("COMMIT;")
-        .map_err(|e| format!("v4→v5 提交失败: {e}"))?;
-      set_user_version(conn, 5)?;
-      log::info!(
-        "icloud_sync state.db migrated v4 → v5 (drop index_num/mode/cloud_cursors; assets={after_assets}, jobs={after_jobs})"
-      );
-      Ok(())
-    }
-    Err(e) => {
-      let _ = conn.execute_batch("ROLLBACK;");
-      Err(e)
-    }
-  }
-}
-
-/// 按 user_version 链式升到 SCHEMA_VERSION
-fn migrate_to_current(conn: &Connection) -> Result<(), String> {
-  loop {
-    let cur = user_version(conn)?;
-    if cur >= SCHEMA_VERSION {
-      break;
-    }
-    match cur {
-      2 => migrate_v2_to_v3(conn)?,
-      3 => migrate_v3_to_v4(conn)?,
-      4 => migrate_v4_to_v5(conn)?,
-      other => {
-        return Err(format!(
-          "icloud_sync state.db 无法从 user_version={other} 自动升级（期望 2..=4）"
-        ));
-      }
-    }
-    let next = user_version(conn)?;
-    if next <= cur {
-      return Err(format!(
-        "icloud_sync state.db 迁移未抬升版本：{cur} → {next}"
-      ));
-    }
-  }
-  Ok(())
 }
 
 /// 终态建表（无 schema_meta；版本只写 pragma）
@@ -434,7 +176,7 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
   Ok(())
 }
 
-/// 只信 `PRAGMA user_version` 驱动迁移；不再做绿field 复合列探测门禁
+/// 只认终态 `user_version = SCHEMA_VERSION`；无历史链式迁移
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
   absorb_legacy_schema_meta(conn)?;
   let cur = user_version(conn)?;
@@ -451,27 +193,11 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
     ));
   }
 
-  // 已知链：2→3→4→5
-  if (2..SCHEMA_VERSION).contains(&cur) {
-    migrate_to_current(conn)?;
-  }
-
-  let cur = user_version(conn)?;
   if cur == SCHEMA_VERSION {
-    // 版本已到但结构残留（历史半迁移）：幂等收尾，失败则中止不清空
-    if needs_v5_cleanup(conn)? {
-      migrate_v4_to_v5(conn)?;
-      if needs_v5_cleanup(conn)? {
-        return Err(
-          "icloud_sync state.db user_version=5 但清理 index_num/mode/cloud_cursors 失败，已中止且未清空"
-            .into(),
-        );
-      }
-    }
     return Ok(());
   }
 
-  // 0/1 或其它不可识别：仅此时允许重建空库（与旧「version=1 怪形态」一致）
+  // 0/1：古董/不可识别形态 → 重建空库（与旧「version=1 怪形态」一致）
   if matches!(cur, 0 | 1) {
     log::warn!(
       "icloud_sync state.db 不可识别 user_version={cur}，将重建空库"
@@ -480,8 +206,9 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
     return Ok(());
   }
 
+  // 2/3/4 等：已不再提供自动迁移，避免误 wipe；需人工处理或删库重同步
   Err(format!(
-    "icloud_sync state.db 迁移后仍非终态（user_version={cur}），已中止且未清空数据库"
+    "icloud_sync state.db user_version={cur} 低于终态 {SCHEMA_VERSION}，本版本已取消自动升级，已中止且未清空数据库"
   ))
 }
 
@@ -2721,85 +2448,6 @@ mod tests {
   }
 
   #[test]
-  fn migrate_v2_merges_modified_cloud_into_cloud_only() {
-    let path = temp_db_path();
-    let conn = Connection::open(&path).expect("raw open");
-    conn
-      .execute_batch(
-        r#"
-        CREATE TABLE schema_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
-        INSERT INTO schema_meta(key, value) VALUES('version', '2');
-        CREATE TABLE jobs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          task_type TEXT NOT NULL DEFAULT 'sync',
-          view TEXT NOT NULL, output_dir TEXT NOT NULL, apple_id TEXT NOT NULL,
-          status TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'full', created_at INTEGER NOT NULL,
-          finished_at INTEGER, total_count INTEGER DEFAULT 0, done_count INTEGER DEFAULT 0,
-          failed_count INTEGER DEFAULT 0, pending_count INTEGER DEFAULT 0
-        );
-        CREATE TABLE assets (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          apple_id TEXT NOT NULL, asset_id TEXT NOT NULL, part TEXT NOT NULL,
-          sort_key TEXT NOT NULL, original_filename TEXT NOT NULL, media_kind TEXT NOT NULL,
-          live_pair_id TEXT, index_num INTEGER NOT NULL, dest_path TEXT, last_error TEXT,
-          attempt_count INTEGER NOT NULL DEFAULT 0, cloud_state TEXT NOT NULL DEFAULT 'cloud_only',
-          last_synced_at INTEGER, last_catalog_at INTEGER, download_status TEXT,
-          active_job_id INTEGER, cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          UNIQUE(apple_id, asset_id, part)
-        );
-        CREATE TABLE cloud_delete_queue (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          job_id INTEGER NOT NULL, apple_id TEXT NOT NULL, asset_id TEXT NOT NULL,
-          part TEXT NOT NULL, reason TEXT NOT NULL, prev_cloud_state TEXT NOT NULL,
-          local_path TEXT, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER DEFAULT 0,
-          last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          UNIQUE(apple_id, asset_id, part)
-        );
-        INSERT INTO assets(apple_id, asset_id, part, sort_key, original_filename, media_kind,
-          index_num, cloud_state) VALUES('u@x.com', 'M1', 'full', '2024', 'm.jpg', 'photo', 1, 'modified_cloud');
-        "#,
-      )
-      .expect("seed v2");
-    drop(conn);
-
-    let conn = open_db(&path).expect("migrate");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
-    let has_meta: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("meta");
-    assert_eq!(has_meta, 0, "应吸收并删除 schema_meta");
-    let has_capture: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='capture_at'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("capture col");
-    assert_eq!(has_capture, 1);
-    let has_index_num: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='index_num'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("index_num col");
-    assert_eq!(has_index_num, 0, "v2→v5 链式迁移应删除 index_num");
-    let state: String = conn
-      .query_row("SELECT cloud_state FROM assets WHERE asset_id='M1'", [], |r| r.get(0))
-      .expect("state");
-    assert_eq!(state, "cloud_only");
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
   fn ensure_schema_creates_jobs_and_assets() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
@@ -2814,7 +2462,7 @@ mod tests {
         |r| r.get(0),
       )
       .unwrap();
-    assert_eq!(has_cpl, 1, "greenfield assets must include cpl_asset_record_name");
+    assert_eq!(has_cpl, 1, "终态 assets 须含 cpl_asset_record_name");
     let has_index_num: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='index_num'",
@@ -2822,7 +2470,7 @@ mod tests {
         |r| r.get(0),
       )
       .unwrap();
-    assert_eq!(has_index_num, 0, "greenfield schema v5 must not have index_num");
+    assert_eq!(has_index_num, 0, "终态无 index_num");
     let has_mode: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='mode'",
@@ -2830,7 +2478,7 @@ mod tests {
         |r| r.get(0),
       )
       .expect("mode col");
-    assert_eq!(has_mode, 0, "greenfield schema v5 must not have jobs.mode");
+    assert_eq!(has_mode, 0, "终态无 jobs.mode");
     let has_cursors: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_cursors'",
@@ -2838,7 +2486,7 @@ mod tests {
         |r| r.get(0),
       )
       .expect("cursors");
-    assert_eq!(has_cursors, 0, "greenfield schema v5 must not have cloud_cursors");
+    assert_eq!(has_cursors, 0, "终态无 cloud_cursors");
     let version: i32 = conn
       .query_row("PRAGMA user_version", [], |r| r.get(0))
       .expect("user_version");
@@ -2854,196 +2502,80 @@ mod tests {
     let _ = std::fs::remove_file(path);
   }
 
+  /// 终态库若仍带旧 schema_meta：吸收删表后继续可用
   #[test]
-  fn migrate_v4_to_v5_drops_index_num() {
+  fn ensure_schema_absorbs_schema_meta_on_v5() {
     let path = temp_db_path();
-    let conn = Connection::open(&path).expect("raw open");
+    let conn = open_db(&path).expect("create");
+    drop(conn);
+    let conn = Connection::open(&path).expect("raw");
     conn
       .execute_batch(
         r#"
         CREATE TABLE schema_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
-        INSERT INTO schema_meta(key, value) VALUES('version', '4');
+        INSERT INTO schema_meta(key, value) VALUES('version', '5');
+        "#,
+      )
+      .expect("add leftover meta");
+    // user_version 已是 5，吸收只 DROP meta
+    drop(conn);
+
+    let conn = open_db(&path).expect("reopen");
+    let version: i32 = conn
+      .query_row("PRAGMA user_version", [], |r| r.get(0))
+      .expect("ver");
+    assert_eq!(version, SCHEMA_VERSION);
+    let has_meta: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
+        [],
+        |r| r.get(0),
+      )
+      .expect("meta");
+    assert_eq!(has_meta, 0);
+    let _ = std::fs::remove_file(path);
+  }
+
+  /// 低于终态且非 0/1：报错不清空（已取消自动升级）
+  #[test]
+  fn ensure_schema_rejects_stale_v4_without_wipe() {
+    let path = temp_db_path();
+    let conn = Connection::open(&path).expect("raw");
+    conn
+      .execute_batch(
+        r#"
+        PRAGMA user_version = 4;
         CREATE TABLE jobs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           task_type TEXT NOT NULL DEFAULT 'sync',
           view TEXT NOT NULL, output_dir TEXT NOT NULL, apple_id TEXT NOT NULL,
-          status TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'full', created_at INTEGER NOT NULL,
-          finished_at INTEGER, total_count INTEGER DEFAULT 0, done_count INTEGER DEFAULT 0,
-          failed_count INTEGER DEFAULT 0, pending_count INTEGER DEFAULT 0
+          status TEXT NOT NULL, created_at INTEGER NOT NULL
         );
         CREATE TABLE assets (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           apple_id TEXT NOT NULL, asset_id TEXT NOT NULL, part TEXT NOT NULL,
           sort_key TEXT NOT NULL, original_filename TEXT NOT NULL, media_kind TEXT NOT NULL,
-          live_pair_id TEXT, index_num INTEGER NOT NULL, dest_path TEXT, last_error TEXT,
-          attempt_count INTEGER NOT NULL DEFAULT 0, cloud_state TEXT NOT NULL DEFAULT 'cloud_only',
-          last_synced_at INTEGER, last_catalog_at INTEGER, download_status TEXT,
-          active_job_id INTEGER, cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          capture_at TEXT, added_at TEXT, latitude REAL, longitude REAL,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          cloud_state TEXT NOT NULL DEFAULT 'cloud_only',
           UNIQUE(apple_id, asset_id, part)
         );
-        CREATE TABLE cloud_cursors (
-          apple_id TEXT NOT NULL,
-          view TEXT NOT NULL,
-          cursor TEXT NOT NULL,
-          updated_at INTEGER NOT NULL,
-          PRIMARY KEY (apple_id, view)
-        );
-        CREATE TABLE cloud_delete_queue (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          job_id INTEGER NOT NULL, apple_id TEXT NOT NULL, asset_id TEXT NOT NULL,
-          part TEXT NOT NULL, reason TEXT NOT NULL, prev_cloud_state TEXT NOT NULL,
-          local_path TEXT, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER DEFAULT 0,
-          last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          UNIQUE(apple_id, asset_id, part)
-        );
-        INSERT INTO jobs(task_type, view, output_dir, apple_id, status, mode, created_at, pending_count)
-          VALUES('sync', 'library', 'C:/out', 'u@x.com', 'pending', 'full', 1, 1);
-        INSERT INTO assets(
-          apple_id, asset_id, part, sort_key, original_filename, media_kind,
-          index_num, dest_path, last_error, attempt_count, cloud_state, last_synced_at, last_catalog_at,
-          download_status, active_job_id, cpl_asset_record_name, cpl_asset_change_tag,
-          capture_at, added_at, latitude, longitude
-        ) VALUES(
-          'u@x.com', 'V4', 'full', '2024-06-01', 'keep.jpg', 'photo',
-          42, 'C:/out/keep.jpg', NULL, 0, 'synced', 10, 20,
-          NULL, NULL, 'CPL-V4', 'tag',
-          '2024-06-01T00:00:00Z', '2024-06-02T00:00:00Z', 1.5, 2.5
-        );
-        INSERT INTO cloud_cursors(apple_id, view, cursor, updated_at)
-          VALUES('u@x.com', 'library', 'tok', 1);
+        INSERT INTO assets(apple_id, asset_id, part, sort_key, original_filename, media_kind)
+          VALUES('u@x.com', 'KEEP', 'full', '2024', 'k.jpg', 'photo');
         "#,
       )
       .expect("seed v4");
     drop(conn);
 
-    let conn = open_db(&path).expect("migrate v4 to v5");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
-    let has_meta: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("meta");
-    assert_eq!(has_meta, 0);
-    let has_index_num: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='index_num'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("index_num col");
-    assert_eq!(has_index_num, 0);
-    let has_mode: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='mode'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("mode col");
-    assert_eq!(has_mode, 0, "v5 should drop jobs.mode");
-    let has_cursors: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_cursors'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("cursors");
-    assert_eq!(has_cursors, 0, "v5 should drop cloud_cursors");
-    let assets_n: i64 = conn
+    let err = open_db(&path).expect_err("must reject");
+    assert!(
+      err.contains("取消自动升级") || err.contains("低于终态"),
+      "unexpected err: {err}"
+    );
+    let conn = Connection::open(&path).expect("raw again");
+    let n: i64 = conn
       .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
-      .expect("assets n");
-    let jobs_n: i64 = conn
-      .query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get(0))
-      .expect("jobs n");
-    assert_eq!(assets_n, 1);
-    assert_eq!(jobs_n, 1);
-    let (cloud_state, dest_path): (String, Option<String>) = conn
-      .query_row(
-        "SELECT cloud_state, dest_path FROM assets WHERE asset_id='V4'",
-        [],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-      )
-      .expect("asset preserved");
-    assert_eq!(cloud_state, "synced");
-    assert_eq!(dest_path.as_deref(), Some("C:/out/keep.jpg"));
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
-  fn migrate_v4_without_index_num_only_bumps_version() {
-    let path = temp_db_path();
-    let conn = Connection::open(&path).expect("raw open");
-    // version=4 but already no index_num/mode/cursors: bump only, keep rows
-    conn
-      .execute_batch(
-        r#"
-        CREATE TABLE schema_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
-        INSERT INTO schema_meta(key, value) VALUES('version', '4');
-        CREATE TABLE jobs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          task_type TEXT NOT NULL DEFAULT 'sync',
-          view TEXT NOT NULL, output_dir TEXT NOT NULL, apple_id TEXT NOT NULL,
-          status TEXT NOT NULL, created_at INTEGER NOT NULL,
-          finished_at INTEGER, total_count INTEGER DEFAULT 0, done_count INTEGER DEFAULT 0,
-          failed_count INTEGER DEFAULT 0, pending_count INTEGER DEFAULT 0
-        );
-        CREATE TABLE assets (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          apple_id TEXT NOT NULL, asset_id TEXT NOT NULL, part TEXT NOT NULL,
-          sort_key TEXT NOT NULL, original_filename TEXT NOT NULL, media_kind TEXT NOT NULL,
-          live_pair_id TEXT, dest_path TEXT, last_error TEXT,
-          attempt_count INTEGER NOT NULL DEFAULT 0, cloud_state TEXT NOT NULL DEFAULT 'cloud_only',
-          last_synced_at INTEGER, last_catalog_at INTEGER, download_status TEXT,
-          active_job_id INTEGER, cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          capture_at TEXT, added_at TEXT, latitude REAL, longitude REAL,
-          UNIQUE(apple_id, asset_id, part)
-        );
-        CREATE TABLE cloud_delete_queue (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          job_id INTEGER NOT NULL, apple_id TEXT NOT NULL, asset_id TEXT NOT NULL,
-          part TEXT NOT NULL, reason TEXT NOT NULL, prev_cloud_state TEXT NOT NULL,
-          local_path TEXT, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER DEFAULT 0,
-          last_error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          cpl_asset_record_name TEXT, cpl_asset_change_tag TEXT,
-          UNIQUE(apple_id, asset_id, part)
-        );
-        INSERT INTO jobs(task_type, view, output_dir, apple_id, status, created_at)
-          VALUES('sync', 'library', 'C:/out', 'u@x.com', 'pending', 1);
-        INSERT INTO assets(
-          apple_id, asset_id, part, sort_key, original_filename, media_kind, cloud_state, capture_at
-        ) VALUES('u@x.com', 'C1', 'full', '2024', 'c.jpg', 'photo', 'synced', '2024-01-01T00:00:00Z');
-        "#,
-      )
-      .expect("seed clean v4");
-    drop(conn);
-
-    let conn = open_db(&path).expect("bump to v5");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
-    let has_meta: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("meta");
-    assert_eq!(has_meta, 0);
-    let assets_n: i64 = conn
-      .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
-      .expect("assets");
-    let jobs_n: i64 = conn
-      .query_row("SELECT COUNT(*) FROM jobs", [], |r| r.get(0))
-      .expect("jobs");
-    assert_eq!(assets_n, 1);
-    assert_eq!(jobs_n, 1);
+      .expect("count");
+    assert_eq!(n, 1, "拒绝升级时不得 wipe");
     let _ = std::fs::remove_file(path);
   }
 

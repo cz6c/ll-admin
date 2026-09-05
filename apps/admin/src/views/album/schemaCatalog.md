@@ -55,8 +55,9 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 ### 版本（非表）
 
 **作用：** schema 代际存在文件头 `PRAGMA user_version`（不再使用 `schema_meta` 表）。  
-打开时：旧库若仍有 `schema_meta` 则一次性灌入 pragma 并 `DROP`；再按 `2→3→4→5` 链式迁移。  
-wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧形态。
+打开时：旧库若仍有 `schema_meta` 则一次性灌入 pragma（仅当 `user_version=0`）并 `DROP`。  
+**只认终态 `user_version = 5`**（已砍 v2–v4 自动迁移与 `index_num` 残留清理）。  
+wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧形态；其它低版本报错不清空。
 
 ### `jobs`
 

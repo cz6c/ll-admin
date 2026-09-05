@@ -31,7 +31,7 @@ flowchart LR
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
 | 抽屉二分栏 | 顶部为**全局进度/主操作**（单任务）；其下 **同步到本地** / **释放iCloud空间** 共用列表，Tab 子集按场景裁剪（拉取：全部/待同步/已同步/同步失败；释放：全部/待移除（已同步）/已移除/移除失败）。取消删云任务走进度区「取消任务」 |
-| 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；schema v5 已删除 `index_num` 列 |
+| 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
@@ -125,7 +125,7 @@ flowchart LR
 3. 开始同步前若无 `cloud_only` 可入队 → 拒绝并提示先刷新；catalog 后孤儿 `cloud_only` 靠下次「开始同步」入队。
 4. 下载循环只用 `auth_probe`，**禁止**带密码 `auth`。
 5. **active job** 内 `done + pending + failed = total`（**UI / job 快照按逻辑资产**，Live still+mov=1；下载/删云 queue 仍按 part 行）；sync job 结束 `finalize_job_download` 写快照并释放 `download_status`。
-6. Live = still + mov 两行（schema v5 已删除 `index_num`）；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
+6. Live = still + mov 两行（终态无 `index_num`）；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
 7. CDN **410/404 ≠ session** → 单文件 lookup 重试。
 8. **`assets` 跨 job 唯一** `(apple_id, asset_id, part)`。
 9. 用户删云 → `cloud_delete_queued`；catalog 报删 → `deleted_cloud_pending`；**禁止混用**。
@@ -138,7 +138,7 @@ flowchart LR
 16. 删云成功 **不 DELETE assets 行**，改为 `deleted_cloud_pending` 供列表追溯。
 17. **catalog diff 前** 调用 `prepare_catalog_keys_temp`；`mark_catalog_deletions` / `enqueue_outstanding_for_full_sync` / in-catalog reconcile **依赖该临时表**，禁止逐行 N 次 SQL 旧路径。
 18. **`assets` 产品元数据**（schema v4）：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。
-19. **schema v5**：删 `assets.index_num`、`jobs.mode`、空表 `cloud_cursors`（排序/命名改用 `sort_key` 与 unix 秒文件名；不做 incremental）。
+19. **schema 终态（user_version=5）**：无 `assets.index_num`、`jobs.mode`、`cloud_cursors`；已取消 v2–v4 自动迁移（排序/命名用 `sort_key` 与 unix 秒文件名）。
 
 ---
 

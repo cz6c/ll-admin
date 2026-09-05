@@ -303,6 +303,9 @@ pub struct SyncAssetRow {
   pub media_kind: String,
   pub live_pair_id: Option<String>,
   pub dest_path: Option<String>,
+  /// `dest_path` 指向的文件当前是否仍在盘上（列表派生，不写库）
+  /// Live still 行会合并 mov：任一侧文件存在则为 true
+  pub local_file_present: bool,
   pub cloud_state: String,
   pub download_status: Option<String>,
   pub last_synced_at: Option<i64>,

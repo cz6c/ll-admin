@@ -4,6 +4,7 @@
 -->
 <script setup lang="ts">
 import DuplicateLazyThumb from "./DuplicateLazyThumb.vue";
+import { DUP_GROUP_HSCROLL_KEY } from "../duplicateListScroll";
 import type { DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const props = defineProps<{
@@ -17,6 +18,10 @@ const emit = defineEmits<{
 }>();
 
 defineOptions({ name: "DuplicateGroupCard" });
+
+/** 同组横滑容器：缩略图 IO 优先以此为 root，避免纵滚 root 把屏外成员当成可见 */
+const memberListRef = ref<HTMLElement | null>(null);
+provide(DUP_GROUP_HSCROLL_KEY, memberListRef);
 
 type RowKind = "canonical" | "duplicate";
 
@@ -124,7 +129,7 @@ function groupHeaderTitle(): string {
       </a-checkbox>
     </header>
 
-    <ul class="dup-member-list">
+    <ul ref="memberListRef" class="dup-member-list">
       <li v-for="row in memberRows" :key="row.path" class="dup-member-row">
         <div class="dup-side">
           <div class="dup-side-head">
@@ -170,7 +175,8 @@ function groupHeaderTitle(): string {
   min-width: 0;
   overflow: hidden;
   content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
+  /* 横滑卡片高度约：头 40 + 边距 + 158 图 + 路径区；估偏小会滚动跳动 */
+  contain-intrinsic-size: auto 320px;
   contain: layout style paint;
 }
 

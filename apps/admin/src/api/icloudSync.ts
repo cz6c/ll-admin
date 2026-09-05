@@ -156,6 +156,8 @@ export interface IcloudSyncSyncAssetRow {
   mediaKind: string;
   livePairId?: string | null;
   destPath?: string | null;
+  /** dest_path 指向文件是否仍在盘上；Live 任一侧有文件即为 true（列表派生） */
+  localFilePresent?: boolean;
   cloudState: string;
   downloadStatus?: string | null;
   lastSyncedAt?: number | null;

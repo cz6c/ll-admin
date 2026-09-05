@@ -140,7 +140,10 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
 
       liveMovFilename: still?.liveMovFilename ?? mov?.originalFilename ?? base.liveMovFilename,
 
-      liveMovDownloadStatus: still?.liveMovDownloadStatus ?? mov?.downloadStatus ?? base.liveMovDownloadStatus
+      liveMovDownloadStatus: still?.liveMovDownloadStatus ?? mov?.downloadStatus ?? base.liveMovDownloadStatus,
+
+      // 兜底：分页偶发仍+mov 同页时，任一侧本地文件在盘上即「本地仍在」
+      localFilePresent: Boolean(still?.localFilePresent || mov?.localFilePresent || base.localFilePresent)
 
     });
 
@@ -234,6 +237,21 @@ export function cloudStateLabel(state: string): string {
 
   return CLOUD_STATE_LABELS[state] ?? state;
 
+}
+
+
+
+/**
+ * 「已移除」行本地留存标记（列表派生 localFilePresent）
+ * @note 仅 cloud_state=deleted_cloud_pending 展示；不改变主态文案
+ */
+export function cloudDeletedLocalPresenceLabel(present: boolean): string {
+  return present ? "本地仍在" : "本地已无";
+}
+
+/** 「已移除」本地留存 Tag 色 */
+export function cloudDeletedLocalPresenceColor(present: boolean): string {
+  return present ? "green" : "default";
 }
 
 

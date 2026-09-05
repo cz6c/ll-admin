@@ -217,6 +217,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 | 一致程度 | **完全一致**（主文件及 Live mov 哈希同）/ **部分一致**（主画面同但 mov 缺或不一致） |
 | Live | 同目录成对；归组看 still 哈希，再比 mov |
 | 歧义 | 同组多个不同 `asset_id` → `ambiguousStem` |
+| UI | 同组**横向滚动**；缩略图 IO root 用横滑容器（非仅纵滚），生成 **限流 2 路** |
 
 删除所选 → `deleteAlbumLocal` → `album_scan(force:true)`。
 

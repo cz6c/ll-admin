@@ -79,7 +79,7 @@ wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧�
 | `asset_id` + `part` | 云侧主键分量（part 区分 still/mov 等） |
 | `media_kind` / `live_pair_id` | 类型与 Live 配对 |
 | `original_filename` / `sort_key` | 展示与排序 |
-| `dest_path` | 已下载本地绝对路径；供相册 meta 反查 |
+| `dest_path` | 已下载本地绝对路径；供相册 meta 反查。进「已移除」后仍可保留；列表用磁盘探测派生 `localFilePresent`（不落库） |
 | `cloud_state` | 如 `cloud_only` / 已同步 / 删云相关态 |
 | `download_status` / `active_job_id` | 当前下载态与所属 job |
 | `cpl_asset_*` | CloudKit 记录名 / change tag |

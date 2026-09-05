@@ -17,6 +17,14 @@ fn derive_display_state(cloud_state: CloudState) -> String {
   cloud_state.as_str().to_string()
 }
 
+/// dest_path 非空且磁盘上仍是文件 → 本地仍在（列表派生，不写库）
+fn dest_path_file_present(dest_path: Option<&str>) -> bool {
+  let Some(p) = dest_path.map(str::trim).filter(|s| !s.is_empty()) else {
+    return false;
+  };
+  Path::new(p).is_file()
+}
+
 /// Live Photo 列表：有 still 时不返回 mov（DB 仍两行；删云仍 expand 成对）
 const LIVE_MOV_LIST_HIDDEN: &str = r#"NOT (
   part = 'mov'
@@ -82,12 +90,16 @@ fn enrich_live_pair_meta(
     .optional()
     .map_err(|e| format!("读取 live mov 配对失败: {e}"))?;
 
-  if let Some((mov_original, _mov_dest, mov_download)) = mov_row {
+  if let Some((mov_original, mov_dest, mov_download)) = mov_row {
     row.live_mov_filename = Some(resolve_live_mov_display_filename(
       &row.original_filename,
       &mov_original,
     ));
     row.live_mov_download_status = mov_download;
+    // Live 列表一行：still/mov 任一侧文件仍在盘上即视为「本地仍在」
+    if dest_path_file_present(mov_dest.as_deref()) {
+      row.local_file_present = true;
+    }
     return Ok(());
   }
 
@@ -257,6 +269,7 @@ fn build_sync_asset_row(
   ) = raw;
   let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
   let display = derive_list_display_state(conn, apple_id, &asset_id, &part, cloud_state)?;
+  let local_file_present = dest_path_file_present(dest_path.as_deref());
   Ok(SyncAssetRow {
     asset_id,
     part,
@@ -271,6 +284,7 @@ fn build_sync_asset_row(
     media_kind,
     live_pair_id,
     dest_path,
+    local_file_present,
     cloud_state: display,
     download_status,
     last_synced_at,
@@ -629,6 +643,50 @@ mod tests {
         params![asset_id, sort_key, format!("{asset_id}.jpg"), dest],
       )
       .expect("insert");
+  }
+
+  #[test]
+  fn load_assets_reports_local_file_present_for_deleted_rows() {
+    let (path, conn) = temp_db();
+    let dir = std::env::temp_dir().join(format!(
+      "icloud-local-present-{}",
+      SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let present = dir.join("keep.jpg");
+    std::fs::write(&present, b"x").unwrap();
+    let gone = dir.join("gone.jpg");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO assets(
+          apple_id, asset_id, sort_key, original_filename, media_kind,
+          part, download_status, cloud_state, dest_path
+        ) VALUES
+          ('u@x.com', 'KEEP', '2024-01-01', 'keep.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', ?1),
+          ('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', ?2),
+          ('u@x.com', 'EMPTY', '2024-01-03', 'empty.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', NULL)
+        "#,
+        params![present.to_str().unwrap(), gone.to_str().unwrap()],
+      )
+      .expect("insert deleted");
+
+    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("deleted_cloud_pending"), None, None, None)
+      .expect("load");
+    let by_id: std::collections::HashMap<_, _> = result
+      .items
+      .into_iter()
+      .map(|r| (r.asset_id.clone(), r.local_file_present))
+      .collect();
+    assert_eq!(by_id.get("KEEP"), Some(&true));
+    assert_eq!(by_id.get("GONE"), Some(&false));
+    assert_eq!(by_id.get("EMPTY"), Some(&false));
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]

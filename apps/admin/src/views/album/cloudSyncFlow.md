@@ -171,7 +171,7 @@ flowchart LR
 | `cloud_only` | 待同步 | catalog 有、未下载（含原 `modified_cloud`） |
 | `synced` | 已同步 | 已下载且 catalog 未报改/删 |
 | `cloud_delete_queued` | 待移除 | 用户删云已入队 |
-| `deleted_cloud_pending` | 已移除 | catalog 报删或删云 API 成功 |
+| `deleted_cloud_pending` | 已移除 | catalog 报删或删云 API 成功；**不清 `dest_path`**。列表额外派生 Tag「本地仍在 / 本地已无」（`dest_path` 是否 `is_file`；Live 任一侧有文件即仍在） |
 | `failed_delete` | 移除失败 | 云删单条 ≥3 次仍失败（中断回退不计次） |
 
 **派生（不写库，仅列表展示 / 筛选）**
@@ -297,7 +297,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | 删云 rejected 缺 CPL | 开始同步或刷新 catalog |
 | 删云 rejected 本地缺失 | 先同步到本地，或 refresh/start 触发 reconcile 后再删 |
 | 同步中无法删云/刷新 | 预期；等 pause/done/cancel 后再操作 |
-| 移除成功但列表仍有项 | 预期：态为「已移除」，非从列表消失 |
+| 移除成功但列表仍有项 | 预期：态为「已移除」，非从列表消失；旁标「本地仍在/本地已无」反映 dest 是否还在盘上 |
 
 调试：`pnpm run cs:dev` · `cargo test --lib icloud_sync` · 改 `src-tauri` 后 **`cargo check` 须 0 warnings**（见 `.cursor/rules/rust-tauri.mdc`）
 

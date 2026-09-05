@@ -1,6 +1,6 @@
 /**
  * 清理重复下载弹窗
- * 职责：平铺分组 + 视口 lazy 缩略图；同组横向滚动；每组删除至少留 1 项，正本删后晋升
+ * 职责：平铺分组 + 视口 lazy 缩略图（横滑 IO + 生成限流）；同组横向滚动；每组删除至少留 1 项，正本删后晋升
  */
 <script setup lang="ts">
 import DuplicateGroupCard from "./DuplicateGroupCard.vue";

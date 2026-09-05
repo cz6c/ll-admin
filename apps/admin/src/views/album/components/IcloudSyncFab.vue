@@ -25,6 +25,8 @@ import {
   cloudFilterTabLabel,
   cloudStateLabel,
   cloudStateColor,
+  cloudDeletedLocalPresenceLabel,
+  cloudDeletedLocalPresenceColor,
   CLOUD_LIST_PULL_FILTER_OPTIONS,
   CLOUD_LIST_FREE_FILTER_OPTIONS,
   type CloudListStateFilterOption,
@@ -184,7 +186,7 @@ const cloudTableColumns = [
   { title: "序号", dataIndex: "listSeq", width: 80 },
   { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
   { title: "原文件名", dataIndex: "originalFilename" },
-  { title: "状态", dataIndex: "cloudState", width: 150 }
+  { title: "状态", dataIndex: "cloudState", width: 210 }
 ];
 
 /**
@@ -698,6 +700,12 @@ onMounted(() => {
                 <template v-else-if="column.dataIndex === 'cloudState'">
                   <a-tag :color="(record as CloudListDisplayRow).displayStateColor">
                     {{ (record as CloudListDisplayRow).displayStateLabel }}
+                  </a-tag>
+                  <a-tag
+                    v-if="(record as CloudListDisplayRow).cloudState === 'deleted_cloud_pending'"
+                    :color="cloudDeletedLocalPresenceColor(Boolean((record as CloudListDisplayRow).localFilePresent))"
+                  >
+                    {{ cloudDeletedLocalPresenceLabel(Boolean((record as CloudListDisplayRow).localFilePresent)) }}
                   </a-tag>
                 </template>
                 <template v-else-if="column.dataIndex === 'originalFilename'">

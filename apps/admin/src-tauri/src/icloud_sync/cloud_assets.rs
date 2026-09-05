@@ -528,6 +528,7 @@ pub fn get_cloud_state_summary(
   }
 
   let mut summary = IcloudSyncCloudStateSummary {
+    total: 0,
     cloud_only: 0,
     synced: 0,
     deleted_cloud_pending: 0,
@@ -563,6 +564,13 @@ pub fn get_cloud_state_summary(
       }
     }
   }
+  // 「全部」= 各 cloud_state 桶之和（与列表 Live 折合口径一致；不含派生 download_failed）
+  summary.total = summary
+    .cloud_only
+    .saturating_add(summary.synced)
+    .saturating_add(summary.deleted_cloud_pending)
+    .saturating_add(summary.cloud_delete_queued)
+    .saturating_add(summary.failed_delete);
   Ok(summary)
 }
 
@@ -1020,6 +1028,7 @@ mod tests {
     let summary = get_cloud_state_summary(&conn, "u@x.com").expect("summary");
     assert_eq!(summary.synced, 1, "photo only");
     assert_eq!(summary.cloud_only, 1, "live pair as one with worse state");
+    assert_eq!(summary.total, 2, "全部 = synced + cloud_only");
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(path);

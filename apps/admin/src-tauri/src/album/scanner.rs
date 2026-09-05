@@ -633,7 +633,7 @@ pub fn discover_groups(
     }
   });
 
-  db::sync_media_index(&conn, root, &groups, &alive_paths)?;
+  db::sync_media_index(&conn, album_dir, root, &groups, &alive_paths)?;
 
   Ok(groups)
 }

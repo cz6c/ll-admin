@@ -26,7 +26,9 @@ use settings::album_dir;
 use tauri::{AppHandle, State};
 use watcher::start_watching;
 
-use fs_delete::{purge_cache_file, trash_original_file};
+use fs_delete::{
+  collect_derived_cache_paths, purge_derived_cache_paths, trash_original_file,
+};
 
 /// 相册运行时状态：扫描取消令牌、文件监听器、后台缩略图任务句柄、写副作用世代
 pub struct AlbumState {
@@ -281,29 +283,6 @@ fn probe_and_persist_video_stream(
   (width, height, info.codec)
 }
 
-fn append_playback_deletes(
-  to_remove: &mut Vec<std::path::PathBuf>,
-  album_data_dir: &std::path::Path,
-  source_path: &str,
-  db_playback: Option<String>,
-) {
-  if let Some(p) = db_playback.filter(|s| !s.is_empty()) {
-    let pb = std::path::PathBuf::from(&p);
-    if !to_remove.iter().any(|x| x == &pb) {
-      to_remove.push(pb);
-    }
-  }
-  let cache_dir = album_data_dir
-    .join("thumbs")
-    .join(format!("v{}", types::ALBUM_CACHE_VERSION));
-  if let Some(derived) = thumbnail::probe_playback_cache(&cache_dir, source_path) {
-    let pb = std::path::PathBuf::from(derived);
-    if !to_remove.iter().any(|x| x == &pb) {
-      to_remove.push(pb);
-    }
-  }
-}
-
 /// 删除本地媒体文件及 media.db 索引（不触碰 iCloud sync assets）
 /// @param paths 主文件绝对路径；Live Photo 会一并处理 video_path 与播放代理
 /// @note 原文件（主路径 + Live mov）→ 回收站；thumb/preview/playback 缓存 → 永久删除
@@ -334,31 +313,19 @@ pub fn album_delete_local(
       originals.push(std::path::PathBuf::from(v));
     }
 
-    // 派生缓存：thumb / preview / playback（含磁盘探测到的 _play.mp4）→ 永久删
-    let mut caches: Vec<std::path::PathBuf> = Vec::new();
-    for p in [thumb, preview, playback].into_iter().flatten() {
-      if !p.is_empty() {
-        let pb = std::path::PathBuf::from(&p);
-        if !caches.iter().any(|x| x == &pb) {
-          caches.push(pb);
-        }
-      }
-    }
-    if let Some(ref v) = video_path {
-      append_playback_deletes(&mut caches, &album_data_dir, v, None);
-    }
-    append_playback_deletes(&mut caches, &album_data_dir, path, None);
+    let caches = collect_derived_cache_paths(
+      &album_data_dir,
+      path,
+      thumb.as_deref(),
+      preview.as_deref(),
+      video_path.as_deref(),
+      playback.as_deref(),
+    );
 
     for p in &originals {
       trash_original_file(p)?;
     }
-    for p in &caches {
-      // 避免把已列入 originals 的路径再永久删一遍（极端情况下 path 被误记为 playback）
-      if originals.iter().any(|o| o == p) {
-        continue;
-      }
-      purge_cache_file(p);
-    }
+    purge_derived_cache_paths(&caches);
 
     if db::delete_media_by_path(&conn, path)? {
       deleted += 1;

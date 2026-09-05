@@ -176,7 +176,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 
 | 入口 | force | 路径 |
 |------|-------|------|
-| mount 且 dirty/首次/root 变 | false | discover |
+| mount 且 dirty/首次/root 变 | false | discover（含清孤儿缓存） |
 | mount 且干净 | false | load_groups |
 | 刷新 / 重试 | **true** | discover |
 | watcher 2s | — | 只置 dirty，等下次刷新 |
@@ -192,7 +192,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 2. 扩展名 ∈ IMAGE ∪ VIDEO。  
 3. 索引命中且缓存在 → 带 thumb/preview/playback/meta。  
 4. 小图 &lt;100KB 非 HEIC/视频：thumb 复用原图。  
-5. 每目录 `pair_live_photos` → 分组 → 事务 upsert（WAL）。
+5. 每目录 `pair_live_photos` → 分组 → 事务 upsert；**陈旧 path 删行后 purge** 对应 thumb/preview/playback（外部删图重载也会清孤儿缓存）。
 
 ### pipeline（目标）
 

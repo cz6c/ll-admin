@@ -171,6 +171,8 @@ export interface IcloudSyncLoadAssetsResult {
 
 /** cloud_state Tab 角标（逻辑资产；Live still+mov=1） */
 export interface IcloudSyncCloudStateSummary {
+  /** 「全部」角标：逻辑资产总数 */
+  total: number;
   cloudOnly: number;
   synced: number;
   deletedCloudPending: number;

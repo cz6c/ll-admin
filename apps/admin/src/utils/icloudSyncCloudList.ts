@@ -271,7 +271,7 @@ export interface CloudListStateFilterOption {
  * @note modified_cloud 已收敛进 cloud_only；download_failed 为活跃 sync job 派生态
  */
 export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", tabLabel: "全部" },
+  { value: "all", countKey: "total", tabLabel: "全部" },
   { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
   { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true },
   { value: "synced", countKey: "synced", tabLabel: "已同步" },
@@ -285,7 +285,7 @@ export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
  * @note 不含删云态，避免与释放栏心智混杂
  */
 export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", tabLabel: "全部" },
+  { value: "all", countKey: "total", tabLabel: "全部" },
   { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
   { value: "synced", countKey: "synced", tabLabel: "已同步" },
   { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true }
@@ -296,7 +296,7 @@ export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
  * @note 排队中 cloud_delete_queued 不单独占 Tab；取消整任务走进度区「取消任务」
  */
 export const CLOUD_LIST_FREE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", tabLabel: "全部" },
+  { value: "all", countKey: "total", tabLabel: "全部" },
   { value: "synced", countKey: "synced", tabLabel: "待移除（已同步）" },
   { value: "deleted_cloud_pending", countKey: "deletedCloudPending", tabLabel: "已移除" },
   { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }

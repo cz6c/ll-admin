@@ -321,10 +321,12 @@ fn upsert_media_impl(
   Ok(())
 }
 
-/// 一次事务内：删陈旧路径 + upsert 全部分组
+/// 一次事务内：删陈旧路径（并收集派生缓存待清）+ upsert 全部分组
 /// 避免 delete 已提交、upsert 失败时 DB 既丢旧行又无新行
+/// @note 事务提交后再 purge 孤儿 thumb/preview/playback，与 `album_delete_local` 对齐
 pub fn sync_media_index(
   conn: &Connection,
+  album_data_dir: &Path,
   root: &str,
   groups: &[super::types::MediaGroup],
   alive_paths: &[String],
@@ -345,11 +347,28 @@ pub fn sync_media_index(
 
   let alive: std::collections::HashSet<&str> =
     alive_paths.iter().map(|s| s.as_str()).collect();
+  let mut caches_to_purge: Vec<std::path::PathBuf> = Vec::new();
+
   for path in existing {
-    if !alive.contains(path.as_str()) {
-      tx.execute("DELETE FROM media WHERE path = ?1", params![path])
-        .map_err(|e| format!("删除陈旧索引失败: {e}"))?;
+    if alive.contains(path.as_str()) {
+      continue;
     }
+    // 外部删图后 discover：先记下伴生缓存，提交删行后再永久清盘
+    let (thumb, preview, video, playback) = get_media_companion_paths(&tx, &path)?;
+    for cache in super::fs_delete::collect_derived_cache_paths(
+      album_data_dir,
+      &path,
+      thumb.as_deref(),
+      preview.as_deref(),
+      video.as_deref(),
+      playback.as_deref(),
+    ) {
+      if !caches_to_purge.iter().any(|x| x == &cache) {
+        caches_to_purge.push(cache);
+      }
+    }
+    tx.execute("DELETE FROM media WHERE path = ?1", params![path])
+      .map_err(|e| format!("删除陈旧索引失败: {e}"))?;
   }
 
   for group in groups {
@@ -368,6 +387,8 @@ pub fn sync_media_index(
 
   tx.commit()
     .map_err(|e| format!("提交索引同步事务失败: {e}"))?;
+
+  super::fs_delete::purge_derived_cache_paths(&caches_to_purge);
   Ok(())
 }
 
@@ -798,4 +819,51 @@ pub fn save_content_hash(
     )
     .map_err(|e| format!("写入 content_hash 失败: {e}"))?;
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use std::time::{SystemTime, UNIX_EPOCH};
+
+  #[test]
+  fn sync_media_index_purges_orphan_thumb_after_stale_delete() {
+    let nanos = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("time")
+      .as_nanos();
+    let album_dir = std::env::temp_dir().join(format!("album_sync_purge_{nanos}"));
+    let root = album_dir.join("photos");
+    std::fs::create_dir_all(&root).expect("root");
+    let conn = open_db(&album_dir).expect("db");
+
+    let media = root.join("gone.jpg");
+    let thumb = album_dir.join("orphan_thumb.webp");
+    std::fs::write(&thumb, b"webp").expect("thumb");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO media(
+          path, root, rel_dir, name, kind, size, modified, ext, thumb_path, scanned_at, fail_count
+        ) VALUES (?1, ?2, '.', 'gone.jpg', 'image', 1, 1, 'jpg', ?3, 0, 0)
+        "#,
+        params![
+          media.to_string_lossy().as_ref(),
+          root.to_string_lossy().as_ref(),
+          thumb.to_string_lossy().as_ref()
+        ],
+      )
+      .expect("insert");
+
+    // alive 为空：视为外部已删光，应删索引并 purge thumb
+    sync_media_index(&conn, &album_dir, root.to_str().unwrap(), &[], &[]).expect("sync");
+
+    assert!(!thumb.is_file(), "orphan thumb should be purged");
+    let n: i64 = conn
+      .query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0))
+      .expect("count");
+    assert_eq!(n, 0);
+    let _ = std::fs::remove_dir_all(&album_dir);
+  }
 }

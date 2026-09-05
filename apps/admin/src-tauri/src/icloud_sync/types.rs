@@ -322,6 +322,8 @@ pub struct IcloudSyncLoadAssetsResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncCloudStateSummary {
+  /// 列表「全部」角标：逻辑资产总数（Live still+mov=1）
+  pub total: u32,
   pub cloud_only: u32,
   pub synced: u32,
   pub deleted_cloud_pending: u32,

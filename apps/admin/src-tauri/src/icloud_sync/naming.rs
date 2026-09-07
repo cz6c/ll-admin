@@ -1,12 +1,58 @@
 //! iCloud 同步落盘命名（当前唯一格式）
-//! 职责：生成 `{unix_secs}_{apple8}_{id16}.{ext}`；换号同目录靠 apple8 隔离
-//! 适用：下载落盘；相册 Live 按完整 stem 配对（本模块不解析旧名）
+//! 职责：生成/校验 `{unix_secs}_{apple8}_{id16}.{ext}`；换号同目录靠 apple8 隔离
+//! 适用：下载落盘；相册扫描识别同步产物 vs 异物（移入 pending）
 
 use std::path::Path;
 
 use chrono::{DateTime, NaiveDateTime};
 
 use super::types::AssetPart;
+
+/// 文件名主名（无扩展名）是否为 `{unix_secs}_{apple8}_{id16}`
+fn is_sync_asset_stem(stem: &str) -> bool {
+  let mut parts = stem.split('_');
+  let (Some(secs), Some(apple8), Some(id16), None) =
+    (parts.next(), parts.next(), parts.next(), parts.next())
+  else {
+    return false;
+  };
+  if secs.is_empty() || !secs.bytes().all(|b| b.is_ascii_digit()) {
+    return false;
+  }
+  is_lower_hex(apple8, 8) && is_lower_hex(id16, 16)
+}
+
+fn is_lower_hex(s: &str, len: usize) -> bool {
+  s.len() == len
+    && s.bytes()
+      .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b))
+}
+
+/**
+ * 是否为当前同步落盘命名（仅文件名，不含目录）
+ * @note 相册扫描用：不合规媒体可移入 `{output_dir}/pending/`
+ */
+pub fn is_sync_asset_filename(filename: &str) -> bool {
+  let name = filename.trim();
+  if name.is_empty() {
+    return false;
+  }
+  let base = Path::new(name)
+    .file_name()
+    .and_then(|s| s.to_str())
+    .unwrap_or(name);
+  let path = Path::new(base);
+  let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+    return false;
+  };
+  let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+    return false;
+  };
+  if ext.is_empty() || ext.contains('/') || ext.contains('\\') {
+    return false;
+  }
+  is_sync_asset_stem(stem)
+}
 
 fn fnv1a64(bytes: &[u8]) -> u64 {
   const FNV_OFFSET: u64 = 0xcbf29ce484222325;
@@ -126,5 +172,24 @@ mod tests {
       AssetPart::Mov,
     );
     assert!(name.ends_with(".mov"));
+  }
+
+  #[test]
+  fn is_sync_asset_filename_accepts_format() {
+    let name = format_asset_filename(
+      Some("2024-01-15T12:30:45Z"),
+      "user@icloud.com",
+      "asset-uuid-1",
+      "heic",
+    );
+    assert!(is_sync_asset_filename(&name));
+    assert!(is_sync_asset_filename(&format!("subdir/{name}")));
+  }
+
+  #[test]
+  fn is_sync_asset_filename_rejects_orphan() {
+    assert!(!is_sync_asset_filename("IMG_1234.HEIC"));
+    assert!(!is_sync_asset_filename("1705321845_short_id.heic"));
+    assert!(!is_sync_asset_filename(""));
   }
 }

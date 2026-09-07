@@ -16,6 +16,8 @@ pub(crate) mod types;
 
 use std::sync::Mutex;
 
+use std::path::PathBuf;
+
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
@@ -24,10 +26,26 @@ pub use queue::SidecarClientHandle;
 use db::open_db;
 /// 供 album 只读打开 sync 库（查 dest_path → capture_at）
 pub(crate) use db::state_db_path;
+/// 供 album 扫描识别同步命名 vs 异物
+pub(crate) use naming::is_sync_asset_filename;
 use settings::{
   clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain,
-  require_consent, save_settings, session_has_files, session_has_files_for_apple_id,
+  require_consent, resolve_default_output_dir, save_settings, session_has_files,
+  session_has_files_for_apple_id,
 };
+
+/**
+ * 当前同步落盘目录：设置里的 output_dir，空则 `{albumRoot}/iCloudSync`
+ * @note 相册扫描异物收容用；未配相册根且无自定义目录时返回 None
+ */
+pub(crate) fn resolve_sync_output_dir(app: &AppHandle) -> Option<PathBuf> {
+  let settings = load_settings(app).ok()?;
+  let trimmed = settings.output_dir.trim();
+  if !trimmed.is_empty() {
+    return Some(PathBuf::from(trimmed));
+  }
+  resolve_default_output_dir(app).ok().flatten()
+}
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
 use types::{CloudState, IcloudSyncSettings};
 

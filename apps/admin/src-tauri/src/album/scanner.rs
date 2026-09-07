@@ -16,8 +16,8 @@ use super::media_meta::{MediaMetaFill, MediaMetaResolver};
 use super::scan_state::ScanCancelToken;
 use super::thumbnail;
 use super::types::{
-  AlbumScanProgressPayload, AlbumThumbReadyPayload, MediaFile, MediaGroup, MediaKind,
-  ALBUM_CACHE_VERSION,
+  sort_files_by_capture_desc, AlbumScanProgressPayload, AlbumThumbReadyPayload, MediaFile,
+  MediaGroup, MediaKind, ALBUM_CACHE_VERSION,
 };
 
 pub const ALBUM_SCAN_PROGRESS_EVENT: &str = "album://scan-progress";
@@ -319,7 +319,101 @@ pub(crate) const SKIP_DIRS: &[&str] = &[
   ".cache",
   ".thumbnails",
   "Thumbs.db",
+  // 同步目录异物收容区：扫描跳过，不进 media.db / 宫格
+  "pending",
 ];
+
+/// 同步落盘目录下异物子目录名（与 SKIP_DIRS 一致）
+const SYNC_PENDING_DIR: &str = "pending";
+
+/**
+ * 当前同步落盘目录内：不合规命名的媒体移入 `pending/`（失败只打日志，不中断扫描）
+ * @note 仅处理媒体扩展名；已在 pending 下的跳过；Live 两边都是异名时自然都会移
+ */
+fn quarantine_nonsync_in_output_dir(sync_dir: &Path) {
+  if !sync_dir.is_dir() {
+    return;
+  }
+  let pending_dir = sync_dir.join(SYNC_PENDING_DIR);
+  let mut to_move: Vec<PathBuf> = Vec::new();
+
+  for entry in WalkDir::new(sync_dir)
+    .min_depth(1)
+    .into_iter()
+    .filter_entry(|e| {
+      if e.file_type().is_dir() {
+        let name = e.file_name().to_string_lossy();
+        !SKIP_DIRS.contains(&name.as_ref())
+      } else {
+        true
+      }
+    })
+    .filter_map(|e| e.ok())
+  {
+    if !entry.file_type().is_file() {
+      continue;
+    }
+    let path = entry.path();
+    let ext = get_ext(path);
+    if !is_image(&ext) && !is_video(&ext) {
+      continue;
+    }
+    let name = path
+      .file_name()
+      .and_then(|n| n.to_str())
+      .unwrap_or_default();
+    if crate::icloud_sync::is_sync_asset_filename(name) {
+      continue;
+    }
+    to_move.push(path.to_path_buf());
+  }
+
+  if to_move.is_empty() {
+    return;
+  }
+  if let Err(e) = std::fs::create_dir_all(&pending_dir) {
+    log::warn!(
+      "album: create sync pending dir failed ({}): {e}",
+      pending_dir.display()
+    );
+    return;
+  }
+
+  for src in to_move {
+    let Some(file_name) = src.file_name().map(|n| n.to_owned()) else {
+      continue;
+    };
+    let mut dest = pending_dir.join(&file_name);
+    if dest.exists() {
+      // 冲突：加时间戳后缀，避免覆盖用户已收容文件
+      let stem = Path::new(&file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file");
+      let ext = Path::new(&file_name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("bin");
+      let ts = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+      dest = pending_dir.join(format!("{stem}_{ts}.{ext}"));
+    }
+    match std::fs::rename(&src, &dest) {
+      Ok(()) => log::info!(
+        "album: quarantined nonsync media {} → {}",
+        src.display(),
+        dest.display()
+      ),
+      Err(e) => log::warn!(
+        "album: quarantine move failed {} → {}: {e}",
+        src.display(),
+        dest.display()
+      ),
+    }
+  }
+}
 
 fn get_ext(path: &Path) -> String {
   path
@@ -446,6 +540,11 @@ pub fn discover_groups(
   let conn = db::open_db(album_dir)?;
   let indexed = db::load_indexed_paths(&conn, root)?;
   let cache_dir = cache_dir_for(album_dir);
+
+  // 同步目录异物：先收容再 WalkDir，避免入库与宫格出现非同步文件
+  if let Some(sync_dir) = crate::icloud_sync::resolve_sync_output_dir(app) {
+    quarantine_nonsync_in_output_dir(&sync_dir);
+  }
 
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
   let mut discovered = 0u32;
@@ -584,7 +683,7 @@ pub fn discover_groups(
         }
       }
     }
-    files.sort_by(|a, b| a.name.cmp(&b.name));
+    sort_files_by_capture_desc(files);
   }
 
   let root_basename = root_path

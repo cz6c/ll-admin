@@ -1,13 +1,15 @@
 <!--
   相册主页 — 左侧目录树 + 右侧资源宫格
-  职责：扫描根目录、按子目录筛选展示；缩略图路径 + 后台增量生成
-  主流程：discover → 树/宫格 → 缩略图增量；目录节点右键可打开本地文件夹；侧栏可拖宽
+  职责：扫描根目录、按子目录筛选展示；当前目录文件名/拍摄日搜索；时间浮层；缩略图增量
+  主流程：discover（含 sync pending 收容）→ 树/宫格 → 缩略图增量；目录节点右键可打开本地文件夹；侧栏可拖宽
 -->
 <script setup lang="ts">
 import { h } from "vue";
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
+import { dateUtil } from "@llcz/common";
+import type { Dayjs } from "dayjs";
 import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
@@ -43,6 +45,10 @@ const scanProgress = ref<AlbumScanProgressPayload>({ phase: "discover", done: 0,
 const viewerState = ref<{ groupIdx: number; fileIdx: number } | null>(null);
 const selectedDirKey = ref("");
 const duplicateModalOpen = ref(false);
+/** 当前目录：文件名模糊（大小写不敏感子串） */
+const filenameKeyword = ref("");
+/** 当前目录：拍摄日区间（含首含尾，按 captureAt 日比较） */
+const captureDateRange = ref<[Dayjs, Dayjs] | null>(null);
 
 /** path → { groupIdx, fileIdx }，缩略图就绪事件 O(1) 定位，避免遍历全部 group/file */
 const pathIndex = computed(() => {
@@ -185,6 +191,56 @@ const displayGroups = computed<MediaGroup[]>(() => {
   return group ? [group] : [];
 });
 
+/**
+ * 拍摄时间排序键：可解析 captureAt → unix 秒；否则 modified
+ * 与 Rust `media_time_sort_key` 对齐，meta 补空后前端可再排
+ */
+function mediaTimeSortKey(file: MediaFile): number {
+  const raw = file.captureAt?.trim();
+  if (raw) {
+    const d = dateUtil(raw);
+    if (d.isValid()) return d.valueOf();
+  }
+  return (file.modified ?? 0) * 1000;
+}
+
+/** 文件名模糊 + 拍摄日区间（空 captureAt 不命中区间） */
+function matchesLocalSearch(file: MediaFile): boolean {
+  const kw = filenameKeyword.value.trim().toLowerCase();
+  if (kw && !file.name.toLowerCase().includes(kw)) return false;
+  const range = captureDateRange.value;
+  if (range?.[0] && range?.[1]) {
+    const cap = file.captureAt?.trim();
+    if (!cap) return false;
+    const day = dateUtil(cap);
+    if (!day.isValid()) return false;
+    const from = range[0].startOf("day");
+    const to = range[1].endOf("day");
+    if (day.isBefore(from) || day.isAfter(to)) return false;
+  }
+  return true;
+}
+
+/** 当前目录过滤 + 拍摄时间倒序（供宫格 / Viewer / 时间浮层） */
+const filteredFiles = computed<MediaFile[]>(() => {
+  const files = displayGroups.value[0]?.files ?? [];
+  return [...files]
+    .filter(matchesLocalSearch)
+    .sort((a, b) => {
+      const tb = mediaTimeSortKey(b);
+      const ta = mediaTimeSortKey(a);
+      if (tb !== ta) return tb - ta;
+      return a.name.localeCompare(b.name);
+    });
+});
+
+/** Viewer 使用与宫格同一过滤结果，避免索引错位 */
+const viewerGroups = computed<MediaGroup[]>(() => {
+  const base = displayGroups.value[0];
+  if (!base) return [];
+  return [{ ...base, files: filteredFiles.value }];
+});
+
 const scanProgressPercent = computed(() => {
   const { phase, done, total } = scanProgress.value;
   if ((phase === "thumbnails" || phase === "live-proxy") && total > 0) {
@@ -313,12 +369,9 @@ async function doScan(force: boolean) {
 }
 
 function openViewer(file: MediaFile) {
-  for (let gi = 0; gi < displayGroups.value.length; gi++) {
-    const fi = displayGroups.value[gi].files.findIndex(f => f.path === file.path);
-    if (fi >= 0) {
-      viewerState.value = { groupIdx: gi, fileIdx: fi };
-      return;
-    }
+  const fi = filteredFiles.value.findIndex(f => f.path === file.path);
+  if (fi >= 0) {
+    viewerState.value = { groupIdx: 0, fileIdx: fi };
   }
 }
 
@@ -362,7 +415,7 @@ const gridLayout = computed(() => computeAlbumGridLayout(gridAvailWidth.value));
 const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
 const rowHeight = computed(() => gridLayout.value.rowHeight);
-const allFiles = computed<MediaFile[]>(() => displayGroups.value[0]?.files ?? []);
+const allFiles = computed<MediaFile[]>(() => filteredFiles.value);
 const totalRows = computed(() => Math.ceil(allFiles.value.length / cols.value));
 const totalHeight = computed(() => totalRows.value * rowHeight.value);
 
@@ -371,6 +424,28 @@ const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.val
 const startIdx = computed(() => startRow.value * cols.value);
 const endIdx = computed(() => endRow.value * cols.value);
 const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
+
+/**
+ * 可视区最后一张（不含 buffer）：末行最右或该行实际最后一张
+ * 浮层文案跟拍摄月 `YYYY-MM`，滚动时更新
+ */
+const timelineLabel = computed(() => {
+  const files = allFiles.value;
+  if (files.length === 0 || viewportHeight.value <= 0 || cols.value <= 0) return "";
+  const lastVisibleRow = Math.min(
+    totalRows.value - 1,
+    Math.max(0, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) - 1)
+  );
+  const lastIdx = Math.min(files.length - 1, (lastVisibleRow + 1) * cols.value - 1);
+  const file = files[lastIdx];
+  if (!file) return "";
+  const raw = file.captureAt?.trim();
+  if (raw) {
+    const d = dateUtil(raw);
+    if (d.isValid()) return d.format("YYYY-MM");
+  }
+  return "未知拍摄时间";
+});
 
 function cardStyle(idx: number): Record<string, string> {
   const col = idx % cols.value;
@@ -384,8 +459,13 @@ function cardStyle(idx: number): Record<string, string> {
   };
 }
 
-// 切换目录时回到顶部，避免沿用旧 scrollTop 导致可视区错位
+// 切换目录或搜索条件时回到顶部，避免沿用旧 scrollTop 导致可视区错位
 watch(selectedDirKey, () => {
+  scrollTop.value = 0;
+  filenameKeyword.value = "";
+  captureDateRange.value = null;
+});
+watch([filenameKeyword, captureDateRange], () => {
   scrollTop.value = 0;
 });
 
@@ -495,22 +575,52 @@ onBeforeUnmount(() => {
       />
 
       <main class="album-main">
+        <div class="album-toolbar">
+          <a-input
+            v-model:value="filenameKeyword"
+            class="album-filename-search"
+            allow-clear
+            placeholder="文件名"
+            spellcheck="false"
+          />
+          <a-range-picker
+            v-model:value="captureDateRange"
+            class="album-date-range"
+            :placeholder="['拍摄起始', '拍摄结束']"
+            allow-clear
+          />
+        </div>
+
         <div v-if="thumbsGenerating" class="thumb-progress-bar">
           <span>{{ scanProgressLabel }}</span>
           <a-progress :percent="scanProgressPercent" size="small" :show-info="false" class="thumb-progress-track" />
         </div>
 
-        <div ref="scrollEl" class="album-scroll">
-          <a-empty v-if="displayGroups.length === 0" description="该目录下无媒体文件" class="state-empty-inline" />
-          <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
-            <AlbumThumbCard
-              v-for="(file, i) in visibleFiles"
-              :key="file.path"
-              :file="file"
-              :style="cardStyle(startIdx + i)"
-              @open="openViewer"
-              @delete="onDeleteLocal"
+        <div class="album-grid-wrap">
+          <div ref="scrollEl" class="album-scroll">
+            <a-empty
+              v-if="displayGroups.length === 0"
+              description="该目录下无媒体文件"
+              class="state-empty-inline"
             />
+            <a-empty
+              v-else-if="allFiles.length === 0"
+              description="无匹配的媒体文件"
+              class="state-empty-inline"
+            />
+            <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
+              <AlbumThumbCard
+                v-for="(file, i) in visibleFiles"
+                :key="file.path"
+                :file="file"
+                :style="cardStyle(startIdx + i)"
+                @open="openViewer"
+                @delete="onDeleteLocal"
+              />
+            </div>
+          </div>
+          <div v-if="timelineLabel && allFiles.length > 0" class="album-timeline-chip" aria-hidden="true">
+            {{ timelineLabel }}
           </div>
         </div>
       </main>
@@ -518,7 +628,7 @@ onBeforeUnmount(() => {
 
     <MediaViewer
       v-if="viewerState"
-      :groups="displayGroups"
+      :groups="viewerGroups"
       :initial-group-idx="viewerState.groupIdx"
       :initial-file-idx="viewerState.fileIdx"
       @close="viewerState = null"
@@ -664,6 +774,23 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
+.album-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.album-filename-search {
+  width: 160px;
+}
+
+.album-date-range {
+  width: 260px;
+}
+
 .thumb-progress-bar {
   display: flex;
   align-items: center;
@@ -706,6 +833,14 @@ onBeforeUnmount(() => {
   padding: 48px 0;
 }
 
+.album-grid-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .album-scroll {
   flex: 1;
   min-height: 0;
@@ -724,6 +859,26 @@ onBeforeUnmount(() => {
 .thumb-canvas {
   position: relative;
   width: 100%;
+}
+
+/* 宫格区左下角：跟可视末张拍摄月，不随内容滚动、不拦截点击 */
+.album-timeline-chip {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--bg-color) 88%, transparent);
+  border: 1px solid var(--border-color);
+  pointer-events: none;
+  user-select: none;
 }
 </style>
 

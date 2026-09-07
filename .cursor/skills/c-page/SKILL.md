@@ -11,7 +11,7 @@ description: >-
 ## 入口顺序
 
 1. 产品需求/原型/前后端混写 → 先读 [../c-requirement/SKILL.md](../c-requirement/SKILL.md)，完成分析报告后再继续。
-2. 歧义、反绕过、范围过宽 → [../c-clarify/SKILL.md](../c-clarify/SKILL.md)；未放行前不写代码、不派实现。
+2. 歧义、反绕过、范围过宽、**或报告/方案中仍有互斥分叉未拍板** → [../c-clarify/SKILL.md](../c-clarify/SKILL.md)（硬约束 `clarify-gate.mdc`）；未放行前不写代码、不派实现、不出实施蓝图。
 3. 读 [profiles.md](profiles.md) 确认画像；再读 [anchors.md](anchors.md)。
 4. 改代码 → [../c-workflow/SKILL.md](../c-workflow/SKILL.md)。纯查询可跳过。
 5. 输出下方「任务概览」，再按路由表读子 skill。**本 skill 不进入代码实现。**
@@ -50,4 +50,6 @@ description: >-
 
 ## 停止关卡
 
-继承 [anchors.md](anchors.md)：五条红线、范围契约、共享影响、Git 归因、权限等同、反绕过、临时产物、范围外报告。
+继承 [anchors.md](anchors.md)：六条红线、范围契约、共享影响、Git 归因、权限等同、反绕过、临时产物、范围外报告。
+
+**设计/需求分叉**：互斥未拍板 → 先 `c-clarify` 再蓝图（`clarify-gate.mdc`）。

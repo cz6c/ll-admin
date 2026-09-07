@@ -13,7 +13,7 @@ description: >-
 ## 前置
 
 - 产品/原型混写 → 先 `c-requirement`。
-- 歧义/绕过 → 先 `c-clarify`；未放行不写代码。
+- 歧义/绕过/互斥分叉未拍板 → 先 `c-clarify`（`clarify-gate.mdc`）；未放行不写代码。
 - 先读 profiles 判定画像。
 
 ## 对话蓝图（写代码前）

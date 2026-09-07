@@ -44,4 +44,4 @@
 
 ## 推荐阅读顺序（新功能）
 
-`c-page` →（必要时 `c-requirement` / `c-clarify`）→ `c-workflow` → 装配 skill → **按对应 app rule 验收约束**。
+`c-page` →（必要时 `c-requirement`）→ **有互斥未决则 `c-clarify`**（硬约束 `clarify-gate.mdc`）→ `c-workflow` → 装配 skill → **按对应 app rule 验收约束**。

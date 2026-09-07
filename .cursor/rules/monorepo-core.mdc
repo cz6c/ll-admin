@@ -53,7 +53,7 @@ alwaysApply: true
 
 | App | 规则文件 |
 |-----|----------|
-| 全仓 | `monorepo-core.mdc`、`skill-rule-boundary.mdc`（**Rules vs Skills 边界**）、`comment-standards.mdc`、`file-naming.mdc` |
+| 全仓 | `monorepo-core.mdc`、`skill-rule-boundary.mdc`（**Rules vs Skills 边界**）、`clarify-gate.mdc`（互斥分叉须 `c-clarify`）、`comment-standards.mdc`、`file-naming.mdc` |
 | admin | `vue-admin.mdc`、`antd-design-system.mdc`（Ant Design 5.x UI 原则）、`rust-tauri.mdc`（src-tauri 改后 cargo 无 warning） |
 | uni | `vue-uni.mdc` |
 | server | `nestjs-server.mdc` |

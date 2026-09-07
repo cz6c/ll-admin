@@ -18,6 +18,7 @@ alwaysApply: true
 - **约束全文**只维护在对应 rule；skill **禁止**再贴对照表、色板、Entity 细则、migration 全文。
 - skill 需要门禁时：写 **一句提醒 + 规则文件名**（如「migration 须用户同意 → `nestjs-server.mdc`」），不复制条文。
 - 流程、必问、样板路径、完成检查只维护在 skill；**不要**把「先问哪一端 / 抄哪页」写进 rule。
+- **澄清门禁**只维护两处全文：硬禁令 → `clarify-gate.mdc`；触发信号 / AskQuestion Shape / 放行 → `c-clarify` skill。其它 skill/README/`anchors` **只链不抄**形态细则。
 
 ## 新增时自检（二选一）
 

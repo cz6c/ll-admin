@@ -221,15 +221,15 @@ function matchesLocalSearch(file: MediaFile): boolean {
   return true;
 }
 
-/** 当前目录过滤 + 拍摄时间倒序（供宫格 / Viewer / 时间浮层） */
+/** 当前目录过滤 + 拍摄时间升序旧→新（供宫格 / Viewer / 时间浮层） */
 const filteredFiles = computed<MediaFile[]>(() => {
   const files = displayGroups.value[0]?.files ?? [];
   return [...files]
     .filter(matchesLocalSearch)
     .sort((a, b) => {
-      const tb = mediaTimeSortKey(b);
       const ta = mediaTimeSortKey(a);
-      if (tb !== ta) return tb - ta;
+      const tb = mediaTimeSortKey(b);
+      if (ta !== tb) return ta - tb;
       return a.name.localeCompare(b.name);
     });
 });
@@ -361,6 +361,7 @@ async function doScan(force: boolean) {
     });
     groups.value = result;
     selectedDirKey.value = defaultDirKey();
+    scrollAlbumToBottom();
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "扫描失败";
   } finally {
@@ -426,25 +427,41 @@ const endIdx = computed(() => endRow.value * cols.value);
 const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
 
 /**
- * 可视区最后一张（不含 buffer）：末行最右或该行实际最后一张
- * 浮层文案跟拍摄月 `YYYY-MM`，滚动时更新
+ * 可视区首/末张拍摄日文案（不含 buffer）；无拍摄时间则「未知拍摄时间」
+ */
+function formatTimelineDay(file: MediaFile): string {
+  const raw = file.captureAt?.trim();
+  if (raw) {
+    const d = dateUtil(raw);
+    if (d.isValid()) return d.format("YYYY年MM月DD日");
+  }
+  return "未知拍摄时间";
+}
+
+/**
+ * 时间浮层：可视区第一张 → 最后一张的拍摄日区间；同一天只显示一次
  */
 const timelineLabel = computed(() => {
   const files = allFiles.value;
-  if (files.length === 0 || viewportHeight.value <= 0 || cols.value <= 0) return "";
+  if (files.length === 0 || viewportHeight.value <= 0 || cols.value <= 0 || rowHeight.value <= 0) {
+    return "";
+  }
+  const firstVisibleRow = Math.min(
+    totalRows.value - 1,
+    Math.max(0, Math.floor(scrollTop.value / rowHeight.value))
+  );
   const lastVisibleRow = Math.min(
     totalRows.value - 1,
     Math.max(0, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) - 1)
   );
+  const firstIdx = Math.min(files.length - 1, firstVisibleRow * cols.value);
   const lastIdx = Math.min(files.length - 1, (lastVisibleRow + 1) * cols.value - 1);
-  const file = files[lastIdx];
-  if (!file) return "";
-  const raw = file.captureAt?.trim();
-  if (raw) {
-    const d = dateUtil(raw);
-    if (d.isValid()) return d.format("YYYY-MM");
-  }
-  return "未知拍摄时间";
+  const first = files[firstIdx];
+  const last = files[lastIdx];
+  if (!first || !last) return "";
+  const from = formatTimelineDay(first);
+  const to = formatTimelineDay(last);
+  return from === to ? from : `${from} ～ ${to}`;
 });
 
 function cardStyle(idx: number): Record<string, string> {
@@ -459,14 +476,44 @@ function cardStyle(idx: number): Record<string, string> {
   };
 }
 
-// 切换目录或搜索条件时回到顶部，避免沿用旧 scrollTop 导致可视区错位
+/**
+ * 滚到宫格底部（最新一端）；双 rAF 等列宽/总高布局稳定后再钉一次
+ * @note 切目录、扫描完成、搜索筛选后调用；虚拟窗口仍双向切片
+ */
+function scrollAlbumToBottom() {
+  const apply = () => {
+    const el = scrollEl.value;
+    if (!el) return;
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollTop = max;
+    scrollTop.value = max;
+  };
+  nextTick(() => {
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
+  });
+}
+
+// 切换目录：清空筛选并落到最新；搜索条件变化同样滚底
 watch(selectedDirKey, () => {
-  scrollTop.value = 0;
   filenameKeyword.value = "";
   captureDateRange.value = null;
+  scrollAlbumToBottom();
 });
 watch([filenameKeyword, captureDateRange], () => {
-  scrollTop.value = 0;
+  scrollAlbumToBottom();
+});
+/** 列表高度变化（列数/文件数）时若已在底部附近则继续钉底，避免首帧高度为 0 */
+watch([totalHeight, viewportHeight], () => {
+  const el = scrollEl.value;
+  if (!el || totalHeight.value <= 0) return;
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  if (max - el.scrollTop <= rowHeight.value * 2) {
+    scrollAlbumToBottom();
+  }
 });
 
 let unlistenScanProgress: (() => void) | undefined;
@@ -869,11 +916,13 @@ onBeforeUnmount(() => {
   z-index: 2;
   display: inline-flex;
   align-items: center;
+  max-width: min(420px, calc(100% - 32px));
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
+  line-height: 1.4;
   color: var(--color-text);
   background: color-mix(in srgb, var(--bg-color) 88%, transparent);
   border: 1px solid var(--border-color);

@@ -16,7 +16,7 @@ use super::media_meta::{MediaMetaFill, MediaMetaResolver};
 use super::scan_state::ScanCancelToken;
 use super::thumbnail;
 use super::types::{
-  sort_files_by_capture_desc, AlbumScanProgressPayload, AlbumThumbReadyPayload, MediaFile,
+  sort_files_by_capture_asc, AlbumScanProgressPayload, AlbumThumbReadyPayload, MediaFile,
   MediaGroup, MediaKind, ALBUM_CACHE_VERSION,
 };
 
@@ -682,7 +682,7 @@ pub fn discover_groups(
         }
       }
     }
-    sort_files_by_capture_desc(files);
+    sort_files_by_capture_asc(files);
   }
 
   let root_basename = root_path

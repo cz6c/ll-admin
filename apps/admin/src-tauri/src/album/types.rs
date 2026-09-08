@@ -114,11 +114,11 @@ pub fn media_time_sort_key(file: &MediaFile) -> i64 {
   file.modified.max(0)
 }
 
-/// 按拍摄时间倒序；同秒再比文件名（discover 与 DB cache_hit 共用）
-pub fn sort_files_by_capture_desc(files: &mut [MediaFile]) {
+/// 按拍摄时间升序（旧→新）；同秒再比文件名（discover 与 DB cache_hit 共用）
+pub fn sort_files_by_capture_asc(files: &mut [MediaFile]) {
   files.sort_by(|a, b| {
-    media_time_sort_key(b)
-      .cmp(&media_time_sort_key(a))
+    media_time_sort_key(a)
+      .cmp(&media_time_sort_key(b))
       .then_with(|| a.name.cmp(&b.name))
   });
 }

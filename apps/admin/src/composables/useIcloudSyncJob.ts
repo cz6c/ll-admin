@@ -241,13 +241,13 @@ function _useIcloudSyncJob() {
       return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}。`;
     }
     if (isDone.value && isCloudDeleteTask.value) {
-      return "iCloud 副本已移除，本地文件保留。可在「释放iCloud空间」查看。";
+      return "iCloud 副本已移除，本地文件保留。";
     }
     if (isDone.value && isSyncTask.value && outputDir.value) {
-      return `照片已在本地。有新增时再点「同步到本地」；也可切换到「释放iCloud空间」移除 iCloud 副本。`;
+      return "照片已在本地。有新增时再点「同步到本地」；也可勾选已同步项从 iCloud 移除。";
     }
     if (showEmptyGuide.value && isLoggedIn.value) {
-      return "移除 iCloud 存储请切换到下方「释放iCloud空间」";
+      return "可勾选已同步项，或使用「移除全部已同步」从 iCloud 移除副本";
     }
     if (showEmptyGuide.value) {
       return "";

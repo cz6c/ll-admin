@@ -281,8 +281,8 @@ export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
 ];
 
 /**
- * 「同步到本地」分栏 Tab：全部 / 待同步 / 已同步 / 同步失败
- * @note 不含删云态，避免与释放栏心智混杂
+ * 「同步到本地」列表 Tab：全部 / 待同步 / 已同步 / 同步失败
+ * @note 抽屉仅保留此子集；删云走工具栏勾选已同步项，不另开释放分栏
  */
 export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "all", countKey: "total", tabLabel: "全部" },

@@ -1,7 +1,7 @@
 <!--
   iCloud 统一任务状态卡片（抽屉版）
-  职责：全局任务态主按钮与进度（置于分栏之上，不随 Tab 切换）
-  适用：IcloudSyncFab 抽屉顶部
+  职责：全局任务态主按钮与进度（抽屉顶部，不随列表 Tab 切换）
+  适用：IcloudSyncFab 抽屉顶部；删云进行中由全屏浮层接管，本卡隐藏「取消任务」
 -->
 <script setup lang="ts">
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
@@ -29,6 +29,9 @@ const {
   statusHeadline,
   statusDescription
 } = useIcloudSyncJob();
+
+/** 删云进度由全屏浮层展示，状态卡不再提供取消（同步/catalog 取消逻辑保留） */
+const showCancelJobButton = computed(() => canCancelJob.value && !isCloudDeleteTask.value);
 
 /** 需展开说明的告警（账号不一致 / 会话失效 / 失败） */
 const showExpandedAlert = computed(
@@ -96,10 +99,10 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
             {{ primaryAction.label }}
           </a-button>
           <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停</a-button>
-          <a-tooltip v-if="hasActiveJob && isCataloging" title="扫描图库中，请稍候再取消">
+          <a-tooltip v-if="hasActiveJob && isCataloging && !isCloudDeleteTask" title="扫描图库中，请稍候再取消">
             <a-button disabled>取消任务</a-button>
           </a-tooltip>
-          <a-button v-else-if="canCancelJob" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>
+          <a-button v-else-if="showCancelJobButton" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>
         </div>
       </div>
 

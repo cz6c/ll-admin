@@ -6,7 +6,7 @@
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
-> **对齐：** 2026-09-04（UI：同步到本地串联刷新+下载 · 拉取/释放二分栏 · 进度条仅任务）
+> **对齐：** 2026-09-08（UI：同步到本地列表心智 · 工具栏删云 + 全屏浮层进度 · 失败浮层内重试）
 
 姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [表目录](./schemaCatalog.md)
 
@@ -19,7 +19,7 @@
 ```mermaid
 flowchart LR
   A[同步到本地] --> B[本地相册可浏览]
-  B --> C[释放iCloud空间：全部或部分已拉取项]
+  B --> C[工具栏：移除所选 / 移除全部已同步]
   C --> D[iCloud 腾出空间]
   D --> E[再次同步到本地]
   E --> A
@@ -30,7 +30,7 @@ flowchart LR
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
-| 抽屉二分栏 | 顶部为**全局进度/主操作**（单任务）；其下 **同步到本地** / **释放iCloud空间** 共用列表，Tab 子集按场景裁剪（拉取：全部/待同步/已同步/同步失败；释放：全部/待移除（已同步）/已移除/移除失败）。取消删云任务走进度区「取消任务」 |
+| 抽屉单列表 | 顶部为**全局进度/主操作**（同步任务）；其下仅 **同步到本地** 心智列表（Tab：全部/待同步/已同步/同步失败）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；删云进度由**全屏浮层**接管（无取消）；失败在浮层内「重试失败项」 |
 | 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
@@ -45,12 +45,13 @@ flowchart LR
 | 操作 | 何时出现 | 行为 |
 |------|----------|------|
 | **同步到本地** | 空闲 / 上次 `done` | UI 串联：catalog job → 成功后 `start_job` 入队下载 |
-| **刷新状态** | 释放栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载（拉取栏靠「同步到本地」自带刷新） |
-| **暂停同步** | `running` | 协作暂停 worker → `paused_user` |
+| **刷新状态** | 抽屉工具栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载（「同步到本地」自带刷新） |
+| **暂停同步** | `running`（同步任务） | 协作暂停 worker → `paused_user` |
 | **继续同步** | `paused_user` / 重登后 `paused_session` | resume；**不** re-catalog |
-| **取消任务** | 未完成且非 `cataloging` | `discard_task`；已下文件保留；summary 计数保留 |
+| **取消任务** | 未完成且非 `cataloging`、非删云浮层接管 | `discard_task`；已下文件保留；summary 计数保留 |
 | **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
-| **释放iCloud空间** | 抽屉「释放」分栏 | 有勾选→移除所选；无勾选→移除全部已同步 |
+| **从 iCloud 移除** | 工具栏危险主按钮 | 有勾选→移除所选；无勾选→移除全部已同步；确认 Modal + 1.5s；入队后全屏浮层展示进度 |
+| **重试失败项** | 删云浮层 `failed` | `retryIcloudSyncCloudDeletes`，浮层回到 running |
 | **退出登录** | 抽屉 / 登录弹窗 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
 | **换号登录** | 登录弹窗换 Apple ID | discard 旧 job + 清前端 jobId |
@@ -89,7 +90,7 @@ flowchart LR
 | 3 | 组批 → `download_batch` | 进度推进 |
 | 4 | pending 空 → `done`；session 失效 → `paused_session` | 主按钮切换 |
 
-无待同步项时 `start_job` 报错。UI「同步到本地」自动先刷新再入队；「释放iCloud空间 · 刷新状态」只做步骤 0。
+无待同步项时 `start_job` 报错。UI「同步到本地」自动先刷新再入队；工具栏「刷新状态」只做步骤 0。
 
 ### B. 删云主路径（腾空间）
 
@@ -107,8 +108,8 @@ flowchart LR
 |----|----------|----------|
 | 1 | Modal 确认（Live 默认成对 still+mov） | 冷却 1.5s |
 | 2 | 读库 CPL + **本地 `dest_path` 必须 is_file** | 缺文件则 reject（需先同步或刷新 reconcile） |
-| 3 | worker 调 sidecar | 等待删云；取消整任务用进度区「取消任务」 |
-| 4 | 成功 → **保留 assets 行**，`cloud_state=deleted_cloud_pending` | Tab「已移除」 |
+| 3 | worker 调 sidecar | 全屏浮层进度条（无取消）；失败浮层内可重试 |
+| 4 | 成功 → **保留 assets 行**，`cloud_state=deleted_cloud_pending` | 浮层完成摘要 → 关闭后刷新列表（不自动切 Tab） |
 
 **门禁：** `canManageCloudSpace` 为假时禁用删云 / 刷新 catalog（与全局单任务互斥）。
 
@@ -277,8 +278,8 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 
 | 组件 | 职责 |
 |------|------|
-| `IcloudSyncFab` | FAB（扫描呼吸 / 下载水球）；抽屉 **card Tabs** 云态筛选 + 列表 + 删云 |
-| `IcloudSyncStatusCard` | 状态标题、**单一**进度条（同步/删云按 `taskType` 切换文案）、主/次按钮 |
+| `IcloudSyncFab` | FAB；抽屉云态筛选 + 列表 + 工具栏删云；删云全屏浮层 |
+| `IcloudSyncStatusCard` | 状态标题、**单一**进度条（同步按 `taskType` 文案）、主/次按钮；删云进行中隐藏「取消任务」 |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthModal` | 登录/2FA；换号 discard；退出走 `onLogoutAccount` |
 | `icloudSyncCloudList.ts` | 状态文案 / Tab 配置 / Live 行合并 / `download_failed` 展示覆盖 |

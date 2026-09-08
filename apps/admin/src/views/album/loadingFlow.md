@@ -17,13 +17,13 @@
 
 ```text
 ① 索引 discover     路径 / size / mtime / Live 配对           → 秒出列表（阻塞 invoke）
-   └─ sync 异物     output_dir 下非 `{unix}_{apple8}_{id16}` 媒体 → 移入 `pending/`（随后仍 discover，树/宫格可见）
+   └─ sync 异物     output_dir 下非 `{unix}_{apple8}_{id16}` 媒体 → 移入 `pending/`（随后仍 discover，扁平宫格可见）
 ② 展示 thumb        网格图 + HEIC preview + 尺寸真源         → 不挡首屏
 ③ 元数据 meta       仅补 capture_at、camera（空才写）         → 紧挨②成功之后
 ④ 播放 playback     H.264 代理 `_play.mp4`                   → 时机见下表
 ```
 
-宫格排序：`capture_at` 升序旧→新（空则 `modified`）；进目录/筛选后滚到底部；工具栏支持当前目录文件名模糊 + 拍摄日区间；左下角浮层为可视区首～末张 `YYYY年MM月DD日`。
+宫格：扁平时间线无目录树（`groups` 全部 files flatMap）；排序 `capture_at` 升序旧→新（空则 `modified`）；扫描/筛选后滚到底部；工具栏支持文件名模糊 + 拍摄日区间；左下角浮层为可视区首～末张 `YYYY年MM月DD日`。
 
 | 对象 | ④ 时机 | 说明 |
 |------|--------|------|
@@ -120,8 +120,7 @@ flowchart LR
 | 5 | ②路径+尺寸 → ③时间/机型 → Live④代理 + emit | 卡片/信息条更新 |
 | 5b | 末尾回填缺 meta / Live 缺代理 | 旧库补全 |
 | 6 | Viewer；单独视频可能懒转码 | 全屏预览 |
-| 6b | 目录树右键打开资源管理器 | 系统文件夹 |
-| 6c | 侧栏拖拽改宽 | 列数重算 |
+| 6b | 工具栏可打开相册根目录 | 系统文件夹 |
 
 **硬规则（改代码勿破）：**
 
@@ -209,7 +208,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 
 ### 清理重复下载
 
-入口：侧栏 **清理重复** → `DuplicateCleanupModal` → `album_find_local_duplicates`。
+入口：工具栏 **清理重复** → `DuplicateCleanupModal` → `album_find_local_duplicates`。
 
 | 概念 | 规则 |
 |------|------|

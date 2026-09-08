@@ -1,10 +1,9 @@
 <!--
-  相册主页 — 左侧目录树 + 右侧资源宫格
-  职责：扫描根目录、按子目录筛选展示；当前目录文件名/拍摄日搜索；时间浮层；缩略图增量
-  主流程：discover（sync 异物先收容进 pending，再索引含 pending）→ 树/宫格 → 缩略图增量；目录节点右键可打开本地文件夹；侧栏可拖宽
+  相册主页 — 扁平时间线宫格（无目录树）
+  职责：扫描根目录、根下全部媒体进一条时间线；文件名/拍摄日搜索；时间浮层；缩略图增量
+  主流程：discover（sync 异物先收容进 pending，再索引含 pending）→ 扁平宫格 → 缩略图增量；可打开相册根目录
 -->
 <script setup lang="ts">
-import { h } from "vue";
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
@@ -19,7 +18,6 @@ import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
-import { useAlbumSidebarResize } from "./useAlbumSidebarResize";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
   ALBUM_THUMB_GENERATE_SIZE,
@@ -43,153 +41,25 @@ const loading = ref(false);
 const error = ref("");
 const scanProgress = ref<AlbumScanProgressPayload>({ phase: "discover", done: 0, total: 0 });
 const viewerState = ref<{ groupIdx: number; fileIdx: number } | null>(null);
-const selectedDirKey = ref("");
 const duplicateModalOpen = ref(false);
-/** 当前目录：文件名模糊（大小写不敏感子串） */
+/** 全库：文件名模糊（大小写不敏感子串） */
 const filenameKeyword = ref("");
-/** 当前目录：拍摄日区间（含首含尾，按 captureAt 日比较） */
+/** 全库：拍摄日区间（含首含尾，按 captureAt 日比较） */
 const captureDateRange = ref<[Dayjs, Dayjs] | null>(null);
 
-/** path → { groupIdx, fileIdx }，缩略图就绪事件 O(1) 定位，避免遍历全部 group/file */
+/** path → groups 内 MediaFile 对象，缩略图就绪事件 O(1) 写回 */
 const pathIndex = computed(() => {
-  const map = new Map<string, { groupIdx: number; fileIdx: number }>();
-  groups.value.forEach((g, gi) => {
-    g.files.forEach((f, fi) => {
-      map.set(f.path, { groupIdx: gi, fileIdx: fi });
-    });
-  });
+  const map = new Map<string, MediaFile>();
+  for (const g of groups.value) {
+    for (const f of g.files) {
+      map.set(f.path, f);
+    }
+  }
   return map;
 });
 
-/** 侧栏目录树节点（ant-design-vue Tree） */
-interface AlbumTreeNode {
-  key: string;
-  title: string;
-  children?: AlbumTreeNode[];
-  /** 无下级目录时为 leaf：switcher 留空占位，文字与上级对齐 */
-  isLeaf?: boolean;
-}
-
-/** Tree switcher 节点态 */
-type AlbumTreeSwitcherProps = {
-  expanded?: boolean;
-};
-
-/** 展开/收起箭头；leaf 由 rc-tree 渲染等宽 noop 占位，此处不处理 */
-function albumTreeSwitcherIcon({ expanded }: AlbumTreeSwitcherProps) {
-  return h(IconifyIcon, {
-    icon: expanded ? "ant-design:folder-open-outlined" : "ant-design:folder-outlined",
-    width: 16,
-    height: 16
-  });
-}
-
-/** 统一 relPath 分隔符，避免 Windows `\` 与树节点 key 不一致 */
-function normalizeRelPath(rel: string): string {
-  if (!rel || rel === ".") return ".";
-  return rel.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
-}
-
-/** 初始始终选中根目录（即使根下无直接媒体文件，右侧为空宫格） */
-function defaultDirKey(): string {
-  return ".";
-}
-
-/**
- * 按 relPath 分段拼嵌套树（含仅作中间层、自身无媒体的目录）
- * 标题计数为本目录直接文件数，与右侧宫格一致（不含子孙）
- */
-function buildAlbumTree(list: MediaGroup[]): AlbumTreeNode[] {
-  type Mutable = { key: string; name: string; children: Map<string, Mutable> };
-
-  const fileCount = new Map<string, number>();
-  const names = new Map<string, string>();
-  for (const g of list) {
-    const key = normalizeRelPath(g.relPath);
-    fileCount.set(key, g.files.length);
-    names.set(key, g.dirName);
-  }
-
-  const allKeys = new Set<string>(["."]);
-  for (const key of fileCount.keys()) {
-    if (key === ".") continue;
-    const parts = key.split("/").filter(Boolean);
-    for (let i = 1; i <= parts.length; i++) {
-      allKeys.add(parts.slice(0, i).join("/"));
-    }
-  }
-
-  const root: Mutable = {
-    key: ".",
-    name: names.get(".") || "根目录",
-    children: new Map()
-  };
-
-  for (const key of allKeys) {
-    if (key === ".") continue;
-    const parts = key.split("/");
-    let node = root;
-    for (let i = 0; i < parts.length; i++) {
-      const seg = parts[i];
-      const pathKey = parts.slice(0, i + 1).join("/");
-      let child = node.children.get(seg);
-      if (!child) {
-        child = {
-          key: pathKey,
-          name: names.get(pathKey) || seg,
-          children: new Map()
-        };
-        node.children.set(seg, child);
-      }
-      node = child;
-    }
-  }
-
-  function toNode(n: Mutable): AlbumTreeNode {
-    const kids = [...n.children.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map(toNode);
-    const count = fileCount.get(n.key) ?? 0;
-    const hasSubdirs = kids.length > 0;
-    return {
-      key: n.key,
-      title: `${n.name} (${count})`,
-      children: hasSubdirs ? kids : undefined,
-      isLeaf: !hasSubdirs
-    };
-  }
-
-  return [toNode(root)];
-}
-
-const treeData = computed(() => buildAlbumTree(groups.value));
-
-/** 收集全部节点 key；异步 treeData 下 defaultExpandAll 只生效首次渲染，改用受控 expandedKeys */
-function collectTreeKeys(nodes: AlbumTreeNode[]): string[] {
-  const keys: string[] = [];
-  const walk = (list: AlbumTreeNode[]) => {
-    for (const n of list) {
-      keys.push(n.key);
-      if (n.children?.length) walk(n.children);
-    }
-  };
-  walk(nodes);
-  return keys;
-}
-
-const expandedKeys = ref<string[]>([]);
-watch(
-  treeData,
-  nodes => {
-    expandedKeys.value = collectTreeKeys(nodes);
-  },
-  { immediate: true }
-);
-
-/** 当前选中的单个目录分组（供宫格与查看器）；中间空目录无 group → 空宫格 */
-const displayGroups = computed<MediaGroup[]>(() => {
-  const key = normalizeRelPath(selectedDirKey.value);
-  const group = groups.value.find(g => normalizeRelPath(g.relPath) === key);
-  return group ? [group] : [];
-});
+/** 相册根下全部媒体（各目录 group 扁平合并） */
+const allMediaFiles = computed<MediaFile[]>(() => groups.value.flatMap(g => g.files));
 
 /**
  * 拍摄时间排序键：可解析 captureAt → unix 秒；否则 modified
@@ -221,10 +91,9 @@ function matchesLocalSearch(file: MediaFile): boolean {
   return true;
 }
 
-/** 当前目录过滤 + 拍摄时间升序旧→新（供宫格 / Viewer / 时间浮层） */
+/** 全库过滤 + 拍摄时间升序旧→新（供宫格 / Viewer / 时间浮层） */
 const filteredFiles = computed<MediaFile[]>(() => {
-  const files = displayGroups.value[0]?.files ?? [];
-  return [...files]
+  return [...allMediaFiles.value]
     .filter(matchesLocalSearch)
     .sort((a, b) => {
       const ta = mediaTimeSortKey(a);
@@ -234,11 +103,17 @@ const filteredFiles = computed<MediaFile[]>(() => {
     });
 });
 
-/** Viewer 使用与宫格同一过滤结果，避免索引错位 */
+/** Viewer 单组「全部」，与宫格同一过滤结果，避免索引错位 */
 const viewerGroups = computed<MediaGroup[]>(() => {
-  const base = displayGroups.value[0];
-  if (!base) return [];
-  return [{ ...base, files: filteredFiles.value }];
+  if (filteredFiles.value.length === 0) return [];
+  return [
+    {
+      dirName: "全部",
+      dirPath: rootDir.value || ".",
+      relPath: ".",
+      files: filteredFiles.value
+    }
+  ];
 });
 
 const scanProgressPercent = computed(() => {
@@ -273,32 +148,23 @@ const thumbsGenerating = computed(
 /** 全页 loading 进度条：仅缩略图生成等慢过程；discover / live-proxy 不挡宫格 */
 const showFullPageScanProgress = computed(() => scanProgress.value.phase === "thumbnails" && scanProgress.value.total > 0);
 
-function onTreeSelect(keys: string[]) {
-  const key = keys[0];
-  if (key) {
-    selectedDirKey.value = normalizeRelPath(key);
-  }
-}
-
 /**
- * 右键：在系统资源管理器中打开该目录（Rust 侧校验须在相册根下）
+ * 在系统资源管理器中打开相册根目录（Rust 侧校验须在相册根下）
  */
-async function openAlbumDirInExplorer(relKey: string) {
+async function openAlbumRootInExplorer() {
   if (!inTauri) {
     message.warning("仅桌面端可打开本地目录");
     return;
   }
   try {
-    await openAlbumDir(normalizeRelPath(relKey));
+    await openAlbumDir(".");
   } catch (e) {
     message.error(e instanceof Error ? e.message : String(e) || "打开目录失败");
   }
 }
 
 function applyThumbReady(payload: AlbumThumbReadyPayload) {
-  const pos = pathIndex.value.get(payload.path);
-  if (!pos) return;
-  const file = groups.value[pos.groupIdx]?.files?.[pos.fileIdx];
+  const file = pathIndex.value.get(payload.path);
   if (!file) return;
   if (payload.thumbPath) file.thumbPath = payload.thumbPath;
   if (payload.previewPath) file.previewPath = payload.previewPath;
@@ -351,7 +217,6 @@ async function doScan(force: boolean) {
   loading.value = true;
   error.value = "";
   groups.value = [];
-  selectedDirKey.value = "";
   scanProgress.value = { phase: "discover", done: 0, total: 0 };
   try {
     const result = await invoke<MediaGroup[]>("album_scan", {
@@ -360,7 +225,6 @@ async function doScan(force: boolean) {
       force
     });
     groups.value = result;
-    selectedDirKey.value = defaultDirKey();
     scrollAlbumToBottom();
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "扫描失败";
@@ -407,11 +271,8 @@ const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
 const { y: scrollTop } = useScroll(scrollEl, { throttle: 60 });
 
-const { sidebarWidth, sidebarResizing, layoutContainerWidth, onSidebarResizeStart, onSidebarResizeMove, onSidebarResizeEnd, resetSidebarWidth } =
-  useAlbumSidebarResize(containerWidth);
-
-/** scroll 内容区宽度 − 左右 padding；拖侧栏时用节流后的 layoutContainerWidth */
-const gridAvailWidth = computed(() => Math.max(0, layoutContainerWidth.value - GRID_PADDING * 2));
+/** scroll 内容区宽度 − 左右 padding（无侧栏，直接用实测宽） */
+const gridAvailWidth = computed(() => Math.max(0, containerWidth.value - GRID_PADDING * 2));
 const gridLayout = computed(() => computeAlbumGridLayout(gridAvailWidth.value));
 const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
@@ -446,10 +307,7 @@ const timelineLabel = computed(() => {
   if (files.length === 0 || viewportHeight.value <= 0 || cols.value <= 0 || rowHeight.value <= 0) {
     return "";
   }
-  const firstVisibleRow = Math.min(
-    totalRows.value - 1,
-    Math.max(0, Math.floor(scrollTop.value / rowHeight.value))
-  );
+  const firstVisibleRow = Math.min(totalRows.value - 1, Math.max(0, Math.floor(scrollTop.value / rowHeight.value)));
   const lastVisibleRow = Math.min(
     totalRows.value - 1,
     Math.max(0, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) - 1)
@@ -478,7 +336,7 @@ function cardStyle(idx: number): Record<string, string> {
 
 /**
  * 滚到宫格底部（最新一端）；双 rAF 等列宽/总高布局稳定后再钉一次
- * @note 切目录、扫描完成、搜索筛选后调用；虚拟窗口仍双向切片
+ * @note 扫描完成、搜索筛选后调用；虚拟窗口仍双向切片
  */
 function scrollAlbumToBottom() {
   const apply = () => {
@@ -497,12 +355,7 @@ function scrollAlbumToBottom() {
   });
 }
 
-// 切换目录：清空筛选并落到最新；搜索条件变化同样滚底
-watch(selectedDirKey, () => {
-  filenameKeyword.value = "";
-  captureDateRange.value = null;
-  scrollAlbumToBottom();
-});
+// 搜索条件变化滚底
 watch([filenameKeyword, captureDateRange], () => {
   scrollAlbumToBottom();
 });
@@ -572,55 +425,6 @@ onBeforeUnmount(() => {
     <a-empty v-else-if="groups.length === 0" description="未找到媒体文件" class="state-panel" />
 
     <div v-else class="album-layout">
-      <aside class="album-sidebar" :style="{ width: `${sidebarWidth}px` }">
-        <div class="sidebar-header">
-          <span>目录</span>
-          <div class="sidebar-actions">
-            <a-button type="text" size="small" title="清理重复下载" @click="duplicateModalOpen = true">
-              <template #icon>
-                <IconifyIcon icon="ant-design:clear-outlined" width="14" height="14" />
-              </template>
-            </a-button>
-            <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
-              <template #icon>
-                <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
-              </template>
-            </a-button>
-          </div>
-        </div>
-        <a-tree
-          v-model:expanded-keys="expandedKeys"
-          :selected-keys="selectedDirKey ? [selectedDirKey] : []"
-          :tree-data="treeData"
-          :switcher-icon="albumTreeSwitcherIcon"
-          show-icon
-          block-node
-          @select="onTreeSelect"
-        >
-          <template #title="{ key, title }">
-            <a-dropdown :trigger="['contextmenu']" :disabled="!inTauri">
-              <span class="tree-node-title" @contextmenu.prevent.stop>{{ title }}</span>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item key="open-folder" @click="openAlbumDirInExplorer(String(key))"> 在资源管理器中打开 </a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-          </template>
-        </a-tree>
-      </aside>
-
-      <div
-        class="sidebar-resize-handle"
-        :class="{ 'is-active': sidebarResizing }"
-        title="拖拽调整宽度，双击恢复默认"
-        @pointerdown="onSidebarResizeStart"
-        @pointermove="onSidebarResizeMove"
-        @pointerup="onSidebarResizeEnd"
-        @pointercancel="onSidebarResizeEnd"
-        @dblclick="resetSidebarWidth"
-      />
-
       <main class="album-main">
         <div class="album-toolbar">
           <a-input
@@ -636,6 +440,23 @@ onBeforeUnmount(() => {
             :placeholder="['拍摄起始', '拍摄结束']"
             allow-clear
           />
+          <div class="album-toolbar-actions">
+            <a-button v-if="inTauri" type="text" size="small" title="打开相册根目录" @click="openAlbumRootInExplorer">
+              <template #icon>
+                <IconifyIcon icon="ant-design:folder-open-outlined" width="14" height="14" />
+              </template>
+            </a-button>
+            <a-button type="text" size="small" title="清理重复下载" @click="duplicateModalOpen = true">
+              <template #icon>
+                <IconifyIcon icon="ant-design:clear-outlined" width="14" height="14" />
+              </template>
+            </a-button>
+            <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
+              <template #icon>
+                <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
+              </template>
+            </a-button>
+          </div>
         </div>
 
         <div v-if="thumbsGenerating" class="thumb-progress-bar">
@@ -645,16 +466,7 @@ onBeforeUnmount(() => {
 
         <div class="album-grid-wrap">
           <div ref="scrollEl" class="album-scroll">
-            <a-empty
-              v-if="displayGroups.length === 0"
-              description="该目录下无媒体文件"
-              class="state-empty-inline"
-            />
-            <a-empty
-              v-else-if="allFiles.length === 0"
-              description="无匹配的媒体文件"
-              class="state-empty-inline"
-            />
+            <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
             <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
               <AlbumThumbCard
                 v-for="(file, i) in visibleFiles"
@@ -699,118 +511,8 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 0;
-  border-top: 1px solid var(--border-color);
-}
-
-.album-sidebar {
-  flex-shrink: 0;
-  display: flex;
   flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  background: var(--bg-color);
-}
-
-.sidebar-resize-handle {
-  width: 1px;
-  background: var(--border-color);
-
-  &:hover,
-  &.is-active {
-    width: 3px;
-    flex-shrink: 0;
-    margin-left: -1px;
-    margin-right: -1px;
-    cursor: col-resize;
-    touch-action: none;
-    position: relative;
-    z-index: 2;
-    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
-  }
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 10px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-tertiary);
-  letter-spacing: 0.06em;
-}
-
-.sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.album-sidebar :deep(.ant-tree) {
-  background: transparent;
-  color: var(--color-text);
-  padding: 0 6px 10px;
-  flex: 1;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-indent-unit) {
-  width: 12px;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-treenode) {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-/* 有/无展开箭头均保留同宽占位，末级文字与上级对齐 */
-.album-sidebar :deep(.ant-tree .ant-tree-switcher) {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  min-width: 20px;
-  height: 24px;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-switcher-noop) {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-switcher svg) {
-  width: 16px;
-  height: 16px;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-node-content-wrapper) {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.album-sidebar :deep(.ant-tree .ant-tree-title) {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tree-node-title {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-top: 1px solid var(--border-color);
 }
 
 .album-main {
@@ -828,6 +530,13 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.album-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .album-filename-search {
@@ -928,13 +637,5 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-color);
   pointer-events: none;
   user-select: none;
-}
-</style>
-
-<!-- 拖拽侧栏时禁止选中文字并固定光标（挂在 body，需非 scoped） -->
-<style lang="scss">
-body.album-sidebar-resizing {
-  cursor: col-resize !important;
-  user-select: none !important;
 }
 </style>

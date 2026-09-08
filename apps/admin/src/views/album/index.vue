@@ -1,11 +1,11 @@
 <!--
-  相册主页 — 扁平时间线宫格（无目录树）
-  职责：扫描根目录、根下全部媒体进一条时间线；文件名/拍摄日搜索；时间浮层；缩略图增量
-  主流程：discover（sync 异物先收容进 pending，再索引含 pending）→ 扁平宫格 → 缩略图增量；可打开相册根目录
+  相册主页 — 扁平时间线（宫格 / 列表）
+  职责：扫描根目录、根下全部媒体；文件名/拍摄日搜索；统计；宫格虚拟滚动或 vxe 列表；时间浮层
+  主流程：discover → 扁平展示 → 缩略图增量；可打开相册根目录
 -->
 <script setup lang="ts">
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Modal, message } from "ant-design-vue";
 import { dateUtil } from "@llcz/common";
 import type { Dayjs } from "dayjs";
@@ -13,6 +13,8 @@ import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
+import type { VxeGridInstance, VxeGridProps } from "vxe-table";
+import type { VxeGridBindOptions } from "#/vxe-grid";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
@@ -25,7 +27,8 @@ import {
   type AlbumScanProgressPayload,
   type AlbumThumbReadyPayload,
   type MediaFile,
-  type MediaGroup
+  type MediaGroup,
+  type MediaKind
 } from "./types";
 
 defineOptions({ name: "AlbumGallery" });
@@ -33,6 +36,14 @@ defineOptions({ name: "AlbumGallery" });
 const router = useRouter();
 /** CS 桌面端才支持 opener 打开本地目录 */
 const inTauri = isTauri();
+
+/** 展示形态：宫格（自研虚拟滚动）/ 列表（vxe 虚拟滚动） */
+type AlbumViewMode = "grid" | "list";
+const viewMode = ref<AlbumViewMode>("grid");
+const VIEW_MODE_OPTIONS = [
+  { label: "宫格", value: "grid" },
+  { label: "列表", value: "list" }
+];
 
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
@@ -91,7 +102,7 @@ function matchesLocalSearch(file: MediaFile): boolean {
   return true;
 }
 
-/** 全库过滤 + 拍摄时间升序旧→新（供宫格 / Viewer / 时间浮层） */
+/** 全库过滤 + 拍摄时间升序旧→新（供宫格 / 列表 / Viewer / 时间浮层） */
 const filteredFiles = computed<MediaFile[]>(() => {
   return [...allMediaFiles.value]
     .filter(matchesLocalSearch)
@@ -102,6 +113,64 @@ const filteredFiles = computed<MediaFile[]>(() => {
       return a.name.localeCompare(b.name);
     });
 });
+
+/** 是否存在搜索/日期筛选（统计文案标注「已筛选」） */
+const hasActiveFilter = computed(
+  () => !!filenameKeyword.value.trim() || !!(captureDateRange.value?.[0] && captureDateRange.value?.[1])
+);
+
+/**
+ * 当前筛选结果统计：合计 + 图 / 视频 / 实况
+ */
+const filteredStats = computed(() => {
+  let image = 0;
+  let video = 0;
+  let live = 0;
+  for (const f of filteredFiles.value) {
+    if (f.kind === "video") video += 1;
+    else if (f.kind === "livephoto") live += 1;
+    else image += 1;
+  }
+  return { total: filteredFiles.value.length, image, video, live };
+});
+
+const filteredStatsText = computed(() => {
+  const s = filteredStats.value;
+  const base = `合计 ${s.total} · 图片 ${s.image} · 视频 ${s.video} · 实况 ${s.live}`;
+  return hasActiveFilter.value ? `${base}（已筛选）` : base;
+});
+
+function mediaKindLabel(kind: MediaKind): string {
+  if (kind === "video") return "视频";
+  if (kind === "livephoto") return "实况";
+  return "图片";
+}
+
+/** 列表「大小」列：可读字节 */
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let n = bytes / 1024;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatListCaptureAt(raw?: string): string {
+  const s = raw?.trim();
+  if (!s) return "—";
+  const d = dateUtil(s);
+  return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : s;
+}
+
+function listThumbUrl(file: MediaFile): string | undefined {
+  if (!file.thumbPath) return undefined;
+  return convertFileSrc(file.thumbPath);
+}
 
 /** Viewer 单组「全部」，与宫格同一过滤结果，避免索引错位 */
 const viewerGroups = computed<MediaGroup[]>(() => {
@@ -115,6 +184,91 @@ const viewerGroups = computed<MediaGroup[]>(() => {
     }
   ];
 });
+
+const listGridRef = ref<VxeGridInstance<MediaFile>>();
+
+/** 列表：本地全量数据 + 纵向虚拟滚动（无分页） */
+const listGridOptions = reactive<VxeGridProps<MediaFile>>({
+  height: "100%",
+  border: true,
+  showOverflow: true,
+  loading: false,
+  data: [],
+  rowConfig: {
+    keyField: "path",
+    isHover: true,
+    isCurrent: true
+  },
+  cellConfig: {
+    height: 56
+  },
+  columnConfig: {
+    resizable: true
+  },
+  // 相册列表本地排序；覆盖全局 remote:true
+  sortConfig: {
+    remote: false
+  },
+  scrollY: {
+    enabled: true,
+    gt: 0
+  },
+  toolbarConfig: {
+    enabled: false
+  },
+  pagerConfig: {
+    enabled: false
+  },
+  columns: [
+    {
+      field: "thumb",
+      title: "缩略图",
+      width: 72,
+      align: "center",
+      slots: { default: "thumb" }
+    },
+    {
+      field: "captureAt",
+      title: "拍摄时间",
+      width: 160,
+      slots: { default: "captureAt" }
+    },
+    {
+      field: "name",
+      title: "文件名",
+      minWidth: 200,
+      showOverflow: true
+    },
+    {
+      field: "kind",
+      title: "类型",
+      width: 88,
+      slots: { default: "kind" }
+    },
+    {
+      field: "size",
+      title: "大小",
+      width: 100,
+      align: "right",
+      slots: { default: "size" }
+    },
+    {
+      field: "tools",
+      title: "操作",
+      width: 88,
+      fixed: "right",
+      slots: { default: "tools" }
+    }
+  ]
+});
+
+watch(
+  filteredFiles,
+  files => {
+    listGridOptions.data = files;
+  },
+  { immediate: true }
+);
 
 const scanProgressPercent = computed(() => {
   const { phase, done, total } = scanProgress.value;
@@ -335,10 +489,19 @@ function cardStyle(idx: number): Record<string, string> {
 }
 
 /**
- * 滚到宫格底部（最新一端）；双 rAF 等列宽/总高布局稳定后再钉一次
- * @note 扫描完成、搜索筛选后调用；虚拟窗口仍双向切片
+ * 滚到最新一端；宫格改 scrollTop，列表用 vxe scrollToRow
+ * @note 扫描完成、搜索筛选、切换视图后调用
  */
 function scrollAlbumToBottom() {
+  if (viewMode.value === "list") {
+    nextTick(() => {
+      const files = filteredFiles.value;
+      const last = files[files.length - 1];
+      if (!last) return;
+      void listGridRef.value?.scrollToRow(last);
+    });
+    return;
+  }
   const apply = () => {
     const el = scrollEl.value;
     if (!el) return;
@@ -355,12 +518,16 @@ function scrollAlbumToBottom() {
   });
 }
 
-// 搜索条件变化滚底
+// 搜索条件变化滚底；切到列表也钉到底
 watch([filenameKeyword, captureDateRange], () => {
   scrollAlbumToBottom();
 });
-/** 列表高度变化（列数/文件数）时若已在底部附近则继续钉底，避免首帧高度为 0 */
+watch(viewMode, mode => {
+  if (mode === "list") scrollAlbumToBottom();
+});
+/** 宫格高度变化时若已在底部附近则继续钉底，避免首帧高度为 0 */
 watch([totalHeight, viewportHeight], () => {
+  if (viewMode.value !== "grid") return;
   const el = scrollEl.value;
   if (!el || totalHeight.value <= 0) return;
   const max = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -440,6 +607,8 @@ onBeforeUnmount(() => {
             :placeholder="['拍摄起始', '拍摄结束']"
             allow-clear
           />
+          <a-segmented v-model:value="viewMode" size="small" :options="VIEW_MODE_OPTIONS" />
+          <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
             <a-button v-if="inTauri" type="text" size="small" title="打开相册根目录" @click="openAlbumRootInExplorer">
               <template #icon>
@@ -464,7 +633,7 @@ onBeforeUnmount(() => {
           <a-progress :percent="scanProgressPercent" size="small" :show-info="false" class="thumb-progress-track" />
         </div>
 
-        <div class="album-grid-wrap">
+        <div v-show="viewMode === 'grid'" class="album-grid-wrap">
           <div ref="scrollEl" class="album-scroll">
             <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
             <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
@@ -481,6 +650,46 @@ onBeforeUnmount(() => {
           <div v-if="timelineLabel && allFiles.length > 0" class="album-timeline-chip" aria-hidden="true">
             {{ timelineLabel }}
           </div>
+        </div>
+
+        <div v-show="viewMode === 'list'" class="album-list-wrap">
+          <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
+          <vxe-grid v-else ref="listGridRef" class="album-list-grid" v-bind="listGridOptions as VxeGridBindOptions">
+            <template #thumb="{ row }">
+              <button type="button" class="list-thumb-btn" title="预览" @click="openViewer(row as MediaFile)">
+                <img
+                  v-if="listThumbUrl(row as MediaFile)"
+                  :src="listThumbUrl(row as MediaFile)"
+                  class="list-thumb-img"
+                  loading="lazy"
+                  decoding="async"
+                  alt=""
+                />
+                <span v-else class="list-thumb-placeholder">
+                  <IconifyIcon
+                    :icon="
+                      (row as MediaFile).kind === 'video' ? 'ant-design:play-circle-outlined' : 'ant-design:file-image-outlined'
+                    "
+                    width="18"
+                    height="18"
+                  />
+                </span>
+              </button>
+            </template>
+            <template #captureAt="{ row }">
+              {{ formatListCaptureAt((row as MediaFile).captureAt) }}
+            </template>
+            <template #kind="{ row }">
+              {{ mediaKindLabel((row as MediaFile).kind) }}
+            </template>
+            <template #size="{ row }">
+              {{ formatFileSize((row as MediaFile).size) }}
+            </template>
+            <template #tools="{ row }">
+              <a-button v-if="inTauri" type="link" size="small" danger @click="onDeleteLocal(row as MediaFile)">删除</a-button>
+              <span v-else>—</span>
+            </template>
+          </vxe-grid>
         </div>
       </main>
     </div>
@@ -530,6 +739,16 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.album-stats {
+  flex: 1;
+  min-width: 120px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .album-toolbar-actions {
@@ -595,6 +814,44 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.album-list-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+}
+
+.album-list-grid {
+  flex: 1;
+  min-height: 0;
+}
+
+.list-thumb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--fill-color, rgba(0, 0, 0, 0.04));
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.list-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.list-thumb-placeholder {
+  display: inline-flex;
+  color: var(--color-text-tertiary);
 }
 
 .album-scroll {

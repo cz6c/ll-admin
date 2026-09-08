@@ -17,7 +17,7 @@
 
 ```text
 ① 索引 discover     路径 / size / mtime / Live 配对           → 秒出列表（阻塞 invoke）
-   └─ sync 异物     output_dir 下非 `{unix}_{apple8}_{id16}` 媒体 → 移入 `pending/`（SKIP）
+   └─ sync 异物     output_dir 下非 `{unix}_{apple8}_{id16}` 媒体 → 移入 `pending/`（随后仍 discover，树/宫格可见）
 ② 展示 thumb        网格图 + HEIC preview + 尺寸真源         → 不挡首屏
 ③ 元数据 meta       仅补 capture_at、camera（空才写）         → 紧挨②成功之后
 ④ 播放 playback     H.264 代理 `_play.mp4`                   → 时机见下表

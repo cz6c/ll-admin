@@ -319,16 +319,14 @@ pub(crate) const SKIP_DIRS: &[&str] = &[
   ".cache",
   ".thumbnails",
   "Thumbs.db",
-  // 同步目录异物收容区：扫描跳过，不进 media.db / 宫格
-  "pending",
 ];
 
-/// 同步落盘目录下异物子目录名（与 SKIP_DIRS 一致）
+/// 同步落盘目录下异物子目录名；收容 Walk 跳过，discover **仍扫描**以便目录树/宫格可见
 const SYNC_PENDING_DIR: &str = "pending";
 
 /**
  * 当前同步落盘目录内：不合规命名的媒体移入 `pending/`（失败只打日志，不中断扫描）
- * @note 仅处理媒体扩展名；已在 pending 下的跳过；Live 两边都是异名时自然都会移
+ * @note 仅处理媒体扩展名；已在 pending 下的跳过（避免连环挪动）；随后 discover 会索引 pending
  */
 fn quarantine_nonsync_in_output_dir(sync_dir: &Path) {
   if !sync_dir.is_dir() {
@@ -343,7 +341,8 @@ fn quarantine_nonsync_in_output_dir(sync_dir: &Path) {
     .filter_entry(|e| {
       if e.file_type().is_dir() {
         let name = e.file_name().to_string_lossy();
-        !SKIP_DIRS.contains(&name.as_ref())
+        // 收容阶段跳过 pending + 通用 SKIP，避免把已隔离文件再挪一次
+        name.as_ref() != SYNC_PENDING_DIR && !SKIP_DIRS.contains(&name.as_ref())
       } else {
         true
       }

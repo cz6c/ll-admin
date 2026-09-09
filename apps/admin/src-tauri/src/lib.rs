@@ -62,6 +62,8 @@ pub fn run() {
       icloud_sync::icloud_sync_get_settings,
       icloud_sync::icloud_sync_save_settings,
       icloud_sync::icloud_sync_set_credentials,
+      icloud_sync::icloud_sync_get_remembered_password,
+      icloud_sync::icloud_sync_save_remembered_password,
       icloud_sync::icloud_sync_logout,
       icloud_sync::icloud_sync_login,
       icloud_sync::icloud_sync_submit_2fa,

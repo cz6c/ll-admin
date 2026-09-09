@@ -6,7 +6,7 @@
 import DuplicateGroupCard from "./DuplicateGroupCard.vue";
 import { deleteAlbumLocal, findAlbumLocalDuplicates, getAlbumRootDir } from "@/api/album";
 import { DUP_LIST_SCROLL_KEY } from "../duplicateListScroll";
-import { message } from "ant-design-vue";
+import $feedback from "@/utils/feedback";
 import type { DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence } from "../types";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -19,7 +19,6 @@ defineOptions({ name: "DuplicateCleanupModal" });
 
 const loading = ref(false);
 const deleting = ref(false);
-const error = ref("");
 const groups = shallowRef<DuplicateGroup[]>([]);
 const selectedPaths = ref<Set<string>>(new Set());
 const listScrollRef = ref<HTMLElement | null>(null);
@@ -139,7 +138,6 @@ function groupSelectionToken(group: DuplicateGroup): string {
 
 async function loadGroups() {
   loading.value = true;
-  error.value = "";
   groups.value = [];
   selectedPaths.value = new Set();
   try {
@@ -149,7 +147,7 @@ async function loadGroups() {
     groups.value = result;
     selectedPaths.value = new Set(defaultSelectedPaths(result));
   } catch (e: unknown) {
-    error.value = typeof e === "string" ? e : "扫描重复文件失败";
+    $feedback.message.error(typeof e === "string" ? e : "扫描重复文件失败");
   } finally {
     loading.value = false;
   }
@@ -170,7 +168,7 @@ function toggleMember(path: string, checked: boolean) {
   if (checked) {
     const nextSelected = members.filter(p => p === path || selectedPaths.value.has(p));
     if (nextSelected.length >= members.length) {
-      message.warning("同组至少保留一项，不能全部勾选删除");
+      $feedback.message.warning("同组至少保留一项，不能全部勾选删除");
       return;
     }
   }
@@ -271,13 +269,12 @@ async function onDeleteSelected() {
     const members = groupMemberPaths(group);
     const selectedInGroup = members.filter(p => pathSet.has(p)).length;
     if (selectedInGroup >= members.length) {
-      message.warning(`「${group.contentKey}」组不能全部删除，请至少保留一项`);
+      $feedback.message.warning(`「${group.contentKey}」组不能全部删除，请至少保留一项`);
       return;
     }
   }
 
   deleting.value = true;
-  error.value = "";
   try {
     const extraMov: string[] = [];
     for (const group of groups.value) {
@@ -295,10 +292,10 @@ async function onDeleteSelected() {
 
     groups.value = applyDeleteToGroups(groups.value, pathSet);
     selectedPaths.value = new Set(defaultSelectedPaths(groups.value));
-    message.success(`已删除 ${paths.length} 项`);
+    $feedback.message.success(`已删除 ${paths.length} 项`);
     emit("deleted");
   } catch (e: unknown) {
-    error.value = typeof e === "string" ? e : "删除失败";
+    $feedback.message.error(typeof e === "string" ? e : "删除失败");
     throw e;
   } finally {
     deleting.value = false;
@@ -325,8 +322,6 @@ async function onDeleteSelected() {
         </p>
 
         <a-spin :spinning="loading">
-          <a-alert v-if="error" type="error" :message="error" show-icon class="dup-alert" />
-
           <a-alert
             v-if="hasAmbiguousStem && groups.length > 0"
             type="warning"
@@ -336,7 +331,7 @@ async function onDeleteSelected() {
             :description="`有 ${ambiguousGroupCount} 组内含多个不同的同步落库项，删除前请对照缩略图与路径。`"
           />
 
-          <a-empty v-if="!loading && !error && groups.length === 0" description="未发现重复下载" />
+          <a-empty v-if="!loading && groups.length === 0" description="未发现重复下载" />
 
           <div v-else-if="groups.length > 0" class="dup-toolbar">
             <a-checkbox :checked="allSelected" :indeterminate="indeterminate" @change="(e: { target: { checked: boolean } }) => toggleAll(e.target.checked)">

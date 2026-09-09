@@ -1,19 +1,20 @@
 <!--
   iCloud 统一任务状态卡片（抽屉版）
-  职责：全局任务态主按钮与进度（抽屉顶部，不随列表 Tab 切换）
-  适用：IcloudSyncFab 抽屉顶部；删云进行中由全屏浮层接管，本卡隐藏「取消任务」
+  职责：抽屉顶部同步/catalog 任务态与主按钮；不随列表 Tab 切换
+  适用：IcloudSyncFab 抽屉顶部
+  @note 删云进度/成败一律由全屏浮层承接，本卡在 cloudDelete 时只保留「同步到本地」壳，不展示移除进度
+  @note 失败 / 会话失效 / 账号不一致走标题+主按钮行，不用 a-alert
 -->
 <script setup lang="ts">
-import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
+import { useIcloudSyncJob, type IcloudSyncPrimaryAction } from "@/composables/useIcloudSyncJob";
 
 defineOptions({ name: "IcloudSyncStatusCard" });
 
 const {
-  jobAccountMismatch,
-  showSessionExpiredAlert,
-  isDone,
   isFailed,
+  isLoggedIn,
   hasActiveJob,
+  hasIncompleteTask,
   isCataloging,
   isCloudDeleteTask,
   progress,
@@ -24,105 +25,105 @@ const {
   canCancelJob,
   discarding,
   pausing,
+  starting,
   onPause,
+  onSyncToLocal,
   confirmCancelJob,
   statusHeadline,
   statusDescription
 } = useIcloudSyncJob();
 
-/** 删云进度由全屏浮层展示，状态卡不再提供取消（同步/catalog 取消逻辑保留） */
+/** 删云由浮层接管：状态卡不提供取消 */
 const showCancelJobButton = computed(() => canCancelJob.value && !isCloudDeleteTask.value);
-
-/** 需展开说明的告警（账号不一致 / 会话失效 / 失败） */
-const showExpandedAlert = computed(
-  () => jobAccountMismatch.value || showSessionExpiredAlert.value || isFailed.value
-);
-
-const alertType = computed(() => {
-  if (jobAccountMismatch.value) return "error";
-  if (showSessionExpiredAlert.value) return "warning";
-  if (isDone.value) return "success";
-  if (isFailed.value) return "error";
-  if (isCataloging.value) return "info";
-  return undefined;
-});
 
 const progressStatsText = computed(() => {
   const p = progress.value;
   if (p.total <= 0) return "";
-  const verb = isCloudDeleteTask.value ? "已移除" : "已同步";
-  return `${p.total} · ${verb} ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
+  return `${p.total} · 已同步 ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
 });
 
-/** 暂停已作为主按钮展示时，不再重复渲染 */
-const showPauseButton = computed(() => canPause.value && primaryAction.value?.label !== "暂停同步");
+/** taskType === cloudDelete：进度卡只留同步壳，不展示移除进度/文案 */
+const cardHeadline = computed(() => (isCloudDeleteTask.value ? "准备就绪" : statusHeadline.value));
+
+const cardDescription = computed(() => {
+  if (isCloudDeleteTask.value) {
+    return isLoggedIn.value ? "可勾选已同步项，或使用「移除全部已同步」从 iCloud 移除副本" : "";
+  }
+  return statusDescription.value;
+});
+
+const cardShowProgress = computed(() => !isCloudDeleteTask.value && showProgressBar.value);
+
+const cardPrimary = computed((): IcloudSyncPrimaryAction | null => {
+  if (!isCloudDeleteTask.value) return primaryAction.value;
+  return {
+    label: "同步到本地",
+    kind: "primary",
+    loading: starting.value,
+    disabled: starting.value || hasIncompleteTask.value,
+    tip: "将先更新 iCloud 状态，再把待同步项同步到本地",
+    handler: onSyncToLocal
+  };
+});
+
+const showPauseButton = computed(
+  () => !isCloudDeleteTask.value && canPause.value && cardPrimary.value?.label !== "暂停同步"
+);
 </script>
 
 <template>
   <section class="status-card">
-    <a-alert
-      v-if="alertType && showExpandedAlert"
-      :type="alertType"
-      show-icon
-      class="status-alert"
-      :message="statusHeadline"
-      :description="statusDescription || undefined"
-    />
-
-    <template v-else>
-      <div class="status-head">
-        <div class="status-main">
-          <span class="status-title">{{ statusHeadline }}</span>
-        </div>
-        <div class="action-row">
-          <a-tooltip v-if="primaryAction?.tip" :title="primaryAction.tip">
-            <span class="primary-action-wrap">
-              <a-button
-                :type="primaryAction.kind === 'danger' ? 'primary' : primaryAction.kind"
-                :danger="primaryAction.kind === 'danger'"
-                :loading="primaryAction.loading"
-                :disabled="primaryAction.disabled"
-                @click="primaryAction.handler()"
-              >
-                {{ primaryAction.label }}
-              </a-button>
-            </span>
-          </a-tooltip>
-          <a-button
-            v-else-if="primaryAction"
-            :type="primaryAction.kind === 'danger' ? 'primary' : primaryAction.kind"
-            :danger="primaryAction.kind === 'danger'"
-            :loading="primaryAction.loading"
-            :disabled="primaryAction.disabled"
-            @click="primaryAction.handler()"
-          >
-            {{ primaryAction.label }}
-          </a-button>
-          <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停</a-button>
-          <a-tooltip v-if="hasActiveJob && isCataloging && !isCloudDeleteTask" title="扫描图库中，请稍候再取消">
-            <a-button disabled>取消任务</a-button>
-          </a-tooltip>
-          <a-button v-else-if="showCancelJobButton" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>
-        </div>
+    <div class="status-head">
+      <div class="status-main">
+        <span class="status-title">{{ cardHeadline }}</span>
       </div>
-
-      <div v-if="showProgressBar" class="progress-row">
-        <a-progress
-          class="progress-bar"
-          :percent="progressPercent"
-          :status="isFailed ? 'exception' : undefined"
-          size="small"
-          :show-info="false"
-        />
-        <span v-if="progress.total > 0" class="progress-percent">{{ progressPercent }}%</span>
-        <span class="progress-stats">{{ progressStatsText }}</span>
+      <div class="action-row">
+        <a-tooltip v-if="cardPrimary?.tip" :title="cardPrimary.tip">
+          <span class="primary-action-wrap">
+            <a-button
+              :type="cardPrimary.kind === 'danger' ? 'primary' : cardPrimary.kind"
+              :danger="cardPrimary.kind === 'danger'"
+              :loading="cardPrimary.loading"
+              :disabled="cardPrimary.disabled"
+              @click="cardPrimary.handler()"
+            >
+              {{ cardPrimary.label }}
+            </a-button>
+          </span>
+        </a-tooltip>
+        <a-button
+          v-else-if="cardPrimary"
+          :type="cardPrimary.kind === 'danger' ? 'primary' : cardPrimary.kind"
+          :danger="cardPrimary.kind === 'danger'"
+          :loading="cardPrimary.loading"
+          :disabled="cardPrimary.disabled"
+          @click="cardPrimary.handler()"
+        >
+          {{ cardPrimary.label }}
+        </a-button>
+        <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停</a-button>
+        <a-tooltip v-if="hasActiveJob && isCataloging && !isCloudDeleteTask" title="扫描图库中，请稍候再取消">
+          <a-button disabled>取消任务</a-button>
+        </a-tooltip>
+        <a-button v-else-if="showCancelJobButton" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>
       </div>
+    </div>
 
-      <!-- 说明一律内联；不再用「详情」tip（与正文重复或不如直接阅读） -->
-      <p v-if="statusDescription" class="status-desc">
-        {{ statusDescription }}
-      </p>
-    </template>
+    <div v-if="cardShowProgress" class="progress-row">
+      <a-progress
+        class="progress-bar"
+        :percent="progressPercent"
+        :status="isFailed ? 'exception' : undefined"
+        size="small"
+        :show-info="false"
+      />
+      <span v-if="progress.total > 0" class="progress-percent">{{ progressPercent }}%</span>
+      <span class="progress-stats">{{ progressStatsText }}</span>
+    </div>
+
+    <p v-if="cardDescription" class="status-desc">
+      {{ cardDescription }}
+    </p>
   </section>
 </template>
 
@@ -131,9 +132,6 @@ const showPauseButton = computed(() => canPause.value && primaryAction.value?.la
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-.status-alert {
-  margin-bottom: 0;
 }
 .status-head {
   display: flex;

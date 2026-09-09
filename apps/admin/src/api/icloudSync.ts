@@ -23,29 +23,21 @@ export interface IcloudSyncSettings {
   /** 并发下载数；P1 允许 1–3，由设置页配置 */
   concurrency: number;
   appleId: string;
-  /** 已勾选锁号风险 ToS */
-  riskAccepted: boolean;
-  /** 已确认开启「网页访问 iCloud 数据」 */
-  checklistWebAccess: boolean;
-  /** 已确认关闭 Advanced Data Protection */
-  checklistAdpOff: boolean;
   /** iCloud 根域：`com` 国际 / `cn` 中国大陆 */
   icloudDomain: "com" | "cn";
+  /** 「记住我」：下次登录回填钥匙串密码 */
+  rememberPassword: boolean;
 }
 
-/** auth 页 consent / 凭据 / session 概况（不含密码明文） */
+/** 凭据 / session 概况（不含密码明文） */
 export interface IcloudSyncAuthState {
   appleId: string;
   hasPassword: boolean;
-  riskAccepted: boolean;
-  checklistWebAccess: boolean;
-  checklistAdpOff: boolean;
-  consentReady: boolean;
   /** session 目录是否有落盘文件；不保证仍有效 */
   sessionPresent: boolean;
   /** 当前 Apple ID 是否已有专属 session 文件 */
   sessionForCurrentAppleId: boolean;
-  /** 已登录（须主动退出后才能再次登录） */
+  /** 已登录（须主动退出后才能再次登录）；以 auth_probe 为准，非仅磁盘有 session 文件 */
   loggedIn: boolean;
   /** 当前设置的 iCloud 根域 */
   icloudDomain: "com" | "cn";
@@ -97,6 +89,8 @@ export interface IcloudSyncJobStatusResult {
   done: number;
   failed: number;
   pending: number;
+  /** 任务级失败摘要（如 network_error）；仅 failed 时可能有 */
+  errorMessage?: string | null;
 }
 
 /** Rust 推送的进度事件负载 */
@@ -253,6 +247,7 @@ export const ICLOUD_SYNC_ERROR_CODES = {
   SESSION_EXPIRED: "session_expired",
   ACCOUNT_LOCKED: "account_locked",
   RATE_LIMITED: "rate_limited",
+  NETWORK_ERROR: "network_error",
   CATALOG_SORT_MISSING: "catalog_sort_missing",
   LIVE_BIND_MISSING: "live_bind_missing",
   DOWNLOAD_FAILED: "download_failed",
@@ -268,6 +263,8 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_MISSING]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_VERSION_MISMATCH]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.AUTH_FAILED]: "登录失败，请检查 Apple ID 与密码",
+  [ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR]:
+    "无法连接 Apple iCloud，请检查网络；若选择「国际」区域，通常需要可访问 icloud.com 的代理",
   [ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED]: "登录状态已失效，请重新登录后继续同步",
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_LOCKED]: "账号可能被临时锁定，请前往 Apple 官方页面（iforgot.apple.com）解锁后再试；请勿在本工具内重复尝试登录",
   [ICLOUD_SYNC_ERROR_CODES.RATE_LIMITED]: "请求过于频繁，请稍后再试；请勿在本工具内重复尝试登录",
@@ -323,7 +320,7 @@ export function formatAssetTaskError(raw: string | null | undefined): string {
   return trimmed;
 }
 
-/** 开始同步前校验：相册根目录、落盘路径、登录与 consent */
+/** 开始同步前校验：相册根目录、落盘路径、登录态 */
 export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: false; message: string }> {
   const [albumRoot, settings, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncSettings(), getIcloudSyncAuthState()]);
   if (!albumRoot.trim()) {
@@ -335,9 +332,6 @@ export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: fa
   }
   if (!auth.loggedIn) {
     return { ok: false, message: "请先登录 Apple ID" };
-  }
-  if (!auth.consentReady) {
-    return { ok: false, message: "请完成 iCloud 同步授权确认（登录弹窗内勾选）" };
   }
   return { ok: true };
 }
@@ -353,11 +347,27 @@ export function saveIcloudSyncSettings(settings: IcloudSyncSettings) {
 }
 
 /**
- * 保存 Apple ID 与密码（密码进 keyring，不进 settings.json）
+ * 保存 Apple ID 到 settings（不含密码）
  * @returns 是否变更了 Apple ID（换号时会清 sidecar 与旧 session）
  */
-export function setIcloudSyncCredentials(appleId: string, password: string) {
-  return invoke<boolean>("icloud_sync_set_credentials", { appleId, password });
+export function setIcloudSyncCredentials(appleId: string) {
+  return invoke<boolean>("icloud_sync_set_credentials", { appleId });
+}
+
+/**
+ * 读取「记住我」下的密码供登录面板回填
+ * @note 未勾选记住我时 Rust 恒返回 null
+ */
+export function getIcloudSyncRememberedPassword() {
+  return invoke<string | null>("icloud_sync_get_remembered_password");
+}
+
+/**
+ * 勾选「记住我」且登录成功后写入钥匙串
+ * @note 须先把 settings.rememberPassword 存为 true
+ */
+export function saveIcloudSyncRememberedPassword(password: string) {
+  return invoke<void>("icloud_sync_save_remembered_password", { password });
 }
 
 /** 登出：清 sidecar 内存态与当前账号 session；保留 settings 中的 Apple ID */
@@ -365,14 +375,14 @@ export function logoutIcloudSync(clearSession = true) {
   return invoke<void>("icloud_sync_logout", { clearSession });
 }
 
-/** 读取 auth 页 consent / 凭据 / session 概况 */
+/** 读取凭据 / session 概况 */
 export function getIcloudSyncAuthState() {
   return invoke<IcloudSyncAuthState>("icloud_sync_auth_state");
 }
 
-/** 向 sidecar 发起 auth；需 consent 三门禁 + 已存凭据 */
-export function loginIcloudSync() {
-  return invoke<IcloudSyncLoginResult>("icloud_sync_login");
+/** 向 sidecar 发起 auth：密码本次直传，不经钥匙串 */
+export function loginIcloudSync(password: string) {
+  return invoke<IcloudSyncLoginResult>("icloud_sync_login", { password });
 }
 
 /** 提交 2FA 验证码 */

@@ -522,6 +522,7 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
         CODE_DOMAIN_MISMATCH,
         CODE_DOWNLOAD_FAILED,
         CODE_NEED_2FA,
+        CODE_NETWORK_ERROR,
         CODE_RATE_LIMITED,
         CODE_SESSION_EXPIRED,
     )
@@ -534,10 +535,38 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
         return CODE_SESSION_EXPIRED
     if exc_type == "IcloudDomainMismatchError":
         return CODE_DOMAIN_MISMATCH
-    if exc_type == "PyiCloudConnectionException" or is_domain_mismatch_exception(exc):
+    if is_domain_mismatch_exception(exc) and parse_required_domain(exc):
         return CODE_DOMAIN_MISMATCH
     msg = str(exc)
     code = str(getattr(exc, "code", "") or "")
+    lowered = msg.lower()
+    if exc_type in (
+        "ConnectionError",
+        "TimeoutError",
+        "ProxyError",
+        "SSLError",
+        "URLError",
+        "MaxRetryError",
+        "NewConnectionError",
+    ) or any(
+        p in lowered
+        for p in (
+            "timed out",
+            "timeout",
+            "unreachable",
+            "connection refused",
+            "connection reset",
+            "max retries exceeded",
+            "failed to resolve",
+            "getaddrinfo",
+            "no route to host",
+            "cannot connect",
+        )
+    ):
+        return CODE_NETWORK_ERROR
+    # ConnectionException 无明确区域要求时按网络失败（国际区常需代理）
+    if exc_type == "PyiCloudConnectionException" or is_domain_mismatch_exception(exc):
+        return CODE_NETWORK_ERROR
 
     if exc_type in ("PyiCloudFailedLoginException",):
         return CODE_AUTH_FAILED

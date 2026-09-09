@@ -1,7 +1,7 @@
 # iCloud 同步 — Apple ID 登录流程
 
 > **职责：** 用户显式登录一次 → 拿到 WEBAUTH → 同步只用 `auth_probe`（无密码）。  
-> **组件：** `components/IcloudSyncAuthModal.vue`  
+> **组件：** `components/IcloudSyncAuthPanel.vue`（抽屉内嵌）  
 > **实现：** `icloud_sync/mod.rs` · sidecar `agent.py` / `icloudAuth.py`（pyicloud_ipd @ icloudpd v1.32.3）  
 > **第一优先级：锁号风险最低**（少打 Apple 登录 API）  
 > **对齐：** 2026-08-27
@@ -14,7 +14,7 @@
 
 ```mermaid
 flowchart LR
-  A[弹窗登录] --> B[单次 SRP auth]
+  A[抽屉内登录] --> B[单次 SRP auth]
   B --> C{need_2fa?}
   C -->|否| D[WEBAUTH 就绪]
   C -->|是| E[手机允许 + 输入 6 位码]
@@ -25,12 +25,12 @@ flowchart LR
 
 | 步 | 谁做 | 说明 |
 |----|------|------|
-| 1 | 用户 | consent + Apple ID/密码 → **只点一次「登录」** |
+| 1 | 用户 | Apple ID/密码 → **只点一次「登录」** |
 | 2 | sidecar | 单次 SRP（signin/init+complete）；触发设备验证推送 **仅 1 次** |
 | 3 | 用户（手机） | 点「允许」→ 看 6 位码（**无开放 API，应用代劳不了**） |
 | 4 | 用户（PC） | 30 秒内输入码 → `auth_2fa`（legacy POST，至多 1 次 `trust_session`） |
-| 5 | 判定 | 有 `X-APPLE-WEBAUTH-TOKEN` 且 authenticated → 才算可同步 |
-| 6 | 同步 | 仅 `auth_probe`；失效 → 用户显式重登，**禁止**后台带密码重登 |
+| 5 | 判定 | **auth_probe 成功**（有有效 WEBAUTH）才算已登录；仅有磁盘 session 文件不够 |
+| 6 | 同步 | 仅 `auth_probe`；失效 → 清伪 session + 用户显式重登，**禁止**后台带密码重登 |
 
 **硬规则（改代码勿破）：**
 
@@ -38,7 +38,8 @@ flowchart LR
 2. 同一 2FA challenge **不重复推送**（`mfa_delivery_kicked_off`）。  
 3. 禁止 2FA 收尾再 `authenticate(force_refresh)` / 外层重复 accountLogin。  
 4. 每条验证码：单路径校验 + **至多 1 次** trust。  
-5. `account_locked` / `rate_limited` → 硬停，交给用户。
+5. `account_locked` / `rate_limited` → 硬停，交给用户。  
+6. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。
 
 **单次登录 Apple API 预算：** SRP×1 · 推送×1 · 提交码×1 · trust×≤1。不应出现二次 bridge / 3 轮 trust / 同步带密码。
 
@@ -46,7 +47,7 @@ flowchart LR
 
 ## 速查
 
-### 弹窗状态
+### 登录面板状态
 
 ```mermaid
 stateDiagram-v2
@@ -69,7 +70,7 @@ Need2FA 时：**禁止再点「登录」**；先换码，连续失败则 logout 
 | code | 动作 |
 |------|------|
 | `need_2fa` | 输入验证码 |
-| `auth_failed` | 同弹窗换新码；**勿**再点登录 |
+| `auth_failed` | 同面板换新码；**勿**再点登录 |
 | `session_expired` | logout → 隔几小时再登（WEBAUTH 真失效） |
 | `domain_mismatch` | 设置切 com/cn → logout → 完整重登 |
 | `account_locked` / `rate_limited` | **立即停止** |
@@ -83,7 +84,7 @@ flowchart LR
   A[start/resume] --> B[auth_probe]
   B --> C{WEBAUTH?}
   C -->|有效| D[继续下载]
-  C -->|待 2FA| E[登录弹窗]
+  C -->|待 2FA| E[抽屉登录面板]
   C -->|失效| F[paused_session]
   C -->|区域不符| G[domain_mismatch]
 ```
@@ -105,7 +106,7 @@ flowchart LR
 | 推送「设备验证」 | Apple → iPhone | 触发可以，展示不行 |
 | 点「允许」 | iPhone 系统 UI | **否** |
 | 显示 6 位码 | iPhone | 否 |
-| 输入提交 | 本弹窗 | 是（`auth_2fa`） |
+| 输入提交 | 抽屉登录面板 | 是（`auth_2fa`） |
 | 换 WEBAUTH | sidecar | 是 |
 
 ### 登出 / 换号
@@ -117,7 +118,7 @@ flowchart LR
 ### 实机建议
 
 1. 重启 `cs:dev` → **退出登录**清半成品  
-2. consent + 关闭 Advanced Data Protection  
+2. 确认已开启网页访问 iCloud、已关闭 Advanced Data Protection  
 3. **登录一次** → 手机允许 → **30s 内**输码  
 4. 失败：换新码；连续失败 → logout，等数小时  
 
@@ -131,7 +132,7 @@ flowchart LR
 
 | 路径 | 内容 |
 |------|------|
-| keyring | 密码 |
+| keyring | 仅「记住我」成功登录后存密码，供下次回填；**登录 SRP 不读钥匙串** |
 | `{session_dir}/{appleId}.session` | pyicloud session |
 | `auth-diagnostic.json` | 最近一次认证/同步诊断（无密码/验证码） |
 

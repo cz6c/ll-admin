@@ -4,7 +4,7 @@
   主流程：hydrate → FAB → StatusCard → 拉取筛选项列表；删云经确认后全屏浮层展示进度/成败
 -->
 <script setup lang="ts">
-import IcloudSyncAuthModal from "./IcloudSyncAuthModal.vue";
+import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import {
@@ -31,7 +31,7 @@ import {
   type CloudListStateFilterOption,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
-import { Modal, message } from "ant-design-vue";
+import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
 import { useDebounceFn, useResizeObserver, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
@@ -52,8 +52,6 @@ const {
   fabState,
   isLoggedIn,
   maskedCurrentAppleId,
-  authModalOpen,
-  errorMsg,
   cloudStateTick,
   downloadProgressTick,
   canManageCloudSpace,
@@ -65,13 +63,17 @@ const {
   progress,
   progressPercent,
   onLoggedIn,
-  onLoggedOut,
   onLogoutAccount,
-  hydrateFromStorage
+  hydrateFromStorage,
+  refreshAccountSettings,
+  clearActiveJob
 } = useIcloudSyncJob();
 
 const drawerOpen = ref(false);
 const loggingOut = ref(false);
+
+/** 抽屉打开且未登录：内嵌登录面板（替代原弹窗） */
+const authPanelActive = computed(() => drawerOpen.value && !isLoggedIn.value);
 
 /** 列表筛选项（仅「同步到本地」PULL 子集） */
 const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
@@ -165,7 +167,7 @@ function onRefreshCatalogClick() {
 /** 有任务进行中时禁止删云 / 刷新 catalog */
 function guardCloudManageAction(): boolean {
   if (canManageCloudSpace.value) return true;
-  message.warning(TASK_BUSY_HINT);
+  $feedback.message.warning(TASK_BUSY_HINT);
   return false;
 }
 
@@ -282,7 +284,7 @@ async function refreshCloudAssets() {
     refreshSelectedRowsFromPage(cloudRows.value);
   } catch (e) {
     // 列表加载失败用轻提示，避免底栏粘住历史错误
-    message.error(formatIcloudSyncError(e));
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     loadingCloud.value = false;
   }
@@ -336,8 +338,8 @@ function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): strin
 /** 入队结果：有跳过项用 warning，全部成功用 success */
 function notifyDeleteEnqueueResult(result: IcloudSyncDeleteAssetsResult) {
   const text = formatDeleteEnqueueMessage(result);
-  if (result.rejected > 0) message.warning(text);
-  else message.success(text);
+  if (result.rejected > 0) $feedback.message.warning(text);
+  else $feedback.message.success(text);
 }
 
 /**
@@ -346,8 +348,8 @@ function notifyDeleteEnqueueResult(result: IcloudSyncDeleteAssetsResult) {
  */
 function notifyDeleteOpError(e: unknown) {
   const text = formatIcloudSyncError(e);
-  if (text.includes("没有可删除")) message.warning(text);
-  else message.error(text);
+  if (text.includes("没有可删除")) $feedback.message.warning(text);
+  else $feedback.message.error(text);
 }
 
 /** 打开删云浮层并绑定任务（入队 / 重试成功后） */
@@ -357,9 +359,12 @@ async function beginCloudDeleteOverlay(jobId: number) {
   await bindActiveTask(jobId);
 }
 
-/** 关闭浮层：刷新列表并清空勾选；不切换筛选项 */
+/** 关闭浮层：刷新列表并清空勾选；终态删云任务卸掉，进度卡回到同步空闲 */
 function closeCloudDeleteOverlay() {
   cloudDeleteOverlayPhase.value = "idle";
+  if (isCloudDeleteTask.value && (jobStatus.value === "done" || jobStatus.value === "failed")) {
+    clearActiveJob();
+  }
   clearCloudSelection();
   void refreshCloudAssets();
 }
@@ -400,28 +405,22 @@ const cloudDeleteOverlayDetail = computed(() => {
   return "";
 });
 
-/** Modal 共用：1.5s 冷却 + 最近删除说明 */
-function openDeleteConfirmModal(opts: { title: string; content: string; onConfirm: () => Promise<void> }) {
-  let remainMs = 1500;
-  const modal = Modal.confirm({
-    title: opts.title,
-    content: opts.content,
-    okText: "确认移除 (2s)",
-    okType: "danger",
-    okButtonProps: { disabled: true },
-    cancelText: "取消",
-    onOk: () => opts.onConfirm()
-  });
-
-  const timer = window.setInterval(() => {
-    remainMs -= 200;
-    if (remainMs <= 0) {
-      window.clearInterval(timer);
-      modal.update({ okText: "确认从 iCloud 移除", okButtonProps: { disabled: false } });
-      return;
-    }
-    modal.update({ okText: `确认移除 (${Math.ceil(remainMs / 1000)}s)` });
-  }, 200);
+/** 删云确认：1.5s 冷却后才可点确认（设计 §安全） */
+async function openDeleteConfirmModal(opts: { title: string; content: string; onConfirm: () => Promise<void> }) {
+  try {
+    await $feedback.confirm(opts.content, {
+      title: opts.title,
+      okText: "确认从 iCloud 移除",
+      cooldownMs: 1500
+    });
+  } catch {
+    return;
+  }
+  try {
+    await opts.onConfirm();
+  } catch {
+    /* onConfirm 内已 toast；此处吞掉避免未处理 rejection */
+  }
 }
 
 /** 从 iCloud 移除确认 Modal：1.5s 冷却后才可点确认（设计 §安全） */
@@ -429,7 +428,7 @@ function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
   const selected = selectedCloudRows().filter(row => row.cloudState === "synced");
   if (selected.length === 0) {
-    message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
+    $feedback.message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
     return;
   }
 
@@ -438,7 +437,6 @@ function confirmDeleteCloud() {
     content: ICLOUD_REMOVE_HINT,
     onConfirm: async () => {
       deletingCloud.value = true;
-      errorMsg.value = "";
       try {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
         notifyDeleteEnqueueResult(result);
@@ -459,7 +457,7 @@ function confirmDeleteAllSynced() {
   if (!guardCloudManageAction()) return;
   const syncedCount = cloudSummary.value?.synced ?? 0;
   if (syncedCount <= 0) {
-    message.info("没有已同步到本地、可从 iCloud 移除的项");
+    $feedback.message.info("没有已同步到本地、可从 iCloud 移除的项");
     return;
   }
 
@@ -468,7 +466,6 @@ function confirmDeleteAllSynced() {
     content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
     onConfirm: async () => {
       deletingAllSynced.value = true;
-      errorMsg.value = "";
       try {
         const result = await deleteAllSyncedIcloudAssets();
         notifyDeleteEnqueueResult(result);
@@ -488,14 +485,13 @@ function confirmDeleteAllSynced() {
 async function onRetryCloudDeletesFromOverlay() {
   if (retryingCloudDelete.value) return;
   retryingCloudDelete.value = true;
-  errorMsg.value = "";
   try {
     const result = await retryIcloudSyncCloudDeletes();
     if (result.retried === 0) {
-      message.info("没有需要从 iCloud 移除的失败项");
+      $feedback.message.info("没有需要从 iCloud 移除的失败项");
       return;
     }
-    message.success(`已重新安排 ${result.retried} 项从 iCloud 移除`);
+    $feedback.message.success(`已重新安排 ${result.retried} 项从 iCloud 移除`);
     await beginCloudDeleteOverlay(result.jobId);
   } catch (e) {
     notifyDeleteOpError(e);
@@ -526,7 +522,11 @@ watch(canManageCloudSpace, ok => {
 });
 
 watch(drawerOpen, open => {
-  if (open) refreshCloudIfVisible();
+  if (open) {
+    // A′：开抽屉只刷 settings 展示，不 auth_probe
+    void refreshAccountSettings();
+    refreshCloudIfVisible();
+  }
 });
 
 watch(isLoggedIn, refreshCloudIfVisible);
@@ -555,11 +555,10 @@ const showProgress = computed(() => fabState.value.percent > 0 && fabState.value
 
 async function onLogout() {
   loggingOut.value = true;
-  errorMsg.value = "";
   try {
     await onLogoutAccount();
   } catch (e) {
-    errorMsg.value = formatIcloudSyncError(e);
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     loggingOut.value = false;
   }
@@ -588,18 +587,19 @@ onMounted(() => {
   >
     <template #extra>
       <a-space v-if="isLoggedIn" :size="4" align="center">
-        <a-tag color="success" class="drawer-extra-tag">{{ maskedCurrentAppleId }}</a-tag>
+        <div class="drawer-extra-tag">{{ maskedCurrentAppleId }}</div>
         <a-button type="link" size="small" danger :loading="loggingOut" @click="onLogout">退出</a-button>
       </a-space>
-      <a-button v-else type="link" size="small" @click="authModalOpen = true">登录</a-button>
     </template>
 
     <div class="drawer-body">
-      <div class="upper-panel">
-        <IcloudSyncStatusCard />
-      </div>
+      <IcloudSyncAuthPanel v-if="!isLoggedIn" :active="authPanelActive" @logged-in="onLoggedIn" />
 
-      <template v-if="isLoggedIn">
+      <template v-else>
+        <div class="upper-panel">
+          <IcloudSyncStatusCard />
+        </div>
+
         <div class="cloud-toolbar">
           <a-tabs v-model:activeKey="cloudFilter" size="small" class="filter-tabs" @change="onCloudFilterChange">
             <a-tab-pane v-for="tab in cloudStateFilterTabs" :key="tab.value">
@@ -666,8 +666,7 @@ onMounted(() => {
                 size: 'small',
                 showSizeChanger: true,
                 pageSizeOptions: ['30', '50', '100'],
-                showTotal: (total: number) =>
-                  cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`
+                showTotal: (total: number) => (cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`)
               }"
               @change="onCloudTableChange"
             >
@@ -699,11 +698,7 @@ onMounted(() => {
           </a-spin>
         </div>
       </template>
-
-      <a-alert v-if="errorMsg" type="error" :message="errorMsg" show-icon class="drawer-error" />
     </div>
-
-    <IcloudSyncAuthModal v-model:open="authModalOpen" @logged-in="onLoggedIn" @logged-out="onLoggedOut" />
   </a-drawer>
 
   <!-- 删云全屏浮层：进度 / 完成 / 失败摘要；无取消；失败可重试 -->
@@ -722,12 +717,7 @@ onMounted(() => {
         <p v-if="cloudDeleteOverlayDetail" class="icloud-cloud-delete-overlay__detail">{{ cloudDeleteOverlayDetail }}</p>
         <div v-if="cloudDeleteOverlayPhase === 'done' || cloudDeleteOverlayPhase === 'failed'" class="icloud-cloud-delete-overlay__actions">
           <a-button @click="closeCloudDeleteOverlay()">关闭</a-button>
-          <a-button
-            v-if="cloudDeleteOverlayPhase === 'failed'"
-            type="primary"
-            :loading="retryingCloudDelete"
-            @click="onRetryCloudDeletesFromOverlay()"
-          >
+          <a-button v-if="cloudDeleteOverlayPhase === 'failed'" type="primary" :loading="retryingCloudDelete" @click="onRetryCloudDeletesFromOverlay()">
             重试失败项
           </a-button>
         </div>
@@ -812,10 +802,6 @@ onMounted(() => {
   min-height: 0;
   overflow: hidden;
   gap: 14px;
-}
-.drawer-error {
-  flex-shrink: 0;
-  margin-bottom: 0;
 }
 .upper-panel {
   flex-shrink: 0;

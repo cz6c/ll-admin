@@ -5,8 +5,8 @@
 -->
 <script setup lang="ts">
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { Modal, message } from "ant-design-vue";
+import { invoke } from "@tauri-apps/api/core";
+import $feedback from "@/utils/feedback";
 import { dateUtil } from "@llcz/common";
 import type { Dayjs } from "dayjs";
 import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
@@ -16,6 +16,7 @@ import { useElementSize, useScroll } from "@vueuse/core";
 import type { VxeGridInstance, VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
+import AlbumThumbMedia from "./components/AlbumThumbMedia.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
@@ -40,10 +41,6 @@ const inTauri = isTauri();
 /** 展示形态：宫格（自研虚拟滚动）/ 列表（vxe 虚拟滚动） */
 type AlbumViewMode = "grid" | "list";
 const viewMode = ref<AlbumViewMode>("grid");
-const VIEW_MODE_OPTIONS = [
-  { label: "宫格", value: "grid" },
-  { label: "列表", value: "list" }
-];
 
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
@@ -104,20 +101,16 @@ function matchesLocalSearch(file: MediaFile): boolean {
 
 /** 全库过滤 + 拍摄时间升序旧→新（供宫格 / 列表 / Viewer / 时间浮层） */
 const filteredFiles = computed<MediaFile[]>(() => {
-  return [...allMediaFiles.value]
-    .filter(matchesLocalSearch)
-    .sort((a, b) => {
-      const ta = mediaTimeSortKey(a);
-      const tb = mediaTimeSortKey(b);
-      if (ta !== tb) return ta - tb;
-      return a.name.localeCompare(b.name);
-    });
+  return [...allMediaFiles.value].filter(matchesLocalSearch).sort((a, b) => {
+    const ta = mediaTimeSortKey(a);
+    const tb = mediaTimeSortKey(b);
+    if (ta !== tb) return ta - tb;
+    return a.name.localeCompare(b.name);
+  });
 });
 
 /** 是否存在搜索/日期筛选（统计文案标注「已筛选」） */
-const hasActiveFilter = computed(
-  () => !!filenameKeyword.value.trim() || !!(captureDateRange.value?.[0] && captureDateRange.value?.[1])
-);
+const hasActiveFilter = computed(() => !!filenameKeyword.value.trim() || !!(captureDateRange.value?.[0] && captureDateRange.value?.[1]));
 
 /**
  * 当前筛选结果统计：合计 + 图 / 视频 / 实况
@@ -165,11 +158,6 @@ function formatListCaptureAt(raw?: string): string {
   if (!s) return "—";
   const d = dateUtil(s);
   return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : s;
-}
-
-function listThumbUrl(file: MediaFile): string | undefined {
-  if (!file.thumbPath) return undefined;
-  return convertFileSrc(file.thumbPath);
 }
 
 /** Viewer 单组「全部」，与宫格同一过滤结果，避免索引错位 */
@@ -224,7 +212,6 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
       field: "thumb",
       title: "缩略图",
       width: 72,
-      align: "center",
       slots: { default: "thumb" }
     },
     {
@@ -236,6 +223,7 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
     {
       field: "name",
       title: "文件名",
+      align: "left",
       minWidth: 200,
       showOverflow: true
     },
@@ -249,7 +237,6 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
       field: "size",
       title: "大小",
       width: 100,
-      align: "right",
       slots: { default: "size" }
     },
     {
@@ -307,13 +294,13 @@ const showFullPageScanProgress = computed(() => scanProgress.value.phase === "th
  */
 async function openAlbumRootInExplorer() {
   if (!inTauri) {
-    message.warning("仅桌面端可打开本地目录");
+    $feedback.message.warning("仅桌面端可打开本地目录");
     return;
   }
   try {
     await openAlbumDir(".");
   } catch (e) {
-    message.error(e instanceof Error ? e.message : String(e) || "打开目录失败");
+    $feedback.message.error(e instanceof Error ? e.message : String(e) || "打开目录失败");
   }
 }
 
@@ -399,25 +386,24 @@ function onDuplicatesDeleted() {
 }
 
 /** 右键删除本地文件（不触碰 iCloud sync assets） */
-function onDeleteLocal(file: MediaFile) {
+async function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
-  Modal.confirm({
-    title: "删除本地文件？",
-    content: `将从磁盘删除「${file.name}」，不影响 iCloud 云端。`,
-    okText: "删除",
-    okType: "danger",
-    cancelText: "取消",
-    async onOk() {
-      const paths = [file.path];
-      if (file.videoPath?.trim()) paths.push(file.videoPath);
-      await deleteAlbumLocal(paths);
-      message.success("已删除本地文件");
-      groups.value = groups.value.map(g => ({
-        ...g,
-        files: g.files.filter(f => f.path !== file.path)
-      }));
-    }
-  });
+  try {
+    await $feedback.confirm(`将从磁盘删除「${file.name}」，不影响 iCloud 云端。`, {
+      title: "删除本地文件？",
+      okText: "删除"
+    });
+  } catch {
+    return;
+  }
+  const paths = [file.path];
+  if (file.videoPath?.trim()) paths.push(file.videoPath);
+  await deleteAlbumLocal(paths);
+  $feedback.message.success("已删除本地文件");
+  groups.value = groups.value.map(g => ({
+    ...g,
+    files: g.files.filter(f => f.path !== file.path)
+  }));
 }
 
 // ===== 虚拟滚动：仅渲染可视区 + 上下缓冲的卡片，大相册不爆 DOM =====
@@ -462,10 +448,7 @@ const timelineLabel = computed(() => {
     return "";
   }
   const firstVisibleRow = Math.min(totalRows.value - 1, Math.max(0, Math.floor(scrollTop.value / rowHeight.value)));
-  const lastVisibleRow = Math.min(
-    totalRows.value - 1,
-    Math.max(0, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) - 1)
-  );
+  const lastVisibleRow = Math.min(totalRows.value - 1, Math.max(0, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) - 1));
   const firstIdx = Math.min(files.length - 1, firstVisibleRow * cols.value);
   const lastIdx = Math.min(files.length - 1, (lastVisibleRow + 1) * cols.value - 1);
   const first = files[firstIdx];
@@ -594,35 +577,33 @@ onBeforeUnmount(() => {
     <div v-else class="album-layout">
       <main class="album-main">
         <div class="album-toolbar">
-          <a-input
-            v-model:value="filenameKeyword"
-            class="album-filename-search"
-            allow-clear
-            placeholder="文件名"
-            spellcheck="false"
-          />
-          <a-range-picker
-            v-model:value="captureDateRange"
-            class="album-date-range"
-            :placeholder="['拍摄起始', '拍摄结束']"
-            allow-clear
-          />
-          <a-segmented v-model:value="viewMode" size="small" :options="VIEW_MODE_OPTIONS" />
+          <a-input v-model:value="filenameKeyword" class="album-filename-search" allow-clear placeholder="文件名" spellcheck="false" />
+          <a-range-picker v-model:value="captureDateRange" class="album-date-range" :placeholder="['拍摄起始', '拍摄结束']" allow-clear />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
+            <a-button
+              type="text"
+              size="small"
+              :title="viewMode === 'grid' ? '切换到列表' : '切换到宫格'"
+              @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
+            >
+              <template #icon>
+                <IconifyIcon :icon="viewMode === 'grid' ? 'ant-design:unordered-list-outlined' : 'ant-design:appstore-outlined'" width="20" height="20" />
+              </template>
+            </a-button>
             <a-button v-if="inTauri" type="text" size="small" title="打开相册根目录" @click="openAlbumRootInExplorer">
               <template #icon>
-                <IconifyIcon icon="ant-design:folder-open-outlined" width="14" height="14" />
+                <IconifyIcon icon="ant-design:folder-open-outlined" width="20" height="20" />
               </template>
             </a-button>
             <a-button type="text" size="small" title="清理重复下载" @click="duplicateModalOpen = true">
               <template #icon>
-                <IconifyIcon icon="ant-design:clear-outlined" width="14" height="14" />
+                <IconifyIcon icon="ant-design:clear-outlined" width="20" height="20" />
               </template>
             </a-button>
             <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
               <template #icon>
-                <IconifyIcon icon="ant-design:reload-outlined" width="14" height="14" />
+                <IconifyIcon icon="ant-design:reload-outlined" width="20" height="20" />
               </template>
             </a-button>
           </div>
@@ -657,23 +638,7 @@ onBeforeUnmount(() => {
           <vxe-grid v-else ref="listGridRef" class="album-list-grid" v-bind="listGridOptions as VxeGridBindOptions">
             <template #thumb="{ row }">
               <button type="button" class="list-thumb-btn" title="预览" @click="openViewer(row as MediaFile)">
-                <img
-                  v-if="listThumbUrl(row as MediaFile)"
-                  :src="listThumbUrl(row as MediaFile)"
-                  class="list-thumb-img"
-                  loading="lazy"
-                  decoding="async"
-                  alt=""
-                />
-                <span v-else class="list-thumb-placeholder">
-                  <IconifyIcon
-                    :icon="
-                      (row as MediaFile).kind === 'video' ? 'ant-design:play-circle-outlined' : 'ant-design:file-image-outlined'
-                    "
-                    width="18"
-                    height="18"
-                  />
-                </span>
+                <AlbumThumbMedia :file="row as MediaFile" size="sm" />
               </button>
             </template>
             <template #captureAt="{ row }">
@@ -744,7 +709,7 @@ onBeforeUnmount(() => {
 .album-stats {
   flex: 1;
   min-width: 120px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -754,7 +719,7 @@ onBeforeUnmount(() => {
 .album-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   margin-left: auto;
 }
 
@@ -821,7 +786,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 8px 8px;
+  padding: 12px;
 }
 
 .album-list-grid {
@@ -841,17 +806,10 @@ onBeforeUnmount(() => {
   background: var(--fill-color, rgba(0, 0, 0, 0.04));
   cursor: pointer;
   overflow: hidden;
-}
 
-.list-thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.list-thumb-placeholder {
-  display: inline-flex;
-  color: var(--color-text-tertiary);
+  &:hover :deep(.thumb-img) {
+    opacity: 0.85;
+  }
 }
 
 .album-scroll {

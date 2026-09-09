@@ -45,7 +45,7 @@ const rootDir = ref("");
 const outputDir = ref("");
 const concurrency = ref(1);
 const defaultHint = ref("");
-/** 保留 appleId 与 consent 字段，避免覆盖 auth 弹窗已保存项 */
+/** 保留 appleId 等已保存字段，避免覆盖登录面板写入项 */
 let cachedIcloudSettings: IcloudSyncSettings | null = null;
 
 async function load() {

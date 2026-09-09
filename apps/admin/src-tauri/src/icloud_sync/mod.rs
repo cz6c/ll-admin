@@ -29,8 +29,8 @@ pub(crate) use db::state_db_path;
 /// 供 album 扫描识别同步命名 vs 异物
 pub(crate) use naming::is_sync_asset_filename;
 use settings::{
-  clear_session_for_apple_id, consent_ready, load_settings, normalize_icloud_domain,
-  require_consent, resolve_default_output_dir, save_settings, session_has_files,
+  clear_session_for_apple_id, load_settings, normalize_icloud_domain,
+  resolve_default_output_dir, save_settings, session_has_files,
   session_has_files_for_apple_id,
 };
 
@@ -112,23 +112,34 @@ fn format_sidecar_error_event(event: &SidecarEvent, default_code: &str) -> Strin
 
 static SIDECAR_PING: Mutex<()> = Mutex::new(());
 
-/// 确保 sidecar 已认证（内存态或 session 目录恢复）。
-/// 适用：start_job / resume 下载前；sidecar 进程重启后 login 页内存态会丢失。
-/// @note 仅 auth_probe 恢复 session，禁止携带密码重登（设计铁律：auth 仅用户显式触发）。
-pub(crate) fn ensure_sidecar_authenticated(
-  app: &AppHandle,
-  client: &SidecarClient,
-) -> Result<(), String> {
-  let settings = load_settings(app)?;
-  require_consent(&settings)?;
+/// auth_probe 结果：已认证 / 待 2FA / 会话不可用（伪 session 应由 sidecar 或调用方清盘）
+enum AuthProbeOutcome {
+  Authenticated,
+  Need2fa {
+    delivery_method: Option<String>,
+    detail: Option<String>,
+  },
+  Unavailable {
+    message: String,
+  },
+}
 
+/// 向 sidecar 发 auth_probe（不带密码）；无落盘文件时直接 Unavailable
+fn run_auth_probe(app: &AppHandle, client: &SidecarClient) -> Result<AuthProbeOutcome, String> {
+  let settings = load_settings(app)?;
   let apple_id = settings.apple_id.trim().to_string();
   if apple_id.is_empty() {
-    return Err("请先填写 Apple ID".to_string());
+    return Ok(AuthProbeOutcome::Unavailable {
+      message: "请先填写 Apple ID".to_string(),
+    });
+  }
+  if !session_has_files_for_apple_id(app, &apple_id)? {
+    return Ok(AuthProbeOutcome::Unavailable {
+      message: "未登录".to_string(),
+    });
   }
 
   let session_path = session_dir(app)?;
-
   client.ensure_started(app).map_err(|e| e.to_string())?;
 
   let event = client
@@ -144,16 +155,59 @@ pub(crate) fn ensure_sidecar_authenticated(
     .map_err(|e| e.to_string())?;
 
   match event.event_type.as_str() {
-    "done" => Ok(()),
-    "need_2fa" => Err(format!(
+    "done" => Ok(AuthProbeOutcome::Authenticated),
+    "need_2fa" => {
+      let delivery_method = event
+        .extra
+        .get("delivery_method")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+          event
+            .extra
+            .get("deliveryMethod")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+        });
+      let detail = event.detail.clone().or_else(|| event.message.clone());
+      Ok(AuthProbeOutcome::Need2fa {
+        delivery_method,
+        detail,
+      })
+    }
+    "error" => Ok(AuthProbeOutcome::Unavailable {
+      message: format_sidecar_error_event(&event, types::error_codes::SESSION_EXPIRED),
+    }),
+    other => Err(format!("auth_probe 意外响应: type={other}")),
+  }
+}
+
+/// 丢弃无效落盘 session，并清空 sidecar 内存态
+fn discard_invalid_session(app: &AppHandle, client: &SidecarClient, apple_id: &str) {
+  let _ = clear_session_for_apple_id(app, apple_id);
+  let _ = reset_sidecar_auth(app, client);
+}
+
+/// 确保 sidecar 已认证（内存态或 session 目录恢复）。
+/// 适用：start_job / resume 下载前；sidecar 进程重启后 login 页内存态会丢失。
+/// @note 仅 auth_probe 恢复 session，禁止携带密码重登（设计铁律：auth 仅用户显式触发）。
+pub(crate) fn ensure_sidecar_authenticated(
+  app: &AppHandle,
+  client: &SidecarClient,
+) -> Result<(), String> {
+  match run_auth_probe(app, client)? {
+    AuthProbeOutcome::Authenticated => Ok(()),
+    AuthProbeOutcome::Need2fa { .. } => Err(format!(
       "{}: 需要二次验证，请前往登录页完成验证",
       types::error_codes::NEED_2FA
     )),
-    "error" => Err(format_sidecar_error_event(
-      &event,
-      types::error_codes::SESSION_EXPIRED,
-    )),
-    other => Err(format!("auth_probe 意外响应: type={other}")),
+    AuthProbeOutcome::Unavailable { message } => {
+      if message == "未登录" {
+        Err("请先登录 Apple ID".to_string())
+      } else {
+        Err(message)
+      }
+    }
   }
 }
 
@@ -177,22 +231,18 @@ pub struct IcloudSyncLoginResult {
   pub diagnostic: Option<serde_json::Value>,
 }
 
-/// `icloud_sync_auth_state` 负载：供 auth 页展示 consent 与凭据/session 概况
+/// `icloud_sync_auth_state` 负载：凭据 / session 概况
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncAuthStateResult {
   pub apple_id: String,
   pub has_password: bool,
-  pub risk_accepted: bool,
-  pub checklist_web_access: bool,
-  pub checklist_adp_off: bool,
   pub icloud_domain: String,
-  pub consent_ready: bool,
   /// session 目录是否有落盘文件；不保证仍有效
   pub session_present: bool,
-  /// 当前 Apple ID 是否已有专属 session 文件
+  /// 当前 Apple ID 是否已有专属 session 文件（可能待 2FA，不保证可同步）
   pub session_for_current_apple_id: bool,
-  /// 是否处于已登录态（有当前账号 session；须 logout 后才能再次 login）
+  /// 是否已登录且可同步：须 auth_probe 成功（非仅磁盘有文件）
   pub logged_in: bool,
 }
 
@@ -255,13 +305,12 @@ pub(crate) fn reset_sidecar_auth(app: &AppHandle, client: &SidecarClient) -> Res
   }
 }
 
-/// 保存 Apple ID（settings.json）与密码（keyring/回退文件）；密码不进 SQLite
+/// 保存 Apple ID 到 settings.json（不含密码）
 /// @note Apple ID 变更时会 reset sidecar 并清除旧账号 session，避免误复用
 #[tauri::command]
 pub fn icloud_sync_set_credentials(
   app: AppHandle,
   apple_id: String,
-  password: String,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<bool, String> {
   let apple_id = apple_id.trim().to_string();
@@ -273,7 +322,6 @@ pub fn icloud_sync_set_credentials(
   let account_changed = !previous.is_empty() && previous != apple_id;
   settings.apple_id = apple_id.clone();
   save_settings(&app, &settings)?;
-  keyring_store::set_password(&app, &password)?;
   if account_changed {
     let _ = reset_sidecar_auth(&app, sidecar.client().as_ref());
     clear_session_for_apple_id(&app, &previous)?;
@@ -281,7 +329,32 @@ pub fn icloud_sync_set_credentials(
   Ok(account_changed)
 }
 
-/// 登出：清 sidecar 内存态 + 当前账号 session 文件；保留 settings 中的 Apple ID
+/// 仅在 settings.remember_password 为 true 时返回钥匙串密码，供登录面板回填
+/// @note 未勾选「记住我」时恒返回 None，避免无授权把明文送进前端
+#[tauri::command]
+pub fn icloud_sync_get_remembered_password(app: AppHandle) -> Result<Option<String>, String> {
+  let settings = load_settings(&app)?;
+  if !settings.remember_password {
+    return Ok(None);
+  }
+  keyring_store::get_password(&app)
+}
+
+/// 勾选「记住我」时写入钥匙串；未勾选勿调用
+#[tauri::command]
+pub fn icloud_sync_save_remembered_password(app: AppHandle, password: String) -> Result<(), String> {
+  let settings = load_settings(&app)?;
+  if !settings.remember_password {
+    return Err("未勾选记住我，不能写入钥匙串".to_string());
+  }
+  let password = password.trim();
+  if password.is_empty() {
+    return Err("密码不能为空".to_string());
+  }
+  keyring_store::set_password(&app, password)
+}
+
+/// 登出：清 sidecar 内存态 + 当前账号 session 文件；保留 settings 中的 Apple ID（不碰钥匙串）
 #[tauri::command]
 pub fn icloud_sync_logout(
   app: AppHandle,
@@ -296,33 +369,55 @@ pub fn icloud_sync_logout(
   Ok(())
 }
 
-/// 向 sidecar 发起 auth；需 consent 三门禁 + 已存凭据
+/// 向 sidecar 发起 auth：密码由本次调用传入（一次性），不经钥匙串
+/// @note 若磁盘已有 session：先 auth_probe；有效则拒重复登录；失效则清盘后再 SRP
 #[tauri::command]
 pub fn icloud_sync_login(
   app: AppHandle,
+  password: String,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncLoginResult, String> {
   let settings = load_settings(&app)?;
-  require_consent(&settings)?;
 
   let apple_id = settings.apple_id.trim().to_string();
   if apple_id.is_empty() {
     return Err("请先填写 Apple ID".to_string());
   }
 
-  if session_has_files_for_apple_id(&app, &apple_id)? {
-    return Err(format!(
-      "{}: 请先退出当前登录后再重新登录",
-      types::error_codes::ALREADY_LOGGED_IN
-    ));
+  let password = password.trim().to_string();
+  if password.is_empty() {
+    return Err("请先填写 Apple ID 密码".to_string());
   }
 
-  let password = keyring_store::get_password(&app)?
-    .filter(|value| !value.is_empty())
-    .ok_or_else(|| "请先填写 Apple ID 密码".to_string())?;
+  let client = sidecar.client();
+  if session_has_files_for_apple_id(&app, &apple_id)? {
+    match run_auth_probe(&app, client.as_ref())? {
+      AuthProbeOutcome::Authenticated => {
+        return Err(format!(
+          "{}: 请先退出当前登录后再重新登录",
+          types::error_codes::ALREADY_LOGGED_IN
+        ));
+      }
+      AuthProbeOutcome::Need2fa {
+        delivery_method,
+        detail,
+      } => {
+        // 已有 pending 2FA：交给面板输码，勿再 SRP
+        return Ok(IcloudSyncLoginResult {
+          status: "need_2fa".to_string(),
+          delivery_method,
+          detail,
+          error_code: None,
+          diagnostic: None,
+        });
+      }
+      AuthProbeOutcome::Unavailable { .. } => {
+        discard_invalid_session(&app, client.as_ref(), &apple_id);
+      }
+    }
+  }
 
   let session_path = session_dir(&app)?;
-  let client = sidecar.client();
   client.ensure_started(&app).map_err(|e| e.to_string())?;
 
   let event = client
@@ -366,23 +461,38 @@ pub fn icloud_sync_submit_2fa(
   map_login_event(event)
 }
 
-/// 读取 auth 页所需 consent / 凭据 / session 概况（不含密码明文）
+/// 读取凭据 / session 概况（不含密码明文）
+/// @note `logged_in` 以 auth_probe 为准；伪 session 会清盘并返回未登录
 #[tauri::command]
-pub fn icloud_sync_auth_state(app: AppHandle) -> Result<IcloudSyncAuthStateResult, String> {
+pub fn icloud_sync_auth_state(
+  app: AppHandle,
+  sidecar: State<'_, SidecarClientHandle>,
+) -> Result<IcloudSyncAuthStateResult, String> {
   let settings = load_settings(&app)?;
-  let session_for_current =
-    session_has_files_for_apple_id(&app, &settings.apple_id)?;
+  let apple_id = settings.apple_id.clone();
+  let client = sidecar.client();
+
+  let has_files = session_has_files_for_apple_id(&app, &apple_id)?;
+  let (logged_in, session_for_current) = if apple_id.trim().is_empty() || !has_files {
+    (false, false)
+  } else {
+    match run_auth_probe(&app, client.as_ref())? {
+      AuthProbeOutcome::Authenticated => (true, true),
+      AuthProbeOutcome::Need2fa { .. } => (false, true),
+      AuthProbeOutcome::Unavailable { .. } => {
+        discard_invalid_session(&app, client.as_ref(), &apple_id);
+        (false, false)
+      }
+    }
+  };
+
   Ok(IcloudSyncAuthStateResult {
     apple_id: settings.apple_id.clone(),
     has_password: keyring_store::has_password(&app)?,
-    risk_accepted: settings.risk_accepted,
-    checklist_web_access: settings.checklist_web_access,
-    checklist_adp_off: settings.checklist_adp_off,
     icloud_domain: normalize_icloud_domain(&settings.icloud_domain),
-    consent_ready: consent_ready(&settings),
     session_present: session_has_files(&app)?,
     session_for_current_apple_id: session_for_current,
-    logged_in: session_for_current,
+    logged_in,
   })
 }
 

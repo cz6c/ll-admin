@@ -10,6 +10,7 @@ alwaysApply: false
 
 - 布局、间距、主次对比、去干扰等视觉规则见 **`antd-design-system.mdc`**（Ant Design **5.x** 原则；实现为 ant-design-vue 4）。
 - 改页面样式 / 新区块前先对照该规则的间距档位与主按钮约定。
+- **轻提示与确认框**：一律 `$feedback`（`@/utils/feedback`）；细则见 `antd-design-system.mdc` 原则 10，禁止页内直调 antd `message` / `Modal.confirm`。
 
 ## 栈与别名
 

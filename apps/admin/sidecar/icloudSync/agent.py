@@ -34,6 +34,7 @@ from protocol import (
     CODE_INVALID_REQUEST,
     CODE_LIVE_BIND_MISSING,
     CODE_NEED_2FA,
+    CODE_NETWORK_ERROR,
     CODE_RATE_LIMITED,
     CODE_SESSION_EXPIRED,
     CODE_DOWNLOAD_FAILED,
@@ -204,6 +205,50 @@ def _code_to_str(raw_code: Any) -> str:
     return str(raw_code)
 
 
+def _looks_like_network_error(exc: BaseException) -> bool:
+    """连接失败 / 超时 / DNS / 代理等，与密码错误区分。"""
+    exc_type = type(exc).__name__
+    if exc_type in (
+        "ConnectionError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "Timeout",
+        "TimeoutError",
+        "ProxyError",
+        "SSLError",
+        "URLError",
+        "NewConnectionError",
+        "MaxRetryError",
+        "ConnectTimeoutError",
+        "ReadTimeoutError",
+    ):
+        return True
+    msg = str(exc).lower()
+    return any(
+        phrase in msg
+        for phrase in (
+            "timed out",
+            "timeout",
+            "unreachable",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "failed to establish a new connection",
+            "nodename nor servname",
+            "getaddrinfo",
+            "network is unreachable",
+            "connection refused",
+            "connection reset",
+            "cannot connect",
+            "max retries exceeded",
+            "failed to resolve",
+            "no route to host",
+            "proxyerror",
+            "ssl:",
+            "handshake failure",
+        )
+    )
+
+
 def _map_exception(exc: BaseException) -> str:
     """
     将异常映射到稳定机读错误码（占位映射，后续可按实测收敛）。
@@ -218,11 +263,19 @@ def _map_exception(exc: BaseException) -> str:
 
     if _is_2fa_required_exception(exc):
         return CODE_NEED_2FA
+    # 区域不匹配：须能解析出 Apple 要求的域，避免把纯网络失败当成选错区
+    if isinstance(exc, ipd_auth.IcloudDomainMismatchError):
+        return CODE_DOMAIN_MISMATCH
+    if ipd_auth.is_domain_mismatch_exception(exc) and ipd_auth.parse_required_domain(exc):
+        return CODE_DOMAIN_MISMATCH
+    if _looks_like_network_error(exc):
+        return CODE_NETWORK_ERROR
+    # PyiCloudConnectionException 无明确区域信息时，按网络不可达处理（国际区常需代理）
+    if exc_type == "PyiCloudConnectionException" or ipd_auth.is_domain_mismatch_exception(exc):
+        return CODE_NETWORK_ERROR
     mapped = ipd_auth.map_api_exception(exc, is_2fa_required=_is_2fa_required_exception)
     if mapped:
         return mapped
-    if isinstance(exc, ipd_auth.IcloudDomainMismatchError) or ipd_auth.is_domain_mismatch_exception(exc):
-        return CODE_DOMAIN_MISMATCH
     if exc_type in ("PyiCloudFailedLoginException",):
         return CODE_AUTH_FAILED
     if _is_stale_download_url_error(exc):
@@ -545,19 +598,13 @@ def _two_factor_delivery_method(api: Any) -> str:
 
 
 def _delivery_detail(api: Any) -> str:
-    """面向用户的 2FA 引导文案（不含敏感信息）。"""
+    """面向用户的 2FA 引导文案；短信与设备验证综合表述（投递方式推断不可靠）。"""
     method = _two_factor_delivery_method(api)
-    notice = getattr(api, "two_factor_delivery_notice", None)
-    if method == "sms":
-        return "请输入发送到受信任设备或手机的 6 位验证码"
     if method == "security_key":
         return "此账号需使用安全密钥完成验证，当前客户端暂不支持"
-    if notice:
-        return str(notice)
-    # trusted_device / unknown：iPhone 上通常显示「设备验证」→ 点允许 → 6 位码
     return (
-        "iPhone 将弹出「设备验证」或登录请求：请先在手机上点「允许」，"
-        "再将设备上显示的 6 位验证码输入下方"
+        "请在手机上完成验证（设备弹窗点「允许」，或查收短信），"
+        "再将 6 位验证码输入下方"
     )
 
 
@@ -1410,6 +1457,9 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
                 _AUTH_STATE.session_dir = session_dir
                 return _finalize_auth_or_need_2fa(api, "auth")
 
+        # 密码错误 / 网络失败等：清盘，避免伪 session 被当成已登录
+        if session_dir and apple_id:
+            ipd_auth.clear_session_artifacts(session_dir, apple_id)
         _reset_auth_state()
         code = _map_exception(exc)
         message = str(exc)[:500]
@@ -1547,6 +1597,9 @@ def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
             _AUTH_STATE.icloud_domain = ipd_auth.api_domain(api)
         except Exception as exc:  # noqa: BLE001
             code = _map_exception(exc)
+            if session_dir and apple_id:
+                ipd_auth.clear_session_artifacts(session_dir, apple_id)
+            _reset_auth_state()
             diagnostic = _record_diagnostic(
                 "auth_probe",
                 code,
@@ -1570,13 +1623,17 @@ def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
     if _mfa_still_required(api) or _AUTH_STATE.waiting_2fa:
         return _finalize_auth_or_need_2fa(api, "auth_probe", kickoff_delivery=False)
 
+    # 有文件但不可同步：清盘，避免宿主误判已登录
+    if session_dir and apple_id:
+        ipd_auth.clear_session_artifacts(session_dir, apple_id)
+    _reset_auth_state()
     diagnostic = _record_diagnostic(
         "auth_probe",
         CODE_SESSION_EXPIRED,
         "session invalid or expired; explicit login required",
         apple_id=apple_id,
         session_dir=session_dir,
-        api=api,
+        api=None,
     )
     return error_event(
         "auth_probe",

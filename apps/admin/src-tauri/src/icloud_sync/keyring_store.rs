@@ -1,9 +1,11 @@
 //! Apple ID 密码凭据存取
-//! 职责：优先 OS keyring；Windows 等环境下 keyring 不可用时回退到应用数据目录文件
-//! 适用：iCloud 登录前读取、auth 命令写入
+//! 职责：优先 OS keyring；不可用时回退应用数据目录文件
+//! 适用：仅「记住我」勾选且登录成功后写入；下次打开面板且仍勾选时回填
 //!
-//! @note 密码仅在此模块与 sidecar 内存传输；不进 SQLite、不进 settings.json、禁止写入日志
-//! @note SERVICE 与 AI API Key 隔离，避免凭据混用
+//! @note 登录 SRP 的密码由 `icloud_sync_login(password)` 直传 sidecar，不经本模块
+//! @note 明文回填仅经 `icloud_sync_get_remembered_password`，且要求 settings.remember_password
+//! @note 未勾选记住我不读写本模块（不主动清理）
+//! @note SERVICE 与 AI API Key 隔离；禁止写入日志 / settings.json / SQLite
 
 use std::fs;
 use std::path::PathBuf;

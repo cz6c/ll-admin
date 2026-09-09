@@ -52,9 +52,9 @@ flowchart LR
 | **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
 | **从 iCloud 移除** | 工具栏危险主按钮 | 有勾选→移除所选；无勾选→移除全部已同步；确认 Modal + 1.5s；入队后全屏浮层展示进度 |
 | **重试失败项** | 删云浮层 `failed` | `retryIcloudSyncCloudDeletes`，浮层回到 running |
-| **退出登录** | 抽屉 / 登录弹窗 | 先 pause 运行中 worker → 清 session；**不 discard** |
+| **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
-| **换号登录** | 登录弹窗换 Apple ID | discard 旧 job + 清前端 jobId |
+| **换号登录** | 抽屉登录面板换 Apple ID | discard 旧 job + 清前端 jobId |
 
 **扫描中（`cataloging`）**：不可 pause / 取消；catalog 线程结束后若 job 已被 discard 则自动 abort，不写库。
 
@@ -281,7 +281,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | `IcloudSyncFab` | FAB；抽屉云态筛选 + 列表 + 工具栏删云；删云全屏浮层 |
 | `IcloudSyncStatusCard` | 状态标题、**单一**进度条（同步按 `taskType` 文案）、主/次按钮；删云进行中隐藏「取消任务」 |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
-| `IcloudSyncAuthModal` | 登录/2FA；换号 discard；退出走 `onLogoutAccount` |
+| `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
 | `icloudSyncCloudList.ts` | 状态文案 / Tab 配置 / Live 行合并 / `download_failed` 展示覆盖 |
 
 ---

@@ -1,7 +1,7 @@
 <!--
   Live Photos 角标（Apple 同心圆图标 + LIVE）
   职责：相册宫格、全屏查看器统一实况标识
-  适用：AlbumThumbCard 缩略图角标、LivePhotoPlayer 预览角标
+  适用：AlbumThumbMedia 缩略图角标、LivePhotoPlayer 预览角标
   @note 内容不做 v-if 裁剪，避免 mode/label 条件误判导致只剩空底块
 -->
 <script setup lang="ts">

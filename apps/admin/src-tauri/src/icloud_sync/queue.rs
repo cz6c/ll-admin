@@ -2,6 +2,7 @@
 //! 职责：catalog 落库、index 分配、批量 download、进度事件与 session 暂停续传
 //! 适用：Task 6 start/resume/status 命令；mock sidecar 可离线跑通
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -95,6 +96,9 @@ pub struct IcloudSyncJobStatusResult {
   pub done: u32,
   pub failed: u32,
   pub pending: u32,
+  /// 任务级失败摘要（如 `network_error: …`）；仅 failed 时有值，进程内缓存不落库
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error_message: Option<String>,
 }
 
 struct QueueRunner {
@@ -105,6 +109,9 @@ struct QueueRunner {
 
 static QUEUE: OnceLock<Mutex<QueueRunner>> = OnceLock::new();
 
+/// 任务级失败摘要（进程内）；不落 SQLite，避免改 schema
+static JOB_LAST_ERROR: OnceLock<Mutex<HashMap<i64, String>>> = OnceLock::new();
+
 fn queue_runner() -> &'static Mutex<QueueRunner> {
   QUEUE.get_or_init(|| {
     Mutex::new(QueueRunner {
@@ -112,6 +119,34 @@ fn queue_runner() -> &'static Mutex<QueueRunner> {
       pause_requested: Arc::new(AtomicBool::new(false)),
     })
   })
+}
+
+fn job_last_errors() -> &'static Mutex<HashMap<i64, String>> {
+  JOB_LAST_ERROR.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 记录任务失败原因，供 status 事件 / 查询带回前端轻提示
+fn remember_job_error(job_id: i64, message: impl Into<String>) {
+  let msg = message.into();
+  if msg.trim().is_empty() {
+    return;
+  }
+  if let Ok(mut map) = job_last_errors().lock() {
+    map.insert(job_id, msg);
+  }
+}
+
+fn job_error_message(job_id: i64) -> Option<String> {
+  job_last_errors()
+    .lock()
+    .ok()
+    .and_then(|map| map.get(&job_id).cloned())
+}
+
+fn clear_job_error(job_id: i64) {
+  if let Ok(mut map) = job_last_errors().lock() {
+    map.remove(&job_id);
+  }
 }
 
 fn clear_pause_request() {
@@ -963,6 +998,7 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
 
   if let Err(e) = outcome {
     log::error!("icloud sync job {job_id} failed: {e}");
+    remember_job_error(job_id, &e);
     if let Ok(conn) = open_db(&db_path) {
       let _ = set_job_status(&app, &conn, job_id, JobStatus::Failed);
     }
@@ -1012,6 +1048,11 @@ fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSy
     done,
     failed,
     pending,
+    error_message: if job.status == JobStatus::Failed {
+      job_error_message(job_id)
+    } else {
+      None
+    },
   })
 }
 
@@ -1320,6 +1361,7 @@ pub fn icloud_sync_discard_job(app: AppHandle, job_id: i64) -> Result<(), String
   drop(runner);
 
   discard_task(&conn, &job)?;
+  clear_job_error(job_id);
   release_job(job_id);
   emit_cloud_state_changed(&app);
   Ok(())
@@ -1387,6 +1429,7 @@ pub fn icloud_sync_refresh_catalog(
     })();
     if let Err(e) = outcome {
       log::error!("icloud refresh catalog job {job_id} failed: {e}");
+      remember_job_error(job_id, &e);
       if let Ok(conn) = open_db(&db_path) {
         let _ = set_task_status(&app_bg, &conn, job_id, JobStatus::Failed);
       }

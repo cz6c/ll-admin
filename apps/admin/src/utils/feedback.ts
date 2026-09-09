@@ -9,6 +9,19 @@ import type { MessageArgsProps } from "ant-design-vue/es/message";
 
 type MessageType = "success" | "info" | "warning" | "error";
 
+/** confirm 可选参数；缺省与历史「系统提示 / 危险确定」一致 */
+export type FeedbackConfirmOptions = {
+  title?: string;
+  okText?: string;
+  cancelText?: string;
+  okType?: "primary" | "danger" | "default";
+  /**
+   * 确认按钮冷却毫秒；期间禁用并显示倒计时文案
+   * @note 用于不可轻易撤销的删云等操作
+   */
+  cooldownMs?: number;
+};
+
 let loadingClose: (() => void) | null = null;
 
 function handleMessage(type: MessageType) {
@@ -18,17 +31,42 @@ function handleMessage(type: MessageType) {
 }
 
 export default {
-  confirm(content: string) {
+  /**
+   * 确认框；确定 resolve，取消 reject
+   * @param content 正文
+   * @param options 标题 / 按钮文案 / 冷却；省略时行为与历史单参一致
+   */
+  confirm(content: string, options?: FeedbackConfirmOptions) {
+    const title = options?.title ?? "系统提示";
+    const okTextReady = options?.okText ?? "确定";
+    const cancelText = options?.cancelText ?? "取消";
+    const okType = options?.okType ?? "danger";
+    const cooldownMs = options?.cooldownMs ?? 0;
+
     return new Promise<void>((resolve, reject) => {
-      Modal.confirm({
-        title: "系统提示",
+      const modal = Modal.confirm({
+        title,
         content,
-        okText: "确定",
-        cancelText: "取消",
-        okType: "danger",
+        okText: cooldownMs > 0 ? `确认 (${Math.ceil(cooldownMs / 1000)}s)` : okTextReady,
+        cancelText,
+        okType,
+        okButtonProps: cooldownMs > 0 ? { disabled: true } : undefined,
         onOk: () => resolve(),
         onCancel: () => reject()
       });
+
+      if (cooldownMs <= 0) return;
+
+      let remainMs = cooldownMs;
+      const timer = window.setInterval(() => {
+        remainMs -= 200;
+        if (remainMs <= 0) {
+          window.clearInterval(timer);
+          modal.update({ okText: okTextReady, okButtonProps: { disabled: false } });
+          return;
+        }
+        modal.update({ okText: `确认 (${Math.ceil(remainMs / 1000)}s)` });
+      }, 200);
     });
   },
   /**

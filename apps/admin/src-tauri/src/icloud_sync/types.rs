@@ -21,18 +21,12 @@ pub struct IcloudSyncSettings {
   /// 上次登录 Apple ID（日志脱敏由调用方负责）
   #[serde(default)]
   pub apple_id: String,
-  /// 已勾选锁号风险 ToS
-  #[serde(default)]
-  pub risk_accepted: bool,
-  /// 已确认开启「网页访问 iCloud 数据」
-  #[serde(default)]
-  pub checklist_web_access: bool,
-  /// 已确认关闭 Advanced Data Protection
-  #[serde(default)]
-  pub checklist_adp_off: bool,
   /// iCloud 根域：`com` 国际 / `cn` 中国大陆
   #[serde(default = "default_icloud_domain")]
   pub icloud_domain: String,
+  /// 「记住我」：为 true 时登录成功后把密码写入钥匙串，下次可回填
+  #[serde(default)]
+  pub remember_password: bool,
 }
 
 fn default_icloud_domain() -> String {
@@ -45,10 +39,8 @@ impl Default for IcloudSyncSettings {
       output_dir: String::new(),
       concurrency: default_concurrency(),
       apple_id: String::new(),
-      risk_accepted: false,
-      checklist_web_access: false,
-      checklist_adp_off: false,
       icloud_domain: default_icloud_domain(),
+      remember_password: false,
     }
   }
 }
@@ -427,6 +419,9 @@ pub mod error_codes {
   pub const SESSION_EXPIRED: &str = "session_expired";
   pub const ACCOUNT_LOCKED: &str = "account_locked";
   pub const RATE_LIMITED: &str = "rate_limited";
+  /// 无法连接 Apple（超时/DNS/代理等），与密码错误区分；与 Python protocol 对齐，前端按字符串匹配
+  #[allow(dead_code)]
+  pub const NETWORK_ERROR: &str = "network_error";
   pub const CATALOG_SORT_MISSING: &str = "catalog_sort_missing";
   pub const LIVE_BIND_MISSING: &str = "live_bind_missing";
   pub const DOWNLOAD_FAILED: &str = "download_failed";

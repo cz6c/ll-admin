@@ -10,15 +10,6 @@ use tauri::{AppHandle, Manager};
 
 use super::types::IcloudSyncSettings;
 
-/// 未勾选风险告知或账号清单时，`icloud_sync_login` 拒绝并返回此固定文案
-pub const CONSENT_REQUIRED_MSG: &str =
-  "请先勾选锁号风险告知，并确认已开启「网页访问 iCloud 数据」、已关闭 Advanced Data Protection";
-
-/// 三项 consent 是否均已勾选
-pub fn consent_ready(settings: &IcloudSyncSettings) -> bool {
-  settings.risk_accepted && settings.checklist_web_access && settings.checklist_adp_off
-}
-
 /// 规整并发下载数：P1 允许 1–3
 pub fn normalize_concurrency(raw: u32) -> u32 {
   raw.clamp(1, 3)
@@ -29,15 +20,6 @@ pub fn normalize_icloud_domain(raw: &str) -> String {
   match raw.trim().to_lowercase().as_str() {
     "cn" => "cn".to_string(),
     _ => "com".to_string(),
-  }
-}
-
-/// 登录前 consent 门禁；未满足时返回 [`CONSENT_REQUIRED_MSG`]
-pub fn require_consent(settings: &IcloudSyncSettings) -> Result<(), String> {
-  if consent_ready(settings) {
-    Ok(())
-  } else {
-    Err(CONSENT_REQUIRED_MSG.to_string())
   }
 }
 
@@ -170,24 +152,19 @@ pub fn load_album_root_dir(app: &AppHandle) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::icloud_sync::types::IcloudSyncSettings;
 
   #[test]
-  fn consent_ready_requires_all_flags() {
-    let mut settings = IcloudSyncSettings::default();
-    assert!(!consent_ready(&settings));
-    settings.risk_accepted = true;
-    assert!(!consent_ready(&settings));
-    settings.checklist_web_access = true;
-    assert!(!consent_ready(&settings));
-    settings.checklist_adp_off = true;
-    assert!(consent_ready(&settings));
+  fn normalize_icloud_domain_cn_and_default_com() {
+    assert_eq!(normalize_icloud_domain("cn"), "cn");
+    assert_eq!(normalize_icloud_domain("CN"), "cn");
+    assert_eq!(normalize_icloud_domain("com"), "com");
+    assert_eq!(normalize_icloud_domain("other"), "com");
   }
 
   #[test]
-  fn require_consent_returns_fixed_message() {
-    let settings = IcloudSyncSettings::default();
-    let err = require_consent(&settings).unwrap_err();
-    assert_eq!(err, CONSENT_REQUIRED_MSG);
+  fn normalize_concurrency_clamps_1_to_3() {
+    assert_eq!(normalize_concurrency(0), 1);
+    assert_eq!(normalize_concurrency(2), 2);
+    assert_eq!(normalize_concurrency(9), 3);
   }
 }

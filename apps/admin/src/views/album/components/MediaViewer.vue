@@ -167,13 +167,30 @@ onBeforeUnmount(() => {
       </template>
     </a-button>
 
-    <a-button v-if="currentIndex > 0" class="viewer-nav viewer-prev" shape="circle" type="text" title="上一张" @click.stop="prev">
+    <!-- 始终占位，禁用时隐藏点击但不卸 DOM，避免切到首/末张时按钮显隐跳动 -->
+    <a-button
+      class="viewer-nav viewer-prev"
+      shape="circle"
+      type="text"
+      title="上一张"
+      :disabled="currentIndex <= 0"
+      :class="{ 'is-disabled': currentIndex <= 0 }"
+      @click.stop="prev"
+    >
       <template #icon>
         <IconifyIcon icon="ant-design:left-outlined" width="24" height="24" />
       </template>
     </a-button>
 
-    <a-button v-if="currentIndex < flatFiles.length - 1" class="viewer-nav viewer-next" shape="circle" type="text" title="下一张" @click.stop="next">
+    <a-button
+      class="viewer-nav viewer-next"
+      shape="circle"
+      type="text"
+      title="下一张"
+      :disabled="currentIndex >= flatFiles.length - 1"
+      :class="{ 'is-disabled': currentIndex >= flatFiles.length - 1 }"
+      @click.stop="next"
+    >
       <template #icon>
         <IconifyIcon icon="ant-design:right-outlined" width="24" height="24" />
       </template>
@@ -259,13 +276,19 @@ onBeforeUnmount(() => {
 .viewer-nav {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
+  /* 不用 transform 垂直居中：antd 按下态也会改 transform，叠加后点击会跳 */
+  margin-top: -24px;
   width: 48px;
   height: 48px;
   background: rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.12);
+  }
+  &.is-disabled,
+  &:disabled {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 .viewer-prev {

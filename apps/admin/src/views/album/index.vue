@@ -70,16 +70,16 @@ const pathIndex = computed(() => {
 const allMediaFiles = computed<MediaFile[]>(() => groups.value.flatMap(g => g.files));
 
 /**
- * 拍摄时间排序键：可解析 captureAt → unix 秒；否则 modified
- * 与 Rust `media_time_sort_key` 对齐，meta 补空后前端可再排
+ * 拍摄时间排序键：可解析 captureAt → ms；空/不可解析 → null（不用 modified）
+ * 宫格排序唯一真源在前端：与筛选同处；Rust discover 不再排拍摄序
  */
-function mediaTimeSortKey(file: MediaFile): number {
+function mediaTimeSortKey(file: MediaFile): number | null {
   const raw = file.captureAt?.trim();
   if (raw) {
     const d = dateUtil(raw);
     if (d.isValid()) return d.valueOf();
   }
-  return (file.modified ?? 0) * 1000;
+  return null;
 }
 
 /** 文件名模糊 + 拍摄日区间（空 captureAt 不命中区间） */
@@ -99,12 +99,17 @@ function matchesLocalSearch(file: MediaFile): boolean {
   return true;
 }
 
-/** 全库过滤 + 拍摄时间升序旧→新（供宫格 / 列表 / Viewer / 时间浮层） */
+/** 全库过滤 + 拍摄时间升序旧→新；无拍摄时间沉底再比文件名 */
 const filteredFiles = computed<MediaFile[]>(() => {
   return [...allMediaFiles.value].filter(matchesLocalSearch).sort((a, b) => {
     const ta = mediaTimeSortKey(a);
     const tb = mediaTimeSortKey(b);
-    if (ta !== tb) return ta - tb;
+    if (ta != null && tb != null) {
+      if (ta !== tb) return ta - tb;
+      return a.name.localeCompare(b.name);
+    }
+    if (ta != null) return -1;
+    if (tb != null) return 1;
     return a.name.localeCompare(b.name);
   });
 });
@@ -178,7 +183,6 @@ const listGridRef = ref<VxeGridInstance<MediaFile>>();
 /** 列表：本地全量数据 + 纵向虚拟滚动（无分页） */
 const listGridOptions = reactive<VxeGridProps<MediaFile>>({
   height: "100%",
-  border: true,
   showOverflow: true,
   loading: false,
   data: [],
@@ -189,9 +193,6 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
   },
   cellConfig: {
     height: 56
-  },
-  columnConfig: {
-    resizable: true
   },
   // 相册列表本地排序；覆盖全局 remote:true
   sortConfig: {
@@ -581,29 +582,24 @@ onBeforeUnmount(() => {
           <a-range-picker v-model:value="captureDateRange" class="album-date-range" :placeholder="['拍摄起始', '拍摄结束']" allow-clear />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <a-button
-              type="text"
-              size="small"
-              :title="viewMode === 'grid' ? '切换到列表' : '切换到宫格'"
-              @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
-            >
+            <a-button shape="circle" :title="viewMode === 'grid' ? '切换到列表' : '切换到宫格'" @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'">
               <template #icon>
-                <IconifyIcon :icon="viewMode === 'grid' ? 'ant-design:unordered-list-outlined' : 'ant-design:appstore-outlined'" width="20" height="20" />
+                <IconifyIcon :icon="viewMode === 'grid' ? 'ant-design:unordered-list-outlined' : 'ant-design:appstore-outlined'" width="16px" height="16px" />
               </template>
             </a-button>
-            <a-button v-if="inTauri" type="text" size="small" title="打开相册根目录" @click="openAlbumRootInExplorer">
+            <a-button v-if="inTauri" shape="circle" title="打开相册根目录" @click="openAlbumRootInExplorer">
               <template #icon>
-                <IconifyIcon icon="ant-design:folder-open-outlined" width="20" height="20" />
+                <IconifyIcon icon="ant-design:folder-open-outlined" width="16px" height="16px" />
               </template>
             </a-button>
-            <a-button type="text" size="small" title="清理重复下载" @click="duplicateModalOpen = true">
+            <a-button shape="circle" title="清理重复下载" @click="duplicateModalOpen = true">
               <template #icon>
-                <IconifyIcon icon="ant-design:clear-outlined" width="20" height="20" />
+                <IconifyIcon icon="ant-design:clear-outlined" width="16px" height="16px" />
               </template>
             </a-button>
-            <a-button type="text" size="small" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
+            <a-button shape="circle" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
               <template #icon>
-                <IconifyIcon icon="ant-design:reload-outlined" width="20" height="20" />
+                <IconifyIcon icon="ant-design:reload-outlined" width="16px" height="16px" />
               </template>
             </a-button>
           </div>
@@ -637,9 +633,9 @@ onBeforeUnmount(() => {
           <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
           <vxe-grid v-else ref="listGridRef" class="album-list-grid" v-bind="listGridOptions as VxeGridBindOptions">
             <template #thumb="{ row }">
-              <button type="button" class="list-thumb-btn" title="预览" @click="openViewer(row as MediaFile)">
+              <div class="list-thumb-btn" title="预览" @click="openViewer(row as MediaFile)">
                 <AlbumThumbMedia :file="row as MediaFile" size="sm" />
-              </button>
+              </div>
             </template>
             <template #captureAt="{ row }">
               {{ formatListCaptureAt((row as MediaFile).captureAt) }}
@@ -720,7 +716,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
 }
 
 .album-filename-search {

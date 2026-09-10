@@ -20,9 +20,7 @@ const appTitle = productConfig.title || "Ccode";
 
 const isAlbumActive = computed(() => isAlbumPath(route.path));
 const isSettingsActive = computed(() => isCsSettingsPath(route.path));
-const isAdminActive = computed(
-  () => !isCsSettingsPath(route.path) && !isAlbumPath(route.path)
-);
+const isAdminActive = computed(() => !isCsSettingsPath(route.path) && !isAlbumPath(route.path));
 /** 最大化态：切换还原图标，并随窗口尺寸变化同步 */
 const isMaximized = ref(false);
 
@@ -136,18 +134,18 @@ onBeforeUnmount(() => {
         aria-label="应用设置"
         @click="openCsSettings"
       >
-        <component :is="useRenderIcon('ant-design:setting-outlined')" width="16px" height="16px" />
+        <component :is="useRenderIcon('ant-design:setting-outlined', { width: '16px', height: '16px' })" />
       </button>
 
       <div class="win-controls" aria-label="窗口控制">
         <button type="button" class="win-btn" title="最小化" aria-label="最小化" @click="onMinimize">
-          <component :is="useRenderIcon('ant-design:minus-outlined')" width="14px" height="14px" />
+          <component :is="useRenderIcon('ant-design:minus-outlined', { width: '16px', height: '16px' })" />
         </button>
         <button type="button" class="win-btn" :title="isMaximized ? '还原' : '最大化'" :aria-label="isMaximized ? '还原' : '最大化'" @click="onToggleMaximize">
-          <component :is="useRenderIcon(isMaximized ? 'ant-design:switcher-outlined' : 'ant-design:border-outlined')" width="13px" height="13px" />
+          <component :is="useRenderIcon(isMaximized ? 'ant-design:switcher-outlined' : 'ant-design:border-outlined', { width: '14px', height: '14px' })" />
         </button>
         <button type="button" class="win-btn win-btn--close" title="关闭" aria-label="关闭" @click="onClose">
-          <component :is="useRenderIcon('ant-design:close-outlined')" width="14px" height="14px" />
+          <component :is="useRenderIcon('ant-design:close-outlined', { width: '16px', height: '16px' })" />
         </button>
       </div>
     </div>

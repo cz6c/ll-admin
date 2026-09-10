@@ -78,51 +78,6 @@ pub struct MediaFile {
   pub height: Option<u32>,
 }
 
-/**
- * 解析拍摄/修改时间键，供宫格倒序（新→旧）
- * capture_at 可解析则用其 unix 秒；否则回退 modified
- */
-pub fn media_time_sort_key(file: &MediaFile) -> i64 {
-  if let Some(raw) = file
-    .capture_at
-    .as_deref()
-    .map(str::trim)
-    .filter(|s| !s.is_empty())
-  {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
-      return dt.timestamp().max(0);
-    }
-    for fmt in [
-      "%Y-%m-%dT%H:%M:%S%.fZ",
-      "%Y-%m-%dT%H:%M:%SZ",
-      "%Y-%m-%dT%H:%M:%S%.f",
-      "%Y-%m-%dT%H:%M:%S",
-      "%Y-%m-%d %H:%M:%S",
-      "%Y-%m-%d",
-    ] {
-      if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(raw, fmt) {
-        return naive.and_utc().timestamp().max(0);
-      }
-      if let Ok(d) = chrono::NaiveDate::parse_from_str(raw, fmt) {
-        return d
-          .and_hms_opt(0, 0, 0)
-          .map(|n| n.and_utc().timestamp().max(0))
-          .unwrap_or(0);
-      }
-    }
-  }
-  file.modified.max(0)
-}
-
-/// 按拍摄时间升序（旧→新）；同秒再比文件名（discover 与 DB cache_hit 共用）
-pub fn sort_files_by_capture_asc(files: &mut [MediaFile]) {
-  files.sort_by(|a, b| {
-    media_time_sort_key(a)
-      .cmp(&media_time_sort_key(b))
-      .then_with(|| a.name.cmp(&b.name))
-  });
-}
-
 /// 目录分组
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

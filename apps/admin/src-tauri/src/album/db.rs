@@ -7,7 +7,7 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use super::types::{sort_files_by_capture_asc, MediaFile, MediaGroup, MediaKind};
+use super::types::{MediaFile, MediaGroup, MediaKind};
 
 const DB_FILE: &str = "media.db";
 
@@ -120,7 +120,7 @@ pub struct IndexedRow {
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
-/// 组内排序与 discover 对齐：拍摄时间升序旧→新（空 capture_at 回退 modified）；目录仍按 rel_dir
+/// 组内不排拍摄序：宫格/列表排序在前端 `filteredFiles`（与筛选同处，避免双端维护）
 /// dir_name 由 rel_dir 派生：根目录用 root basename，子目录用 rel_dir 最后一级
 pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, String> {
   let mut stmt = conn
@@ -196,8 +196,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
 
   let mut groups: Vec<MediaGroup> = dir_map
     .into_iter()
-    .map(|(rel_path, (dir_name, mut files))| {
-      sort_files_by_capture_asc(&mut files);
+    .map(|(rel_path, (dir_name, files))| {
       let dir_path = if rel_path == "." {
         root.to_string()
       } else {

@@ -68,14 +68,29 @@ pub struct MediaFile {
   pub playback_path: Option<String>,
   /// 实况照片配对的视频路径（仅 LivePhoto 有值）
   pub video_path: Option<String>,
-  /// 拍摄时间（ISO/可解析串）；缩略图就绪后由 sync/EXIF 写入 media.db
+  /// 拍摄时间（ISO/可解析串）；缩略图后 sync/EXIF 补空，或用户批量覆盖
   pub capture_at: Option<String>,
+  /// 拍摄时间来源：`sync` / `exif` / `user`；未写入前为空
+  pub capture_at_source: Option<String>,
+  /// 是否已跑过 sync+EXIF 探测（未探测禁止手改勾选）
+  #[serde(default)]
+  pub capture_at_probed: bool,
+  /// sync 或 EXIF 能提供拍摄时间时为 true（禁止手改）
+  #[serde(default)]
+  pub capture_at_locked: bool,
+  /// 相对相册根的目录（`.` 为根）；供列表目录筛选
+  #[serde(default = "default_rel_dir")]
+  pub rel_dir: String,
   /// 拍摄设备（EXIF Make+Model）；仅缺省时由 EXIF 补写
   pub camera: Option<String>,
   /// 像素宽（优先缩略图解码）
   pub width: Option<u32>,
   /// 像素高（优先缩略图解码）
   pub height: Option<u32>,
+}
+
+fn default_rel_dir() -> String {
+  ".".to_string()
 }
 
 /// 目录分组
@@ -111,11 +126,32 @@ pub struct AlbumThumbReadyPayload {
   pub preview_path: Option<String>,
   /// 缩略图后解析到的拍摄时间；仅回填元数据时路径字段可为 None
   pub capture_at: Option<String>,
+  pub capture_at_source: Option<String>,
+  pub capture_at_probed: Option<bool>,
+  pub capture_at_locked: Option<bool>,
   pub camera: Option<String>,
   pub width: Option<u32>,
   pub height: Option<u32>,
   /// Live mov / 视频播放代理；path 为 still（Live）或视频自身
   pub playback_path: Option<String>,
+}
+
+/// 批量改拍摄时间：全部设为同一时间（仅未锁定且已探测行）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumSetCaptureAtRequest {
+  pub paths: Vec<String>,
+  /// 目标时间（可解析串，如 `2008-01-01T00:00:00`）
+  pub capture_at: String,
+}
+
+/// 批量改拍摄时间结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumSetCaptureAtResult {
+  pub updated: u32,
+  /// 未探测 / 已锁定 / 路径不存在
+  pub rejected: u32,
 }
 
 /// `album_ensure_playback` 返回：可播放路径 + 可选 ffprobe 分辨率（单独视频落库用）

@@ -40,6 +40,9 @@ fn emit_thumb_ready(
   thumb_path: Option<String>,
   preview_path: Option<String>,
   capture_at: Option<String>,
+  capture_at_source: Option<String>,
+  capture_at_probed: Option<bool>,
+  capture_at_locked: Option<bool>,
   camera: Option<String>,
   width: Option<u32>,
   height: Option<u32>,
@@ -52,6 +55,9 @@ fn emit_thumb_ready(
       thumb_path,
       preview_path,
       capture_at,
+      capture_at_source,
+      capture_at_probed,
+      capture_at_locked,
       camera,
       width,
       height,
@@ -65,7 +71,7 @@ const META_PARALLEL: usize = 4;
 /// Live 预热转码并行度：每路 HEVC→H.264 吃满多核+大内存；>2 易拖垮整机
 const LIVE_PROXY_PARALLEL: usize = 2;
 
-/// 缩略图已就绪后：EXIF/sync 仅补空字段，再推前端（限并发读 EXIF）
+/// 缩略图已就绪后：EXIF/sync 仅补空字段，并总是落探测/锁定标记
 fn persist_meta_for_paths(
   app: &AppHandle,
   conn: &rusqlite::Connection,
@@ -88,14 +94,7 @@ fn persist_meta_for_paths(
           let resolver = MediaMetaResolver::new(&app);
           chunk
             .iter()
-            .filter_map(|path| {
-              let fill = resolver.resolve(path);
-              if fill.is_empty() {
-                None
-              } else {
-                Some((path.clone(), fill))
-              }
-            })
+            .map(|path| (path.clone(), resolver.resolve(path)))
             .collect::<Vec<_>>()
         })
       })
@@ -118,6 +117,9 @@ fn persist_meta_for_paths(
       None,
       None,
       fill.capture_at,
+      fill.capture_at_source,
+      Some(true),
+      Some(fill.capture_at_locked),
       fill.camera,
       None,
       None,
@@ -169,7 +171,20 @@ fn backfill_missing_image_dimensions(
   }
   let _ = db::update_dimensions_batch(conn, &updates);
   for (path, w, h) in updates {
-    emit_thumb_ready(app, &path, None, None, None, None, Some(w), Some(h), None);
+    emit_thumb_ready(
+      app,
+      &path,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      Some(w),
+      Some(h),
+      None,
+    );
   }
 }
 
@@ -285,6 +300,9 @@ fn prewarm_live_playback(
     emit_thumb_ready(
       app,
       still_path,
+      None,
+      None,
+      None,
       None,
       None,
       None,
@@ -572,7 +590,7 @@ pub fn discover_groups(
     }
 
     let parent = entry.path().parent().unwrap_or(&root_path).to_path_buf();
-    let dir_files = dir_map.entry(parent).or_default();
+    let dir_files = dir_map.entry(parent.clone()).or_default();
 
     let name = path
       .file_name()
@@ -587,6 +605,9 @@ pub fn discover_groups(
     let mut preview_path = None;
     let mut playback_path = None;
     let mut capture_at = None;
+    let mut capture_at_source = None;
+    let mut capture_at_probed = false;
+    let mut capture_at_locked = false;
     let mut camera = None;
     let mut width = None;
     let mut height = None;
@@ -618,6 +639,13 @@ pub fn discover_groups(
           .as_ref()
           .filter(|s| !s.trim().is_empty())
           .cloned();
+        capture_at_source = row
+          .capture_at_source
+          .as_ref()
+          .filter(|s| !s.trim().is_empty())
+          .cloned();
+        capture_at_probed = row.capture_at_probed;
+        capture_at_locked = row.capture_at_locked;
         camera = row
           .camera
           .as_ref()
@@ -643,6 +671,18 @@ pub fn discover_groups(
       thumb_path = Some(file_path.clone());
     }
 
+    let rel_dir = parent
+      .strip_prefix(&root_path)
+      .map(|p| {
+        let s = p.to_string_lossy().replace('\\', "/");
+        if s.is_empty() {
+          ".".to_string()
+        } else {
+          s
+        }
+      })
+      .unwrap_or_else(|_| ".".to_string());
+
     dir_files.push(MediaFile {
       path: file_path,
       name,
@@ -659,6 +699,10 @@ pub fn discover_groups(
       playback_path,
       video_path: None,
       capture_at,
+      capture_at_source,
+      capture_at_probed,
+      capture_at_locked,
+      rel_dir,
       camera,
       width,
       height,
@@ -855,6 +899,9 @@ pub fn run_thumbnail_pipeline(
         preview_path,
         None,
         None,
+        None,
+        None,
+        None,
         width,
         height,
         None,
@@ -862,7 +909,9 @@ pub fn run_thumbnail_pipeline(
     } else {
       // 真实生成失败：标记失败计数，下次扫描按阈值跳过
       fail_buf.push(path.clone());
-      emit_thumb_ready(&app, &path, None, None, None, None, None, None, None);
+      emit_thumb_ready(
+        &app, &path, None, None, None, None, None, None, None, None, None, None,
+      );
     }
 
     let flush_updates = update_buf.len() >= BATCH;
@@ -943,6 +992,10 @@ mod tests {
       playback_path: None,
       video_path: None,
       capture_at: None,
+      capture_at_source: None,
+      capture_at_probed: false,
+      capture_at_locked: false,
+      rel_dir: ".".to_string(),
       camera: None,
       width: None,
       height: None,
@@ -962,6 +1015,10 @@ mod tests {
       playback_path: None,
       video_path: None,
       capture_at: None,
+      capture_at_source: None,
+      capture_at_probed: false,
+      capture_at_locked: false,
+      rel_dir: ".".to_string(),
       camera: None,
       width: None,
       height: None,

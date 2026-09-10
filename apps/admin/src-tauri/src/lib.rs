@@ -54,6 +54,7 @@ pub fn run() {
       album::album_scan,
       album::album_cancel_scan,
       album::album_delete_local,
+      album::album_set_capture_at,
       album::album_find_local_duplicates,
       album::album_resolve_duplicate_thumb,
       album::album_ensure_playback,

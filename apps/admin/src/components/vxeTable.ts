@@ -4,10 +4,16 @@ import { VxeUI, VxeGrid } from "vxe-table";
 /**
  * 树表展开/收起图标：对齐 ant-design up/down-circle-outlined
  * VXE 仅接受 class 名挂在 <i> 上，具体图形见 assets/style/vxeTable.scss
+ *
+ * 表格勾选：统一挂 cz-vxe-checkbox-icon，勾选态由父级 .is--checked / .is--indeterminate 画 Ant 风格（scss）
  */
 VxeUI.setIcon({
   TABLE_TREE_OPEN: "cz-vxe-tree-icon-up-circle",
-  TABLE_TREE_CLOSE: "cz-vxe-tree-icon-down-circle"
+  TABLE_TREE_CLOSE: "cz-vxe-tree-icon-down-circle",
+  TABLE_CHECKBOX_CHECKED: "cz-vxe-checkbox-icon",
+  TABLE_CHECKBOX_UNCHECKED: "cz-vxe-checkbox-icon",
+  TABLE_CHECKBOX_INDETERMINATE: "cz-vxe-checkbox-icon",
+  TABLE_CHECKBOX_DISABLED_UNCHECKED: "cz-vxe-checkbox-icon"
 });
 
 // https://vxetable.cn/#/table/api

@@ -1,6 +1,108 @@
-// checkbox
-.vxe-table--render-default .vxe-cell--checkbox .vxe-checkbox--icon {
-  font-weight: 400 !important;
+/**
+ * VXE 表格勾选：视觉对齐 Ant Design Checkbox（16px / 圆角 4 / 主色）
+ * 仍使用 type:"checkbox" 交互与事件；仅替换图标外观（与树图标同套路）
+ */
+.vxe-table--render-default {
+  .vxe-cell--checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+
+    .vxe-checkbox--icon.cz-vxe-checkbox-icon {
+      position: relative;
+      display: block;
+      box-sizing: border-box;
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      font-size: 0 !important;
+      line-height: 1;
+      border: 1px solid var(--border-color, #d9d9d9);
+      border-radius: 4px;
+      background: #fff;
+      transition:
+        border-color 0.2s,
+        background-color 0.2s;
+
+      // 去掉 VXE 字体图标字形
+      &::before {
+        display: none !important;
+        content: none !important;
+      }
+
+      &::after {
+        box-sizing: border-box;
+        position: absolute;
+        display: block;
+        content: "";
+        opacity: 0;
+        transition: all 0.2s cubic-bezier(0.12, 0.4, 0.29, 1.46);
+      }
+    }
+
+    &:not(.is--disabled):hover .vxe-checkbox--icon.cz-vxe-checkbox-icon {
+      border-color: var(--color-primary);
+    }
+
+    &.is--checked .vxe-checkbox--icon.cz-vxe-checkbox-icon,
+    &.is--indeterminate .vxe-checkbox--icon.cz-vxe-checkbox-icon {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+
+      &::after {
+        opacity: 1;
+      }
+    }
+
+    // 对勾：与 ant-checkbox-inner::after 同参（top 50% + left 21.5%）
+    &.is--checked:not(.is--indeterminate) .vxe-checkbox--icon.cz-vxe-checkbox-icon::after {
+      top: 50%;
+      left: 21.5%;
+      width: 5.714286px;
+      height: 9.142857px;
+      border: 2px solid #fff;
+      border-top: 0;
+      border-left: 0;
+      transform: rotate(45deg) scale(1) translate(-50%, -50%);
+      background: transparent;
+    }
+
+    // 半选横杠
+    &.is--indeterminate .vxe-checkbox--icon.cz-vxe-checkbox-icon::after {
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 2px;
+      border: 0;
+      background: #fff;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    &.is--disabled {
+      cursor: not-allowed;
+
+      .vxe-checkbox--icon.cz-vxe-checkbox-icon {
+        background: var(--fill-color, rgba(0, 0, 0, 0.04));
+        border-color: var(--border-color, #d9d9d9);
+      }
+
+      &.is--checked .vxe-checkbox--icon.cz-vxe-checkbox-icon,
+      &.is--indeterminate .vxe-checkbox--icon.cz-vxe-checkbox-icon {
+        background: var(--color-primary-bg, rgba(22, 136, 255, 0.1));
+        border-color: var(--color-primary-bg, rgba(22, 136, 255, 0.1));
+
+        &::after {
+          border-color: var(--color-text-disabled, rgba(0, 0, 0, 0.25));
+          background: var(--color-text-disabled, rgba(0, 0, 0, 0.25));
+        }
+      }
+
+      &.is--checked:not(.is--indeterminate) .vxe-checkbox--icon.cz-vxe-checkbox-icon::after {
+        background: transparent;
+      }
+    }
+  }
 }
 
 // tooltip层级增大，弹框需要

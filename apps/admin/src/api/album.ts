@@ -40,6 +40,24 @@ export async function deleteAlbumLocal(paths: string[]): Promise<number> {
   return invoke<number>("album_delete_local", { paths });
 }
 
+/** 批量改拍摄时间请求（仅 media.db，source=user；一律设为同一时间） */
+export interface AlbumSetCaptureAtRequest {
+  paths: string[];
+  captureAt: string;
+}
+
+export interface AlbumSetCaptureAtResult {
+  updated: number;
+  rejected: number;
+}
+
+/**
+ * 列表批量覆盖拍摄时间（拒绝未探测 / sync·EXIF 锁定行）
+ */
+export async function setAlbumCaptureAt(request: AlbumSetCaptureAtRequest): Promise<AlbumSetCaptureAtResult> {
+  return invoke<AlbumSetCaptureAtResult>("album_set_capture_at", { request });
+}
+
 /**
  * 读取相册设置中的根目录（展示相对路径等）
  * @returns rootDir；未配置为空字符串

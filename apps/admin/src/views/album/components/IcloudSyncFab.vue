@@ -33,7 +33,7 @@ import {
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
-import { useDebounceFn, useResizeObserver, useThrottleFn } from "@vueuse/core";
+import { useDebounceFn, useDraggable, useEventListener, useResizeObserver, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
@@ -553,6 +553,106 @@ const iconName = computed(() => {
 /** 下载中显示进度环，其余状态显示图标 */
 const showProgress = computed(() => fabState.value.percent > 0 && fabState.value.percent < 100);
 
+/** FAB 可拖到边角，避免挡住列表勾选/改拍摄时间等操作；位置落本地 */
+const FAB_POS_STORAGE_KEY = "album.icloudSyncFab.pos";
+const FAB_SIZE_PX = 58;
+const FAB_EDGE_MARGIN_PX = 8;
+const FAB_DRAG_CLICK_THRESHOLD_PX = 6;
+
+const fabRootRef = ref<HTMLElement | null>(null);
+/** 本轮拖动位移超阈值时吞 click，避免松手误开抽屉 */
+let fabDragOrigin = { x: 0, y: 0 };
+let fabDragMoved = false;
+
+function defaultFabPos(): { x: number; y: number } {
+  if (typeof window === "undefined") return { x: 24, y: 24 };
+  return {
+    x: Math.max(FAB_EDGE_MARGIN_PX, window.innerWidth - FAB_SIZE_PX - 24),
+    y: Math.max(FAB_EDGE_MARGIN_PX, window.innerHeight - FAB_SIZE_PX - 24)
+  };
+}
+
+/** CS 顶栏高度（Web 为 0）；拖动上界须避开 CsToolsBar */
+function csShellBarHeightPx(): number {
+  if (typeof document === "undefined") return 0;
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 0;
+}
+
+function clampFabPos(x: number, y: number): { x: number; y: number } {
+  if (typeof window === "undefined") return { x, y };
+  const minY = csShellBarHeightPx() + FAB_EDGE_MARGIN_PX;
+  const maxX = Math.max(FAB_EDGE_MARGIN_PX, window.innerWidth - FAB_SIZE_PX - FAB_EDGE_MARGIN_PX);
+  const maxY = Math.max(minY, window.innerHeight - FAB_SIZE_PX - FAB_EDGE_MARGIN_PX);
+  return {
+    x: Math.min(Math.max(FAB_EDGE_MARGIN_PX, x), maxX),
+    y: Math.min(Math.max(minY, y), maxY)
+  };
+}
+
+function readStoredFabPos(): { x: number; y: number } {
+  try {
+    const raw = localStorage.getItem(FAB_POS_STORAGE_KEY);
+    if (!raw) return defaultFabPos();
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return defaultFabPos();
+    return clampFabPos(parsed.x, parsed.y);
+  } catch {
+    return defaultFabPos();
+  }
+}
+
+function persistFabPos(x: number, y: number) {
+  try {
+    localStorage.setItem(FAB_POS_STORAGE_KEY, JSON.stringify({ x, y }));
+  } catch {
+    /* 隐私模式 / 配额满时忽略 */
+  }
+}
+
+const {
+  x: fabX,
+  y: fabY,
+  style: fabDragStyle,
+  isDragging: fabDragging
+} = useDraggable(fabRootRef, {
+  initialValue: typeof window !== "undefined" ? readStoredFabPos() : { x: 24, y: 24 },
+  preventDefault: true,
+  onStart(pos) {
+    fabDragMoved = false;
+    fabDragOrigin = { x: pos.x, y: pos.y };
+  },
+  onMove(pos) {
+    const next = clampFabPos(pos.x, pos.y);
+    if (next.x !== pos.x || next.y !== pos.y) {
+      fabX.value = next.x;
+      fabY.value = next.y;
+    }
+    if (
+      Math.abs(pos.x - fabDragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX ||
+      Math.abs(pos.y - fabDragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX
+    ) {
+      fabDragMoved = true;
+    }
+  },
+  onEnd(pos) {
+    const next = clampFabPos(pos.x, pos.y);
+    fabX.value = next.x;
+    fabY.value = next.y;
+    persistFabPos(next.x, next.y);
+  }
+});
+
+useEventListener(window, "resize", () => {
+  const next = clampFabPos(fabX.value, fabY.value);
+  fabX.value = next.x;
+  fabY.value = next.y;
+});
+
+function onFabClick() {
+  if (fabDragMoved) return;
+  drawerOpen.value = true;
+}
+
 async function onLogout() {
   loggingOut.value = true;
   try {
@@ -565,13 +665,28 @@ async function onLogout() {
 }
 
 onMounted(() => {
+  const next = readStoredFabPos();
+  fabX.value = next.x;
+  fabY.value = next.y;
   if (isTauri()) void hydrateFromStorage();
 });
 </script>
 
 <template>
-  <div class="fab-root">
-    <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label" @click="drawerOpen = true">
+  <div
+    ref="fabRootRef"
+    class="fab-root"
+    :class="{ 'is-dragging': fabDragging }"
+    :style="fabDragStyle"
+  >
+    <a-button
+      class="fab-btn"
+      :class="`fab-${fabState.color}`"
+      shape="circle"
+      size="large"
+      :title="fabState.label"
+      @click="onFabClick"
+    >
       <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
       <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
     </a-button>
@@ -729,19 +844,28 @@ onMounted(() => {
 <style scoped lang="scss">
 .fab-root {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  &.is-dragging {
+    cursor: grabbing;
+    .fab-btn {
+      transition: none;
+      transform: none;
+    }
+  }
 }
 .fab-btn {
   width: 58px;
   height: 58px;
   padding: 0;
+  cursor: inherit;
   background: var(--color-bg-container, #fff);
   display: flex;
   align-items: center;

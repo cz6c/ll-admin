@@ -67,6 +67,16 @@ fn migrate(conn: &Connection) -> Result<(), String> {
   // 内容指纹：稳定 blake3 hex；size/modified 变化时在 upsert 中清空
   let _ = conn.execute("ALTER TABLE media ADD COLUMN content_hash TEXT", []);
   let _ = conn.execute("ALTER TABLE media ADD COLUMN hash_algo TEXT", []);
+  // 拍摄时间来源 / 探测 / 锁定：手改仅允许「已探测且未锁定」
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN capture_at_source TEXT", []);
+  let _ = conn.execute(
+    "ALTER TABLE media ADD COLUMN capture_at_probed INTEGER NOT NULL DEFAULT 0",
+    [],
+  );
+  let _ = conn.execute(
+    "ALTER TABLE media ADD COLUMN capture_at_locked INTEGER NOT NULL DEFAULT 0",
+    [],
+  );
   Ok(())
 }
 
@@ -78,7 +88,9 @@ pub fn load_indexed_paths(
 ) -> Result<HashMap<String, IndexedRow>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at, camera, width, height FROM media WHERE root = ?1",
+      "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at, camera, width, height,
+              capture_at_source, capture_at_probed, capture_at_locked
+       FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
 
@@ -95,6 +107,9 @@ pub fn load_indexed_paths(
         camera: row.get(7)?,
         width: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
         height: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+        capture_at_source: row.get(10)?,
+        capture_at_probed: row.get::<_, i64>(11).unwrap_or(0) != 0,
+        capture_at_locked: row.get::<_, i64>(12).unwrap_or(0) != 0,
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -117,6 +132,9 @@ pub struct IndexedRow {
   pub camera: Option<String>,
   pub width: Option<u32>,
   pub height: Option<u32>,
+  pub capture_at_source: Option<String>,
+  pub capture_at_probed: bool,
+  pub capture_at_locked: bool,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -125,7 +143,8 @@ pub struct IndexedRow {
 pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, String> {
   let mut stmt = conn
     .prepare(
-      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir, capture_at, camera, width, height
+      "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir,
+              capture_at, camera, width, height, capture_at_source, capture_at_probed, capture_at_locked
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -168,7 +187,11 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let camera = camera.filter(|s| !s.trim().is_empty());
       let width = row.get::<_, Option<i64>>(13)?.map(|v| v as u32).filter(|&v| v > 0);
       let height = row.get::<_, Option<i64>>(14)?.map(|v| v as u32).filter(|&v| v > 0);
-      Ok((rel_dir, dir_name, MediaFile {
+      let capture_at_source: Option<String> = row.get(15)?;
+      let capture_at_source = capture_at_source.filter(|s| !s.trim().is_empty());
+      let capture_at_probed = row.get::<_, i64>(16).unwrap_or(0) != 0;
+      let capture_at_locked = row.get::<_, i64>(17).unwrap_or(0) != 0;
+      Ok((rel_dir.clone(), dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
         kind,
@@ -180,6 +203,10 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         playback_path,
         video_path: row.get(9)?,
         capture_at,
+        capture_at_source,
+        capture_at_probed,
+        capture_at_locked,
+        rel_dir,
         camera,
         width,
         height,
@@ -268,11 +295,26 @@ fn upsert_media_impl(
             THEN media.fail_count
           ELSE 0
         END,
-        -- 文件内容变了则清空拍摄时间/机型/尺寸，等下次缩略图后再解析
+        -- 文件内容变了则清空拍摄时间/机型/尺寸/来源探测，等下次缩略图后再解析
         capture_at = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.capture_at
           ELSE NULL
+        END,
+        capture_at_source = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.capture_at_source
+          ELSE NULL
+        END,
+        capture_at_probed = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.capture_at_probed
+          ELSE 0
+        END,
+        capture_at_locked = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.capture_at_locked
+          ELSE 0
         END,
         camera = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
@@ -429,7 +471,7 @@ pub fn update_cache_paths_batch(
   Ok(())
 }
 
-/// 批量补写 EXIF/sync 元数据：**仅填充仍为空的拍摄时间/机型**（尺寸不在此写）
+/// 批量补写 EXIF/sync 元数据：仅补空 capture/camera；**总是**写 probed + locked
 pub fn update_meta_fill_batch(
   conn: &Connection,
   updates: &[(String, super::media_meta::MediaMetaFill)],
@@ -441,24 +483,139 @@ pub fn update_meta_fill_batch(
     .unchecked_transaction()
     .map_err(|e| format!("开启元数据更新事务失败: {e}"))?;
   for (path, fill) in updates {
+    let locked: i64 = if fill.capture_at_locked { 1 } else { 0 };
     tx.execute(
       "UPDATE media SET
          capture_at = CASE
-           WHEN capture_at IS NULL OR trim(capture_at) = '' THEN ?2
+           WHEN (capture_at IS NULL OR trim(capture_at) = '') AND ?2 IS NOT NULL AND trim(?2) != ''
+             THEN ?2
            ELSE capture_at
          END,
+         capture_at_source = CASE
+           WHEN (capture_at IS NULL OR trim(capture_at) = '') AND ?2 IS NOT NULL AND trim(?2) != ''
+             THEN ?4
+           WHEN (capture_at_source IS NULL OR trim(capture_at_source) = '') AND ?4 IS NOT NULL AND trim(?4) != ''
+             THEN ?4
+           ELSE capture_at_source
+         END,
          camera = CASE
-           WHEN camera IS NULL OR trim(camera) = '' THEN ?3
+           WHEN (camera IS NULL OR trim(camera) = '') AND ?3 IS NOT NULL AND trim(?3) != ''
+             THEN ?3
            ELSE camera
-         END
+         END,
+         capture_at_probed = 1,
+         capture_at_locked = ?5
        WHERE path = ?1",
-      params![path, fill.capture_at, fill.camera],
+      params![
+        path,
+        fill.capture_at,
+        fill.camera,
+        fill.capture_at_source,
+        locked
+      ],
     )
     .map_err(|e| format!("更新媒体元数据失败: {e}"))?;
   }
   tx.commit()
     .map_err(|e| format!("提交元数据更新事务失败: {e}"))?;
   Ok(())
+}
+
+/// 解析拍摄时间串 → unix 秒（本地/UTC naive 均按 UTC 解释，与排序键一致）
+fn parse_capture_timestamp(raw: &str) -> Option<i64> {
+  let raw = raw.trim();
+  if raw.is_empty() {
+    return None;
+  }
+  if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
+    return Some(dt.timestamp());
+  }
+  for fmt in [
+    "%Y-%m-%dT%H:%M:%S%.fZ",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S%.f",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d",
+  ] {
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(raw, fmt) {
+      return Some(naive.and_utc().timestamp());
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(raw, fmt) {
+      return d.and_hms_opt(0, 0, 0).map(|n| n.and_utc().timestamp());
+    }
+  }
+  None
+}
+
+/// 用户批量覆盖拍摄时间：全部设为同一时间（仅 `capture_at_probed=1` 且 `capture_at_locked=0`）
+/// @returns (updated, rejected)
+pub fn set_capture_at_user_batch(
+  conn: &Connection,
+  paths: &[String],
+  capture_at: &str,
+) -> Result<(u32, u32), String> {
+  let mut updated = 0u32;
+  let mut rejected = 0u32;
+  if paths.is_empty() {
+    return Ok((0, 0));
+  }
+
+  let raw = capture_at.trim();
+  if raw.is_empty() {
+    return Err("缺少目标时间".into());
+  }
+  if parse_capture_timestamp(raw).is_none() {
+    return Err(format!("无法解析目标时间: {raw}"));
+  }
+  // 统一存可解析串；日期-only 补 T00:00:00
+  let next = if raw.len() == 10 && raw.chars().filter(|c| *c == '-').count() == 2 {
+    format!("{raw}T00:00:00")
+  } else {
+    raw.to_string()
+  };
+
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启拍摄时间写入事务失败: {e}"))?;
+
+  for path in paths {
+    let row: Option<(i64, i64)> = tx
+      .query_row(
+        "SELECT COALESCE(capture_at_probed, 0), COALESCE(capture_at_locked, 0)
+         FROM media WHERE path = ?1",
+        params![path],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+      )
+      .optional()
+      .map_err(|e| format!("读取媒体行失败: {e}"))?;
+
+    let Some((probed, locked)) = row else {
+      rejected += 1;
+      continue;
+    };
+    if probed == 0 || locked != 0 {
+      rejected += 1;
+      continue;
+    }
+
+    let n = tx
+      .execute(
+        "UPDATE media SET capture_at = ?2, capture_at_source = 'user'
+         WHERE path = ?1 AND COALESCE(capture_at_probed, 0) = 1 AND COALESCE(capture_at_locked, 0) = 0",
+        params![path, next],
+      )
+      .map_err(|e| format!("写入拍摄时间失败: {e}"))?;
+    if n == 0 {
+      rejected += 1;
+    } else {
+      updated += 1;
+    }
+  }
+
+  tx.commit()
+    .map_err(|e| format!("提交拍摄时间写入失败: {e}"))?;
+  Ok((updated, rejected))
 }
 
 /// 写入宽高（单独视频打开时 ffprobe 真源；可覆盖错误的海报尺寸）
@@ -497,7 +654,7 @@ pub fn update_dimensions_batch(
   Ok(())
 }
 
-/// 是否存在缺拍摄时间/机型的已展示行（LIMIT 1，供 pipeline 早退）
+/// 是否存在未探测或仍缺机型的已展示行（LIMIT 1，供 pipeline 早退）
 pub fn has_missing_meta(conn: &Connection, root: &str) -> Result<bool, String> {
   conn
     .query_row(
@@ -508,7 +665,7 @@ pub fn has_missing_meta(conn: &Connection, root: &str) -> Result<bool, String> {
            OR (preview_path IS NOT NULL AND trim(preview_path) != '')
          )
          AND (
-           capture_at IS NULL OR trim(capture_at) = ''
+           COALESCE(capture_at_probed, 0) = 0
            OR camera IS NULL OR trim(camera) = ''
          )
        LIMIT 1",
@@ -520,7 +677,7 @@ pub fn has_missing_meta(conn: &Connection, root: &str) -> Result<bool, String> {
     .map_err(|e| format!("探测缺元数据失败: {e}"))
 }
 
-/// 已有缩略图/预览但缺拍摄时间或机型的路径（尺寸：图靠解码/轻量探测，视频靠打开 probe）
+/// 已有缩略图/预览但未探测拍摄来源或仍缺机型的路径
 pub fn list_paths_missing_meta(
   conn: &Connection,
   root: &str,
@@ -534,7 +691,7 @@ pub fn list_paths_missing_meta(
            OR (preview_path IS NOT NULL AND trim(preview_path) != '')
          )
          AND (
-           capture_at IS NULL OR trim(capture_at) = ''
+           COALESCE(capture_at_probed, 0) = 0
            OR camera IS NULL OR trim(camera) = ''
          )",
     )

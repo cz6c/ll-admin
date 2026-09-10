@@ -1,6 +1,6 @@
 <!--
   相册主页 — 扁平时间线（宫格 / 列表）
-  职责：扫描根目录、根下全部媒体；文件名/拍摄日搜索；统计；宫格虚拟滚动或 vxe 列表；时间浮层
+  职责：扫描根目录、根下全部媒体；文件名/拍摄日搜索；列表目录筛+勾选改拍摄时间；统计；宫格虚拟滚动或 vxe 列表；时间浮层
   主流程：discover → 扁平展示 → 缩略图增量；可打开相册根目录
 -->
 <script setup lang="ts">
@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import $feedback from "@/utils/feedback";
 import { dateUtil } from "@llcz/common";
 import type { Dayjs } from "dayjs";
-import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
+import { deleteAlbumLocal, openAlbumDir, setAlbumCaptureAt } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
@@ -17,6 +17,7 @@ import type { VxeGridInstance, VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import AlbumThumbMedia from "./components/AlbumThumbMedia.vue";
+import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
@@ -25,6 +26,7 @@ import {
   ALBUM_SCAN_PROGRESS_EVENT,
   ALBUM_THUMB_GENERATE_SIZE,
   ALBUM_THUMB_READY_EVENT,
+  canManualSetCaptureAt,
   type AlbumScanProgressPayload,
   type AlbumThumbReadyPayload,
   type MediaFile,
@@ -54,6 +56,12 @@ const duplicateModalOpen = ref(false);
 const filenameKeyword = ref("");
 /** 全库：拍摄日区间（含首含尾，按 captureAt 日比较） */
 const captureDateRange = ref<[Dayjs, Dayjs] | null>(null);
+/** 列表模式：目录筛选（空=全部） */
+const listDirFilter = ref<string | null>(null);
+const captureRewriteOpen = ref(false);
+const rewriteModalRef = ref<InstanceType<typeof CaptureAtRewriteModal> | null>(null);
+/** 列表勾选（仅可手改拍摄时间的行） */
+const selectedCapturePaths = ref<string[]>([]);
 
 /** path → groups 内 MediaFile 对象，缩略图就绪事件 O(1) 写回 */
 const pathIndex = computed(() => {
@@ -82,10 +90,12 @@ function mediaTimeSortKey(file: MediaFile): number | null {
   return null;
 }
 
-/** 文件名模糊 + 拍摄日区间（空 captureAt 不命中区间） */
+/** 文件名模糊 + 拍摄日区间 + 列表目录（含子孙；空 captureAt 不命中区间） */
 function matchesLocalSearch(file: MediaFile): boolean {
   const kw = filenameKeyword.value.trim().toLowerCase();
   if (kw && !file.name.toLowerCase().includes(kw)) return false;
+  const dir = listDirFilter.value;
+  if (viewMode.value === "list" && dir && !matchesDirOrDescendant(file.relDir, dir)) return false;
   const range = captureDateRange.value;
   if (range?.[0] && range?.[1]) {
     const cap = file.captureAt?.trim();
@@ -97,6 +107,82 @@ function matchesLocalSearch(file: MediaFile): boolean {
     if (day.isBefore(from) || day.isAfter(to)) return false;
   }
   return true;
+}
+
+function normalizeRelDir(rel?: string): string {
+  const s = (rel ?? ".").trim().replace(/\\/g, "/") || ".";
+  return s === "" ? "." : s;
+}
+
+/**
+ * 目录筛：命中自身或子孙
+ * @note 与树下拉「选父含子孙」一致；清空=全部（不再提供「根目录」节点）
+ */
+function matchesDirOrDescendant(fileRelDir: string | undefined, filter: string): boolean {
+  const dir = normalizeRelDir(fileRelDir);
+  const f = normalizeRelDir(filter);
+  if (!f || f === ".") return true;
+  return dir === f || dir.startsWith(`${f}/`);
+}
+
+/** Ant TreeSelect 节点（value=relPath；无「根目录」层，清空即全部） */
+interface AlbumDirTreeNode {
+  title: string;
+  value: string;
+  key: string;
+  children?: AlbumDirTreeNode[];
+}
+
+/** 目录树：仅有媒体的相对路径建林；补中间段；不挂 `.` 根节点 */
+const listDirTree = computed<AlbumDirTreeNode[]>(() => {
+  const paths = new Set<string>();
+  for (const g of groups.value) {
+    const n = normalizeRelDir(g.relPath);
+    if (n === ".") continue;
+    paths.add(n);
+    const parts = n.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      paths.add(parts.slice(0, i).join("/"));
+    }
+  }
+
+  const roots: AlbumDirTreeNode[] = [];
+  const byPath = new Map<string, AlbumDirTreeNode>();
+
+  const sorted = [...paths].sort((a, b) => a.localeCompare(b, "zh"));
+  for (const path of sorted) {
+    const parts = path.split("/");
+    const node: AlbumDirTreeNode = {
+      title: parts[parts.length - 1]!,
+      value: path,
+      key: path,
+      children: []
+    };
+    byPath.set(path, node);
+    if (parts.length === 1) {
+      roots.push(node);
+      continue;
+    }
+    const parentPath = parts.slice(0, -1).join("/");
+    const parent = byPath.get(parentPath);
+    if (parent) (parent.children ??= []).push(node);
+    else roots.push(node);
+  }
+
+  const prune = (n: AlbumDirTreeNode) => {
+    if (!n.children?.length) {
+      delete n.children;
+      return;
+    }
+    for (const c of n.children) prune(c);
+  };
+  for (const r of roots) prune(r);
+  return roots;
+});
+
+function dirOptionLabel(rel: string): string {
+  if (rel === ".") return "根目录";
+  return rel;
 }
 
 /** 全库过滤 + 拍摄时间升序旧→新；无拍摄时间沉底再比文件名 */
@@ -113,9 +199,6 @@ const filteredFiles = computed<MediaFile[]>(() => {
     return a.name.localeCompare(b.name);
   });
 });
-
-/** 是否存在搜索/日期筛选（统计文案标注「已筛选」） */
-const hasActiveFilter = computed(() => !!filenameKeyword.value.trim() || !!(captureDateRange.value?.[0] && captureDateRange.value?.[1]));
 
 /**
  * 当前筛选结果统计：合计 + 图 / 视频 / 实况
@@ -134,8 +217,7 @@ const filteredStats = computed(() => {
 
 const filteredStatsText = computed(() => {
   const s = filteredStats.value;
-  const base = `合计 ${s.total} · 图片 ${s.image} · 视频 ${s.video} · 实况 ${s.live}`;
-  return hasActiveFilter.value ? `${base}（已筛选）` : base;
+  return `合计 ${s.total} · 图片 ${s.image} · 视频 ${s.video} · 实况 ${s.live}`;
 });
 
 function mediaKindLabel(kind: MediaKind): string {
@@ -198,6 +280,12 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
   sortConfig: {
     remote: false
   },
+  checkboxConfig: {
+    // 仅已探测且未因 sync/EXIF 锁定的行可勾选（外观走全局 Ant 风格 vxe 勾选）
+    checkMethod({ row }) {
+      return canManualSetCaptureAt(row as MediaFile);
+    }
+  },
   scrollY: {
     enabled: true,
     gt: 0
@@ -210,6 +298,18 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
   },
   columns: [
     {
+      field: "checkbox",
+      type: "checkbox",
+      width: 48,
+      fixed: "left"
+    },
+    {
+      type: "seq",
+      title: "序号",
+      width: 56,
+      fixed: "left"
+    },
+    {
       field: "thumb",
       title: "缩略图",
       width: 72,
@@ -220,6 +320,13 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
       title: "拍摄时间",
       width: 160,
       slots: { default: "captureAt" }
+    },
+    {
+      field: "relDir",
+      title: "目录",
+      width: 140,
+      showOverflow: true,
+      formatter: ({ cellValue }) => dirOptionLabel(normalizeRelDir(String(cellValue ?? ".")))
     },
     {
       field: "name",
@@ -254,9 +361,70 @@ watch(
   filteredFiles,
   files => {
     listGridOptions.data = files;
+    // 筛选项变化后剔掉不可见 / 不可手改的勾选
+    const allowed = new Set(files.filter(canManualSetCaptureAt).map(f => f.path));
+    selectedCapturePaths.value = selectedCapturePaths.value.filter(p => allowed.has(p));
+    nextTick(() => syncListCheckboxFromPaths());
   },
   { immediate: true }
 );
+
+function clearListSelection() {
+  selectedCapturePaths.value = [];
+  listGridRef.value?.clearCheckboxRow?.();
+}
+
+watch([listDirFilter, filenameKeyword, captureDateRange, viewMode], () => {
+  clearListSelection();
+});
+
+const selectedCaptureFiles = computed(() => {
+  const set = new Set(selectedCapturePaths.value);
+  return filteredFiles.value.filter(f => set.has(f.path) && canManualSetCaptureAt(f));
+});
+
+function onListCheckboxChange() {
+  const rows = (listGridRef.value?.getCheckboxRecords?.() ?? []) as MediaFile[];
+  selectedCapturePaths.value = rows.filter(canManualSetCaptureAt).map(r => r.path);
+}
+
+/** 路径集合变化后回写到 vxe 勾选态（筛选 prune 后用） */
+function syncListCheckboxFromPaths() {
+  const grid = listGridRef.value;
+  if (!grid) return;
+  grid.clearCheckboxRow?.();
+  const set = new Set(selectedCapturePaths.value);
+  const rows = filteredFiles.value.filter(f => set.has(f.path) && canManualSetCaptureAt(f));
+  if (rows.length) grid.setCheckboxRow?.(rows, true);
+}
+
+async function onCaptureRewriteConfirm(payload: { captureAt: string }) {
+  const files = selectedCaptureFiles.value;
+  if (files.length === 0) return;
+  rewriteModalRef.value?.setSubmitting(true);
+  try {
+    const result = await setAlbumCaptureAt({
+      paths: files.map(f => f.path),
+      captureAt: payload.captureAt
+    });
+    // 就地更新为同一日期
+    for (const f of files) {
+      const target = pathIndex.value.get(f.path);
+      if (!target || !canManualSetCaptureAt(target)) continue;
+      target.captureAt = payload.captureAt;
+      target.captureAtSource = "user";
+    }
+    captureRewriteOpen.value = false;
+    clearListSelection();
+    const parts = [`已更新 ${result.updated}`];
+    if (result.rejected) parts.push(`拒绝 ${result.rejected}`);
+    $feedback.message.success(parts.join(" · "));
+  } catch (e) {
+    $feedback.message.error(e instanceof Error ? e.message : String(e) || "写入失败");
+  } finally {
+    rewriteModalRef.value?.setSubmitting(false);
+  }
+}
 
 const scanProgressPercent = computed(() => {
   const { phase, done, total } = scanProgress.value;
@@ -313,6 +481,9 @@ function applyThumbReady(payload: AlbumThumbReadyPayload) {
   if (payload.playbackPath) file.playbackPath = payload.playbackPath;
   // 元数据只补空：缩略图解码宽高优先于后续 EXIF 事件
   if (payload.captureAt) file.captureAt ??= payload.captureAt;
+  if (payload.captureAtSource) file.captureAtSource ??= payload.captureAtSource;
+  if (payload.captureAtProbed != null) file.captureAtProbed = payload.captureAtProbed;
+  if (payload.captureAtLocked != null) file.captureAtLocked = payload.captureAtLocked;
   if (payload.camera) file.camera ??= payload.camera;
   if (payload.width) file.width ??= payload.width;
   if (payload.height) file.height ??= payload.height;
@@ -580,8 +751,23 @@ onBeforeUnmount(() => {
         <div class="album-toolbar">
           <a-input v-model:value="filenameKeyword" class="album-filename-search" allow-clear placeholder="文件名" spellcheck="false" />
           <a-range-picker v-model:value="captureDateRange" class="album-date-range" :placeholder="['拍摄起始', '拍摄结束']" allow-clear />
+          <a-tree-select
+            v-if="viewMode === 'list'"
+            v-model:value="listDirFilter"
+            class="album-dir-filter"
+            allow-clear
+            show-search
+            tree-default-expand-all
+            placeholder="全部目录"
+            tree-node-filter-prop="title"
+            :tree-data="listDirTree"
+            :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
+          />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
+            <a-button v-if="viewMode === 'list'" type="primary" size="small" :disabled="selectedCaptureFiles.length === 0" @click="captureRewriteOpen = true">
+              改拍摄时间{{ selectedCaptureFiles.length ? ` (${selectedCaptureFiles.length})` : "" }}
+            </a-button>
             <a-button shape="circle" :title="viewMode === 'grid' ? '切换到列表' : '切换到宫格'" @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'">
               <template #icon>
                 <IconifyIcon :icon="viewMode === 'grid' ? 'ant-design:unordered-list-outlined' : 'ant-design:appstore-outlined'" width="16px" height="16px" />
@@ -631,7 +817,14 @@ onBeforeUnmount(() => {
 
         <div v-show="viewMode === 'list'" class="album-list-wrap">
           <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
-          <vxe-grid v-else ref="listGridRef" class="album-list-grid" v-bind="listGridOptions as VxeGridBindOptions">
+          <vxe-grid
+            v-else
+            ref="listGridRef"
+            class="album-list-grid"
+            v-bind="listGridOptions as VxeGridBindOptions"
+            @checkbox-change="onListCheckboxChange"
+            @checkbox-all="onListCheckboxChange"
+          >
             <template #thumb="{ row }">
               <div class="list-thumb-btn" title="预览" @click="openViewer(row as MediaFile)">
                 <AlbumThumbMedia :file="row as MediaFile" size="sm" />
@@ -666,6 +859,8 @@ onBeforeUnmount(() => {
     <IcloudSyncFab />
 
     <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
+
+    <CaptureAtRewriteModal ref="rewriteModalRef" v-model:open="captureRewriteOpen" :files="selectedCaptureFiles" @confirm="onCaptureRewriteConfirm" />
   </div>
 </template>
 
@@ -724,6 +919,10 @@ onBeforeUnmount(() => {
 
 .album-date-range {
   width: 260px;
+}
+
+.album-dir-filter {
+  width: 220px;
 }
 
 .thumb-progress-bar {

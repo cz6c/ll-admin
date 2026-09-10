@@ -2,6 +2,7 @@
 //! 职责：缩略图就绪后补写 media.db 的 capture_at、camera；**不写尺寸**
 //! 尺寸真源：图/HEIC=解码；单独视频=打开 ensure_playback 时 ffprobe
 //! 优先级：capture_at = sync → EXIF；camera = EXIF Make/Model（仅补空）
+//! 同时落 `capture_at_probed` / `capture_at_locked` / `capture_at_source`（有 sync/EXIF 能力则锁定）
 //! 适用：thumbnail pipeline 成功后 / 已有缩略图缺字段回填
 
 use std::fs::File;
@@ -14,17 +15,16 @@ use tauri::AppHandle;
 
 use crate::icloud_sync::state_db_path;
 
-/// 单次 EXIF/sync 解析结果；调用方按「仅补空」落库
+/// 单次 sync+EXIF 解析结果；调用方按「仅补空」写 capture/camera，并总是写探测/锁定
 #[derive(Debug, Clone, Default)]
 pub struct MediaMetaFill {
+  /// 建议补空写入的拍摄时间（sync 优先于 EXIF）
   pub capture_at: Option<String>,
+  /// 与 `capture_at` 对应的来源：`sync` / `exif`
+  pub capture_at_source: Option<String>,
   pub camera: Option<String>,
-}
-
-impl MediaMetaFill {
-  pub fn is_empty(&self) -> bool {
-    self.capture_at.is_none() && self.camera.is_none()
-  }
+  /// sync 或 EXIF 能提供拍摄时间 → 禁止用户手改
+  pub capture_at_locked: bool,
 }
 
 /// 可复用的解析器：整批回填时只打开一次 sync 只读库
@@ -44,20 +44,29 @@ impl MediaMetaResolver {
     Self { sync }
   }
 
-  /// 解析建议写入的拍摄时间与机型
+  /// 解析建议写入的拍摄时间与机型，并判定锁定
   pub fn resolve(&self, path: &str) -> MediaMetaFill {
-    let mut fill = MediaMetaFill::default();
-
-    if let Some(ref conn) = self.sync {
-      fill.capture_at = lookup_sync_capture_at(conn, path);
-    }
-
+    let sync_at = self
+      .sync
+      .as_ref()
+      .and_then(|conn| lookup_sync_capture_at(conn, path));
     let exif = read_exif_bundle(Path::new(path));
-    if fill.capture_at.is_none() {
-      fill.capture_at = exif.capture_at;
+    let locked = sync_at.is_some() || exif.capture_at.is_some();
+
+    let (capture_at, capture_at_source) = if let Some(at) = sync_at {
+      (Some(at), Some("sync".to_string()))
+    } else if let Some(at) = exif.capture_at {
+      (Some(at), Some("exif".to_string()))
+    } else {
+      (None, None)
+    };
+
+    MediaMetaFill {
+      capture_at,
+      capture_at_source,
+      camera: exif.camera,
+      capture_at_locked: locked,
     }
-    fill.camera = exif.camera;
-    fill
   }
 }
 
@@ -78,23 +87,20 @@ fn lookup_sync_capture_at(conn: &Connection, path: &str) -> Option<String> {
       .flatten()
   };
 
-  try_one(path)
-    .or_else(|| {
-      let alt = path.replace('/', "\\");
-      if alt != path {
-        try_one(&alt)
+  try_one(path).or_else(|| {
+    // Windows 路径大小写 / 分隔符差异：再试一遍规范化
+    let alt = path.replace('/', "\\");
+    if alt != path {
+      try_one(&alt)
+    } else {
+      let alt2 = path.replace('\\', "/");
+      if alt2 != path {
+        try_one(&alt2)
       } else {
         None
       }
-    })
-    .or_else(|| {
-      let alt = path.replace('\\', "/");
-      if alt != path {
-        try_one(&alt)
-      } else {
-        None
-      }
-    })
+    }
+  })
 }
 
 struct ExifBundle {
@@ -178,7 +184,8 @@ fn normalize_exif_datetime(raw: &str) -> Option<String> {
     out.replace_range(10..11, "T");
     return Some(out);
   }
-  if s.contains('-') {
+  // 已是可解析串则原样保留
+  if s.contains('-') || s.contains('T') {
     return Some(s.to_string());
   }
   None

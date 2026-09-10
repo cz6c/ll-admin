@@ -38,7 +38,9 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `thumb_path` / `preview_path` | 宫格 WebP；HEIC 全尺寸 JPEG |
 | `video_path` | Live 配对 mov 路径 |
 | `playback_path` | H.264 播放代理（单独视频或 Live mov） |
-| `capture_at` / `camera` | 拍摄时间 / 机型（sync 或 EXIF，仅补空） |
+| `capture_at` / `camera` | 拍摄时间 / 机型（sync→EXIF 仅补空；用户可覆盖写 `capture_at`） |
+| `capture_at_source` | `sync` / `exif` / `user` |
+| `capture_at_probed` / `capture_at_locked` | 已探测；sync/EXIF 能提供时间则锁定（禁手改） |
 | `width` / `height` | 图=解码；单独视频=打开时 ffprobe |
 | `content_hash` / `hash_algo` | 重复清理用 BLAKE3 |
 | `fail_count` | 缩略图连续失败；≥3 跳过 |

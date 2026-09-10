@@ -340,6 +340,25 @@ pub fn album_delete_local(
   Ok(deleted)
 }
 
+/// 列表批量改拍摄时间：仅写 media.db（source=user）；拒绝未探测/已锁定行
+#[tauri::command]
+pub fn album_set_capture_at(
+  app: AppHandle,
+  state: State<'_, Mutex<AlbumState>>,
+  request: types::AlbumSetCaptureAtRequest,
+) -> Result<types::AlbumSetCaptureAtResult, String> {
+  let album_data_dir = album_dir(&app)?;
+  let conn = db::open_db(&album_data_dir)?;
+  let (updated, rejected) =
+    db::set_capture_at_user_batch(&conn, &request.paths, &request.capture_at)?;
+  if updated > 0 {
+    if let Ok(guard) = state.lock() {
+      guard.dirty.store(true, Ordering::SeqCst);
+    }
+  }
+  Ok(types::AlbumSetCaptureAtResult { updated, rejected })
+}
+
 /// 扫描相册根全量媒体重复组（组内落库优先正本；不含删盘）
 #[tauri::command]
 pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {

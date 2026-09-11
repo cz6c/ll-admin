@@ -26,22 +26,24 @@ flowchart LR
 | 步 | 谁做 | 说明 |
 |----|------|------|
 | 1 | 用户 | Apple ID/密码 → **只点一次「登录」** |
-| 2 | sidecar | 单次 SRP（signin/init+complete）；触发设备验证推送 **仅 1 次** |
+| 2 | sidecar | 单次 SRP（signin/init+complete）；触发设备验证推送 **仅 1 次**（落盘 `.mfa-kicked`，进程重启也不自动再推） |
 | 3 | 用户（手机） | 点「允许」→ 看 6 位码（**无开放 API，应用代劳不了**） |
-| 4 | 用户（PC） | 30 秒内输入码 → `auth_2fa`（legacy POST，至多 1 次 `trust_session`） |
+| 4 | 用户（PC） | 输入码 → `auth_2fa`（legacy POST，至多 1 次 `trust_session`）；**失败不自动重发** |
+| 4b | 用户（可选） | 需要新码 → 点「重发验证码」→ `auth_2fa_resend`（显式 PUT 一次） |
 | 5 | 判定 | **auth_probe 成功**（有有效 WEBAUTH）才算已登录；仅有磁盘 session 文件不够 |
-| 6 | 同步 | 仅 `auth_probe`；失效 → 清伪 session + 用户显式重登，**禁止**后台带密码重登 |
+| 6 | 同步 | 仅 `auth_probe`（**永不** kickoff）；失效 → 清伪 session + 用户显式重登，**禁止**后台带密码重登 |
 
 **硬规则（改代码勿破）：**
 
 1. 密码 SRP **仅用户显式触发一次**；同步禁止带密码 `auth`。  
-2. 同一 2FA challenge **不重复推送**（`mfa_delivery_kicked_off`）。  
-3. 禁止 2FA 收尾再 `authenticate(force_refresh)` / 外层重复 accountLogin。  
-4. 每条验证码：单路径校验 + **至多 1 次** trust。  
-5. `account_locked` / `rate_limited` → 硬停，交给用户。  
-6. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。
+2. 同一 2FA challenge **不自动重复推送**（内存 `mfa_delivery_kicked_off` + 磁盘 `.mfa-kicked`）。  
+3. **禁止** `auth_2fa` 失败路径自动 rekickoff；换码只走「重发验证码」。  
+4. 禁止 2FA 收尾再 `authenticate(force_refresh)` / 外层重复 accountLogin。  
+5. 每条验证码：单路径校验 + **至多 1 次** trust。  
+6. `account_locked` / `rate_limited` → 硬停，交给用户。  
+7. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。
 
-**单次登录 Apple API 预算：** SRP×1 · 推送×1 · 提交码×1 · trust×≤1。不应出现二次 bridge / 3 轮 trust / 同步带密码。
+**单次登录 Apple API 预算：** SRP×1 · 推送×1 · 提交码×1 · trust×≤1。显式重发另计。不应出现自动二次 bridge / 失败即再推 / 同步带密码。
 
 ---
 
@@ -107,6 +109,7 @@ flowchart LR
 | 点「允许」 | iPhone 系统 UI | **否** |
 | 显示 6 位码 | iPhone | 否 |
 | 输入提交 | 抽屉登录面板 | 是（`auth_2fa`） |
+| 重发验证码 | 抽屉「重发验证码」 | 是（`auth_2fa_resend`，用户显式） |
 | 换 WEBAUTH | sidecar | 是 |
 
 ### 登出 / 换号

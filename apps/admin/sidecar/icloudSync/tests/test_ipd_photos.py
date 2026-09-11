@@ -17,6 +17,8 @@ class AssetItemType(Enum):
 
 class AssetVersionSize(Enum):
     ORIGINAL = "original"
+    THUMB = "thumb"
+    MEDIUM = "medium"
 
 
 class LivePhotoVersionSize(Enum):
@@ -44,10 +46,13 @@ class _FakeVersion:
 
 class _FakeResponse:
     ok = True
+    headers = {"Content-Type": "image/jpeg"}
 
-    @staticmethod
-    def iter_content(chunk_size: int = 128) -> Any:
-        yield b"fake-bytes"
+    def __init__(self, payload: bytes = b"fake-bytes") -> None:
+        self._payload = payload
+
+    def iter_content(self, chunk_size: int = 128) -> Any:
+        yield self._payload
 
 
 class _FakePhoto:
@@ -169,6 +174,55 @@ def test_ipd_download_video() -> None:
     )
     response = ipd_photos.ipd_download_response(api, photo, "video")
     assert response.ok is True
+
+
+def test_resolve_preview_version_size() -> None:
+    assert ipd_photos.resolve_preview_version_size("thumb") is AssetVersionSize.THUMB
+    assert ipd_photos.resolve_preview_version_size("MEDIUM") is AssetVersionSize.MEDIUM
+    try:
+        ipd_photos.resolve_preview_version_size("original")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "thumb or medium" in str(exc)
+
+
+def test_ipd_preview_thumb_and_medium() -> None:
+    api = MagicMock()
+    api.photos.session = MagicMock()
+    api.photos.session.get.side_effect = [
+        _FakeResponse(b"thumb-bytes"),
+        _FakeResponse(b"medium-bytes"),
+    ]
+    photo = _FakePhoto(
+        item_type=AssetItemType.IMAGE,
+        versions={
+            AssetVersionSize.ORIGINAL: _FakeVersion("https://original"),
+            AssetVersionSize.THUMB: _FakeVersion("https://thumb"),
+            AssetVersionSize.MEDIUM: _FakeVersion("https://medium"),
+        },
+    )
+    thumb = ipd_photos.ipd_preview_response(api, photo, "thumb")
+    medium = ipd_photos.ipd_preview_response(api, photo, "medium")
+    assert list(thumb.iter_content()) == [b"thumb-bytes"]
+    assert list(medium.iter_content()) == [b"medium-bytes"]
+    urls = [call.args[0] for call in api.photos.session.get.call_args_list]
+    assert urls == ["https://thumb", "https://medium"]
+
+
+def test_ipd_preview_missing_does_not_fallback_to_original() -> None:
+    api = MagicMock()
+    api.photos.session = MagicMock()
+    api.photos.session.get.return_value = _FakeResponse(b"should-not-fetch")
+    photo = _FakePhoto(
+        item_type=AssetItemType.IMAGE,
+        versions={AssetVersionSize.ORIGINAL: _FakeVersion("https://original")},
+    )
+    try:
+        ipd_photos.ipd_preview_response(api, photo, "thumb")
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "preview size missing" in str(exc)
+    assert api.photos.session.get.call_count == 0
 
 
 def test_has_real_cpl_asset_record_rejects_stub() -> None:

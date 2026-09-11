@@ -31,13 +31,15 @@ from protocol import (
     CODE_CATALOG_SORT_MISSING,
     CODE_DELETE_FAILED,
     CODE_DOMAIN_MISMATCH,
+    CODE_DOWNLOAD_FAILED,
     CODE_INVALID_REQUEST,
     CODE_LIVE_BIND_MISSING,
     CODE_NEED_2FA,
     CODE_NETWORK_ERROR,
+    CODE_PREVIEW_SIZE_MISSING,
+    CODE_PREVIEW_TOO_LARGE,
     CODE_RATE_LIMITED,
     CODE_SESSION_EXPIRED,
-    CODE_DOWNLOAD_FAILED,
     CatalogSortMissingError,
     LiveBindMissingError,
     done_event,
@@ -109,6 +111,11 @@ _WEBAUTH_SETTLE_SEC = 1.0
 # 同 asset 在窗口内不重复 records/lookup，降 Apple API 压力；410 会强制刷新
 PHOTO_URL_CACHE_TTL_SEC = 600
 _PHOTO_URL_REFRESH_LOCK = threading.Lock()
+# preview_probe 体积门禁：防止误拉超大衍生或 CDN 异常响应撑爆磁盘
+PREVIEW_PROBE_MAX_BYTES = {
+    "thumb": 2 * 1024 * 1024,
+    "medium": 8 * 1024 * 1024,
+}
 
 
 def _configure_stdio_utf8() -> None:
@@ -535,6 +542,7 @@ def _auth_error(
 
 def _reset_auth_state() -> None:
     """清空进程内认证状态，等待用户显式重新 auth。"""
+    _clear_mfa_kickoff_marker()
     _AUTH_STATE.api = None
     _AUTH_STATE.apple_id = ""
     _AUTH_STATE.session_dir = ""
@@ -617,14 +625,25 @@ def _supports_trusted_device_bridge(api: Any) -> bool:
     return ipd_auth.supports_trusted_device_bridge(api)
 
 
-def _kickoff_mfa_delivery(api: Any) -> None:
+def _kickoff_mfa_delivery(api: Any, *, force: bool = False) -> None:
     """
     触发 2FA 推送（对齐 icloudpd request_2fa / request_2fa_web）。
 
+    @param force True 时忽略已推送标记（仅显式「重发验证码」）
     @note 仅 trigger_push_notification（PUT）；不再叠加 bridge / request_2fa_code。
     """
+    if not force and (
+        _AUTH_STATE.mfa_delivery_kicked_off
+        or _read_mfa_kickoff_marker(_AUTH_STATE.session_dir, _AUTH_STATE.apple_id)
+    ):
+        _AUTH_STATE.mfa_delivery_kicked_off = True
+        return
     ok = ipd_auth.kickoff_2fa_push(api)
     _AUTH_STATE.last_kickoff_path = "ipd_put" if ok else "ipd_put_failed"
+    if force and ok:
+        _AUTH_STATE.last_kickoff_path = "ipd_put_resend"
+    _AUTH_STATE.mfa_delivery_kicked_off = True
+    _write_mfa_kickoff_marker(_AUTH_STATE.session_dir, _AUTH_STATE.apple_id)
 
 
 def _try_finalize_trusted_session(api: Any) -> bool:
@@ -718,37 +737,67 @@ def _establish_webauth_after_2fa(
 
 def _maybe_rekickoff_mfa_for_retry(api: Any) -> None:
     """
-    验证码已被 Apple 接受但 WEBAUTH 未就绪时，重新 PUT 推送设备验证。
+    已废弃：禁止在 auth_2fa 失败路径自动再推送。
 
-    @note 允许用户在同弹窗内点「允许」换码，无需 logout 重登。
+    @note 2026-09 实机：自动 rekickoff 会导致连收多条短信验证码。换码须走显式 `auth_2fa_resend`。
     """
-    path = _AUTH_STATE.last_validate_path
-    if path == "validate_2fa_code:false" or path.startswith("sms"):
+    return
+
+
+def _mfa_kickoff_marker_path(session_dir: str, apple_id: str) -> Path:
+    """同 challenge 已推送标记（跨 sidecar 进程重启仍生效）。"""
+    cookiejar, _session = ipd_auth.session_artifact_paths(session_dir, apple_id)
+    return cookiejar.parent / f"{cookiejar.name}.mfa-kicked"
+
+
+def _read_mfa_kickoff_marker(session_dir: str, apple_id: str) -> bool:
+    """磁盘上是否已为当前账号做过 2FA 推送。"""
+    if not session_dir.strip() or not apple_id.strip():
+        return False
+    return _mfa_kickoff_marker_path(session_dir, apple_id).is_file()
+
+
+def _write_mfa_kickoff_marker(session_dir: str, apple_id: str) -> None:
+    """落盘「本 challenge 已推送」标记。"""
+    if not session_dir.strip() or not apple_id.strip():
         return
-    if not path.startswith("validate_2fa_code"):
+    path = _mfa_kickoff_marker_path(session_dir, apple_id)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("1", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _clear_mfa_kickoff_marker(session_dir: str = "", apple_id: str = "") -> None:
+    """登录成功 / 登出时清除推送标记。"""
+    sd = (session_dir or _AUTH_STATE.session_dir).strip()
+    aid = (apple_id or _AUTH_STATE.apple_id).strip()
+    if not sd or not aid:
         return
-    _trigger_2fa_push_notification(api)
-    _AUTH_STATE.last_kickoff_path = "ipd_put_retry"
-    _AUTH_STATE.mfa_delivery_kicked_off = True
+    try:
+        _mfa_kickoff_marker_path(sd, aid).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _auth_2fa_failure_message() -> str:
     """按 last_validate_path 返回更精确的 auth_2fa 失败文案。"""
     path = _AUTH_STATE.last_validate_path
     if path == "validate_2fa_code:false":
-        return "验证码错误；请确认 iPhone 上显示的 6 位数字与当前弹窗一致"
+        return "验证码错误；请确认手机上最新的 6 位数字后重试（不会自动重发）"
     if path.endswith(":webauth_pending") or path.endswith(":trust_retry") or path.endswith(
         ":account_login_retry"
     ):
         return (
-            "验证码已被接受但 Photos session 未就绪；已在 iPhone 重新推送「设备验证」，"
-            "请点「允许」并尽快输入新验证码"
+            "验证码已被接受但 Photos session 未就绪；请点击「重发验证码」，"
+            "在手机上点「允许」后输入新码（不会自动重发）"
         )
     if path == "validate_2fa_code":
         return (
-            "验证码已被接受但 session 未完全建立；请在 iPhone 重新点「允许」并尽快输入新验证码"
+            "验证码已被接受但 session 未完全建立；请点击「重发验证码」后再试"
         )
-    return "验证码无效或 session 未就绪；请在设备上重新点「允许」并尽快输入新验证码"
+    return "验证码无效或 session 未就绪；需要新码时请点击「重发验证码」"
 
 
 def _submit_2fa_code(api: Any, code: str, delivery_method: str) -> bool:
@@ -837,14 +886,17 @@ def _finalize_auth_or_need_2fa(api: Any, cmd: str, *, kickoff_delivery: bool = T
         _AUTH_STATE.waiting_2fa = False
         _AUTH_STATE.mfa_delivery_kicked_off = False
         _AUTH_STATE.delivery_method = ""
+        _clear_mfa_kickoff_marker()
         _record_auth_success(cmd, f"{cmd} completed; session ready", api=api)
         return done_event(cmd)
 
     _AUTH_STATE.waiting_2fa = True
+    # 跨进程恢复：磁盘标记视为本 challenge 已推过，禁止再自动 PUT
+    if _read_mfa_kickoff_marker(_AUTH_STATE.session_dir, _AUTH_STATE.apple_id):
+        _AUTH_STATE.mfa_delivery_kicked_off = True
     if kickoff_delivery and not _AUTH_STATE.mfa_delivery_kicked_off:
         try:
-            _kickoff_mfa_delivery(api)
-            _AUTH_STATE.mfa_delivery_kicked_off = True
+            _kickoff_mfa_delivery(api, force=False)
             method = _two_factor_delivery_method(api)
             if method and method != "unknown":
                 _AUTH_STATE.delivery_method = method
@@ -1053,6 +1105,75 @@ def _write_stream_atomic(response: Any, dest_path: str) -> None:
         os.replace(str(partial_path), str(destination))
     except Exception:
         if partial_path.exists():
+            partial_path.unlink()
+        raise
+
+
+def _response_content_type(response: Any) -> str:
+    """从 HTTP Response 读取 Content-Type（缺省空串）。"""
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return ""
+    try:
+        return str(headers.get("Content-Type") or headers.get("content-type") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _consume_preview_stream(
+    response: Any,
+    *,
+    dest_path: str,
+    max_bytes: int,
+) -> tuple[int, str]:
+    """
+    消费预览流：可选落盘，并强制体积上限。
+
+    @returns (byte_length, content_type)
+    @raises RuntimeError 超上限时 message 含 `preview too large`
+    """
+    content_type = _response_content_type(response)
+    destination: Path | None = Path(dest_path) if dest_path else None
+    partial_path: Path | None = None
+    total = 0
+    fh = None
+    try:
+        if destination is not None:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            partial_path = destination.with_name(destination.name + ".partial")
+            fh = partial_path.open("wb")
+
+        def write_chunk(chunk: bytes) -> None:
+            nonlocal total
+            if not chunk:
+                return
+            total += len(chunk)
+            if total > max_bytes:
+                raise RuntimeError(f"preview too large: {total} > {max_bytes}")
+            if fh is not None:
+                fh.write(chunk)
+
+        if hasattr(response, "iter_content"):
+            for chunk in response.iter_content(chunk_size=1024 * 64):
+                write_chunk(chunk)
+        elif hasattr(response, "content"):
+            write_chunk(bytes(response.content))
+        else:
+            raise RuntimeError("unsupported response payload")
+
+        if fh is not None and partial_path is not None and destination is not None:
+            fh.close()
+            fh = None
+            os.replace(str(partial_path), str(destination))
+            partial_path = None
+        return total, content_type
+    except Exception:
+        if fh is not None:
+            try:
+                fh.close()
+            except Exception:  # noqa: BLE001
+                pass
+        if partial_path is not None and partial_path.exists():
             partial_path.unlink()
         raise
 
@@ -1304,6 +1425,117 @@ def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("download", mapped, str(exc)[:500])
 
 
+def _handle_preview_probe(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    在线预览探针：按 asset_id 拉 thumb/medium 衍生流（不回落 ORIGINAL）。
+
+    @note 阶段 B 手测命令；可选 dest_path 落盘。成功返回 content_type / byte_length。
+    """
+    asset_id = str(cmd.get("asset_id", "")).strip()
+    size = str(cmd.get("size", "")).strip().lower()
+    dest_path = str(cmd.get("dest_path", "")).strip()
+
+    if size not in ("thumb", "medium"):
+        return error_event(
+            "preview_probe",
+            CODE_INVALID_REQUEST,
+            "size must be thumb or medium",
+        )
+    if not asset_id:
+        return error_event("preview_probe", CODE_INVALID_REQUEST, "asset_id is required")
+
+    if _is_mock_mode():
+        mock_bytes = 12_345 if size == "thumb" else 98_765
+        payload: dict[str, Any] = {
+            "asset_id": asset_id,
+            "size": size,
+            "content_type": "image/jpeg",
+            "byte_length": mock_bytes,
+            "mock": True,
+        }
+        if dest_path:
+            payload["dest_path"] = dest_path
+        return done_event("preview_probe", **payload)
+
+    max_bytes = PREVIEW_PROBE_MAX_BYTES[size]
+    refreshed_url = False
+    try:
+        api = _ensure_api(
+            str(cmd.get("apple_id", "")).strip(),
+            str(cmd.get("session_dir", "")).strip(),
+        )
+        _refresh_asset_urls(api, [asset_id])
+        while True:
+            photo = _locate_photo_by_asset_id(api, asset_id)
+            if photo is None:
+                return error_event(
+                    "preview_probe",
+                    CODE_INVALID_REQUEST,
+                    f"asset not found: {asset_id}",
+                )
+            try:
+                response = ipd_photos.ipd_preview_response_with_retry(api, photo, size)
+                byte_length, content_type = _consume_preview_stream(
+                    response,
+                    dest_path=dest_path,
+                    max_bytes=max_bytes,
+                )
+                result: dict[str, Any] = {
+                    "asset_id": asset_id,
+                    "size": size,
+                    "content_type": content_type,
+                    "byte_length": byte_length,
+                }
+                if dest_path:
+                    result["dest_path"] = dest_path
+                return done_event("preview_probe", **result)
+            except ValueError as exc:
+                return error_event("preview_probe", CODE_INVALID_REQUEST, str(exc)[:500])
+            except RuntimeError as exc:
+                message = str(exc)
+                if "preview size missing" in message:
+                    return error_event(
+                        "preview_probe",
+                        CODE_PREVIEW_SIZE_MISSING,
+                        message[:500],
+                    )
+                if "preview too large" in message:
+                    return error_event(
+                        "preview_probe",
+                        CODE_PREVIEW_TOO_LARGE,
+                        message[:500],
+                    )
+                if not refreshed_url and _is_stale_download_url_error(exc):
+                    _refresh_photo_cache_on_stale_url(api, [asset_id])
+                    refreshed_url = True
+                    continue
+                return error_event("preview_probe", CODE_DOWNLOAD_FAILED, message[:500])
+            except Exception as exc:  # noqa: BLE001
+                if not refreshed_url and _is_stale_download_url_error(exc):
+                    _refresh_photo_cache_on_stale_url(api, [asset_id])
+                    refreshed_url = True
+                    continue
+                mapped = _map_download_exception(exc)
+                if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+                    _record_diagnostic("preview_probe", mapped, str(exc)[:500], exc=exc)
+                    _reset_auth_state()
+                return error_event("preview_probe", mapped, str(exc)[:500])
+    except RuntimeError as exc:
+        if str(exc) == "not authenticated":
+            return error_event(
+                "preview_probe",
+                CODE_AUTH_FAILED,
+                "explicit auth is required before preview_probe",
+            )
+        return error_event("preview_probe", CODE_DOWNLOAD_FAILED, str(exc)[:500])
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_exception(exc)
+        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            _record_diagnostic("preview_probe", mapped, str(exc)[:500], exc=exc)
+            _reset_auth_state()
+        return error_event("preview_probe", mapped, str(exc)[:500])
+
+
 def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
     """
     批量并行 download（P1 并发）。
@@ -1428,6 +1660,7 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
             _AUTH_STATE.waiting_2fa = False
             _AUTH_STATE.mfa_delivery_kicked_off = False
             _AUTH_STATE.delivery_method = ""
+            _clear_mfa_kickoff_marker()
             _record_auth_success("auth", "password login completed; session ready", api=api)
             return done_event("auth")
 
@@ -1491,7 +1724,7 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
     try:
         if code:
             if not _submit_2fa_code(_AUTH_STATE.api, code, delivery_method):
-                _maybe_rekickoff_mfa_for_retry(_AUTH_STATE.api)
+                # 禁止自动再推送；需要新码由用户点「重发验证码」
                 return _auth_error(
                     "auth_2fa",
                     CODE_AUTH_FAILED,
@@ -1526,6 +1759,7 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
         _AUTH_STATE.waiting_2fa = False
         _AUTH_STATE.mfa_delivery_kicked_off = False
         _AUTH_STATE.delivery_method = ""
+        _clear_mfa_kickoff_marker()
         _record_auth_success("auth_2fa", "2FA completed; session ready")
         return done_event("auth_2fa", delivery_method=delivery_method)
     except Exception as exc:  # noqa: BLE001
@@ -1533,6 +1767,42 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
         if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
             _reset_auth_state()
         return _auth_error("auth_2fa", mapped, str(exc)[:500], stage="auth_2fa", exc=exc)
+
+
+def _handle_auth_2fa_resend(cmd: dict[str, Any]) -> dict[str, Any]:
+    """
+    用户显式重发 2FA：仅 pending challenge 时 PUT 一次。
+
+    @note 禁止在 auth_2fa 失败路径自动调用；同步 / auth_probe 永不走此命令。
+    """
+    if _is_mock_mode():
+        return done_event("auth_2fa_resend", mock=True, resent=True)
+    if _AUTH_STATE.api is None or not _AUTH_STATE.waiting_2fa:
+        return _auth_error(
+            "auth_2fa_resend",
+            CODE_AUTH_FAILED,
+            "auth_2fa_resend requested without pending challenge",
+            stage="auth_2fa_resend",
+        )
+    try:
+        _kickoff_mfa_delivery(_AUTH_STATE.api, force=True)
+        method = _AUTH_STATE.delivery_method or _two_factor_delivery_method(_AUTH_STATE.api)
+        if method and method != "unknown":
+            _AUTH_STATE.delivery_method = method
+        return done_event(
+            "auth_2fa_resend",
+            resent=True,
+            delivery_method=_AUTH_STATE.delivery_method or "unknown",
+            kickoff_path=_AUTH_STATE.last_kickoff_path,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _auth_error(
+            "auth_2fa_resend",
+            _map_exception(exc),
+            str(exc)[:500],
+            stage="auth_2fa_resend",
+            exc=exc,
+        )
 
 
 def _handle_auth_diagnostic(cmd: dict[str, Any]) -> dict[str, Any]:
@@ -1730,6 +2000,8 @@ def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
         return _handle_auth_diagnostic(cmd)
     if name == "auth_2fa":
         return _handle_auth_2fa(cmd)
+    if name == "auth_2fa_resend":
+        return _handle_auth_2fa_resend(cmd)
     if name == "logout":
         return _handle_logout(cmd)
     if name == "catalog":
@@ -1738,6 +2010,8 @@ def _dispatch(cmd: dict[str, Any]) -> dict[str, Any]:
         return _handle_download(cmd)
     if name == "download_batch":
         return _handle_download_batch(cmd)
+    if name == "preview_probe":
+        return _handle_preview_probe(cmd)
     if name == "delete_assets":
         return _handle_delete_assets(cmd)
     return error_event(name or "unknown", CODE_INVALID_REQUEST, f"unknown cmd: {name}")

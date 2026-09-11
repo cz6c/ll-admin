@@ -3,6 +3,7 @@
   职责：凭据、区域、2FA、「记住我」；账号前提 tip
   主流程：密码直传 login 换 session；仅勾选记住我且成功后写入钥匙串供下次回填
   @note 面板回填只读 settings/钥匙串，不调 auth_state（探活见 hydrate / 写操作 ensure）
+  @note 2FA 仅登录时推送一次；换码须点「重发验证码」，提交失败不自动再推
 -->
 <script setup lang="ts">
 import {
@@ -10,6 +11,7 @@ import {
   getIcloudSyncRememberedPassword,
   getIcloudSyncSettings,
   loginIcloudSync,
+  resendIcloudSync2fa,
   saveIcloudSyncRememberedPassword,
   saveIcloudSyncSettings,
   setIcloudSyncCredentials,
@@ -35,6 +37,9 @@ const emit = defineEmits<{
 const loading = ref(false);
 const loggingIn = ref(false);
 const submitting2fa = ref(false);
+const resending2fa = ref(false);
+/** 重发冷却截止（ms）；防连点刷短信 */
+const resendCooldownUntil = ref(0);
 const need2fa = ref(false);
 const twoFaCode = ref("");
 const twoFaDeliveryMethod = ref("");
@@ -73,10 +78,39 @@ function applyNeed2faResult(result: IcloudSyncLoginResult) {
   // 投递方式推断不可靠（有短信能力仍常标成设备验证），文案用综合引导
   twoFaDetail.value =
     result.detail?.trim() ||
-    "请在手机上完成验证（设备弹窗点「允许」，或查收短信），再将 6 位验证码输入下方";
+    "请在手机上完成验证（设备弹窗点「允许」，或查收短信），再将 6 位验证码输入下方。需要新码时点「重发验证码」。";
+  startCooldownTicker();
 }
 
 const canSubmit2fa = computed(() => need2fa.value && twoFaCode.value.trim().length > 0 && !submitting2fa.value);
+
+/** 驱动重发冷却按钮可点（每秒刷新） */
+const nowMs = ref(Date.now());
+let cooldownTimer: ReturnType<typeof setInterval> | null = null;
+
+function startCooldownTicker() {
+  stopCooldownTicker();
+  nowMs.value = Date.now();
+  cooldownTimer = setInterval(() => {
+    nowMs.value = Date.now();
+  }, 1000);
+}
+
+function stopCooldownTicker() {
+  if (cooldownTimer) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = null;
+  }
+}
+
+const canResend2fa = computed(
+  () =>
+    need2fa.value &&
+    !loggingIn.value &&
+    !submitting2fa.value &&
+    !resending2fa.value &&
+    nowMs.value >= resendCooldownUntil.value
+);
 
 const canSubmitLogin = computed(() => appleId.value.trim().length > 0 && password.value.length > 0 && !loggingIn.value && !need2fa.value);
 
@@ -130,6 +164,8 @@ function resetTransient() {
   twoFaCode.value = "";
   twoFaDeliveryMethod.value = "";
   twoFaDetail.value = "";
+  resendCooldownUntil.value = 0;
+  stopCooldownTicker();
 }
 
 async function onLogin() {
@@ -148,6 +184,8 @@ async function onLogin() {
     }
     if (result.status === "need_2fa") {
       applyNeed2faResult(result);
+      // 登录路径已推送一次；冷却避免立刻连点重发
+      resendCooldownUntil.value = Date.now() + 30_000;
       return;
     }
     $feedback.message.success(accountChanged ? "已切换 Apple ID 并登录成功" : "登录成功");
@@ -176,11 +214,12 @@ async function onSubmit2fa() {
     }
     if (result.status === "need_2fa") {
       applyNeed2faResult(result);
-      $feedback.message.warning("仍需完成二次验证，请重试");
+      $feedback.message.warning("仍需完成二次验证；需要新码请点「重发验证码」");
       return;
     }
     need2fa.value = false;
     twoFaCode.value = "";
+    stopCooldownTicker();
     $feedback.message.success(pendingAccountChanged.value ? "已切换 Apple ID 并验证成功" : "验证成功，已登录");
     initialAppleId.value = appleId.value.trim();
     await syncKeyringAfterSuccess();
@@ -189,6 +228,26 @@ async function onSubmit2fa() {
     $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     submitting2fa.value = false;
+  }
+}
+
+/** 仅用户点击时重发；提交失败不会自动调用 */
+async function onResend2fa() {
+  if (!canResend2fa.value) return;
+  resending2fa.value = true;
+  try {
+    const result = await resendIcloudSync2fa();
+    if (result.status === "error") {
+      applyAuthFailure(result);
+      return;
+    }
+    resendCooldownUntil.value = Date.now() + 60_000;
+    twoFaCode.value = "";
+    $feedback.message.success("已重新发送验证码，请查收手机短信或设备弹窗");
+  } catch (e) {
+    $feedback.message.error(formatIcloudSyncError(e));
+  } finally {
+    resending2fa.value = false;
   }
 }
 
@@ -203,6 +262,10 @@ watch(
   },
   { immediate: true }
 );
+
+onBeforeUnmount(() => {
+  stopCooldownTicker();
+});
 </script>
 
 <template>
@@ -264,9 +327,16 @@ watch(
         </template>
       </a-form>
 
-      <div class="mt-12px">
-        <a-button v-if="need2fa" type="primary" class="w-full" :loading="submitting2fa" :disabled="!canSubmit2fa" @click="onSubmit2fa"> 提交验证码 </a-button>
-        <a-button v-else type="primary" class="w-full" :loading="loggingIn" :disabled="!canSubmitLogin || loading" @click="onLogin"> 登录 Apple ID </a-button>
+      <div class="mt-12px auth-actions">
+        <template v-if="need2fa">
+          <a-button type="primary" class="w-full" :loading="submitting2fa" :disabled="!canSubmit2fa" @click="onSubmit2fa">
+            提交验证码
+          </a-button>
+          <a-button class="w-full" :loading="resending2fa" :disabled="!canResend2fa" @click="onResend2fa"> 重发验证码 </a-button>
+        </template>
+        <a-button v-else type="primary" class="w-full" :loading="loggingIn" :disabled="!canSubmitLogin || loading" @click="onLogin">
+          登录 Apple ID
+        </a-button>
       </div>
     </div>
   </a-spin>
@@ -305,5 +375,11 @@ watch(
     align-items: center;
     gap: 8px;
   }
+}
+
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

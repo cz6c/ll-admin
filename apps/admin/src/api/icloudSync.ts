@@ -390,6 +390,22 @@ export function submitIcloudSync2fa(code: string) {
   return invoke<IcloudSyncLoginResult>("icloud_sync_submit_2fa", { code });
 }
 
+/** 显式重发 2FA（设备推送/短信码）；提交失败不会自动重发 */
+export function resendIcloudSync2fa() {
+  return invoke<IcloudSyncLoginResult>("icloud_sync_resend_2fa");
+}
+
+/**
+ * 远端 thumb → WebView 可加载的本地协议 URL（Win: http://icloudimg.localhost）
+ * 与 QQ qzoneimg / 相册 convertFileSrc 同思路：不经 invoke/base64
+ * @note 产品锁定仅 thumb；协议侧拒绝其它 k
+ */
+export function icloudProxiedThumbSrc(assetId: string): string {
+  const id = assetId.trim();
+  if (!id) return "";
+  return `http://icloudimg.localhost/?id=${encodeURIComponent(id)}&k=thumb`;
+}
+
 /** 启动 sidecar 并返回 agent 版本（冒烟 / 诊断） */
 export function pingIcloudSync() {
   return invoke<{ protocol: number; agent: string }>("icloud_sync_ping");

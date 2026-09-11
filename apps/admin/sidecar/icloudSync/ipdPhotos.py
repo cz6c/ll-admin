@@ -305,6 +305,63 @@ def ipd_download_response(api: Any, photo: Any, part: str) -> Any:
     raise ValueError("part must be still, mov, or video")
 
 
+def resolve_preview_version_size(size: str) -> Any:
+    """
+    将探针/预览 size 映射为 AssetVersionSize。
+
+    @param size `thumb` | `medium`
+    @raises ValueError 非法 size
+    """
+    _, AssetVersionSize, _, _ = _load_ipd_types()
+    key = size.strip().lower()
+    if key == "thumb":
+        return AssetVersionSize.THUMB
+    if key == "medium":
+        return AssetVersionSize.MEDIUM
+    raise ValueError("size must be thumb or medium")
+
+
+def ipd_preview_response(api: Any, photo: Any, size: str) -> Any:
+    """
+    拉取衍生预览流（对齐 iCloud Web / icloudpd `--size thumb|medium`）。
+
+    @param size `thumb` | `medium`
+    @raises ValueError size 非法
+    @raises RuntimeError 该资产无对应衍生版本（不回落 ORIGINAL，避免探针误判）
+    @note 图片用 resJPEGThumb/Med；视频用同一枚举键映射到 resVidSmall/Med
+    """
+    version_size = resolve_preview_version_size(size)
+    session = ipd_photos_session(api)
+    versions = ipd_asset_versions(photo)
+    if version_size not in versions:
+        raise RuntimeError(f"preview size missing: {size.strip().lower()}")
+    version = versions[version_size]
+    response = _download_asset_with_timeout(
+        session, version.url, int(getattr(version, "size", 0) or 0)
+    )
+    _ensure_response_ok(response, f"preview:{size.strip().lower()}")
+    return response
+
+
+def ipd_preview_response_with_retry(api: Any, photo: Any, size: str) -> Any:
+    """带有限重试的衍生预览下载。"""
+    last_exc: BaseException | None = None
+    for attempt in range(MAX_DOWNLOAD_ATTEMPTS):
+        try:
+            return ipd_preview_response(api, photo, size)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if isinstance(exc, ValueError):
+                raise
+            if isinstance(exc, RuntimeError) and "preview size missing" in str(exc):
+                raise
+            if attempt >= MAX_DOWNLOAD_ATTEMPTS - 1 or not is_retryable_download_error(exc):
+                raise
+            delay = RETRY_BACKOFF_SEC[min(attempt, len(RETRY_BACKOFF_SEC) - 1)]
+            time.sleep(delay + random.uniform(0, 0.25))
+    raise RuntimeError(f"preview retry exhausted: {last_exc}")
+
+
 def ipd_download_response_with_retry(api: Any, photo: Any, part: str) -> Any:
     """
     带有限重试的下载。

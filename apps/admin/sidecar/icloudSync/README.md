@@ -1,11 +1,11 @@
 # iCloud Sync Sidecar（维护者）
 
-Python 瘦 sidecar：`auth` / `catalog` / `download`，stdin/stdout 行式 JSON。  
+Python 瘦 sidecar：`auth` / `catalog` / `download` / `preview_probe`，stdin/stdout 行式 JSON。  
 **终端用户不安装 Python**；发布包使用 PyInstaller 捆绑 exe，随 Tauri 安装包分发。
 
 | 模块 | 职责 |
 |------|------|
-| `agent.py` | 命令路由、认证态、catalog/download 编排 |
+| `agent.py` | 命令路由、认证态、catalog/download/preview_probe 编排 |
 | `icloudAuth.py` | pyicloud_ipd 登录 / 2FA / session（icloudpd 同源） |
 | `ipdPhotos.py` | PhotoAsset 分类与 `photo.download(session, url)`（icloudpd v1.32.3 对齐） |
 | `protocol.py` | line-JSON 事件与错误码 |
@@ -77,6 +77,21 @@ py -3 -m pytest tests/ -v
 ```
 
 **Git：** `__pycache__`、`.pytest_cache`、`vendor/icloud_photos_downloader-*`（构建时由 `build.ps1` 下载）、`spike/` 等已写入 `.gitignore`，勿提交。
+
+## 手测：在线预览探针（`preview_probe`）
+
+用于验证 **未下载原图前** 能否稳定拿到 `thumb` / `medium`（不改抽屉 UI）。需已有 Apple 登录 session（与 CS 同步同一 `session_dir`）。
+
+```powershell
+cd apps/admin/sidecar/icloudSync
+# 勿设 ICLOUD_SYNC_MOCK；先 auth / auth_probe（或复用 CS 已写好的 session）
+# 1) catalog 取几个 asset_id（图 / Live / 视频各至少 1）
+# 2) 探针（可选 dest_path 落盘对比体积）
+'{"cmd":"preview_probe","apple_id":"<id>","session_dir":"<path>","asset_id":"<id>","size":"thumb","dest_path":"E:/tmp/probe_thumb.jpg"}' | py -3 agent.py
+'{"cmd":"preview_probe","apple_id":"<id>","session_dir":"<path>","asset_id":"<id>","size":"medium"}' | py -3 agent.py
+```
+
+成功 `done` 含 `content_type`、`byte_length`；缺衍生版本为 `preview_size_missing`（**不会**回落 ORIGINAL）。体积门禁：`thumb` ≤ 2MiB，`medium` ≤ 8MiB → `preview_too_large`。
 
 ## Spike / 设计文档
 

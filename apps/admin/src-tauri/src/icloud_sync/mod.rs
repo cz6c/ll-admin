@@ -7,6 +7,7 @@ pub mod cloud_assets;
 pub mod cloud_delete;
 mod db;
 mod keyring_store;
+pub(crate) mod media_protocol;
 pub(crate) mod naming;
 pub mod queue;
 mod settings;
@@ -454,6 +455,27 @@ pub fn icloud_sync_submit_2fa(
       serde_json::json!({
         "cmd": "auth_2fa",
         "code": code,
+      }),
+    )
+    .map_err(|e| e.to_string())?;
+
+  map_login_event(event)
+}
+
+/// 用户显式重发 2FA 推送（不会在提交失败时自动调用）
+#[tauri::command]
+pub fn icloud_sync_resend_2fa(
+  app: AppHandle,
+  sidecar: State<'_, SidecarClientHandle>,
+) -> Result<IcloudSyncLoginResult, String> {
+  let client = sidecar.client();
+  client.ensure_started(&app).map_err(|e| e.to_string())?;
+
+  let event = client
+    .request(
+      &app,
+      serde_json::json!({
+        "cmd": "auth_2fa_resend",
       }),
     )
     .map_err(|e| e.to_string())?;

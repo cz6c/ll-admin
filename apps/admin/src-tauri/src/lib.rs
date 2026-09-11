@@ -43,9 +43,12 @@ pub fn run() {
       tauri_plugin_autostart::MacosLauncher::LaunchAgent,
       Some(vec!["--autostart"]),
     ))
-    // QQ 空间缩略图/预览：WebView 原生加载，不经 IPC base64
+    // QQ 空间 / iCloud 缩略图：WebView 原生加载，不经 IPC base64
     .register_asynchronous_uri_scheme_protocol("qzoneimg", |ctx, request, responder| {
       qzone_sync::media_protocol::handle_request(ctx, request, responder);
+    })
+    .register_asynchronous_uri_scheme_protocol("icloudimg", |ctx, request, responder| {
+      icloud_sync::media_protocol::handle_request(ctx, request, responder);
     })
     .manage(icloud_sync::SidecarClientHandle::new())
     .manage(qzone_sync::QzoneSyncState::new())
@@ -74,6 +77,7 @@ pub fn run() {
       icloud_sync::icloud_sync_logout,
       icloud_sync::icloud_sync_login,
       icloud_sync::icloud_sync_submit_2fa,
+      icloud_sync::icloud_sync_resend_2fa,
       icloud_sync::icloud_sync_auth_state,
       icloud_sync::queue::icloud_sync_start_job,
       icloud_sync::queue::icloud_sync_pause_job,

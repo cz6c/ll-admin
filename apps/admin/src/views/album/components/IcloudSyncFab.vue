@@ -1,15 +1,17 @@
 <!--
   iCloud 同步浮动触发区
-  职责：右下角 FAB；抽屉顶部全局进度 +「同步到本地」列表心智；工具栏危险区删云
-  主流程：hydrate → FAB → StatusCard → 拉取筛选项列表；删云经确认后全屏浮层展示进度/成败
+  职责：右下角 FAB；抽屉顶部全局进度 +「同步到本地」网格浏览（在线 thumb）；工具栏危险区删云
+  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱；synced 勾选删云经确认后全屏浮层
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
+import IcloudLazyImg from "./IcloudLazyImg.vue";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
+  icloudProxiedThumbSrc,
   loadIcloudSyncCloudList,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
@@ -26,16 +28,16 @@ import {
   cloudStateLabel,
   cloudStateColor,
   cloudDeletedLocalPresenceLabel,
-  cloudDeletedLocalPresenceColor,
   CLOUD_LIST_PULL_FILTER_OPTIONS,
   type CloudListStateFilterOption,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
-import { useDebounceFn, useDraggable, useEventListener, useResizeObserver, useThrottleFn } from "@vueuse/core";
+import { useDebounceFn, useDraggable, useEventListener, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
@@ -141,20 +143,66 @@ function selectedCloudRows(): CloudListDisplayRow[] {
   return cloudSelectedKeys.value.map(key => cloudSelectedRowsByKey.value.get(key)).filter((row): row is CloudListDisplayRow => !!row);
 }
 
-/** 已登录且可腾空间时提供勾选；仅 synced 可选 */
-const cloudRowSelection = computed(() =>
-  canManageCloudSpace.value
-    ? {
-        selectedRowKeys: cloudSelectedKeys.value,
-        onChange: (keys: (string | number)[], rows: CloudListDisplayRow[]) => {
-          mergeCloudPageSelection(keys, rows);
-        },
-        getCheckboxProps: (record: { cloudState: string }) => ({
-          disabled: record.cloudState !== "synced"
-        })
+/** 已登录且可腾空间时：仅 synced 可勾选删云 */
+function canSelectCloudRow(row: CloudListDisplayRow): boolean {
+  return canManageCloudSpace.value && row.cloudState === "synced";
+}
+
+function isCloudRowSelected(row: CloudListDisplayRow): boolean {
+  return cloudSelectedKeys.value.includes(row.rowKey);
+}
+
+function toggleCloudRowSelect(row: CloudListDisplayRow, event?: Event) {
+  event?.stopPropagation();
+  if (!canSelectCloudRow(row)) return;
+  const selected = isCloudRowSelected(row);
+  if (selected) {
+    mergeCloudPageSelection(
+      cloudSelectedKeys.value.filter(k => k !== row.rowKey),
+      []
+    );
+  } else {
+    mergeCloudPageSelection([...cloudSelectedKeys.value, row.rowKey], [row]);
+  }
+}
+
+const cloudGridScrollRef = ref<HTMLElement | null>(null);
+const previewOpen = ref(false);
+const previewRow = ref<CloudListDisplayRow | null>(null);
+
+/** 网格/灯箱优先本地可读图，避免整页打满 sidecar */
+function cloudRowLocalImagePath(row: CloudListDisplayRow | null | undefined): string | null {
+  if (!row?.localFilePresent) return null;
+  const path = row.destPath?.trim() ?? "";
+  return path || null;
+}
+
+const previewSrc = computed(() => {
+  const row = previewRow.value;
+  if (!row?.assetId) return "";
+  const local = cloudRowLocalImagePath(row);
+  if (local) {
+    const ext = local.slice(local.lastIndexOf(".") + 1).toLowerCase();
+    if (["jpg", "jpeg", "png", "webp", "gif", "bmp"].includes(ext)) {
+      try {
+        return convertFileSrc(local);
+      } catch {
+        /* online fallback */
       }
-    : undefined
-);
+    }
+  }
+  return icloudProxiedThumbSrc(row.assetId);
+});
+
+function openCloudPreview(row: CloudListDisplayRow) {
+  previewRow.value = row;
+  previewOpen.value = true;
+}
+
+function closeCloudPreview() {
+  previewOpen.value = false;
+  previewRow.value = null;
+}
 
 /** 未完成任务占用时，禁用云列表操作的提示（已暂停时不再引导「暂停」） */
 const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
@@ -169,21 +217,6 @@ function guardCloudManageAction(): boolean {
   if (canManageCloudSpace.value) return true;
   $feedback.message.warning(TASK_BUSY_HINT);
   return false;
-}
-
-const cloudTableColumns = [
-  { title: "序号", dataIndex: "listSeq", width: 80 },
-  { title: "拍摄时间", dataIndex: "sortKey", width: 140 },
-  { title: "原文件名", dataIndex: "originalFilename" },
-  { title: "状态", dataIndex: "cloudState", width: 210 }
-];
-
-/**
- * 当前筛选结果下的跨页列表序号（便于对照「共 N 条」查漏）
- * @param rowIndexInPage 当前页内 0-based 行下标
- */
-function cloudListSeq(rowIndexInPage: number): number {
-  return (cloudPage.value - 1) * cloudPageSize.value + rowIndexInPage + 1;
 }
 
 /** Tab：PULL 子集；同步失败角标为 0 时隐藏该项 */
@@ -220,13 +253,6 @@ const deleteCloudPrimaryDisabled = computed(() => {
   if (!canManageCloudSpace.value || deleteBusy.value) return true;
   if (cloudSelectedKeys.value.length > 0) return false;
   return !cloudSummary.value?.synced;
-});
-
-const cloudTableWrapRef = ref<HTMLElement | null>(null);
-const tableScrollY = ref(320);
-
-useResizeObserver(cloudTableWrapRef, ([entry]) => {
-  tableScrollY.value = Math.max(160, Math.floor(entry.contentRect.height - 88));
 });
 
 function onDeleteCloudPrimaryClick() {
@@ -301,9 +327,9 @@ const onCloudFilenameKeywordChange = useDebounceFn(() => {
   onCloudFilterChange();
 }, 300);
 
-function onCloudTableChange(pagination: { current?: number; pageSize?: number }) {
-  if (pagination.current) cloudPage.value = pagination.current;
-  if (pagination.pageSize) cloudPageSize.value = pagination.pageSize;
+function onCloudPageChange(page: number, pageSize: number) {
+  cloudPage.value = page;
+  cloudPageSize.value = pageSize;
   void refreshCloudAssets();
 }
 
@@ -764,57 +790,72 @@ onMounted(() => {
           </div>
         </div>
 
-        <div ref="cloudTableWrapRef" class="cloud-table-wrap">
-          <a-spin :spinning="loadingCloud" class="cloud-table-spin">
-            <a-table
-              :columns="cloudTableColumns"
-              :data-source="cloudRows"
-              :row-selection="cloudRowSelection"
+        <div class="cloud-grid-wrap">
+          <div v-if="loadingCloud" class="cloud-grid-loading" aria-busy="true">
+            <a-spin />
+          </div>
+          <div ref="cloudGridScrollRef" class="cloud-grid-scroll">
+            <div v-if="cloudRows.length" class="cloud-grid">
+              <div
+                v-for="row in cloudRows"
+                :key="row.rowKey"
+                class="cloud-cell"
+                :class="{ selected: isCloudRowSelected(row) }"
+                :title="`${row.displayFilename}\n${formatSortKeyTime(row.captureAt ?? row.sortKey)} · ${row.displayStateLabel}`"
+                @click="openCloudPreview(row)"
+              >
+                <IcloudLazyImg
+                  :asset-id="row.assetId"
+                  :local-path="cloudRowLocalImagePath(row)"
+                  :scroll-root="cloudGridScrollRef"
+                />
+                <span class="cell-state" :style="{ background: row.displayStateColor || '#999' }">{{ row.displayStateLabel }}</span>
+                <span v-if="row.mediaKind === 'video' || row.mediaKind === 'live'" class="cell-badge">
+                  {{ row.mediaKind === "video" ? "视频" : "实况" }}
+                </span>
+                <label v-if="canSelectCloudRow(row)" class="cell-check" @click.stop>
+                  <a-checkbox :checked="isCloudRowSelected(row)" @change="toggleCloudRowSelect(row)" />
+                </label>
+              </div>
+            </div>
+            <a-empty v-else-if="!loadingCloud" description="当前筛选下暂无内容" :image="false" />
+          </div>
+          <div class="cloud-grid-pager">
+            <a-pagination
               size="small"
-              bordered
-              row-key="rowKey"
-              :scroll="{ y: tableScrollY }"
-              :pagination="{
-                current: cloudPage,
-                pageSize: cloudPageSize,
-                total: cloudTotal,
-                size: 'small',
-                showSizeChanger: true,
-                pageSizeOptions: ['30', '50', '100'],
-                showTotal: (total: number) => (cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`)
-              }"
-              @change="onCloudTableChange"
-            >
-              <template #bodyCell="{ column, record, index }">
-                <template v-if="column.dataIndex === 'listSeq'">
-                  {{ cloudListSeq(index) }}
-                </template>
-                <template v-else-if="column.dataIndex === 'sortKey'">
-                  {{ formatSortKeyTime((record as CloudListDisplayRow).captureAt ?? (record as CloudListDisplayRow).sortKey) }}
-                </template>
-                <template v-else-if="column.dataIndex === 'cloudState'">
-                  <a-tag :color="(record as CloudListDisplayRow).displayStateColor">
-                    {{ (record as CloudListDisplayRow).displayStateLabel }}
-                  </a-tag>
-                  <a-tag
-                    v-if="(record as CloudListDisplayRow).cloudState === 'deleted_cloud_pending'"
-                    :color="cloudDeletedLocalPresenceColor(Boolean((record as CloudListDisplayRow).localFilePresent))"
-                  >
-                    {{ cloudDeletedLocalPresenceLabel(Boolean((record as CloudListDisplayRow).localFilePresent)) }}
-                  </a-tag>
-                </template>
-                <template v-else-if="column.dataIndex === 'originalFilename'">
-                  <span class="filename-text" :title="(record as CloudListDisplayRow).displayFilename">
-                    {{ (record as CloudListDisplayRow).displayFilename }}
-                  </span>
-                </template>
-              </template>
-            </a-table>
-          </a-spin>
+              :current="cloudPage"
+              :page-size="cloudPageSize"
+              :total="cloudTotal"
+              show-size-changer
+              :page-size-options="['30', '50', '100']"
+              :show-total="(total: number) => (cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`)"
+              @change="onCloudPageChange"
+            />
+          </div>
         </div>
       </template>
     </div>
   </a-drawer>
+
+  <a-modal
+    v-model:open="previewOpen"
+    :title="previewRow?.displayFilename || '预览'"
+    :footer="null"
+    width="720px"
+    destroy-on-close
+    @cancel="closeCloudPreview"
+  >
+    <div class="cloud-preview-body">
+      <BaseImage v-if="previewSrc" :src="previewSrc" fit="contain" width="100%" height="100%" />
+      <a-empty v-else description="无法加载预览" :image="false" />
+      <p v-if="previewRow" class="cloud-preview-meta">
+        {{ formatSortKeyTime(previewRow.captureAt ?? previewRow.sortKey) }} · {{ previewRow.displayStateLabel }}
+        <template v-if="previewRow.cloudState === 'deleted_cloud_pending'">
+          · {{ cloudDeletedLocalPresenceLabel(Boolean(previewRow.localFilePresent)) }}
+        </template>
+      </p>
+    </div>
+  </a-modal>
 
   <!-- 删云全屏浮层：进度 / 完成 / 失败摘要；无取消；失败可重试 -->
   <Teleport to="body">
@@ -984,28 +1025,106 @@ onMounted(() => {
 :deep(.ant-tabs-tab-active) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
   background: var(--color-primary);
 }
-.cloud-table-wrap {
-  flex: 1;
+.cloud-grid-wrap {
+  flex: 1 1 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
   overflow: hidden;
-
-  :deep(.ant-table-tbody > tr > td) {
-    vertical-align: top;
+}
+.cloud-grid-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+}
+.cloud-grid-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 2px 8px;
+}
+.cloud-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+}
+.cloud-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: zoom-in;
+  background: var(--color-fill-quaternary, rgba(0, 0, 0, 0.04));
+  &.selected {
+    border-color: var(--color-primary);
   }
 }
-.cloud-table-spin {
-  height: 100%;
-  :deep(.ant-spin-container) {
-    height: 100%;
-  }
-}
-.filename-text {
-  display: inline-block;
-  max-width: 100%;
+.cell-state {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: calc(100% - 28px);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
+  pointer-events: none;
+}
+.cell-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  pointer-events: none;
+}
+.cell-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  margin: 0;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.cloud-grid-pager {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+.cloud-preview-body {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  :deep(.base-image) {
+    flex: 1;
+    min-height: 320px;
+    background: #111;
+  }
+}
+.cloud-preview-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>
 

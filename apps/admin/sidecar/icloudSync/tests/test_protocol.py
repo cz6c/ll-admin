@@ -224,6 +224,91 @@ def test_mfa_still_required_when_webauth_missing() -> None:
     assert agent._mfa_still_required(api) is True
 
 
+def test_auth_2fa_failure_does_not_auto_rekickoff(monkeypatch) -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    kickoffs: list[str] = []
+
+    class _Api:
+        pass
+
+    api = _Api()
+    agent._AUTH_STATE.api = api
+    agent._AUTH_STATE.waiting_2fa = True
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(__import__("tempfile").mkdtemp())
+    agent._AUTH_STATE.mfa_delivery_kicked_off = True
+
+    monkeypatch.setattr(agent, "_submit_2fa_code", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        agent,
+        "_kickoff_mfa_delivery",
+        lambda *_a, **_k: kickoffs.append("kick"),
+    )
+    monkeypatch.setattr(agent, "_auth_2fa_failure_message", lambda: "no auto resend")
+
+    ev = agent._dispatch({"cmd": "auth_2fa", "code": "123456"})
+    assert ev["type"] == "error"
+    assert kickoffs == []
+
+
+def test_auth_2fa_resend_force_kickoff(monkeypatch) -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    calls: list[bool] = []
+
+    class _Api:
+        pass
+
+    agent._AUTH_STATE.api = _Api()
+    agent._AUTH_STATE.waiting_2fa = True
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(__import__("tempfile").mkdtemp())
+    agent._AUTH_STATE.mfa_delivery_kicked_off = True
+
+    def _kick(_api: object, *, force: bool = False) -> None:
+        calls.append(force)
+
+    monkeypatch.setattr(agent, "_kickoff_mfa_delivery", _kick)
+    monkeypatch.setattr(agent, "_two_factor_delivery_method", lambda _api: "trusted_device")
+
+    ev = agent._dispatch({"cmd": "auth_2fa_resend"})
+    assert ev["type"] == "done"
+    assert ev["cmd"] == "auth_2fa_resend"
+    assert calls == [True]
+
+
+def test_mfa_kickoff_marker_blocks_second_auto_push(monkeypatch, tmp_path) -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(tmp_path)
+    pushes: list[str] = []
+
+    class _Api:
+        def trigger_push_notification(self) -> bool:
+            pushes.append("put")
+            return True
+
+    monkeypatch.setattr(
+        agent.ipd_auth,
+        "kickoff_2fa_push",
+        lambda api: bool(api.trigger_push_notification()),
+    )
+
+    api = _Api()
+    agent._kickoff_mfa_delivery(api, force=False)
+    assert pushes == ["put"]
+    assert agent._read_mfa_kickoff_marker(str(tmp_path), "a@b.c") is True
+
+    agent._AUTH_STATE.mfa_delivery_kicked_off = False
+    agent._kickoff_mfa_delivery(api, force=False)
+    assert pushes == ["put"]  # blocked by disk marker
+
+    agent._kickoff_mfa_delivery(api, force=True)
+    assert pushes == ["put", "put"]
+
+
 def test_finalize_auth_does_not_rekickoff_mfa_when_already_waiting() -> None:
     agent = _load_agent(mock=False)
 
@@ -519,3 +604,47 @@ def test_stale_url_forces_lookup_even_when_fresh(monkeypatch) -> None:
     agent._refresh_photo_cache_on_stale_url(object(), ["asset-a"])
 
     assert refreshed == [["asset-a"]]
+
+
+def test_preview_probe_mock_returns_byte_stats() -> None:
+    agent = _load_agent(mock=True)
+    ev = agent._dispatch({"cmd": "preview_probe", "asset_id": "A1", "size": "thumb"})
+    assert ev["type"] == "done"
+    assert ev["cmd"] == "preview_probe"
+    assert ev["mock"] is True
+    assert ev["size"] == "thumb"
+    assert ev["content_type"] == "image/jpeg"
+    assert ev["byte_length"] == 12_345
+
+
+def test_preview_probe_rejects_invalid_size() -> None:
+    agent = _load_agent(mock=True)
+    ev = agent._dispatch({"cmd": "preview_probe", "asset_id": "A1", "size": "original"})
+    assert ev["type"] == "error"
+    assert ev["code"] == "invalid_request"
+
+
+def test_preview_probe_requires_auth_when_not_mock() -> None:
+    agent = _load_agent(mock=False)
+    ev = agent._dispatch({"cmd": "preview_probe", "asset_id": "A1", "size": "medium"})
+    assert ev["type"] == "error"
+    assert ev["code"] == "auth_failed"
+
+
+def test_preview_probe_maps_missing_size(monkeypatch, tmp_path) -> None:
+    agent = _load_agent(mock=False)
+    agent._AUTH_STATE.api = object()
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(tmp_path)
+    agent._merge_photos_into_cache({"A1": object()})
+    agent._AUTH_STATE.photo_url_fetched_at["A1"] = __import__("time").monotonic()
+
+    monkeypatch.setattr(agent, "_refresh_asset_urls", lambda *_a, **_k: None)
+
+    def _raise_missing(_api: object, _photo: object, _size: str) -> object:
+        raise RuntimeError("preview size missing: thumb")
+
+    monkeypatch.setattr(agent.ipd_photos, "ipd_preview_response_with_retry", _raise_missing)
+    ev = agent._dispatch({"cmd": "preview_probe", "asset_id": "A1", "size": "thumb"})
+    assert ev["type"] == "error"
+    assert ev["code"] == "preview_size_missing"

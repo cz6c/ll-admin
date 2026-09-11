@@ -30,7 +30,7 @@ flowchart LR
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
-| 抽屉单列表 | 顶部为**全局进度/主操作**（同步任务）；其下仅 **同步到本地** 心智列表（Tab：全部/待同步/已同步/同步失败）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；删云进度由**全屏浮层**接管（无取消）；失败在浮层内「重试失败项」 |
+| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（Tab：全部/待同步/已同步/同步失败）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；删云进度由**全屏浮层**接管 |
 | 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
@@ -302,11 +302,19 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 
 调试：`pnpm run cs:dev` · `cargo test --lib icloud_sync` · 改 `src-tauri` 后 **`cargo check` 须 0 warnings**（见 `.cursor/rules/rust-tauri.mdc`）
 
+### 在线预览（网格）
+
+- 协议：`icloudimg`（`http://icloudimg.localhost/?id=<asset_id>&k=thumb`）→ sidecar `preview_probe` **仅 thumb**
+- UI：抽屉为宫格 + 灯箱（无左侧相册栏）；缺衍生不回落 ORIGINAL
+- 删云：网格上仅 `synced` 可勾选；工具栏危险区逻辑不变
+- 缓存：`<appData>/icloud-sync/media-cache`；并发门闩 4
+
 ---
 
 ## 明确不做
 
 - 「检查新照片」/ `incremental` 同步模式 / sidecar **真增量** catalog（无 native delta API）
+- 在线 **medium** / 未同步原片灯箱（产品锁定只做 thumb）
 - diff 层 Live **成对合并判态**（still/mov 分行 classify 即可；列表已合并展示；仅边缘脏数据可能 part 不一致）
 - 任务内 per-file 列表 UI（`list_asset_tasks` 保留供诊断）
 - 双向同步 / 上传 / 本地指纹冲突检测

@@ -164,7 +164,7 @@ def _infer_hints(
         hints.append("VALIDATE_RETURNED_FALSE")
     if validate_path.endswith(":webauth_pending") or validate_path.endswith(":trust_retry"):
         hints.append("VALIDATE_OK_WEBAUTH_PENDING")
-    if kickoff_path in ("put_retry", "ipd_put_retry"):
+    if kickoff_path in ("put_retry", "ipd_put_retry", "ipd_put_resend"):
         hints.append("KICKOFF_PUT_RETRY")
     if exc is not None:
         hints.append("EXCEPTION_DURING_VALIDATE")

@@ -5,6 +5,7 @@
 mod album;
 mod app_settings;
 mod icloud_sync;
+mod qzone_sync;
 
 use std::sync::Mutex;
 
@@ -42,7 +43,12 @@ pub fn run() {
       tauri_plugin_autostart::MacosLauncher::LaunchAgent,
       Some(vec!["--autostart"]),
     ))
+    // QQ 空间缩略图/预览：WebView 原生加载，不经 IPC base64
+    .register_asynchronous_uri_scheme_protocol("qzoneimg", |ctx, request, responder| {
+      qzone_sync::media_protocol::handle_request(ctx, request, responder);
+    })
     .manage(icloud_sync::SidecarClientHandle::new())
+    .manage(qzone_sync::QzoneSyncState::new())
     .manage(Mutex::new(album::AlbumState::new()))
     .invoke_handler(tauri::generate_handler![
       app_settings::app_settings_get,
@@ -84,6 +90,23 @@ pub fn run() {
       icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
       icloud_sync::cloud_delete::icloud_sync_cancel_cloud_delete,
       icloud_sync::cloud_delete::icloud_sync_retry_cloud_deletes,
+      qzone_sync::qzone_sync_get_settings,
+      qzone_sync::qzone_sync_save_settings,
+      qzone_sync::qzone_sync_default_output_dir,
+      qzone_sync::qzone_sync_auth_state,
+      qzone_sync::qzone_sync_qr_start,
+      qzone_sync::qzone_sync_qr_poll,
+      qzone_sync::qzone_sync_logout,
+      qzone_sync::qzone_sync_start_job,
+      qzone_sync::qzone_sync_pause_job,
+      qzone_sync::qzone_sync_resume_job,
+      qzone_sync::qzone_sync_cancel_job,
+      qzone_sync::qzone_sync_job_status,
+      qzone_sync::qzone_sync_list_albums,
+      qzone_sync::qzone_sync_list_photos,
+      qzone_sync::qzone_sync_fetch_media,
+      qzone_sync::qzone_sync_prepare_preview,
+      qzone_sync::qzone_sync_pending_count,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

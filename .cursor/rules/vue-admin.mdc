@@ -45,6 +45,9 @@ alwaysApply: false
 
 - 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
 - 图表用 ECharts（见 `views/charts`）。
+- **业务图片统一 `BaseImage`**（`src/components/BaseImage`）：头像、列表/上传缩略图、相册预览、远端图展示等**内容图**必须走该组件（加载占位 `imgLoading`、失败 `imgError`、可选 PreviewGroup）。禁止业务页再手写一套 `<img>` / `a-image` 的 loading·fallback 逻辑。
+  - **允许例外**（勿硬套）：品牌 Logo、404 等装饰静态图、扫码二维码 data URL、裁剪器实时预览、视频/`LivePhotoPlayer` 静帧等与播控强耦合画面。
+  - **远端需协议/可视区挂载**（如 QQ `qzoneimg`）：薄封装先完成 src 改写与 IO，**展示仍交给 `BaseImage`**（参考 `QzoneLazyImg`）；禁止平行造「第二套带 loading 的图片组件」替代 `BaseImage`。
 - **样式优先 UnoCSS**（原子类 / shortcuts）；仅 `:deep`、复杂伪类或难表达布局保留少量 scoped SCSS。
 - **卡片圆角**：区块统一 **8px**，内嵌面（列表行、pre 块）**6px**。优先用 `uno.config.ts` shortcuts，勿散落手写 `rounded-8px border …`：
 

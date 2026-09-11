@@ -126,7 +126,7 @@ const handlePictureCardPreview = (file: UploadFile) => {
       </div>
       <template #itemRender="{ file }">
         <div class="upload-list-item">
-          <img :src="file.url" class="upload-image" />
+          <BaseImage :src="file.url" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
           <div class="upload-handle" @click.stop>
             <div class="handle-icon" @click="handlePictureCardPreview(file)">
               <IconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
@@ -206,7 +206,13 @@ const handlePictureCardPreview = (file: UploadFile) => {
   .upload-image {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    display: block;
+
+    :deep(.base-image) {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
   }
 
   .upload-handle {

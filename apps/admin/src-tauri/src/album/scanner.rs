@@ -343,10 +343,10 @@ pub(crate) const SKIP_DIRS: &[&str] = &[
 const SYNC_PENDING_DIR: &str = "pending";
 
 /**
- * 当前同步落盘目录内：不合规命名的媒体移入 `pending/`（失败只打日志，不中断扫描）
- * @note 仅处理媒体扩展名；已在 pending 下的跳过（避免连环挪动）；随后 discover 会索引 pending
+ * 指定同步落盘目录内：非本源命名的媒体移入 `pending/`（失败只打日志，不中断扫描）
+ * @note `is_owned` 判定同步产物文件名；iCloud / QQ 空间各自传入
  */
-fn quarantine_nonsync_in_output_dir(sync_dir: &Path) {
+fn quarantine_nonsync_in_output_dir(sync_dir: &Path, is_owned: fn(&str) -> bool) {
   if !sync_dir.is_dir() {
     return;
   }
@@ -379,7 +379,7 @@ fn quarantine_nonsync_in_output_dir(sync_dir: &Path) {
       .file_name()
       .and_then(|n| n.to_str())
       .unwrap_or_default();
-    if crate::icloud_sync::is_sync_asset_filename(name) {
+    if is_owned(name) {
       continue;
     }
     to_move.push(path.to_path_buf());
@@ -558,9 +558,12 @@ pub fn discover_groups(
   let indexed = db::load_indexed_paths(&conn, root)?;
   let cache_dir = cache_dir_for(album_dir);
 
-  // 同步目录异物：先收容再 WalkDir，避免入库与宫格出现非同步文件
+  // 各备份源输出目录：异物收容后再 WalkDir
   if let Some(sync_dir) = crate::icloud_sync::resolve_sync_output_dir(app) {
-    quarantine_nonsync_in_output_dir(&sync_dir);
+    quarantine_nonsync_in_output_dir(&sync_dir, crate::icloud_sync::is_sync_asset_filename);
+  }
+  if let Some(sync_dir) = crate::qzone_sync::resolve_sync_output_dir(app) {
+    quarantine_nonsync_in_output_dir(&sync_dir, crate::qzone_sync::is_sync_asset_filename);
   }
 
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();

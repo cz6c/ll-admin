@@ -2,7 +2,8 @@
 /**
  * 通用图片展示
  * 职责：基于 a-image；失败 fallback、加载占位、可选多图 PreviewGroup
- * 适用：头像、列表缩略图等
+ * 适用：头像、列表/上传缩略图、相册预览、QQ 空间媒体展示等业务图片
+ * @note QQ 远端图由 QzoneLazyImg 先做可视区挂载与协议改写，再交给本组件渲染
  */
 import imgError from "@/assets/images/imgError.png";
 import imgLoading from "@/assets/images/imgLoading.png";

@@ -1,6 +1,6 @@
 //! 本地重复检测：相册根全量扫盘，按稳定内容哈希归组，组内落库优先正本
-//! 职责：同 size 预筛后懒算 BLAKE3（读/写 media.db）；不再以文件名 stem 为主键；
-//!       Live 仍成对，主文件哈希相同成组，再比 mov 哈希定置信度
+//! 职责：图片按去元数据 BLAKE3（`blake3-no-meta-v1`）归组（不依赖同 size）；
+//!       视频仍同 size 预筛；Live 成对后比 mov 哈希定置信度
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
 
 use std::collections::{HashMap, HashSet};
@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use walkdir::WalkDir;
 
 use crate::icloud_sync::list_synced_local_rows;
+use crate::qzone_sync::list_synced_local_rows as list_qzone_synced_local_rows;
 
 use super::scanner::{pair_live_photos, SKIP_DIRS};
 use super::types::{
@@ -128,9 +129,8 @@ fn ensure_content_hash(
 }
 
 fn load_db_path_meta(app: &AppHandle) -> Result<HashMap<String, DbPathMeta>, String> {
-  let rows = list_synced_local_rows(app)?;
   let mut map = HashMap::new();
-  for row in rows {
+  for row in list_synced_local_rows(app)? {
     let dest = row.dest_path.trim();
     if dest.is_empty() {
       continue;
@@ -144,6 +144,19 @@ fn load_db_path_meta(app: &AppHandle) -> Result<HashMap<String, DbPathMeta>, Str
         part: row.part,
       },
     );
+  }
+  // QQ 空间第二源：无 Live part，写入空 part
+  for (asset_id, dest_path, original_filename) in list_qzone_synced_local_rows(app)? {
+    let dest = dest_path.trim();
+    if dest.is_empty() {
+      continue;
+    }
+    map.entry(normalize_path_key(dest)).or_insert(DbPathMeta {
+      asset_id,
+      original_filename,
+      media_kind: "image".into(),
+      part: String::new(),
+    });
   }
   Ok(map)
 }
@@ -297,7 +310,7 @@ fn build_scanned_entries(
   entries
 }
 
-/// 同主文件 size ≥2 才值得算哈希；为候选填充 content_hash / mov_hash
+/// 图片始终算指纹（EXIF 补写会改 size，同 size 预筛会漏）；视频仍要求同 size ≥2
 fn fill_hashes_for_size_candidates(conn: Option<&Connection>, entries: &mut [ScannedEntry]) {
   let mut size_counts: HashMap<u64, usize> = HashMap::new();
   for e in entries.iter() {
@@ -307,7 +320,15 @@ fn fill_hashes_for_size_candidates(conn: Option<&Connection>, entries: &mut [Sca
   }
 
   for entry in entries.iter_mut() {
-    if entry.size == 0 || size_counts.get(&entry.size).copied().unwrap_or(0) < 2 {
+    if entry.size == 0 {
+      continue;
+    }
+    let is_image = matches!(
+      entry.ext.to_ascii_lowercase().as_str(),
+      "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "heic" | "tif" | "tiff"
+    );
+    let size_dup = size_counts.get(&entry.size).copied().unwrap_or(0) >= 2;
+    if !is_image && !size_dup {
       continue;
     }
     entry.content_hash = ensure_content_hash(conn, &entry.path, entry.size, entry.modified);

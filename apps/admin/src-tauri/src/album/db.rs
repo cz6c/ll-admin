@@ -902,26 +902,14 @@ pub fn load_fail_counts(
 }
 
 /// 当前内容指纹算法名（写入 hash_algo；换算法须清空旧 content_hash 或 bump 迁移）
-pub const CONTENT_HASH_ALGO: &str = "blake3";
+pub use super::content_hash::CONTENT_HASH_ALGO;
 
 /**
- * 流式计算文件 BLAKE3，返回小写 hex
- * @note 跨版本稳定，可供 media.db 持久化；大视频会读满整文件
+ * 计算判重指纹（JPEG/PNG 去元数据后再 BLAKE3），返回小写 hex
+ * @note 大视频仍读满整文件；算法见 `CONTENT_HASH_ALGO`
  */
 pub fn compute_blake3_hex(path: &str) -> Option<String> {
-  use std::io::Read;
-
-  let mut file = std::fs::File::open(path.trim()).ok()?;
-  let mut hasher = blake3::Hasher::new();
-  let mut buf = [0u8; 65536];
-  loop {
-    let n = file.read(&mut buf).ok()?;
-    if n == 0 {
-      break;
-    }
-    hasher.update(&buf[..n]);
-  }
-  Some(hasher.finalize().to_hex().to_string())
+  super::content_hash::compute_content_hash_hex(path)
 }
 
 /**

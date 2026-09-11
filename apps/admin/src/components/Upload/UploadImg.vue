@@ -113,7 +113,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
     >
       <template v-if="modelValue">
         <div class="upload-card-inner">
-          <img :src="modelValue" class="upload-image" />
+          <BaseImage :src="modelValue" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
           <div class="upload-handle" @click.stop>
             <div v-if="!self_disabled" class="handle-icon" @click="editImg">
               <IconifyIcon icon="ant-design:edit-outlined" class="action-icon" />
@@ -216,7 +216,13 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
   .upload-image {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    display: block;
+
+    :deep(.base-image) {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
   }
 
   .upload-handle {

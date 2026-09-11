@@ -31,7 +31,7 @@ chrono = { version = "0.4", features = ["serde", "clock"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 walkdir = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking", "cookies"] }
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 base64 = "0.22"
 blake3 = "1.5"
@@ -39,6 +39,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 notify = "7.0.0"
 rand = "0.8"
 kamadak-exif = "0.6"
+little_exif = "0.6"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [

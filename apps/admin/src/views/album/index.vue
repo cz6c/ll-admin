@@ -20,6 +20,7 @@ import AlbumThumbMedia from "./components/AlbumThumbMedia.vue";
 import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
+import QzoneSyncFab from "./components/QzoneSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
 import {
@@ -857,6 +858,7 @@ onBeforeUnmount(() => {
     />
 
     <IcloudSyncFab />
+    <QzoneSyncFab />
 
     <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
 

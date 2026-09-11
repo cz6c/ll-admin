@@ -4,7 +4,15 @@
     主流程：点头像开 Modal → 选图本地预览裁剪 → 提交 uploadImg + uploadAvatar
   -->
   <div class="user-info-head" @click="editCropper()">
-    <img v-if="options.img" :src="options.img" title="点击上传头像" class="img-circle img-lg" />
+    <BaseImage
+      v-if="options.img"
+      :src="options.img"
+      fit="cover"
+      width="120px"
+      height="120px"
+      border-radius="50%"
+      :lazy="true"
+    />
     <span v-else>点击上传头像</span>
     <a-modal v-model:open="open" :title="title" width="800px" :footer="null" destroy-on-close @cancel="closeDialog">
       <a-row>
@@ -225,11 +233,10 @@ function closeDialog() {
   cursor: pointer;
   overflow: hidden;
 
-  .img-circle {
+  :deep(.base-image) {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
+    display: block;
   }
 
   &:hover::after {

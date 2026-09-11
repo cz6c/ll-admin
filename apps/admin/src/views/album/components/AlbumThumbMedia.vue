@@ -36,7 +36,15 @@ const playIconSize = computed(() => (props.size === "sm" ? 12 : 18));
 <template>
   <div class="thumb-media" :class="`is-${size}`">
     <LivePhotoBadge v-if="showLiveBadge" class="thumb-badge" size="sm" />
-    <img v-if="thumbUrl" :src="thumbUrl" class="thumb-img" loading="lazy" decoding="async" alt="" />
+    <BaseImage
+      v-if="thumbUrl"
+      class="thumb-img"
+      :src="thumbUrl"
+      fit="cover"
+      width="100%"
+      height="100%"
+      :lazy="true"
+    />
     <div v-else-if="file.kind === 'image' || file.kind === 'livephoto'" class="thumb-placeholder">
       <IconifyIcon
         icon="ant-design:file-image-outlined"
@@ -82,8 +90,13 @@ const playIconSize = computed(() => (props.size === "sm" ? 12 : 18));
 .thumb-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
+
+  :deep(.base-image) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
 }
 
 .thumb-placeholder {

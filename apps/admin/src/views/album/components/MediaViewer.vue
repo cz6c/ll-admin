@@ -202,12 +202,14 @@ onBeforeUnmount(() => {
         <a-result v-if="loadFailed" status="error" title="无法加载该文件" :sub-title="current.file.name" class="viewer-result" />
 
         <!-- 普通图片 -->
-        <img
+        <BaseImage
           v-else-if="current.file.kind === 'image'"
-          :src="imagePreviewSrc(current.file)"
           class="viewer-media viewer-img"
-          alt=""
-          @error="onMediaError"
+          :src="imagePreviewSrc(current.file)"
+          fit="contain"
+          width="100%"
+          max-height="100%"
+          :lazy="true"
         />
 
         <!-- 实况照片（LivePhotosKit：长按/点击播放 MOV） -->
@@ -311,6 +313,22 @@ onBeforeUnmount(() => {
   max-height: 85vh;
   object-fit: contain;
   border-radius: 4px;
+}
+.viewer-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  :deep(.base-image) {
+    max-width: 90vw;
+    max-height: 85vh;
+  }
+
+  :deep(.ant-image-img) {
+    max-width: 90vw;
+    max-height: 85vh;
+    object-fit: contain;
+  }
 }
 .viewer-result {
   padding: 24px 0;

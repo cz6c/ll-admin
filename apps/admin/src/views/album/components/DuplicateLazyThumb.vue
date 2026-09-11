@@ -120,14 +120,14 @@ onBeforeUnmount(() => {
   <div ref="rootRef" class="dup-thumb-wrap" :style="{ width: thumbSizePx, height: thumbSizePx }">
     <LivePhotoBadge v-if="isLive" class="dup-live-badge" size="sm" />
     <a-spin v-if="loading" size="small" class="dup-thumb-spin" />
-    <img
+    <BaseImage
       v-else-if="displaySrc"
-      :src="displaySrc"
-      alt=""
       class="dup-thumb"
-      loading="lazy"
-      decoding="async"
-      @error="failed = true"
+      :src="displaySrc"
+      fit="cover"
+      :width="ALBUM_THUMB_GENERATE_SIZE"
+      :height="ALBUM_THUMB_GENERATE_SIZE"
+      :lazy="true"
     />
     <div v-else class="dup-thumb-placeholder">
       <IconifyIcon icon="ant-design:file-image-outlined" width="28" height="28" />
@@ -163,8 +163,13 @@ onBeforeUnmount(() => {
 .dup-thumb {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
+
+  :deep(.base-image) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
 }
 
 .dup-thumb-placeholder {

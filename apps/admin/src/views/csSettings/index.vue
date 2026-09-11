@@ -1,6 +1,6 @@
 <!--
   CS 应用设置
-  职责：开机自启、关闭到托盘、AI 接入、相册根目录与 iCloud 落盘路径
+  职责：开机自启、关闭到托盘、AI 接入、相册根目录与备份源落盘路径
   主流程：拉取 → 编辑 → 保存
 -->
 <script setup lang="ts">
@@ -16,6 +16,12 @@ import {
   saveIcloudSyncSettings,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
+import {
+  getQzoneDefaultOutputDir,
+  getQzoneSyncSettings,
+  saveQzoneSyncSettings,
+  type QzoneSyncSettings
+} from "@/api/qzoneSync";
 import CsSaveBar from "@/components/CsSaveBar/index.vue";
 import { ALBUM_THUMB_GENERATE_SIZE } from "@/views/album/types";
 import { isTauri } from "@/utils/tauri";
@@ -45,8 +51,11 @@ const rootDir = ref("");
 const outputDir = ref("");
 const concurrency = ref(1);
 const defaultHint = ref("");
+const qzoneOutputDir = ref("");
+const qzoneDefaultHint = ref("");
 /** 保留 appleId 等已保存字段，避免覆盖登录面板写入项 */
 let cachedIcloudSettings: IcloudSyncSettings | null = null;
+let cachedQzoneSettings: QzoneSyncSettings | null = null;
 
 async function load() {
   if (!isTauri()) return;
@@ -68,12 +77,22 @@ async function loadAlbumSettings() {
     rootDir.value = albumSettings.rootDir || "";
 
     if (isTauri()) {
-      const [icloudSettings, albumRoot] = await Promise.all([getIcloudSyncSettings(), getAlbumRootForDefault()]);
+      const [icloudSettings, albumRoot, qzoneSettings, qzoneSuggested] = await Promise.all([
+        getIcloudSyncSettings(),
+        getAlbumRootForDefault(),
+        getQzoneSyncSettings(),
+        getQzoneDefaultOutputDir()
+      ]);
       cachedIcloudSettings = icloudSettings;
       outputDir.value = icloudSettings.outputDir || "";
       concurrency.value = icloudSettings.concurrency ?? 1;
       const suggested = buildDefaultOutputDir(albumRoot || rootDir.value);
       defaultHint.value = suggested ? `未填写时将默认使用：${suggested}` : "请先配置相册根目录，或在此填写绝对路径";
+      cachedQzoneSettings = qzoneSettings;
+      qzoneOutputDir.value = qzoneSettings.outputDir || "";
+      qzoneDefaultHint.value = qzoneSuggested
+        ? `未填写时将默认使用：${qzoneSuggested}`
+        : "请先配置相册根目录，或在此填写绝对路径";
     }
   } catch (e) {
     console.error("Failed to load album settings:", e);
@@ -148,6 +167,15 @@ async function saveAlbumSettings(): Promise<boolean> {
       await saveIcloudSyncSettings(next);
       cachedIcloudSettings = next;
       outputDir.value = next.outputDir;
+
+      const qBase = cachedQzoneSettings ?? (await getQzoneSyncSettings());
+      const qNext: QzoneSyncSettings = {
+        ...qBase,
+        outputDir: qzoneOutputDir.value.trim()
+      };
+      await saveQzoneSyncSettings(qNext);
+      cachedQzoneSettings = qNext;
+      qzoneOutputDir.value = qNext.outputDir;
     }
     return true;
   } catch (e: unknown) {
@@ -176,6 +204,17 @@ async function browseOutputDir() {
     const selected = await open({ directory: true, multiple: false, title: "选择 iCloud 同步落盘目录" });
     if (typeof selected === "string" && selected) {
       outputDir.value = selected;
+    }
+  } catch (e) {
+    console.error("Dialog error:", e);
+  }
+}
+
+async function browseQzoneOutputDir() {
+  try {
+    const selected = await open({ directory: true, multiple: false, title: "选择 QQ 空间同步落盘目录" });
+    if (typeof selected === "string" && selected) {
+      qzoneOutputDir.value = selected;
     }
   } catch (e) {
     console.error("Dialog error:", e);
@@ -256,7 +295,7 @@ onActivated(load);
         <template #title>
           <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
             <span>相册</span>
-            <span class="text-12px font-400 text-[var(--color-text-tertiary)]">根目录与 iCloud 落盘路径</span>
+            <span class="text-12px font-400 text-[var(--color-text-tertiary)]">根目录与备份源落盘路径</span>
           </div>
         </template>
         <a-form :label-col="{ style: { width: '120px' } }">
@@ -288,6 +327,21 @@ onActivated(load);
               <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
                 {{ ICLOUD_SYNC_CONCURRENCY_TIERS.find(t => t.value === concurrency)?.hint ?? "建议标准档" }}
               </p>
+            </a-form-item>
+
+            <a-divider orientation="left">QQ 空间同步</a-divider>
+
+            <a-form-item label="落盘目录">
+              <div class="flex w-full gap-8px">
+                <a-input
+                  v-model:value="qzoneOutputDir"
+                  placeholder="留空则使用相册根目录下的 QzoneSync 子文件夹"
+                  spellcheck="false"
+                  :disabled="loading"
+                />
+                <a-button :disabled="loading" @click="browseQzoneOutputDir">浏览</a-button>
+              </div>
+              <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">{{ qzoneDefaultHint }}</p>
             </a-form-item>
           </template>
         </a-form>

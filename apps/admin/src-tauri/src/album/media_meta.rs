@@ -13,7 +13,10 @@ use exif::{In, Reader, Tag};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use tauri::AppHandle;
 
-use crate::icloud_sync::state_db_path;
+use crate::icloud_sync::state_db_path as icloud_state_db_path;
+use crate::qzone_sync::{
+  lookup_capture_at as qzone_lookup_capture_at, state_db_path as qzone_state_db_path,
+};
 
 /// 单次 sync+EXIF 解析结果；调用方按「仅补空」写 capture/camera，并总是写探测/锁定
 #[derive(Debug, Clone, Default)]
@@ -27,29 +30,42 @@ pub struct MediaMetaFill {
   pub capture_at_locked: bool,
 }
 
-/// 可复用的解析器：整批回填时只打开一次 sync 只读库
+/// 可复用的解析器：整批回填时只打开一次各源 sync 只读库
 pub struct MediaMetaResolver {
-  sync: Option<Connection>,
+  icloud: Option<Connection>,
+  qzone: Option<Connection>,
 }
 
 impl MediaMetaResolver {
-  /// 打开 sync state.db（只读）；不存在或打不开则仅走 EXIF
+  /// 打开 iCloud / QQ 空间 state.db（只读）；不存在或打不开则跳过该源
   pub fn new(app: &AppHandle) -> Self {
-    let sync = state_db_path(app).ok().and_then(|path| {
+    let open_ro = |path: &std::path::Path| -> Option<Connection> {
       if !path.is_file() {
         return None;
       }
-      Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
-    });
-    Self { sync }
+      Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
+    };
+    let icloud = icloud_state_db_path(app)
+      .ok()
+      .and_then(|path| open_ro(&path));
+    let qzone = qzone_state_db_path(app)
+      .ok()
+      .and_then(|path| open_ro(&path));
+    Self { icloud, qzone }
   }
 
-  /// 解析建议写入的拍摄时间与机型，并判定锁定
+  /// 解析建议写入的拍摄时间与机型，并判定锁定（多源 sync 优先于 EXIF）
   pub fn resolve(&self, path: &str) -> MediaMetaFill {
     let sync_at = self
-      .sync
+      .icloud
       .as_ref()
-      .and_then(|conn| lookup_sync_capture_at(conn, path));
+      .and_then(|conn| lookup_icloud_capture_at(conn, path))
+      .or_else(|| {
+        self
+          .qzone
+          .as_ref()
+          .and_then(|conn| qzone_lookup_capture_at(conn, path))
+      });
     let exif = read_exif_bundle(Path::new(path));
     let locked = sync_at.is_some() || exif.capture_at.is_some();
 
@@ -70,7 +86,7 @@ impl MediaMetaResolver {
   }
 }
 
-fn lookup_sync_capture_at(conn: &Connection, path: &str) -> Option<String> {
+fn lookup_icloud_capture_at(conn: &Connection, path: &str) -> Option<String> {
   let try_one = |p: &str| -> Option<String> {
     conn
       .query_row(

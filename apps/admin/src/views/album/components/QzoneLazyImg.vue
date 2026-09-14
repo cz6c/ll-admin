@@ -1,10 +1,11 @@
 <!--
-  QQ 空间媒体懒挂载：可视区再挂 src；展示与 loading 委托 BaseImage
-  职责：滚动容器 IO + qzoneimg 协议；不重复造加载占位
+  QQ 空间媒体懒挂载：可视区再挂 src；展示与 loading 委托 ThumbVisual
+  职责：滚动容器 IO + qzoneimg 协议；视觉层复用 ThumbVisual
   适用：QzoneSyncFab 封面/缩略图
 -->
 <script setup lang="ts">
 import { qzoneProxiedSrc } from "@/api/qzoneSync";
+import ThumbVisual from "./ThumbVisual.vue";
 
 defineOptions({ name: "QzoneLazyImg" });
 
@@ -14,9 +15,14 @@ const props = withDefaults(
     /** 滚动容器；不传则用视口 */
     scrollRoot?: HTMLElement | null;
     kind?: "thumb" | "preview";
+    /** 媒体类型；决定占位图标与视频遮罩 */
+    mediaKind?: "image" | "video" | "livephoto";
+    /** 扩展名（不含 .）；占位时显示 */
+    ext?: string;
   }>(),
   {
-    kind: "thumb"
+    kind: "thumb",
+    mediaKind: "image"
   }
 );
 
@@ -24,7 +30,9 @@ const rootRef = ref<HTMLElement | null>(null);
 const show = ref(false);
 let observer: IntersectionObserver | null = null;
 
-const src = computed(() => (show.value && props.remoteUrl ? qzoneProxiedSrc(props.remoteUrl, props.kind) : ""));
+const src = computed(() =>
+  show.value && props.remoteUrl ? qzoneProxiedSrc(props.remoteUrl, props.kind) : undefined
+);
 
 function setup() {
   observer?.disconnect();
@@ -65,8 +73,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootRef" class="qzone-lazy">
-    <BaseImage v-if="src" :src="src" fit="cover" width="100%" height="100%" :lazy="true" />
-    <div v-else class="ph" />
+    <ThumbVisual :src="src" :kind="mediaKind" :ext="ext" :lazy="true" />
   </div>
 </template>
 
@@ -76,17 +83,5 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: hidden;
   background: var(--bg-color-secondary, rgba(0, 0, 0, 0.04));
-
-  :deep(.base-image) {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-}
-.ph {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, #f0f0f0, #e8e8e8, #f0f0f0);
-  background-size: 200% 100%;
 }
 </style>

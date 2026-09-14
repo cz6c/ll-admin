@@ -84,9 +84,16 @@ const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
 /** 文件名模糊搜索（对 original_filename） */
 const cloudFilenameKeyword = ref("");
 const cloudPage = ref(1);
-const cloudPageSize = ref(50);
+const cloudPageSize = ref(100);
 const cloudTotal = ref(0);
 const cloudRows = ref<CloudListDisplayRow[]>([]);
+/** 无限滚动：是否还有更多页 */
+const cloudHasMore = ref(false);
+/** 无限滚动：正在加载下一页 */
+const cloudLoadingMore = ref(false);
+/** 哨兵元素 + IO，触底自动加载下一页 */
+const cloudSentinelRef = ref<HTMLElement | null>(null);
+let cloudSentinelObserver: IntersectionObserver | null = null;
 const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
@@ -233,7 +240,7 @@ function ensureCloudFilter() {
   } else if (cloudFilter.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
     cloudFilter.value = "cloud_only";
   }
-  if (cloudFilter.value !== prev) cloudPage.value = 1;
+  if (cloudFilter.value !== prev) cloudPage.value = 1;  // refreshCloudAssets 会重置，保留语义
 }
 
 /** Tab 角标数字；0 返回 null */
@@ -289,31 +296,81 @@ async function refreshCloudAssets() {
     const summary = await getIcloudSyncCloudStateSummary();
     cloudSummary.value = summary;
     ensureCloudFilter();
+    cloudPage.value = 1;
     const list = await loadIcloudSyncCloudList({
-      offset: (cloudPage.value - 1) * cloudPageSize.value,
+      offset: 0,
       limit: cloudPageSize.value,
       cloudState: cloudFilter.value,
       ...cloudDateBounds(),
       filenameKeyword: cloudFilenameKeyword.value.trim() || undefined
     });
-    cloudRows.value = list.items.map(row => {
-      const displayRow: IcloudSyncCloudListRow = { ...row, rowKey: row.assetId };
-      const state = cloudListDisplayState(displayRow);
-      return {
-        ...displayRow,
-        displayFilename: cloudListDisplayFilename(displayRow),
-        displayStateLabel: cloudStateLabel(state),
-        displayStateColor: cloudStateColor(state)
-      };
-    });
+    cloudRows.value = list.items.map(toDisplayRow);
     cloudTotal.value = list.total;
+    cloudHasMore.value = cloudRows.value.length < list.total;
     refreshSelectedRowsFromPage(cloudRows.value);
+    resetCloudSentinel();
   } catch (e) {
-    // 列表加载失败用轻提示，避免底栏粘住历史错误
     $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     loadingCloud.value = false;
   }
+}
+
+/** 无限滚动：加载下一页 */
+async function loadMoreCloudAssets() {
+  if (!isLoggedIn.value || cloudLoadingMore.value || !cloudHasMore.value) return;
+  cloudLoadingMore.value = true;
+  try {
+    const next = cloudPage.value + 1;
+    const list = await loadIcloudSyncCloudList({
+      offset: (next - 1) * cloudPageSize.value,
+      limit: cloudPageSize.value,
+      cloudState: cloudFilter.value,
+      ...cloudDateBounds(),
+      filenameKeyword: cloudFilenameKeyword.value.trim() || undefined
+    });
+    const rows = list.items.map(toDisplayRow);
+    cloudRows.value = [...cloudRows.value, ...rows];
+    cloudPage.value = next;
+    cloudTotal.value = list.total;
+    cloudHasMore.value = cloudRows.value.length < list.total;
+    refreshSelectedRowsFromPage(cloudRows.value);
+  } catch (e) {
+    $feedback.message.error(formatIcloudSyncError(e));
+  } finally {
+    cloudLoadingMore.value = false;
+  }
+}
+
+function toDisplayRow(row: IcloudSyncCloudListRow): CloudListDisplayRow {
+  const displayRow: IcloudSyncCloudListRow = { ...row, rowKey: row.assetId };
+  const state = cloudListDisplayState(displayRow);
+  return {
+    ...displayRow,
+    displayFilename: cloudListDisplayFilename(displayRow),
+    displayStateLabel: cloudStateLabel(state),
+    displayStateColor: cloudStateColor(state)
+  };
+}
+
+/** 哨兵 IO：触底加载下一页 */
+function resetCloudSentinel() {
+  cloudSentinelObserver?.disconnect();
+  cloudSentinelObserver = null;
+  nextTick(() => {
+    const el = cloudSentinelRef.value;
+    const root = cloudGridScrollRef.value;
+    if (!el || !root) return;
+    cloudSentinelObserver = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting && cloudHasMore.value && !cloudLoadingMore.value) {
+          void loadMoreCloudAssets();
+        }
+      },
+      { root, rootMargin: "200px 0px", threshold: 0 }
+    );
+    cloudSentinelObserver.observe(el);
+  });
 }
 
 function onCloudFilterChange() {
@@ -326,12 +383,6 @@ function onCloudFilterChange() {
 const onCloudFilenameKeywordChange = useDebounceFn(() => {
   onCloudFilterChange();
 }, 300);
-
-function onCloudPageChange(page: number, pageSize: number) {
-  cloudPage.value = page;
-  cloudPageSize.value = pageSize;
-  void refreshCloudAssets();
-}
 
 /** 抽屉打开且已登录时刷新列表 */
 function refreshCloudIfVisible() {
@@ -694,6 +745,11 @@ onMounted(() => {
   fabY.value = next.y;
   if (isTauri()) void hydrateFromStorage();
 });
+
+onBeforeUnmount(() => {
+  cloudSentinelObserver?.disconnect();
+  cloudSentinelObserver = null;
+});
 </script>
 
 <template>
@@ -805,29 +861,25 @@ onMounted(() => {
                   :asset-id="row.assetId"
                   :local-path="cloudRowLocalImagePath(row)"
                   :scroll-root="cloudGridScrollRef"
+                  :kind="row.mediaKind === 'video' ? 'video' : row.mediaKind === 'live' ? 'livephoto' : 'image'"
+                  :ext="row.displayFilename?.split('.').pop()"
                 />
                 <span class="cell-state" :style="{ background: row.displayStateColor || '#999' }">{{ row.displayStateLabel }}</span>
-                <span v-if="row.mediaKind === 'video' || row.mediaKind === 'live'" class="cell-badge">
-                  {{ row.mediaKind === "video" ? "视频" : "实况" }}
-                </span>
                 <label v-if="canSelectCloudRow(row)" class="cell-check" @click.stop>
                   <a-checkbox :checked="isCloudRowSelected(row)" @change="toggleCloudRowSelect(row)" />
                 </label>
               </div>
             </div>
             <a-empty v-else-if="!loadingCloud" description="当前筛选下暂无内容" :image="false" />
+            <!-- 无限滚动哨兵：触底自动加载下一页 -->
+            <div v-if="cloudRows.length" ref="cloudSentinelRef" class="cloud-grid-sentinel">
+              <a-spin v-if="cloudLoadingMore" />
+            </div>
           </div>
-          <div class="cloud-grid-pager">
-            <a-pagination
-              size="small"
-              :current="cloudPage"
-              :page-size="cloudPageSize"
-              :total="cloudTotal"
-              show-size-changer
-              :page-size-options="['30', '50', '100']"
-              :show-total="(total: number) => (cloudSelectedKeys.length ? `共 ${total} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${total} 条`)"
-              @change="onCloudPageChange"
-            />
+          <div class="cloud-grid-foot">
+            <span v-if="cloudTotal > 0" class="cloud-grid-count">
+              {{ cloudSelectedKeys.length ? `共 ${cloudTotal} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${cloudTotal} 条` }}
+            </span>
           </div>
         </div>
       </template>
@@ -1101,11 +1153,23 @@ onMounted(() => {
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.85);
 }
-.cloud-grid-pager {
+.cloud-grid-sentinel {
+  flex-shrink: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cloud-grid-foot {
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   padding-top: 8px;
+  min-height: 24px;
+}
+.cloud-grid-count {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 .cloud-preview-body {
   min-height: 360px;

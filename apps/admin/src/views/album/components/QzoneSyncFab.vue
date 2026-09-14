@@ -642,9 +642,8 @@ watch(drawerOpen, open => {
                   <h4 class="day-label">{{ g.label }}</h4>
                   <div class="grid">
                     <button v-for="row in g.items" :key="row.photo.assetId" type="button" class="cell" :title="row.photo.name" @click="openPreview(row.index)">
-                      <QzoneLazyImg v-if="row.photo.thumbUrl" :remote-url="row.photo.thumbUrl" :scroll-root="photoScrollRef" kind="thumb" />
+                      <QzoneLazyImg v-if="row.photo.thumbUrl" :remote-url="row.photo.thumbUrl" :scroll-root="photoScrollRef" kind="thumb" :media-kind="row.photo.mediaKind === 'video' ? 'video' : 'image'" :ext="row.photo.name?.split('.').pop()" />
                       <div v-else class="cell-ph" />
-                      <span v-if="row.photo.mediaKind === 'video'" class="badge">视频</span>
                     </button>
                   </div>
                 </section>

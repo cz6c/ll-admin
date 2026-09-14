@@ -1,6 +1,6 @@
 <!--
   QQ 空间同步浮动入口（第二备份源）
-  职责：扫码登录、左相册/右缩略图浏览、灯箱预览、全部/本相册下载
+  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部/本相册下载
   适用：相册页与 IcloudSyncFab 并列；交互结构参考开源客户端，不嵌入 GPL 源码
   @note 进度区对齐 IcloudSyncStatusCard：顶栏状态卡 + 进度条统计；账号放抽屉 #extra
 -->
@@ -26,6 +26,7 @@ import {
   type QzoneQrStatus
 } from "@/api/qzoneSync";
 import QzoneLazyImg from "./QzoneLazyImg.vue";
+import MediaLightboxShell from "./MediaLightboxShell.vue";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
 import { useDraggable, useEventListener } from "@vueuse/core";
@@ -121,6 +122,31 @@ const previewImageSrc = computed(() => {
   return qzoneProxiedSrc(photo.previewUrl || photo.thumbUrl, "preview");
 });
 
+const previewPhoto = computed(() => photos.value[previewIndex.value] ?? null);
+
+const previewTitle = computed(() => previewPhoto.value?.name?.trim() || "预览");
+
+const previewMeta = computed(() => {
+  if (!previewOpen.value || !photos.value.length || previewIndex.value < 0) return "";
+  const parts: string[] = [];
+  const capture = formatQzoneCaptureAt(previewPhoto.value?.captureAt);
+  if (capture) parts.push(capture);
+  parts.push(`${previewIndex.value + 1} / ${photos.value.length}`);
+  return parts.join(" · ");
+});
+
+/** 灯箱时间；与时间轴分组同一套数字时间戳兼容 */
+function formatQzoneCaptureAt(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const s = raw.trim();
+  let d = dayjs(s);
+  if (!d.isValid() && /^\d+$/.test(s)) {
+    const n = Number(s);
+    d = dayjs(n > 1e12 ? n : n * 1000);
+  }
+  return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : null;
+}
+
 /** 按日分组时间轴；无时间归「未知时间」并沉底 */
 const photoGroups = computed(() => {
   type Row = { photo: QzonePhotoView; index: number };
@@ -181,7 +207,7 @@ async function applyAuthExpiredUi(showToast = true) {
     albums.value = [];
     photos.value = [];
     activeAlbumId.value = "";
-    previewOpen.value = false;
+    closePreview();
     try {
       await refreshJob();
     } catch {
@@ -240,6 +266,7 @@ async function onRefreshCatalog() {
 async function selectAlbum(topicId: string, force = false) {
   if (!topicId) return;
   if (!force && activeAlbumId.value === topicId && photos.value.length) return;
+  closePreview();
   activeAlbumId.value = topicId;
   photosLoading.value = true;
   photos.value = [];
@@ -270,7 +297,7 @@ async function openPreview(index: number) {
   const remote = photo.downloadUrl || photo.previewUrl || "";
   if (!albumId && !remote) {
     $feedback.message.error("无视频地址");
-    previewOpen.value = false;
+    closePreview();
     return;
   }
 
@@ -287,15 +314,22 @@ async function openPreview(index: number) {
   } catch (e) {
     if (epoch !== previewEpoch) return;
     await handleQzoneApiError(e, "视频预览失败");
-    previewOpen.value = false;
+    closePreview();
   } finally {
     if (epoch === previewEpoch) previewLoading.value = false;
   }
 }
 
+function closePreview() {
+  previewEpoch++;
+  previewOpen.value = false;
+  previewVideoSrc.value = "";
+  previewLoading.value = false;
+}
+
 function previewNav(delta: number) {
-  if (!photos.value.length) return;
-  const next = (previewIndex.value + delta + photos.value.length) % photos.value.length;
+  const next = previewIndex.value + delta;
+  if (next < 0 || next >= photos.value.length) return;
   void openPreview(next);
 }
 
@@ -541,7 +575,7 @@ watch(drawerOpen, open => {
     void refreshJob();
   } else {
     stopQrPoll();
-    previewOpen.value = false;
+    closePreview();
   }
 });
 </script>
@@ -559,6 +593,7 @@ watch(drawerOpen, open => {
     placement="right"
     :width="960"
     class="qzone-sync-drawer"
+    :keyboard="!previewOpen"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
   >
     <template #extra>
@@ -657,38 +692,32 @@ watch(drawerOpen, open => {
     </div>
   </a-drawer>
 
-  <a-modal
-    v-model:open="previewOpen"
-    :title="photos[previewIndex]?.name || '预览'"
-    :footer="null"
-    centered
-    width="860px"
-    destroy-on-close
-    @cancel="previewOpen = false"
+  <MediaLightboxShell
+    :open="previewOpen"
+    :title="previewTitle"
+    :meta="previewMeta"
+    :loading="previewLoading"
+    loading-tip="正在准备视频…"
+    :can-prev="previewIndex > 0"
+    :can-next="previewIndex < photos.length - 1"
+    @close="closePreview"
+    @prev="previewNav(-1)"
+    @next="previewNav(1)"
   >
-    <div class="preview-body">
-      <a-button class="nav prev" type="text" @click="previewNav(-1)">‹</a-button>
-      <a-spin :spinning="previewLoading" tip="正在准备视频…">
-        <video v-if="previewIsVideo && previewVideoSrc" class="preview-media" controls autoplay :src="previewVideoSrc" />
-        <BaseImage
-          v-else-if="!previewIsVideo && previewImageSrc"
-          class="preview-base"
-          :src="previewImageSrc"
-          fit="contain"
-          width="100%"
-          height="70vh"
-          max-width="100%"
-          max-height="70vh"
-          :lazy="true"
-        />
-        <div v-else-if="!previewLoading" class="preview-empty">
-          {{ previewIsVideo ? "视频准备中或无法播放" : "暂无预览" }}
-        </div>
-        <div v-else class="preview-empty" />
-      </a-spin>
-      <a-button class="nav next" type="text" @click="previewNav(1)">›</a-button>
+    <video v-if="previewIsVideo && previewVideoSrc" class="viewer-media" controls autoplay playsinline :src="previewVideoSrc" />
+    <BaseImage
+      v-else-if="!previewIsVideo && previewImageSrc"
+      class="viewer-media viewer-img"
+      :src="previewImageSrc"
+      fit="contain"
+      width="100%"
+      max-height="100%"
+      :lazy="false"
+    />
+    <div v-else-if="!previewLoading" class="preview-empty">
+      {{ previewIsVideo ? "视频准备中或无法播放" : "暂无预览" }}
     </div>
-  </a-modal>
+  </MediaLightboxShell>
 </template>
 
 <style scoped lang="scss">
@@ -1010,53 +1039,8 @@ watch(drawerOpen, open => {
   color: var(--color-text-tertiary);
   flex-shrink: 0;
 }
-.preview-body {
-  position: relative;
-  min-height: 360px;
-  max-height: 70vh;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.preview-media {
-  max-width: 100%;
-  max-height: 70vh;
-  display: block;
-  margin: 0 auto;
-}
-.preview-base {
-  display: block;
-  margin: 0 auto;
-  max-width: 100%;
-  max-height: 70vh;
-
-  // a-image 默认按原图像素撑开；强制落在预览框内
-  :deep(.base-image),
-  :deep(.ant-image),
-  :deep(.ant-image-img) {
-    max-width: 100% !important;
-    max-height: 70vh !important;
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain;
-  }
-}
 .preview-empty {
   color: var(--color-text-tertiary);
   padding: 48px;
-}
-.nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 32px;
-  z-index: 2;
-  &.prev {
-    left: 0;
-  }
-  &.next {
-    right: 0;
-  }
 }
 </style>

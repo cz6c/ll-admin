@@ -1,7 +1,4 @@
-/**
- * 清理重复下载弹窗
- * 职责：平铺分组 + 视口 lazy 缩略图（横滑 IO + 生成限流）；同组横向滚动；每组删除至少留 1 项，正本删后晋升
- */
+/** * 清理重复下载弹窗 * 职责：平铺分组 + 视口 lazy 缩略图（横滑 IO + 生成限流）；同组横向滚动；每组删除至少留 1 项，正本删后晋升 */
 <script setup lang="ts">
 import DuplicateGroupCard from "./DuplicateGroupCard.vue";
 import { deleteAlbumLocal, findAlbumLocalDuplicates, getAlbumRootDir } from "@/api/album";
@@ -46,9 +43,7 @@ const CONFIDENCE_RANK: Record<DuplicateMatchConfidence, number> = {
  * 组内副本按一致程度排序；同档保持相对顺序
  */
 function sortDuplicatesByConfidence(items: DuplicateLegacyItem[]): DuplicateLegacyItem[] {
-  return [...items].sort(
-    (a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence]
-  );
+  return [...items].sort((a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence]);
 }
 
 /** 组内最佳一致程度（数值越小越好） */
@@ -221,12 +216,8 @@ function toggleGroupMembers(group: DuplicateGroup, checked: boolean) {
   selectedPaths.value = next;
 }
 
-const allSelected = computed(
-  () => maxSelectableCount.value > 0 && selectedPaths.value.size === maxSelectableCount.value
-);
-const indeterminate = computed(
-  () => selectedPaths.value.size > 0 && selectedPaths.value.size < maxSelectableCount.value
-);
+const allSelected = computed(() => maxSelectableCount.value > 0 && selectedPaths.value.size === maxSelectableCount.value);
+const indeterminate = computed(() => selectedPaths.value.size > 0 && selectedPaths.value.size < maxSelectableCount.value);
 
 /**
  * 删除后重组：正本被删则晋升首个剩余副本；仅剩 1 项则不再作为重复组展示
@@ -317,9 +308,7 @@ async function onDeleteSelected() {
   >
     <div class="dup-modal-layout">
       <div class="dup-modal-top">
-        <p class="dup-intro">
-          按内容（BLAKE3）归组；正本：落库 → 完整实况 → 更新时间。同组至少保留一项；「建议保留」也可勾选，删后自动晋升下一份。
-        </p>
+        <p class="dup-intro">同组至少保留一项；「建议保留」也可勾选，删后自动晋升下一份。</p>
 
         <a-spin :spinning="loading">
           <a-alert

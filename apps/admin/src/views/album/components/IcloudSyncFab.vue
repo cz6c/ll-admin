@@ -1,13 +1,14 @@
 <!--
   iCloud 同步浮动触发区
   职责：右下角 FAB；抽屉顶部全局进度 +「同步到本地」网格浏览（在线 thumb）；工具栏危险区删云
-  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱；synced 勾选删云经确认后全屏浮层
+  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱（MediaLightboxShell）；synced 勾选删云经确认后全屏浮层
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import IcloudLazyImg from "./IcloudLazyImg.vue";
+import MediaLightboxShell from "./MediaLightboxShell.vue";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
@@ -175,7 +176,32 @@ function toggleCloudRowSelect(row: CloudListDisplayRow, event?: Event) {
 
 const cloudGridScrollRef = ref<HTMLElement | null>(null);
 const previewOpen = ref(false);
-const previewRow = ref<CloudListDisplayRow | null>(null);
+/** 用 rowKey 锚定灯箱，列表刷新后仍能对上同一行 */
+const previewRowKey = ref<string | null>(null);
+
+const previewIndex = computed(() => {
+  if (!previewRowKey.value) return -1;
+  return cloudRows.value.findIndex(row => row.rowKey === previewRowKey.value);
+});
+
+const previewRow = computed(() => {
+  const i = previewIndex.value;
+  return i >= 0 ? cloudRows.value[i] : null;
+});
+
+/** 灯箱标题只用 still 原名；displayFilename 会把 Live 的 HEIC/MOV 拼进一行 */
+const previewTitle = computed(() => previewRow.value?.originalFilename?.trim() || "预览");
+
+const previewMeta = computed(() => {
+  const row = previewRow.value;
+  if (!row || previewIndex.value < 0) return "";
+  const parts = [formatSortKeyTime(row.captureAt ?? row.sortKey), row.displayStateLabel];
+  if (row.cloudState === "deleted_cloud_pending") {
+    parts.push(cloudDeletedLocalPresenceLabel(Boolean(row.localFilePresent)));
+  }
+  parts.push(`${previewIndex.value + 1} / ${cloudRows.value.length}`);
+  return parts.join(" · ");
+});
 
 /** 网格/灯箱优先本地可读图，避免整页打满 sidecar */
 function cloudRowLocalImagePath(row: CloudListDisplayRow | null | undefined): string | null {
@@ -202,13 +228,19 @@ const previewSrc = computed(() => {
 });
 
 function openCloudPreview(row: CloudListDisplayRow) {
-  previewRow.value = row;
+  previewRowKey.value = row.rowKey;
   previewOpen.value = true;
 }
 
 function closeCloudPreview() {
   previewOpen.value = false;
-  previewRow.value = null;
+  previewRowKey.value = null;
+}
+
+function navCloudPreview(delta: number) {
+  const next = previewIndex.value + delta;
+  if (next < 0 || next >= cloudRows.value.length) return;
+  previewRowKey.value = cloudRows.value[next].rowKey;
 }
 
 /** 未完成任务占用时，禁用云列表操作的提示（已暂停时不再引导「暂停」） */
@@ -603,7 +635,13 @@ watch(drawerOpen, open => {
     // A′：开抽屉只刷 settings 展示，不 auth_probe
     void refreshAccountSettings();
     refreshCloudIfVisible();
+  } else {
+    closeCloudPreview();
   }
+});
+
+watch(previewIndex, index => {
+  if (previewOpen.value && index < 0) closeCloudPreview();
 });
 
 watch(isLoggedIn, refreshCloudIfVisible);
@@ -777,6 +815,7 @@ onBeforeUnmount(() => {
     placement="right"
     :width="920"
     class="icloud-sync-drawer"
+    :keyboard="!previewOpen"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
   >
     <template #extra>
@@ -886,25 +925,19 @@ onBeforeUnmount(() => {
     </div>
   </a-drawer>
 
-  <a-modal
-    v-model:open="previewOpen"
-    :title="previewRow?.displayFilename || '预览'"
-    :footer="null"
-    width="720px"
-    destroy-on-close
-    @cancel="closeCloudPreview"
+  <MediaLightboxShell
+    :open="previewOpen"
+    :title="previewTitle"
+    :meta="previewMeta"
+    :can-prev="previewIndex > 0"
+    :can-next="previewIndex >= 0 && previewIndex < cloudRows.length - 1"
+    @close="closeCloudPreview"
+    @prev="navCloudPreview(-1)"
+    @next="navCloudPreview(1)"
   >
-    <div class="cloud-preview-body">
-      <BaseImage v-if="previewSrc" :src="previewSrc" fit="contain" width="100%" height="100%" />
-      <a-empty v-else description="无法加载预览" :image="false" />
-      <p v-if="previewRow" class="cloud-preview-meta">
-        {{ formatSortKeyTime(previewRow.captureAt ?? previewRow.sortKey) }} · {{ previewRow.displayStateLabel }}
-        <template v-if="previewRow.cloudState === 'deleted_cloud_pending'">
-          · {{ cloudDeletedLocalPresenceLabel(Boolean(previewRow.localFilePresent)) }}
-        </template>
-      </p>
-    </div>
-  </a-modal>
+    <BaseImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
+    <a-empty v-else description="无法加载预览" :image="false" />
+  </MediaLightboxShell>
 
   <!-- 删云全屏浮层：进度 / 完成 / 失败摘要；无取消；失败可重试 -->
   <Teleport to="body">
@@ -1170,22 +1203,6 @@ onBeforeUnmount(() => {
 .cloud-grid-count {
   font-size: 12px;
   color: var(--color-text-tertiary);
-}
-.cloud-preview-body {
-  min-height: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  :deep(.base-image) {
-    flex: 1;
-    min-height: 320px;
-    background: #111;
-  }
-}
-.cloud-preview-meta {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
 }
 </style>
 

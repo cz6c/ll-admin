@@ -41,7 +41,8 @@ flowchart LR
 4. 禁止 2FA 收尾再 `authenticate(force_refresh)` / 外层重复 accountLogin。  
 5. 每条验证码：单路径校验 + **至多 1 次** trust。  
 6. `account_locked` / `rate_limited` → 硬停，交给用户。  
-7. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。
+7. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。  
+8. **Tauri auth / sidecar / 钥匙串命令须 `#[tauri::command(async)]`**（或 `async fn`）：同步 command 跑 UI 主线程，Apple/网络一堵窗口会「未响应」。
 
 **单次登录 Apple API 预算：** SRP×1 · 推送×1 · 提交码×1 · trust×≤1。显式重发另计。不应出现自动二次 bridge / 失败即再推 / 同步带密码。
 
@@ -72,12 +73,15 @@ Need2FA 时：**禁止再点「登录」**；先换码，连续失败则 logout 
 | code | 动作 |
 |------|------|
 | `need_2fa` | 输入验证码 |
-| `auth_failed` | 同面板换新码；**勿**再点登录 |
-| `session_expired` | logout → 隔几小时再登（WEBAUTH 真失效） |
+| `auth_failed`（验码阶段） | 码错/过期：改最新码或「重发」；**勿**再点登录；**勿**当成密码错误 |
+| `session_expired`（无 pending） | logout → 重新登录一轮（勿连点） |
+| `session_expired`（WEBAUTH 真失效） | logout → 隔几小时再登 |
 | `domain_mismatch` | 设置切 com/cn → logout → 完整重登 |
-| `account_locked` / `rate_limited` | **立即停止** |
+| `account_locked` / `rate_limited` | **立即停止**（MFA `tooManyCodes*` / `securityCodeLocked` 亦映射 `rate_limited`） |
 
-> 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [cloudSyncFlow](./cloudSyncFlow.md)。
+> 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [cloudSyncFlow](./cloudSyncFlow.md)。  
+> `session_expired` 仅明确会话死信号（如 `Authentication required` / 421·450）；裸验码 `(401)` → `auth_failed` 且保留 pending。  
+> P0-1（HTTP 409 + `valid:true`）社区有报、本仓实机暂未复现，**暂不吸收**。
 
 ### session 探测（同步入口）
 
@@ -93,9 +97,14 @@ flowchart LR
 
 | 现象 | 是否暂停整 job |
 |------|----------------|
-| session_expired（401/421） | ✅ `paused_session` |
+| session_expired（未登录 / 会话死） | ✅ `paused_session` |
+| need_2fa / sidecar_crashed | ✅ `paused_session` |
+| auth_failed（验码错、泛登录失败） | ❌ 单文件/操作失败，**不**整 job 暂停 |
 | CDN 410/404 | ❌ 单文件 failed + lookup |
 | domain_mismatch | ❌ 换区域后重登 |
+
+> sidecar「尚未 auth」类显式未登录 → `session_expired`（可 pause）；验码阶段 `auth_failed` 不打断下载队列。
+> 2FA validate 后补 WEBAUTH：优先 token `accountLogin`，失败再至多一次 `trust`（避免双 `/2sv/trust`）。
 
 ---
 

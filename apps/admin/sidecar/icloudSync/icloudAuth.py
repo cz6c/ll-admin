@@ -579,9 +579,21 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
             return CODE_SESSION_EXPIRED
         if code == "ACCESS_DENIED":
             return CODE_RATE_LIMITED
+        compact = f"{msg}\n{code}".lower().replace("_", "").replace(" ", "")
+        if any(
+            n in compact
+            for n in (
+                "toomanycodessent",
+                "toomanycodesvalidated",
+                "securitycodelocked",
+                "securitycodecooldown",
+            )
+        ):
+            return CODE_RATE_LIMITED
         if "Authentication required" in msg or "Invalid authentication token" in msg:
             return CODE_SESSION_EXPIRED
-        return CODE_SESSION_EXPIRED
+        # 未知 API 错勿默认 session_expired（验码/限流误清盘）
+        return CODE_AUTH_FAILED
     if "-20209" in code or "-20209" in msg:
         return CODE_ACCOUNT_LOCKED
     return None

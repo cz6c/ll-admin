@@ -29,7 +29,7 @@ use super::db::{
 };
 use super::naming::sync_asset_filename;
 use super::settings::{
-  load_settings, normalize_concurrency, resolve_default_output_dir,
+  load_settings, normalize_concurrency, resolve_output_dir,
 };
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
 use super::task::{ensure_discardable, require_no_incomplete_task};
@@ -365,16 +365,6 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
     .collect()
 }
 
-fn resolve_output_dir(app: &AppHandle) -> Result<String, String> {
-  let settings = load_settings(app)?;
-  if !settings.output_dir.trim().is_empty() {
-    return Ok(settings.output_dir.trim().to_string());
-  }
-  resolve_default_output_dir(app)?
-    .map(|p| p.to_string_lossy().into_owned())
-    .ok_or_else(|| "请配置同步输出目录或相册根目录".to_string())
-}
-
 fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
   match asset.part {
     AssetPart::Mov => "mov",
@@ -518,12 +508,12 @@ struct BatchItemResult {
   message: String,
 }
 
-/// 下载阶段 auth 类错误：暂停 job、保留 SQLite，待用户显式重认证后 resume（不自动重登）
+/// 下载阶段需用户重登的错误：暂停 job、保留 SQLite（不含普通 auth_failed）
+/// @note 未登录/会话死由 sidecar 报 `session_expired`；验码类 `auth_failed` 不整 job 暂停
 fn is_auth_pause_error(code: &str) -> bool {
   matches!(
     code,
     error_codes::SESSION_EXPIRED
-      | error_codes::AUTH_FAILED
       | error_codes::NEED_2FA
       | error_codes::SIDECAR_CRASHED
   )
@@ -751,6 +741,7 @@ fn apply_batch_results(
 ) -> Result<Option<JobStatus>, String> {
   let mut last_filename = String::new();
   let mut terminal: Option<JobStatus> = None;
+  let mut thumb_paths: Vec<String> = Vec::new();
 
   for (asset, result) in assets.iter().zip(results.iter()) {
     last_filename = asset.original_filename.clone();
@@ -765,10 +756,12 @@ fn apply_batch_results(
         None,
         None,
       )?;
+      thumb_paths.push(dest.to_string_lossy().into_owned());
       continue;
     }
 
     if mark_asset_done_if_on_disk(conn, asset, output_dir)? {
+      thumb_paths.push(dest.to_string_lossy().into_owned());
       continue;
     }
 
@@ -811,6 +804,10 @@ fn apply_batch_results(
     }
   }
 
+  if !thumb_paths.is_empty() {
+    crate::album::enqueue_thumbs_from_sync(app, thumb_paths);
+  }
+
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
   emit_progress(app, done, total, failed, pending, &last_filename);
 
@@ -839,7 +836,6 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
       let conn = open_db(&db_path)?;
       if e.contains(error_codes::NEED_2FA)
         || e.starts_with(error_codes::SESSION_EXPIRED)
-        || e.starts_with(error_codes::AUTH_FAILED)
         || e.starts_with(error_codes::SIDECAR_CRASHED)
       {
         set_job_status(&app, &conn, job_id, JobStatus::PausedSession)?;
@@ -1142,173 +1138,195 @@ fn set_job_status(
 
 /// 新建同步任务：不 re-catalog；将已刷新的 `cloud_only` 入队后下载
 #[tauri::command]
-pub fn icloud_sync_start_job(
+pub async fn icloud_sync_start_job(
   app: AppHandle,
   view: JobView,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncStartJobResult, String> {
   let client = sidecar.client();
-  ensure_sidecar_authenticated(&app, client.as_ref())?;
+  tokio::task::spawn_blocking(move || {
+    ensure_sidecar_authenticated(&app, client.as_ref())?;
 
-  let output_dir = resolve_output_dir(&app)?;
-  std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {e}"))?;
+    let output_dir = resolve_output_dir(&app)?
+      .map(|p| p.to_string_lossy().into_owned())
+      .ok_or_else(|| "请先配置相册根目录".to_string())?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {e}"))?;
 
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.clone();
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.clone();
 
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  require_no_incomplete_task(&conn, &settings.apple_id, TaskType::Sync)?;
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    require_no_incomplete_task(&conn, &settings.apple_id, TaskType::Sync)?;
 
-  let created_at = chrono::Utc::now().timestamp();
-  let job_id = insert_job(
-    &conn,
-    TaskType::Sync,
-    view,
-    &output_dir,
-    &apple_id,
-    JobStatus::Pending,
-    created_at,
-  )?;
+    let created_at = chrono::Utc::now().timestamp();
+    let job_id = insert_job(
+      &conn,
+      TaskType::Sync,
+      view,
+      &output_dir,
+      &apple_id,
+      JobStatus::Pending,
+      created_at,
+    )?;
 
-  let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id)?;
-  if enqueued == 0 {
-    let _ = discard_sync_job(&conn, job_id);
-    return Err("没有待同步项。请先「刷新 iCloud 状态」更新列表后再开始同步。".to_string());
-  }
-  set_job_catalog_counts(&conn, job_id)?;
-  emit_cloud_state_changed(&app);
-  emit_job_status(&app, &conn, job_id);
+    let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id)?;
+    if enqueued == 0 {
+      let _ = discard_sync_job(&conn, job_id);
+      return Err("没有待同步项。请先「刷新 iCloud 状态」更新列表后再开始同步。".to_string());
+    }
+    set_job_catalog_counts(&conn, job_id)?;
+    emit_cloud_state_changed(&app);
+    emit_job_status(&app, &conn, job_id);
 
-  try_claim_job(job_id)?;
-  spawn_download_loop(app, job_id, client.clone());
+    try_claim_job(job_id)?;
+    spawn_download_loop(app, job_id, client.clone());
 
-  Ok(IcloudSyncStartJobResult { job_id })
+    Ok::<IcloudSyncStartJobResult, String>(IcloudSyncStartJobResult { job_id })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 从断点续传：paused_session 且已有 assets 时不 re-catalog；重试 failed + 继续 pending
 #[tauri::command]
-pub fn icloud_sync_resume_job(
+pub async fn icloud_sync_resume_job(
   app: AppHandle,
   job_id: i64,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<(), String> {
   let client = sidecar.client();
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
 
-  if job.task_type == TaskType::CloudDelete {
-    ensure_job_matches_current_account(&app, &conn, job_id)?;
-    match job.status {
-      JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {
-        set_task_status(&app, &conn, job_id, JobStatus::Running)?;
+    if job.task_type == TaskType::CloudDelete {
+      ensure_job_matches_current_account(&app, &conn, job_id)?;
+      match job.status {
+        JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {
+          set_task_status(&app, &conn, job_id, JobStatus::Running)?;
+        }
+        JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
+        JobStatus::Done => return Err("任务已完成".to_string()),
+        JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
       }
-      JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
+      return Ok(());
+    }
+    if job.task_type == TaskType::Catalog {
+      return Err("刷新 iCloud 目录任务无法续传，请取消后重试".to_string());
+    }
+
+    match job.status {
+      JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {}
+      JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
       JobStatus::Done => return Err("任务已完成".to_string()),
       JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
     }
-    return Ok(());
-  }
-  if job.task_type == TaskType::Catalog {
-    return Err("刷新 iCloud 目录任务无法续传，请取消后重试".to_string());
-  }
 
-  match job.status {
-    JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {}
-    JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
-    JobStatus::Done => return Err("任务已完成".to_string()),
-    JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
-  }
-
-  if !job_has_assets(&conn, job_id)? {
-    return Err("任务无待下载项，请先「刷新 iCloud 状态」后再「开始同步」".to_string());
-  }
-
-  ensure_job_matches_current_account(&app, &conn, job_id)?;
-
-  if let Some(output_dir) = get_job(&conn, job_id)?.map(|j| j.output_dir) {
-    if reconcile_job_with_disk(&conn, job_id, &output_dir)? {
-      emit_job_status(&app, &conn, job_id);
-      return Ok(());
+    if !job_has_assets(&conn, job_id)? {
+      return Err("任务无待下载项，请先「刷新 iCloud 状态」后再「开始同步」".to_string());
     }
-  }
 
-  try_claim_job(job_id)?;
-  if job.status == JobStatus::PausedSession || job.status == JobStatus::PausedUser {
-    set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
-  }
-  reset_failed_to_pending(&conn, job_id)?;
-  spawn_download_loop(app, job_id, client.clone());
-  Ok(())
+    ensure_job_matches_current_account(&app, &conn, job_id)?;
+
+    if let Some(output_dir) = get_job(&conn, job_id)?.map(|j| j.output_dir) {
+      if reconcile_job_with_disk(&conn, job_id, &output_dir)? {
+        emit_job_status(&app, &conn, job_id);
+        return Ok(());
+      }
+    }
+
+    try_claim_job(job_id)?;
+    if job.status == JobStatus::PausedSession || job.status == JobStatus::PausedUser {
+      set_job_status(&app, &conn, job_id, JobStatus::Pending)?;
+    }
+    reset_failed_to_pending(&conn, job_id)?;
+    spawn_download_loop(app, job_id, client.clone());
+    Ok::<(), String>(())
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 用户手动暂停：运行中任务协作退出；未在跑线程时直接写 paused_user
 #[tauri::command]
-pub fn icloud_sync_pause_job(app: AppHandle, job_id: i64) -> Result<(), String> {
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
+pub async fn icloud_sync_pause_job(app: AppHandle, job_id: i64) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
 
-  if job.task_type == TaskType::CloudDelete {
-    match job.status {
-      JobStatus::Running | JobStatus::Pending => {
-        set_task_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+    if job.task_type == TaskType::CloudDelete {
+      match job.status {
+        JobStatus::Running | JobStatus::Pending => {
+          set_task_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+        }
+        JobStatus::PausedUser => {}
+        JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
+        JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
+        JobStatus::Done => return Err("任务已完成".to_string()),
+        JobStatus::Failed => return Err("任务已失败".to_string()),
       }
-      JobStatus::PausedUser => {}
+      return Ok(());
+    }
+
+    match job.status {
+      JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
+      JobStatus::Running | JobStatus::Pending => {}
+      JobStatus::PausedUser => return Ok(()),
       JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
-      JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
       JobStatus::Done => return Err("任务已完成".to_string()),
       JobStatus::Failed => return Err("任务已失败".to_string()),
     }
-    return Ok(());
-  }
 
-  match job.status {
-    JobStatus::Cataloging => return Err("正在扫描 iCloud 图库，请稍候".to_string()),
-    JobStatus::Running | JobStatus::Pending => {}
-    JobStatus::PausedUser => return Ok(()),
-    JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
-    JobStatus::Done => return Err("任务已完成".to_string()),
-    JobStatus::Failed => return Err("任务已失败".to_string()),
-  }
+    let runner = queue_runner()
+      .lock()
+      .map_err(|_| "queue lock poisoned".to_string())?;
 
-  let runner = queue_runner()
-    .lock()
-    .map_err(|_| "queue lock poisoned".to_string())?;
-
-  if runner.active_job_id == Some(job_id) {
-    runner.pause_requested.store(true, Ordering::SeqCst);
-    Ok(())
-  } else {
-    set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
-    Ok(())
-  }
+    if runner.active_job_id == Some(job_id) {
+      runner.pause_requested.store(true, Ordering::SeqCst);
+      Ok::<(), String>(())
+    } else {
+      set_job_status(&app, &conn, job_id, JobStatus::PausedUser)?;
+      Ok::<(), String>(())
+    }
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 查询任务进度与状态
 #[tauri::command]
-pub fn icloud_sync_job_status(app: AppHandle, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  if let Some(job) = get_job(&conn, job_id)? {
-    if reconcile_job_with_disk(&conn, job_id, &job.output_dir)? {
-      emit_job_status(&app, &conn, job_id);
+pub async fn icloud_sync_job_status(app: AppHandle, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    if let Some(job) = get_job(&conn, job_id)? {
+      if reconcile_job_with_disk(&conn, job_id, &job.output_dir)? {
+        emit_job_status(&app, &conn, job_id);
+      }
     }
-  }
-  build_job_status(&conn, job_id)
+    build_job_status(&conn, job_id)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 列出失败资产摘要，供同步页失败表格展示
 #[tauri::command]
-pub fn icloud_sync_list_failed_assets(
+pub async fn icloud_sync_list_failed_assets(
   app: AppHandle,
   job_id: i64,
   limit: Option<u32>,
 ) -> Result<Vec<IcloudSyncFailedAssetRow>, String> {
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  list_failed_assets(&conn, job_id, limit.unwrap_or(50))
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    list_failed_assets(&conn, job_id, limit.unwrap_or(50))
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 fn parse_asset_task_status_filter(raw: Option<&str>) -> Result<Option<AssetStatus>, String> {
@@ -1323,7 +1341,7 @@ fn parse_asset_task_status_filter(raw: Option<&str>) -> Result<Option<AssetStatu
 
 /// 分页列出任务下全部文件行（含 pending/done/failed）
 #[tauri::command]
-pub fn icloud_sync_list_asset_tasks(
+pub async fn icloud_sync_list_asset_tasks(
   app: AppHandle,
   job_id: i64,
   offset: Option<u32>,
@@ -1331,113 +1349,129 @@ pub fn icloud_sync_list_asset_tasks(
   status: Option<String>,
   keyword: Option<String>,
 ) -> Result<IcloudSyncListAssetTasksResult, String> {
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let status_filter = parse_asset_task_status_filter(status.as_deref())?;
-  let (items, total) = list_asset_tasks(
-    &conn,
-    job_id,
-    offset.unwrap_or(0),
-    limit.unwrap_or(50),
-    status_filter,
-    keyword.as_deref(),
-  )?;
-  Ok(IcloudSyncListAssetTasksResult { items, total })
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    let status_filter = parse_asset_task_status_filter(status.as_deref())?;
+    let (items, total) = list_asset_tasks(
+      &conn,
+      job_id,
+      offset.unwrap_or(0),
+      limit.unwrap_or(50),
+      status_filter,
+      keyword.as_deref(),
+    )?;
+    Ok::<IcloudSyncListAssetTasksResult, String>(IcloudSyncListAssetTasksResult { items, total })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 丢弃未完成任务（同步 / 删云 / 刷新 catalog）
 #[tauri::command]
-pub fn icloud_sync_discard_job(app: AppHandle, job_id: i64) -> Result<(), String> {
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let job = ensure_discardable(&conn, job_id)?;
+pub async fn icloud_sync_discard_job(app: AppHandle, job_id: i64) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || {
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    let job = ensure_discardable(&conn, job_id)?;
 
-  let runner = queue_runner()
-    .lock()
-    .map_err(|_| "queue lock poisoned".to_string())?;
-  if runner.active_job_id == Some(job_id) {
-    runner.pause_requested.store(true, Ordering::SeqCst);
-  }
-  drop(runner);
+    let runner = queue_runner()
+      .lock()
+      .map_err(|_| "queue lock poisoned".to_string())?;
+    if runner.active_job_id == Some(job_id) {
+      runner.pause_requested.store(true, Ordering::SeqCst);
+    }
+    drop(runner);
 
-  discard_task(&conn, &job)?;
-  clear_job_error(job_id);
-  release_job(job_id);
-  emit_cloud_state_changed(&app);
-  Ok(())
+    discard_task(&conn, &job)?;
+    clear_job_error(job_id);
+    release_job(job_id);
+    emit_cloud_state_changed(&app);
+    Ok::<(), String>(())
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 当前账号未完成任务快照（hydrate 用）
 #[tauri::command]
-pub fn icloud_sync_active_task(app: AppHandle) -> Result<Option<IcloudSyncJobStatusResult>, String> {
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.trim().to_string();
-  if apple_id.is_empty() {
-    return Ok(None);
-  }
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)? else {
-    return Ok(None);
-  };
-  Ok(Some(build_job_status(&conn, job.id)?))
+pub async fn icloud_sync_active_task(app: AppHandle) -> Result<Option<IcloudSyncJobStatusResult>, String> {
+  tokio::task::spawn_blocking(move || {
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.trim().to_string();
+    if apple_id.is_empty() {
+      return Ok(None);
+    }
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)? else {
+      return Ok(None);
+    };
+    Ok::<Option<IcloudSyncJobStatusResult>, String>(Some(build_job_status(&conn, job.id)?))
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 仅刷新云目录（catalog diff），不下载；与同步/删云互斥
 #[tauri::command]
-pub fn icloud_sync_refresh_catalog(
+pub async fn icloud_sync_refresh_catalog(
   app: AppHandle,
   view: JobView,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncStartJobResult, String> {
   let client = sidecar.client();
-  ensure_sidecar_authenticated(&app, client.as_ref())?;
+  tokio::task::spawn_blocking(move || {
+    ensure_sidecar_authenticated(&app, client.as_ref())?;
 
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.clone();
-  let session_path = session_dir(&app)?;
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  require_no_incomplete_task(&conn, &apple_id, TaskType::Catalog)?;
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.clone();
+    let session_path = session_dir(&app)?;
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    require_no_incomplete_task(&conn, &apple_id, TaskType::Catalog)?;
 
-  let created_at = chrono::Utc::now().timestamp();
-  let job_id = insert_job(
-    &conn,
-    TaskType::Catalog,
-    view,
-    "",
-    &apple_id,
-    JobStatus::Cataloging,
-    created_at,
-  )?;
-  emit_task_status(&app, &conn, job_id);
+    let created_at = chrono::Utc::now().timestamp();
+    let job_id = insert_job(
+      &conn,
+      TaskType::Catalog,
+      view,
+      "",
+      &apple_id,
+      JobStatus::Cataloging,
+      created_at,
+    )?;
+    emit_task_status(&app, &conn, job_id);
 
-  try_claim_job(job_id)?;
-  let app_bg = app.clone();
-  let client_bg = client.clone();
-  thread::spawn(move || {
-    let outcome = (|| -> Result<(), String> {
-      client_bg.ensure_started(&app_bg).map_err(|e| e.to_string())?;
-      let catalog_items = fetch_catalog(&client_bg, &app_bg, view, &apple_id, &session_path)?;
-      let conn = open_db(&db_path)?;
-      if get_job(&conn, job_id)?.is_none() {
-        return Ok(());
+    try_claim_job(job_id)?;
+    let app_bg = app.clone();
+    let client_bg = client.clone();
+    thread::spawn(move || {
+      let outcome = (|| -> Result<(), String> {
+        client_bg.ensure_started(&app_bg).map_err(|e| e.to_string())?;
+        let catalog_items = fetch_catalog(&client_bg, &app_bg, view, &apple_id, &session_path)?;
+        let conn = open_db(&db_path)?;
+        if get_job(&conn, job_id)?.is_none() {
+          return Ok(());
+        }
+        persist_catalog_delta(&app_bg, &conn, job_id, &apple_id, view, &catalog_items, false)?;
+        set_task_status(&app_bg, &conn, job_id, JobStatus::Done)?;
+        Ok(())
+      })();
+      if let Err(e) = outcome {
+        log::error!("icloud refresh catalog job {job_id} failed: {e}");
+        remember_job_error(job_id, &e);
+        if let Ok(conn) = open_db(&db_path) {
+          let _ = set_task_status(&app_bg, &conn, job_id, JobStatus::Failed);
+        }
       }
-      persist_catalog_delta(&app_bg, &conn, job_id, &apple_id, view, &catalog_items, false)?;
-      set_task_status(&app_bg, &conn, job_id, JobStatus::Done)?;
-      Ok(())
-    })();
-    if let Err(e) = outcome {
-      log::error!("icloud refresh catalog job {job_id} failed: {e}");
-      remember_job_error(job_id, &e);
-      if let Ok(conn) = open_db(&db_path) {
-        let _ = set_task_status(&app_bg, &conn, job_id, JobStatus::Failed);
-      }
-    }
-    release_job(job_id);
-  });
+      release_job(job_id);
+    });
 
-  Ok(IcloudSyncStartJobResult { job_id })
+    Ok::<IcloudSyncStartJobResult, String>(IcloudSyncStartJobResult { job_id })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 供 mod 注入的 SidecarClient 包装（Tauri State 需 'static + 后台线程 Clone）
@@ -1534,7 +1568,7 @@ mod tests {
   #[test]
   fn auth_pause_codes_cover_session_auth_2fa_and_sidecar_crash() {
     assert!(is_auth_pause_error(error_codes::SESSION_EXPIRED));
-    assert!(is_auth_pause_error(error_codes::AUTH_FAILED));
+    assert!(!is_auth_pause_error(error_codes::AUTH_FAILED));
     assert!(is_auth_pause_error(error_codes::NEED_2FA));
     assert!(is_auth_pause_error(error_codes::SIDECAR_CRASHED));
     assert!(!is_auth_pause_error(error_codes::DOWNLOAD_FAILED));

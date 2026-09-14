@@ -18,8 +18,6 @@ export type IcloudSyncTaskType = "sync" | "cloudDelete" | "catalog";
 
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
-  /** 同步落盘绝对路径；空时 Rust 侧推导 albumRoot/iCloudSync */
-  outputDir: string;
   /** 并发下载数；P1 允许 1–3，由设置页配置 */
   concurrency: number;
   appleId: string;
@@ -43,19 +41,7 @@ export interface IcloudSyncAuthState {
   icloudDomain: "com" | "cn";
 }
 
-/** login / submit_2fa 返回的状态 */
-export interface IcloudSyncLoginResult {
-  /** `need_2fa` / `ok` / `error` */
-  status: "need_2fa" | "ok" | "error" | string;
-  /** pyicloud 2FA 投递：`sms` / `trusted_device` 等 */
-  deliveryMethod?: string;
-  /** 2FA 引导或错误摘要 */
-  detail?: string;
-  /** 机读错误码（status=error 时） */
-  errorCode?: string;
-}
-
-/** sidecar auth-diagnostic.json 落盘结构（仅文件排查用，页面不展示） */
+/** sidecar auth-diagnostic.json / login 错误诊断 */
 export interface IcloudSyncAuthDiagnostic {
   /** ISO8601 UTC */
   at?: string;
@@ -71,6 +57,20 @@ export interface IcloudSyncAuthDiagnostic {
   kickoffPath?: string | null;
   exceptionType?: string | null;
   exceptionDetail?: string | null;
+}
+
+/** login / submit_2fa 返回的状态 */
+export interface IcloudSyncLoginResult {
+  /** `need_2fa` / `ok` / `error` */
+  status: "need_2fa" | "ok" | "error" | string;
+  /** pyicloud 2FA 投递：`sms` / `trusted_device` 等 */
+  deliveryMethod?: string;
+  /** 2FA 引导或错误摘要 */
+  detail?: string;
+  /** 机读错误码（status=error 时） */
+  errorCode?: string;
+  /** sidecar 诊断（可选；用于更准的用户提示） */
+  diagnostic?: IcloudSyncAuthDiagnostic;
 }
 
 export interface IcloudSyncStartJobResult {
@@ -281,14 +281,35 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
 /**
  * 将 invoke 错误或 `code: message` 字符串转为用户可读文案
  * @note sidecar_missing 等不引导安装 Python
+ * @note 含 pending challenge / 验证码细节时，避免误用「检查 Apple ID 与密码」
  */
 export function formatIcloudSyncError(err: unknown): string {
   const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "未知错误");
+
+  const lower = raw.toLowerCase();
+  if (lower.includes("without pending challenge") || lower.includes("无 pending challenge")) {
+    return "二次验证已失效，请退出后重新登录一次（勿连点）";
+  }
+  if (
+    lower.includes("验证码") &&
+    (lower.includes("无效") || lower.includes("错误") || lower.includes("过期") || lower.includes("最新"))
+  ) {
+    // sidecar 已给出中文验码文案时直接展示，勿再套「检查密码」
+    const colon = raw.indexOf(":");
+    if (colon >= 0) {
+      const tail = raw.slice(colon + 1).trim();
+      if (tail) return tail;
+    }
+  }
 
   const code = raw.split(":")[0]?.trim() ?? raw;
   if (ERROR_USER_MESSAGES[code]) {
     const tail = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";
     if (tail && !ERROR_USER_MESSAGES[code].includes(tail)) {
+      // auth_failed 但 detail 已是验码中文：只展示 detail
+      if (code === ICLOUD_SYNC_ERROR_CODES.AUTH_FAILED && /验证码|二次验证|重发/.test(tail)) {
+        return tail;
+      }
       return `${ERROR_USER_MESSAGES[code]}（${tail}）`;
     }
     return ERROR_USER_MESSAGES[code];
@@ -320,15 +341,11 @@ export function formatAssetTaskError(raw: string | null | undefined): string {
   return trimmed;
 }
 
-/** 开始同步前校验：相册根目录、落盘路径、登录态 */
+/** 开始同步前校验：相册根目录、登录态 */
 export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: false; message: string }> {
-  const [albumRoot, settings, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncSettings(), getIcloudSyncAuthState()]);
+  const [albumRoot, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncAuthState()]);
   if (!albumRoot.trim()) {
     return { ok: false, message: "请先在应用设置中配置相册根目录" };
-  }
-  const output = settings.outputDir.trim() || buildDefaultOutputDir(albumRoot);
-  if (!output.trim()) {
-    return { ok: false, message: "请配置 iCloud 同步落盘目录" };
   }
   if (!auth.loggedIn) {
     return { ok: false, message: "请先登录 Apple ID" };
@@ -561,15 +578,4 @@ export async function getAlbumRootForDefault(): Promise<string> {
   } catch {
     return "";
   }
-}
-
-/**
- * 拼接默认 iCloud 同步落盘子目录
- * @param albumRoot 相册根目录绝对路径
- */
-export function buildDefaultOutputDir(albumRoot: string): string {
-  const trimmed = albumRoot.trim().replace(/[/\\]+$/, "");
-  if (!trimmed) return "";
-  const sep = trimmed.includes("\\") ? "\\" : "/";
-  return `${trimmed}${sep}iCloudSync`;
 }

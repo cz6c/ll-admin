@@ -1,5 +1,5 @@
 ---
-description: Admin Tauri/Rust（src-tauri）编译警告门禁与改后必验
+description: Admin Tauri/Rust（src-tauri）编译警告、UI 线程与性能门禁
 globs: apps/admin/src-tauri/**/*.{rs,toml}
 alwaysApply: false
 ---
@@ -27,6 +27,55 @@ cargo test --lib
 1. [ ] 已实跑 `cargo check`（或 `cargo test --lib`）且 **0 warnings**？
 2. [ ] 新增代码无 `unused import` / `unused variable` / `dead_code`（除非测试专用且 `#[cfg(test)]`）？
 3. [ ] 公开 API、复杂分支的注释已按 `comment-standards.mdc` 补齐（若本次有改业务逻辑）？
+4. [ ] 新/改 command 或协议处理是否避免堵 UI 主线程、无多余全局串行？（见下「线程与性能」）
+
+## 线程与性能（强制 · 禁止堵 UI / 无谓降吞吐）
+
+产品约定（2026-09）：**不要写会堵主线程或无谓拖慢运行的代码。**
+
+### 本仓 command 标准写法（优先）
+
+```rust
+#[tauri::command]
+pub async fn example(app: AppHandle, /* owned args */) -> Result<T, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    // HTTP / sidecar / SQLite / fs / keyring 等同步重活
+    do_blocking_work(app)
+  })
+  .await
+  .map_err(|e| format!("后台任务失败: {e}"))?
+}
+```
+
+- **一律** `#[tauri::command]` + `pub async fn`；同步重活进 `spawn_blocking`（或等价 `tokio::task::spawn_blocking`）。
+- **不要**再写 `#[tauri::command(async)]` + 同步 `fn`（虽仍是合法 v2 语法，本仓已统一弃用，避免两套风格）。
+- 瞬时本地操作（取消令牌、开目录）可保留同步 `fn`，但不得含网络/sidecar/长 I/O。
+- 自定义协议 handler：自行 `thread::spawn` / 后台任务，禁止在 UI 线程同步等 I/O。
+
+### 分层（勿混）
+
+| 层 | 职责 | 做法 |
+|----|------|------|
+| UI 响应 | 窗口不「未响应」 | 见上：`async fn` + `spawn_blocking` |
+| 调用顺序 | 登录→验码→拉列表等业务先后 | **前端** `invoke` → Promise，需要顺序时 **`await` 串起来**；Rust **不要**再加一层「所有 command 全局排队」 |
+| 共享状态 | 并发安全 | 仅对真实共享资源用 Mutex（如 sidecar **单飞锁**、`QzoneSyncState`）；锁粒度保持「保护状态」，勿把无关工作塞进长临界区 |
+
+### 禁止
+
+- 同步 `#[tauri::command]` 内直接 `SidecarClient::request` / `reqwest::blocking` / 长时间 `sleep` / 大目录扫描（会跑主线程，Windows 标「未响应」）。
+- 在 `async fn` 里**直接**跑 blocking I/O 而不包 `spawn_blocking`（会堵 async runtime worker）。
+- 为「怕乱序」在 Rust 侧人为全局串行所有 invoke（与 sidecar 单飞锁叠床架屋，拖垮吞吐）。
+- 在持锁期间做可移出锁外的重活（拉完整 catalog、解码大图等）。
+
+### 允许 / 推荐
+
+- 前端 loading + 按钮 disable 表达「同一时刻只允许一次登录」等产品约束。
+- 已有 sidecar 单飞、任务 worker `thread::spawn`、协议层后台拉图等模式继续沿用。
+- 热点路径：限流、缓存、跳过重复请求；改完用实感或现有探活确认无回退到堵 UI。
+
+### 与前端协作一句
+
+命令对前端仍是 `invoke` → Promise；**顺序靠前端 await，互斥靠共享 Mutex，响应靠 async + spawn_blocking**——三者各管一层。
 
 ## 常见警告与处理
 

@@ -471,6 +471,79 @@ pub fn update_cache_paths_batch(
   Ok(())
 }
 
+/**
+ * 同步落盘后确保 media 行存在，供缩略图管线 UPDATE
+ * @note ON CONFLICT 不覆盖已有 thumb/preview/playback，避免擦掉已生成缓存
+ */
+pub fn ensure_media_row(conn: &Connection, root: &str, path: &str) -> Result<(), String> {
+  let file_path = Path::new(path);
+  if !file_path.is_file() {
+    return Err(format!("文件不存在: {path}"));
+  }
+  let ext = file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase())
+    .unwrap_or_default();
+  let kind = if super::thumbnail::is_video_ext(&ext) {
+    "video"
+  } else {
+    "image"
+  };
+  let meta = std::fs::metadata(file_path).map_err(|e| format!("读文件元数据失败: {e}"))?;
+  let size = meta.len() as i64;
+  let modified = meta
+    .modified()
+    .ok()
+    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+    .map(|d| d.as_secs() as i64)
+    .unwrap_or(0);
+  let name = file_path
+    .file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or_default();
+  let parent = file_path.parent().unwrap_or(file_path);
+  let rel_dir = parent
+    .strip_prefix(Path::new(root))
+    .ok()
+    .map(|p| {
+      let s = p.to_string_lossy().replace('\\', "/");
+      if s.is_empty() {
+        ".".to_string()
+      } else {
+        s
+      }
+    })
+    .unwrap_or_else(|| ".".to_string());
+  let scanned_at = now_secs();
+  conn
+    .execute(
+      "
+      INSERT INTO media(
+        path, root, rel_dir, name, kind, size, modified, ext,
+        thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count
+      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,NULL,NULL,NULL,NULL,?9,0)
+      ON CONFLICT(path) DO UPDATE SET
+        root=excluded.root,
+        rel_dir=excluded.rel_dir,
+        name=excluded.name,
+        kind=excluded.kind,
+        size=excluded.size,
+        modified=excluded.modified,
+        ext=excluded.ext,
+        scanned_at=excluded.scanned_at,
+        fail_count = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.fail_count
+          ELSE 0
+        END
+      ",
+      params![path, root, rel_dir, name, kind, size, modified, ext, scanned_at],
+    )
+    .map_err(|e| format!("ensure media 行失败: {e}"))?;
+  Ok(())
+}
+
 /// 批量补写 EXIF/sync 元数据：仅补空 capture/camera；**总是**写 probed + locked
 pub fn update_meta_fill_batch(
   conn: &Connection,

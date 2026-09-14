@@ -70,6 +70,7 @@
 
 | Command | 作用 |
 |---------|------|
+| `qzone_sync_auth_state` | 读本地会话 + **probe**；鉴权失效清 session 并发 `qzone-sync://auth-expired`；网络错误保留 logged_in |
 | `qzone_sync_qr_start` | 开始扫码 |
 | `qzone_sync_qr_poll` | 轮询扫码 |
 | `qzone_sync_logout` | 清会话 |
@@ -83,7 +84,10 @@
 | `qzone_sync_get/save_settings` | 落盘目录等 |
 | `qzone_sync_pending_count` | 待下载计数 |
 
-事件：`qzone-sync://progress` → `QzoneJobSnapshot`
+事件：`qzone-sync://progress` → `QzoneJobSnapshot`；`qzone-sync://auth-expired` → 回扫码态
+
+> 下载循环 / `qzoneimg` 遇鉴权失效：清 session + 发事件 + 失败任务或 401（不只 failed++ / BAD_GATEWAY）。
+> 传输层 `error sending request`：常见于 Clash **fake-ip**（本机 DNS 落在 `198.18.0.0/15`）瞬时黑洞；客户端已 `http1_only` + 短重试；仍失败时把 QQ 域名直连或确认应用走 TUN。
 
 ---
 
@@ -91,6 +95,7 @@
 
 - 扫描：`QzoneSync` 输出目录异物收容（命名谓词 `is_sync_asset_filename`）
 - meta：按 `dest_path` 查 QQ `state.db` 的 `capture_at`（次于 iCloud 同路径命中）
+- 缩略图：下载/跳过已存在成功后 `enqueue_thumbs_from_sync`，与相册 scan **同一管线**（共享 pending，不另开 worker 互盖）
 
 ---
 

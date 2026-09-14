@@ -65,7 +65,8 @@ pub fn start_sync(app: AppHandle, album_id: Option<String>) -> Result<QzoneJobSn
   }
   let session = session::load_session(&app)?
     .ok_or_else(|| "未登录 QQ 空间".to_string())?;
-  let output = settings::resolve_output_dir(&app)?;
+  let output = settings::resolve_output_dir(&app)?
+    .ok_or_else(|| "请先配置相册根目录".to_string())?;
   std::fs::create_dir_all(&output).map_err(|e| format!("创建输出目录失败: {e}"))?;
 
   runtime().pause.store(false, Ordering::SeqCst);
@@ -170,6 +171,11 @@ fn run_pipeline(
   let mut albums = match client::list_albums(&session) {
     Ok(a) => a,
     Err(e) => {
+      if client::is_auth_expired_error(&e) {
+        let e = super::on_auth_expired(&app, e);
+        fail(&app, e);
+        return;
+      }
       fail(&app, e);
       return;
     }
@@ -209,6 +215,11 @@ fn run_pipeline(
     let photos = match client::list_photos(&session, &album.topic_id) {
       Ok(p) => p,
       Err(e) => {
+        if client::is_auth_expired_error(&e) {
+          let e = super::on_auth_expired(&app, e);
+          fail(&app, e);
+          return;
+        }
         log::warn!("qzone_sync: list photos {}: {e}", album.topic_id);
         continue;
       }
@@ -267,6 +278,11 @@ fn run_pipeline(
       match client::resolve_video_download_url(&session, &album_id, &asset_id) {
         Ok(u) => u,
         Err(e) => {
+          if client::is_auth_expired_error(&e) {
+            let e = super::on_auth_expired(&app, e);
+            fail(&app, e);
+            return;
+          }
           log::warn!("qzone_sync: resolve video {asset_id}: {e}");
           failed += 1;
           set_snapshot(
@@ -300,6 +316,10 @@ fn run_pipeline(
           // 已存在：仍补 mtime/EXIF（对齐 QzonePhoto 跳过下载后仍 enrich）
           file_enrich::enrich_downloaded_file(&dest, unix_secs);
           let _ = db::mark_synced(&conn, &asset_id, &dest.to_string_lossy());
+          crate::album::enqueue_thumbs_from_sync(
+            &app,
+            vec![dest.to_string_lossy().into_owned()],
+          );
           skipped += 1;
           set_snapshot(
             QzoneJobSnapshot {
@@ -323,9 +343,19 @@ fn run_pipeline(
       Ok(()) => {
         file_enrich::enrich_downloaded_file(&dest, unix_secs);
         let _ = db::mark_synced(&conn, &asset_id, &dest.to_string_lossy());
+        crate::album::enqueue_thumbs_from_sync(
+          &app,
+          vec![dest.to_string_lossy().into_owned()],
+        );
         updated += 1;
       }
       Err(e) => {
+        if client::is_auth_expired_error(&e) {
+          let _ = std::fs::remove_file(&dest);
+          let e = super::on_auth_expired(&app, e);
+          fail(&app, e);
+          return;
+        }
         log::warn!("qzone_sync: download {asset_id}: {e}");
         failed += 1;
         let _ = std::fs::remove_file(&dest);

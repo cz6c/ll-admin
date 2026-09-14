@@ -862,6 +862,34 @@ pub fn get_job(conn: &Connection, job_id: i64) -> Result<Option<JobRow>, String>
     .map_err(|e| format!("读取 job 失败: {e}"))
 }
 
+/// 按 asset_id 查本地 dest_path（缩略图协议用：已同步图片直接本地生成缩略图，不走 sidecar）
+/// @note 同一 asset_id 可能有 still/mov 两行；优先取 still（图片），无则取首个非空
+pub fn get_asset_dest_path(
+  conn: &Connection,
+  apple_id: &str,
+  asset_id: &str,
+) -> Result<Option<String>, String> {
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT dest_path, part FROM assets
+      WHERE apple_id = ?1 AND asset_id = ?2 AND dest_path IS NOT NULL AND trim(dest_path) != ''
+      ORDER BY CASE part WHEN 'still' THEN 0 ELSE 1 END
+      "#,
+    )
+    .map_err(|e| format!("查询 dest_path 失败: {e}"))?;
+  let mut rows = stmt
+    .query_map(params![apple_id, asset_id], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|e| format!("查询 dest_path 失败: {e}"))?;
+  if let Some(r) = rows.next() {
+    let (path, _part) = r.map_err(|e| format!("读取 dest_path 失败: {e}"))?;
+    return Ok(Some(path));
+  }
+  Ok(None)
+}
+
 /// 待下载资产（仅 `pending`；`failed` 由 resume 时 reset 后再入队）
 pub fn list_pending_assets(conn: &Connection, job_id: i64) -> Result<Vec<AssetRow>, String> {
   list_assets_by_statuses(conn, job_id, &[AssetStatus::Pending])

@@ -784,6 +784,7 @@ pub fn discover_groups(
 
 /// 第二阶段：后台生成缺失缩略图，逐条推送事件
 /// `pipeline_epoch` / `my_epoch`：被新扫描取代后立刻停止写库与 emit，避免超时残留任务污染
+/// `thumb_pending`：与同步入队共享；本轮会 seed 后循环 drain，避免「同步追加却开第二条管线」
 pub fn run_thumbnail_pipeline(
   app: AppHandle,
   root: String,
@@ -794,6 +795,7 @@ pub fn run_thumbnail_pipeline(
   cancel: ScanCancelToken,
   pipeline_epoch: Arc<AtomicU64>,
   my_epoch: u64,
+  thumb_pending: Arc<super::thumb_ingress::ThumbPending>,
 ) {
   let still_current = || pipeline_epoch.load(Ordering::SeqCst) == my_epoch;
 
@@ -804,162 +806,151 @@ pub fn run_thumbnail_pipeline(
     .and_then(|c| db::load_fail_counts(c, &root).ok())
     .unwrap_or_default();
 
-  let mut pending: Vec<String> = Vec::new();
-  for group in &groups {
-    for file in &group.files {
-      // 跳过反复失败的坏文件，避免对同一损坏文件反复解码
-      if *fail_counts.get(&file.path).unwrap_or(&0) >= db::FAIL_THRESHOLD {
-        continue;
-      }
-      let needs_thumb = file.thumb_path.is_none();
-      let needs_preview =
-        thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
-      if needs_thumb || needs_preview {
-        pending.push(file.path.clone());
-      }
-    }
-  }
-
-  let thumb_total = u32::try_from(pending.len()).unwrap_or(u32::MAX);
-  if still_current() {
-    emit_scan_progress(&app, "thumbnails", 0, thumb_total);
-  }
-
-  if pending.is_empty() {
-    // 无待生成缩略图：仅当仍有 meta/尺寸/Live 代理缺口时才进回填管线
-    if still_current() {
-      if let Some(conn) = &conn {
-        if has_post_thumb_work(conn, &root) {
-          backfill_missing_meta(&app, conn, &root);
-          prewarm_live_playback(
-            &app,
-            conn,
-            &root,
-            &cache_dir,
-            ffmpeg_bin.as_deref(),
-            &cancel,
-            &still_current,
-          );
+  // scan 缺图 + 已在 pending 的同步 path 合并进共享队列
+  {
+    let mut seed: Vec<String> = Vec::new();
+    for group in &groups {
+      for file in &group.files {
+        if *fail_counts.get(&file.path).unwrap_or(&0) >= db::FAIL_THRESHOLD {
+          continue;
+        }
+        let needs_thumb = file.thumb_path.is_none();
+        let needs_preview =
+          thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
+        if needs_thumb || needs_preview {
+          seed.push(file.path.clone());
         }
       }
     }
-    return;
+    thumb_pending.extend(seed);
   }
 
-  let done_counter = AtomicU32::new(0);
-  let app_progress = app.clone();
-  let epoch_for_progress = Arc::clone(&pipeline_epoch);
-  let on_progress = Arc::new(move |done: u32, total: u32| {
-    if epoch_for_progress.load(Ordering::SeqCst) == my_epoch {
-      emit_scan_progress(&app_progress, "thumbnails", done, total);
-    }
-  });
+  let mut emitted_progress_total = false;
 
-  let outcomes = thumbnail::generate_thumbnails_batch_with_progress(
-    &pending,
-    &cache_dir,
-    thumb_size,
-    ffmpeg_bin.as_deref(),
-    on_progress,
-    &done_counter,
-    &cancel,
-  );
-
-  // 分批提交缓存更新与失败标记，减少事务次数
-  const BATCH: usize = 64;
-  let mut update_buf: Vec<(String, Option<String>, Option<String>, Option<u32>, Option<u32>)> =
-    Vec::with_capacity(BATCH);
-  let mut meta_buf: Vec<String> = Vec::with_capacity(BATCH);
-  let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
-
-  for (path, outcome) in pending.into_iter().zip(outcomes.into_iter()) {
-    // 已被新扫描取代：丢弃全部写副作用（含取消前已在飞的成功结果）
-    if !still_current() {
+  loop {
+    if !still_current() || cancel.is_cancelled() {
       return;
     }
-    // 取消中止 ≠ 解码失败：跳过写库/计失败，避免重扫叠取消把健康文件推到 FAIL_THRESHOLD
-    if outcome.cancelled {
-      continue;
-    }
-    // thumb 或 preview 任一成功都落库+通知（HEIC 可能只写出 preview）
-    if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
-      let thumb_path = outcome.thumb_path.clone();
-      let preview_path = outcome.preview_path.clone();
-      let width = outcome.width;
-      let height = outcome.height;
-      update_buf.push((
-        path.clone(),
-        thumb_path.clone(),
-        preview_path.clone(),
-        width,
-        height,
-      ));
-      meta_buf.push(path.clone());
-      emit_thumb_ready(
-        &app,
-        &path,
-        thumb_path,
-        preview_path,
-        None,
-        None,
-        None,
-        None,
-        None,
-        width,
-        height,
-        None,
-      );
-    } else {
-      // 真实生成失败：标记失败计数，下次扫描按阈值跳过
-      fail_buf.push(path.clone());
-      emit_thumb_ready(
-        &app, &path, None, None, None, None, None, None, None, None, None, None,
-      );
+    let pending = thumb_pending.take_all();
+    if pending.is_empty() {
+      break;
     }
 
-    let flush_updates = update_buf.len() >= BATCH;
-    let flush_fails = fail_buf.len() >= BATCH;
-    if flush_updates || flush_fails {
+    let thumb_total = u32::try_from(pending.len()).unwrap_or(u32::MAX);
+    if still_current() && !emitted_progress_total {
+      emit_scan_progress(&app, "thumbnails", 0, thumb_total);
+      emitted_progress_total = true;
+    }
+
+    let done_counter = AtomicU32::new(0);
+    let app_progress = app.clone();
+    let epoch_for_progress = Arc::clone(&pipeline_epoch);
+    let on_progress = Arc::new(move |done: u32, total: u32| {
+      if epoch_for_progress.load(Ordering::SeqCst) == my_epoch {
+        emit_scan_progress(&app_progress, "thumbnails", done, total);
+      }
+    });
+
+    let outcomes = thumbnail::generate_thumbnails_batch_with_progress(
+      &pending,
+      &cache_dir,
+      thumb_size,
+      ffmpeg_bin.as_deref(),
+      on_progress,
+      &done_counter,
+      &cancel,
+    );
+
+    const BATCH: usize = 64;
+    let mut update_buf: Vec<(String, Option<String>, Option<String>, Option<u32>, Option<u32>)> =
+      Vec::with_capacity(BATCH);
+    let mut meta_buf: Vec<String> = Vec::with_capacity(BATCH);
+    let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
+
+    for (path, outcome) in pending.into_iter().zip(outcomes.into_iter()) {
       if !still_current() {
         return;
       }
-      if flush_updates {
-        if let Some(conn) = &conn {
-          let _ = db::update_cache_paths_batch(conn, &update_buf);
-          // 缩略图（含宽高）写库后再 EXIF/sync 补空
-          persist_meta_for_paths(&app, conn, &meta_buf);
-        }
-        update_buf.clear();
-        meta_buf.clear();
+      if outcome.cancelled {
+        continue;
       }
-      if flush_fails {
-        if let Some(conn) = &conn {
-          for p in &fail_buf {
-            let _ = db::mark_thumb_failed(conn, p);
+      if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
+        let thumb_path = outcome.thumb_path.clone();
+        let preview_path = outcome.preview_path.clone();
+        let width = outcome.width;
+        let height = outcome.height;
+        update_buf.push((
+          path.clone(),
+          thumb_path.clone(),
+          preview_path.clone(),
+          width,
+          height,
+        ));
+        meta_buf.push(path.clone());
+        emit_thumb_ready(
+          &app,
+          &path,
+          thumb_path,
+          preview_path,
+          None,
+          None,
+          None,
+          None,
+          None,
+          width,
+          height,
+          None,
+        );
+      } else {
+        fail_buf.push(path.clone());
+        emit_thumb_ready(
+          &app, &path, None, None, None, None, None, None, None, None, None, None,
+        );
+      }
+
+      let flush_updates = update_buf.len() >= BATCH;
+      let flush_fails = fail_buf.len() >= BATCH;
+      if flush_updates || flush_fails {
+        if !still_current() {
+          return;
+        }
+        if flush_updates {
+          if let Some(conn) = &conn {
+            let _ = db::update_cache_paths_batch(conn, &update_buf);
+            persist_meta_for_paths(&app, conn, &meta_buf);
           }
+          update_buf.clear();
+          meta_buf.clear();
         }
-        fail_buf.clear();
+        if flush_fails {
+          if let Some(conn) = &conn {
+            for p in &fail_buf {
+              let _ = db::mark_thumb_failed(conn, p);
+            }
+          }
+          fail_buf.clear();
+        }
       }
     }
-  }
-  if !still_current() {
-    return;
-  }
-  // 提交剩余批次
-  if !update_buf.is_empty() {
-    if let Some(conn) = &conn {
-      let _ = db::update_cache_paths_batch(conn, &update_buf);
-      persist_meta_for_paths(&app, conn, &meta_buf);
+    if !still_current() {
+      return;
     }
-  }
-  if !fail_buf.is_empty() {
-    if let Some(conn) = &conn {
-      for p in &fail_buf {
-        let _ = db::mark_thumb_failed(conn, p);
+    if !update_buf.is_empty() {
+      if let Some(conn) = &conn {
+        let _ = db::update_cache_paths_batch(conn, &update_buf);
+        persist_meta_for_paths(&app, conn, &meta_buf);
       }
     }
+    if !fail_buf.is_empty() {
+      if let Some(conn) = &conn {
+        for p in &fail_buf {
+          let _ = db::mark_thumb_failed(conn, p);
+        }
+      }
+    }
+    // 本批结束后若同步又追加了 pending → 继续 drain，不新开管线
   }
-  // 已有缩略图缺 meta/尺寸 + Live 播放代理预热（无缺口则跳过）
+
   if still_current() {
     if let Some(conn) = &conn {
       if has_post_thumb_work(conn, &root) {

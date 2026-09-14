@@ -1,12 +1,13 @@
-//! iCloud 在线缩略图自定义协议 `icloudimg`
-//! 职责：WebView 按 asset_id 拉 sidecar thumb（磁盘缓存 + 全局限流）
+//! iCloud 缩略图自定义协议 `icloudimg`
+//! 职责：WebView 按 asset_id 拉 thumb（本地原图优先生成 → sidecar 兜底）
 //! 适用：`http://icloudimg.localhost/?id=<urlencoded asset_id>&k=thumb`
 //!
+//! 为何优先本地：已同步图片 dest_path 在盘上，直接 image crate 缩图，<50ms，不占 sidecar 单飞锁
+//! 为何限流：未同步图片走 sidecar，单飞无门闸会全部挂起
 //! 为何只做 thumb：产品锁定减轻 Apple/带宽负担；缺衍生返回错误，不回落 ORIGINAL。
-//! 为何限流：列表一次会打出大量请求；sidecar 单飞，无门闸会全部挂起。
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -14,6 +15,9 @@ use serde_json::json;
 use tauri::http::{header, Request, StatusCode};
 use tauri::{AppHandle, Manager, UriSchemeContext, UriSchemeResponder, Wry};
 
+use crate::album::{db as album_db, settings as album_settings};
+
+use super::db::{get_asset_dest_path, open_db, state_db_path};
 use super::queue::SidecarClientHandle;
 use super::settings::{icloud_sync_dir, load_settings};
 use super::sidecar::session_dir;
@@ -106,6 +110,12 @@ fn serve_thumb(app: &AppHandle, uri: &tauri::http::Uri) -> Result<(String, Vec<u
     return Ok(hit);
   }
 
+  // 已同步图片：本地有原图，直接 image crate 缩图，<50ms，不占 sidecar 单飞锁
+  if let Some(hit) = serve_local_thumb(app, &asset_id)? {
+    return Ok(hit);
+  }
+
+  // 未同步 / 本地不支持格式（HEIC 等）：走 sidecar preview_probe
   let settings = load_settings(app).map_err(|_| StatusCode::UNAUTHORIZED)?;
   let apple_id = settings.apple_id.trim().to_string();
   if apple_id.is_empty() {
@@ -166,6 +176,54 @@ fn serve_thumb(app: &AppHandle, uri: &tauri::http::Uri) -> Result<(String, Vec<u
   let ctype = sniff_image_ctype(&bytes).unwrap_or(ctype);
   write_ctype_meta(app, &asset_id, &ctype);
   Ok((ctype, bytes))
+}
+
+/// 已同步图片本地缩略图：只查 album.media 表
+/// album 扫描时已生成缩略图入库，命中直接返回；未命中说明不在 album 范围内，返回 None 走 sidecar
+fn serve_local_thumb(
+  app: &AppHandle,
+  asset_id: &str,
+) -> Result<Option<(String, Vec<u8>)>, StatusCode> {
+  let settings = load_settings(app).map_err(|_| StatusCode::UNAUTHORIZED)?;
+  let apple_id = settings.apple_id.trim();
+  if apple_id.is_empty() {
+    return Ok(None);
+  }
+  let db_path = state_db_path(app).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+  let conn = open_db(&db_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+  let dest_path = get_asset_dest_path(&conn, apple_id, asset_id)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .filter(|p| Path::new(p).is_file());
+
+  let Some(dest_path) = dest_path else {
+    return Ok(None);
+  };
+
+  let album_data_dir = album_settings::album_dir(app)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+  let album_conn = album_db::open_db(&album_data_dir).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+  let (thumb_path, preview_path, _, _) =
+    album_db::get_media_companion_paths(&album_conn, &dest_path)
+      .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+  let cached = thumb_path.or(preview_path).filter(|p| !p.is_empty());
+  let Some(cached) = cached else {
+    return Ok(None);
+  };
+
+  let bytes = fs::read(&cached).map_err(|_| StatusCode::BAD_GATEWAY)?;
+  if bytes.is_empty() || bytes.len() as u64 > THUMB_MAX {
+    return Ok(None);
+  }
+  let ctype = sniff_image_ctype(&bytes).unwrap_or_else(|| {
+    if cached.ends_with(".webp") {
+      "image/webp".into()
+    } else {
+      "image/jpeg".into()
+    }
+  });
+  Ok(Some((ctype, bytes)))
 }
 
 fn sniff_image_ctype(bytes: &[u8]) -> Option<String> {

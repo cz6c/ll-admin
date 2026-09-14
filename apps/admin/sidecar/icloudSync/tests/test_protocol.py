@@ -132,8 +132,8 @@ def test_non_mock_requires_explicit_auth_before_catalog_download() -> None:
     download_ev = agent._dispatch(
         {"cmd": "download", "asset_id": "A1", "part": "still", "dest_path": "out/IMG_1.HEIC"}
     )
-    assert catalog_ev["code"] == "auth_failed"
-    assert download_ev["code"] == "auth_failed"
+    assert catalog_ev["code"] == "session_expired"
+    assert download_ev["code"] == "session_expired"
 
 
 def test_non_mock_auth_validates_required_fields_without_network() -> None:
@@ -250,6 +250,124 @@ def test_auth_2fa_failure_does_not_auto_rekickoff(monkeypatch) -> None:
     ev = agent._dispatch({"cmd": "auth_2fa", "code": "123456"})
     assert ev["type"] == "error"
     assert kickoffs == []
+    # 码错/软失败后仍保留 pending，允许用户改码重试
+    assert agent._AUTH_STATE.waiting_2fa is True
+    assert agent._AUTH_STATE.api is api
+
+
+def test_submit_2fa_treats_http_401_as_soft_failure(monkeypatch) -> None:
+    """实机验码常抛 (401)；不得上抛成 session_expired 清盘。"""
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+
+    class _Exc(Exception):
+        code = "401"
+
+    class _Api:
+        def validate_2fa_code(self, _code: str) -> bool:
+            raise _Exc("(401)")
+
+        def get_auth_status(self) -> dict[str, bool]:
+            return {
+                "authenticated": False,
+                "trusted_session": False,
+                "requires_2fa": True,
+                "requires_2sa": False,
+            }
+
+    api = _Api()
+    agent._AUTH_STATE.api = api
+    agent._AUTH_STATE.waiting_2fa = True
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(__import__("tempfile").mkdtemp())
+
+    assert agent._submit_2fa_code(api, "077429", "trusted_device") is False
+    assert agent._AUTH_STATE.last_validate_path.startswith("validate_exception:")
+
+    ev = agent._dispatch({"cmd": "auth_2fa", "code": "077429"})
+    assert ev["type"] == "error"
+    assert ev.get("code") == "auth_failed"
+    assert agent._AUTH_STATE.waiting_2fa is True
+    assert agent._AUTH_STATE.api is api
+    hints = (ev.get("diagnostic") or {}).get("hints") or []
+    assert "NO_PENDING_2FA" not in hints
+
+
+def test_auth_2fa_without_pending_is_session_expired() -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    ev = agent._dispatch({"cmd": "auth_2fa", "code": "123456"})
+    assert ev["type"] == "error"
+    assert ev.get("code") == "session_expired"
+    assert "pending challenge" in str(ev.get("message", "")).lower() or "pending" in str(
+        ev.get("message", "")
+    ).lower()
+
+
+def test_map_exception_bare_401_is_auth_failed_not_session_expired() -> None:
+    """P0-2：裸 (401) 不再默认 session_expired（验码误清盘）。"""
+    agent = _load_agent(mock=False)
+
+    class _Exc(Exception):
+        code = "401"
+
+    assert agent._map_exception(_Exc("(401)")) == "auth_failed"
+    assert agent._is_2fa_validate_soft_failure(_Exc("(401)")) is True
+
+
+def test_map_exception_authentication_required_is_session_expired() -> None:
+    agent = _load_agent(mock=False)
+
+    class _Exc(Exception):
+        code = "421"
+
+    assert agent._map_exception(_Exc("Authentication required")) == "session_expired"
+
+
+def test_map_exception_mfa_rate_limit_fields() -> None:
+    """P0-3：tooManyCodes* / securityCodeLocked → rate_limited。"""
+    agent = _load_agent(mock=False)
+
+    class _Exc(Exception):
+        code = None
+        reason = "tooManyCodesSent"
+
+    assert agent._is_mfa_rate_limited(_Exc("securityCodeLocked")) is True
+    assert agent._map_exception(_Exc("tooManyCodesValidated")) == "rate_limited"
+    assert agent._is_2fa_validate_soft_failure(_Exc("tooManyCodesSent")) is False
+
+
+def test_auth_2fa_rate_limited_resets_pending(monkeypatch) -> None:
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+
+    class _Exc(Exception):
+        code = "ACCESS_DENIED"
+        reason = "tooManyCodesSent"
+
+    class _Api:
+        def validate_2fa_code(self, _code: str) -> bool:
+            raise _Exc("tooManyCodesSent")
+
+        def get_auth_status(self) -> dict[str, bool]:
+            return {
+                "authenticated": False,
+                "trusted_session": False,
+                "requires_2fa": True,
+                "requires_2sa": False,
+            }
+
+    api = _Api()
+    agent._AUTH_STATE.api = api
+    agent._AUTH_STATE.waiting_2fa = True
+    agent._AUTH_STATE.apple_id = "a@b.c"
+    agent._AUTH_STATE.session_dir = str(__import__("tempfile").mkdtemp())
+
+    ev = agent._dispatch({"cmd": "auth_2fa", "code": "123456"})
+    assert ev["type"] == "error"
+    assert ev.get("code") == "rate_limited"
+    assert agent._AUTH_STATE.waiting_2fa is False
+    assert agent._AUTH_STATE.api is None
 
 
 def test_auth_2fa_resend_force_kickoff(monkeypatch) -> None:
@@ -424,6 +542,7 @@ def test_has_webauth_token_accepts_ww_prefix() -> None:
 
 
 def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypatch) -> None:
+    """account_login 不可用时再补 trust（避免 validate 后再双 trust）。"""
     agent = _load_agent(mock=False)
     monkeypatch.setattr(agent, "_WEBAUTH_SETTLE_SEC", 0)
     trust_calls: list[str] = []
@@ -477,6 +596,7 @@ def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypat
     api = _Api()
     original_has = agent._has_webauth_token
     agent._has_webauth_token = lambda a: bool(getattr(a, "webauth_ready", False))  # type: ignore[method-assign]
+    # 无 _authenticate_with_token → account_login 跳过，再走 trust
     try:
         assert agent._submit_2fa_code(api, "123456", "unknown") is True
     finally:
@@ -484,6 +604,73 @@ def test_submit_2fa_retries_trust_when_validate_ok_but_webauth_missing(monkeypat
 
     assert trust_calls == ["trust"]
     assert agent._AUTH_STATE.last_validate_path == "validate_2fa_code:trust_retry"
+
+
+def test_submit_2fa_prefers_account_login_before_trust_retry(monkeypatch) -> None:
+    """validate 后优先 token accountLogin，成功则不再 GET /2sv/trust。"""
+    agent = _load_agent(mock=False)
+    monkeypatch.setattr(agent, "_WEBAUTH_SETTLE_SEC", 0)
+    trust_calls: list[str] = []
+
+    class _Cookies:
+        def get(self, _key: str) -> None:
+            return None
+
+        def save(self) -> None:
+            return None
+
+        def __iter__(self):
+            return iter([])
+
+    class _Session:
+        data = {"session_token": "tok", "trust_token": "trust"}
+
+        def __init__(self) -> None:
+            self.cookies = _Cookies()
+
+    class _Api:
+        webauth_ready = False
+
+        def __init__(self) -> None:
+            self.session = _Session()
+            self.session_data = {"session_token": "tok", "trust_token": "trust"}
+
+        def validate_2fa_code(self, _code: str) -> bool:
+            return True
+
+        def get_auth_status(self) -> dict[str, bool]:
+            if self.webauth_ready:
+                return {
+                    "authenticated": True,
+                    "trusted_session": True,
+                    "requires_2fa": False,
+                    "requires_2sa": False,
+                }
+            return {
+                "authenticated": False,
+                "trusted_session": False,
+                "requires_2fa": False,
+                "requires_2sa": False,
+            }
+
+        def _authenticate_with_token(self) -> None:
+            self.webauth_ready = True
+
+        def trust_session(self) -> bool:
+            trust_calls.append("trust")
+            self.webauth_ready = True
+            return True
+
+    api = _Api()
+    original_has = agent._has_webauth_token
+    agent._has_webauth_token = lambda a: bool(getattr(a, "webauth_ready", False))  # type: ignore[method-assign]
+    try:
+        assert agent._submit_2fa_code(api, "123456", "unknown") is True
+    finally:
+        agent._has_webauth_token = original_has  # type: ignore[method-assign]
+
+    assert trust_calls == []
+    assert agent._AUTH_STATE.last_validate_path == "validate_2fa_code:account_login_retry"
 
 
 def test_delete_assets_mock_returns_ok_per_item() -> None:
@@ -628,7 +815,7 @@ def test_preview_probe_requires_auth_when_not_mock() -> None:
     agent = _load_agent(mock=False)
     ev = agent._dispatch({"cmd": "preview_probe", "asset_id": "A1", "size": "medium"})
     assert ev["type"] == "error"
-    assert ev["code"] == "auth_failed"
+    assert ev["code"] == "session_expired"
 
 
 def test_preview_probe_maps_missing_size(monkeypatch, tmp_path) -> None:

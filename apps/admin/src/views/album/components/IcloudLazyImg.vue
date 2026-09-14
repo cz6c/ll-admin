@@ -1,17 +1,17 @@
 <!--
-  iCloud 网格缩略图：可视区再挂 src；本地可读图优先 convertFileSrc，否则 icloudimg
-  职责：滚动 IO + 避免已同步项再打 sidecar（单飞会把整页卡死）
-  适用：IcloudSyncFab 宫格 / 灯箱
+  iCloud 网格缩略图：可视区再挂 src；统一走 icloudimg 协议
+  协议层已优化：已同步图片本地原图生成缩略图（<50ms），未同步走 sidecar
+  职责：滚动 IO + 列表不加载原图（原图几 MB ~ 十几 MB，整页解码会卡死）
+  适用：IcloudSyncFab 宫格；灯箱用本地原图，不走本组件
 -->
 <script setup lang="ts">
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { icloudProxiedThumbSrc } from "@/api/icloudSync";
 
 defineOptions({ name: "IcloudLazyImg" });
 
 const props = defineProps<{
   assetId: string;
-  /** 已同步且盘上仍在时的绝对路径；WebView 可直接显示的格式才用 */
+  /** 已同步且盘上仍在时的绝对路径；仅用于缩略图加载失败时的兜底（暂未启用） */
   localPath?: string | null;
   /** 滚动容器；不传则用视口 */
   scrollRoot?: HTMLElement | null;
@@ -21,23 +21,9 @@ const rootRef = ref<HTMLElement | null>(null);
 const show = ref(false);
 let observer: IntersectionObserver | null = null;
 
-/** WebView 可直接解码的扩展名；HEIC/MOV 仍走在线 thumb */
-function isWebViewImagePath(path: string): boolean {
-  const clean = path.trim().split(/[?#]/)[0] ?? "";
-  const ext = clean.includes(".") ? clean.slice(clean.lastIndexOf(".") + 1).toLowerCase() : "";
-  return ["jpg", "jpeg", "png", "webp", "gif", "bmp"].includes(ext);
-}
-
+/** 列表统一走缩略图协议：协议层本地生成缩略图，不加载原图避免整页解码卡死 */
 const resolvedSrc = computed(() => {
   if (!show.value || !props.assetId) return "";
-  const local = props.localPath?.trim() ?? "";
-  if (local && isWebViewImagePath(local)) {
-    try {
-      return convertFileSrc(local);
-    } catch {
-      /* fall through to online thumb */
-    }
-  }
   return icloudProxiedThumbSrc(props.assetId);
 });
 

@@ -37,6 +37,7 @@ flowchart LR
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
 | 全局单任务 | 同一 Apple ID **同时仅一个**未完成任务（同步 / 删云 / 刷新目录互斥） |
 | 取消不抹统计 | 取消同步/删云任务后，抽屉 cloud summary（如「待同步」计数）**保留**，不随 discard 清零 |
+| UI 不堵主线程 | sidecar / SQLite / auth 相关 Tauri command 用 `#[tauri::command(async)]`；`icloudimg` 已后台拉图。登录与缩略图仍争 **sidecar 单飞锁**（排队变慢，不应再整窗「未响应」） |
 
 ---
 
@@ -135,6 +136,7 @@ flowchart LR
 12. 全局**同时仅一个** worker 槽（`try_claim_job`）；`require_no_incomplete_task` 拦截并行 start / 删云 / 刷新。
 13. **删云入队前本地必须在盘**；否则 `rejected_local_missing`。
 14. **主动退出不 discard**；**换号登录 discard**；**会话失效 paused_session 不 discard**。
+15. **同步落盘后入队相册缩略图**：与 `album_scan` 共用 single-flight 管线 + 共享 pending；只追加不 new pipeline；关抽屉不影响；用户刷新才 cancel/epoch。
 15. **`modified_cloud` 已并入 `cloud_only`**（schema v3 迁移）；diff 的 modified 也写 `cloud_only`。
 16. 删云成功 **不 DELETE assets 行**，改为 `deleted_cloud_pending` 供列表追溯。
 17. **catalog diff 前** 调用 `prepare_catalog_keys_temp`；`mark_catalog_deletions` / `enqueue_outstanding_for_full_sync` / in-catalog reconcile **依赖该临时表**，禁止逐行 N 次 SQL 旧路径。
@@ -294,6 +296,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | 扫完 0 待下载但抽屉很多「待同步」 | 查 discard 后是否重新 start；查 reconcile + enqueue 顺序 |
 | 本地文件删了仍显示「已同步」 | 点「刷新 iCloud 状态」或「开始同步」触发 reconcile |
 | `session_expired` | 重登 → 继续 |
+| `auth_failed`（下载/删云单条） | **不**整 job `paused_session`；查单条 message |
 | `account_mismatch` | 重新开始 |
 | 删云 rejected 缺 CPL | 开始同步或刷新 catalog |
 | 删云 rejected 本地缺失 | 先同步到本地，或 refresh/start 触发 reconcile 后再删 |

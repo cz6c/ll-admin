@@ -118,7 +118,14 @@ fn serve_media(
   let fetched = client::fetch_media_bytes(&sess, &remote, Some(max_bytes));
   release_fetch_slot();
 
-  let (ctype, bytes) = fetched.map_err(|_| StatusCode::BAD_GATEWAY)?;
+  let (ctype, bytes) = match fetched {
+    Ok(v) => v,
+    Err(e) if client::is_auth_expired_error(&e) => {
+      let _ = super::on_auth_expired(app, e);
+      return Err(StatusCode::UNAUTHORIZED);
+    }
+    Err(_) => return Err(StatusCode::BAD_GATEWAY),
+  };
   write_cache(app, &remote, &ctype, &bytes);
   Ok((ctype, bytes))
 }

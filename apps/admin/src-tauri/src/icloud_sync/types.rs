@@ -12,9 +12,6 @@ fn default_concurrency() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncSettings {
-  /// 同步落盘绝对路径；空时由 resolve_default_output_dir 推导
-  #[serde(default)]
-  pub output_dir: String,
   /// 并发下载数；P1 允许 1–3，由设置页配置
   #[serde(default = "default_concurrency")]
   pub concurrency: u32,
@@ -36,7 +33,6 @@ fn default_icloud_domain() -> String {
 impl Default for IcloudSyncSettings {
   fn default() -> Self {
     Self {
-      output_dir: String::new(),
       concurrency: default_concurrency(),
       apple_id: String::new(),
       icloud_domain: default_icloud_domain(),

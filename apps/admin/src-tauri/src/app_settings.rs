@@ -219,23 +219,33 @@ pub fn set_ai_api_key(app: &AppHandle, key: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn app_settings_get(app: AppHandle) -> Result<AppSettings, String> {
-  load_settings(&app)
+pub async fn app_settings_get(app: AppHandle) -> Result<AppSettings, String> {
+  tokio::task::spawn_blocking(move || load_settings(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn app_settings_save(app: AppHandle, settings: AppSettings) -> Result<(), String> {
-  save_settings(&app, &settings)?;
-  sync_autostart(&app, settings.autostart);
-  Ok(())
+pub async fn app_settings_save(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || {
+    save_settings(&app, &settings)?;
+    sync_autostart(&app, settings.autostart);
+    Ok::<(), String>(())
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn app_settings_set_ai_api_key(app: AppHandle, key: String) -> Result<(), String> {
-  set_ai_api_key(&app, &key)
+pub async fn app_settings_set_ai_api_key(app: AppHandle, key: String) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || set_ai_api_key(&app, &key))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn app_settings_has_ai_api_key(app: AppHandle) -> Result<bool, String> {
-  has_ai_api_key(&app)
+pub async fn app_settings_has_ai_api_key(app: AppHandle) -> Result<bool, String> {
+  tokio::task::spawn_blocking(move || has_ai_api_key(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }

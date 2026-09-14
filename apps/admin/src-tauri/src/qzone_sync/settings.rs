@@ -47,8 +47,8 @@ pub fn save_settings(app: &AppHandle, settings: &QzoneSyncSettings) -> Result<()
   fs::write(&path, raw).map_err(|e| format!("写入 QQ 空间同步设置失败: {e}"))
 }
 
-/// 默认落盘：`{albumRoot}/QzoneSync`
-pub fn resolve_default_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+/// 落盘目录写死：`{albumRoot}/QzoneSync`；相册根未配置时返回 None
+pub fn resolve_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
   let root_dir = load_album_root_dir(app)?;
   if root_dir.trim().is_empty() {
     return Ok(None);
@@ -75,15 +75,4 @@ pub fn load_album_root_dir(app: &AppHandle) -> Result<String, String> {
   let settings: AlbumRootOnly =
     serde_json::from_str(&raw).map_err(|e| format!("解析相册设置失败: {e}"))?;
   Ok(settings.root_dir)
-}
-
-/// 当前输出目录：自定义或默认
-pub fn resolve_output_dir(app: &AppHandle) -> Result<PathBuf, String> {
-  let settings = load_settings(app)?;
-  let trimmed = settings.output_dir.trim();
-  if !trimmed.is_empty() {
-    return Ok(PathBuf::from(trimmed));
-  }
-  resolve_default_output_dir(app)?
-    .ok_or_else(|| "请先在设置中配置相册根目录".into())
 }

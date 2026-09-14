@@ -1031,8 +1031,8 @@ onBeforeUnmount(() => {
 /* 宫格区左下角：跟可视末张拍摄月，不随内容滚动、不拦截点击 */
 .album-timeline-chip {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
+  bottom: 8px;
+  left: 8px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -1048,5 +1048,6 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-color);
   pointer-events: none;
   user-select: none;
+  opacity: 0.8;
 }
 </style>

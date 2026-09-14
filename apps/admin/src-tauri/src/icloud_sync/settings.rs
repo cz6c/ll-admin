@@ -118,8 +118,8 @@ pub fn save_settings(app: &AppHandle, settings: &IcloudSyncSettings) -> Result<(
   fs::write(&path, raw).map_err(|e| format!("写入 iCloud 同步设置失败: {e}"))
 }
 
-/// 默认落盘目录：`{albumRoot}/iCloudSync`；相册根未配置时返回 None
-pub fn resolve_default_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+/// 落盘目录写死：`{albumRoot}/iCloudSync`；相册根未配置时返回 None
+pub fn resolve_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
   let root_dir = load_album_root_dir(app)?;
   if root_dir.trim().is_empty() {
     return Ok(None);

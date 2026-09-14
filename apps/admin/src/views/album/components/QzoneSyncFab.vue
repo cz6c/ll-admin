@@ -9,6 +9,7 @@ import {
   cancelQzoneSyncJob,
   getQzoneAuthState,
   getQzoneJobStatus,
+  isQzoneAuthExpiredError,
   listQzoneAlbums,
   listQzonePhotos,
   logoutQzone,
@@ -162,6 +163,48 @@ async function refreshJob() {
   job.value = await getQzoneJobStatus();
 }
 
+/**
+ * 授权失效：清 UI 登录态（磁盘 session 多由 Rust 已清）；抽屉开着则回到扫码
+ */
+let applyingAuthExpired = false;
+async function applyAuthExpiredUi(showToast = true) {
+  if (applyingAuthExpired) return;
+  applyingAuthExpired = true;
+  try {
+    try {
+      await logoutQzone();
+    } catch {
+      /* session 可能已清 */
+    }
+    loggedIn.value = false;
+    uin.value = "";
+    albums.value = [];
+    photos.value = [];
+    activeAlbumId.value = "";
+    previewOpen.value = false;
+    try {
+      await refreshJob();
+    } catch {
+      /* ignore */
+    }
+    if (drawerOpen.value) void refreshQr();
+    if (showToast) {
+      $feedback.message.warning("QQ 空间登录已失效，请重新扫码登录");
+    }
+  } finally {
+    applyingAuthExpired = false;
+  }
+}
+
+/** API 错误：授权失效则退出登录，否则普通 toast */
+async function handleQzoneApiError(e: unknown, fallback: string) {
+  if (isQzoneAuthExpiredError(e)) {
+    await applyAuthExpiredUi(true);
+    return;
+  }
+  $feedback.message.error(e instanceof Error ? e.message : String(e) || fallback);
+}
+
 async function loadAlbums() {
   albumsLoading.value = true;
   try {
@@ -176,7 +219,7 @@ async function loadAlbums() {
       await selectAlbum(activeAlbumId.value, true);
     }
   } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "拉取相册失败");
+    await handleQzoneApiError(e, "拉取相册失败");
   } finally {
     albumsLoading.value = false;
   }
@@ -203,7 +246,7 @@ async function selectAlbum(topicId: string, force = false) {
   try {
     photos.value = await listQzonePhotos(topicId);
   } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "拉取相片失败");
+    await handleQzoneApiError(e, "拉取相片失败");
   } finally {
     photosLoading.value = false;
   }
@@ -243,7 +286,7 @@ async function openPreview(index: number) {
     previewVideoSrc.value = convertFileSrc(localPath);
   } catch (e) {
     if (epoch !== previewEpoch) return;
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "视频预览失败");
+    await handleQzoneApiError(e, "视频预览失败");
     previewOpen.value = false;
   } finally {
     if (epoch === previewEpoch) previewLoading.value = false;
@@ -273,7 +316,7 @@ async function refreshQr() {
     const start = await startQzoneQrLogin();
     qrImage.value = start.imageDataUrl;
     qrStatus.value = "waiting";
-    qrMessage.value = "请使用手机 QQ 扫码";
+    qrMessage.value = "请使用手机 QQ 扫码登录";
     qrPollTimer = setInterval(() => {
       void tickQrPoll();
     }, 2000);
@@ -332,7 +375,7 @@ async function onSyncAll() {
     job.value = await startQzoneSyncJob(null);
     $feedback.message.success("已开始全部下载");
   } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "启动失败");
+    await handleQzoneApiError(e, "启动失败");
   }
 }
 
@@ -345,7 +388,7 @@ async function onSyncAlbum() {
     job.value = await startQzoneSyncJob(activeAlbumId.value);
     $feedback.message.success(`已开始下载：${activeAlbum.value?.name || "本相册"}`);
   } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "启动失败");
+    await handleQzoneApiError(e, "启动失败");
   }
 }
 
@@ -412,10 +455,18 @@ function readPos() {
 const fabRef = ref<HTMLElement | null>(null);
 let dragOrigin = { x: 0, y: 0 };
 let dragMoved = false;
+/** 位移超过此阈值才算拖拽；过小会导致微抖吞掉点击 */
+const FAB_DRAG_CLICK_THRESHOLD_PX = 12;
 
-const { x: fabX, y: fabY, style: fabStyle, isDragging } = useDraggable(fabRef, {
+const {
+  x: fabX,
+  y: fabY,
+  style: fabStyle,
+  isDragging
+} = useDraggable(fabRef, {
   initialValue: typeof window !== "undefined" ? readPos() : { x: 24, y: 200 },
-  preventDefault: true,
+  // 不 preventDefault：避免部分环境下 pointerdown 后合成 click 丢失
+  preventDefault: false,
   onStart(pos) {
     dragMoved = false;
     dragOrigin = { x: pos.x, y: pos.y };
@@ -426,7 +477,9 @@ const { x: fabX, y: fabY, style: fabStyle, isDragging } = useDraggable(fabRef, {
       fabX.value = next.x;
       fabY.value = next.y;
     }
-    if (Math.abs(pos.x - dragOrigin.x) > 6 || Math.abs(pos.y - dragOrigin.y) > 6) dragMoved = true;
+    if (Math.abs(pos.x - dragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX || Math.abs(pos.y - dragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX) {
+      dragMoved = true;
+    }
   },
   onEnd() {
     const next = clampPos(fabX.value, fabY.value);
@@ -437,6 +490,10 @@ const { x: fabX, y: fabY, style: fabStyle, isDragging } = useDraggable(fabRef, {
     } catch {
       /* ignore */
     }
+    // 不依赖 click：微抖/preventDefault 时 click 常不触发；未拖拽则在抬起时打开
+    if (!dragMoved) {
+      drawerOpen.value = true;
+    }
   }
 });
 
@@ -446,12 +503,8 @@ useEventListener(window, "resize", () => {
   fabY.value = next.y;
 });
 
-function onFabClick() {
-  if (dragMoved) return;
-  drawerOpen.value = true;
-}
-
 let unlisten: UnlistenFn | undefined;
+let unlistenAuthExpired: UnlistenFn | undefined;
 
 onMounted(async () => {
   const next = readPos();
@@ -464,6 +517,9 @@ onMounted(async () => {
     unlisten = await listen<QzoneJobSnapshot>("qzone-sync://progress", ev => {
       job.value = ev.payload;
     });
+    unlistenAuthExpired = await listen("qzone-sync://auth-expired", () => {
+      void applyAuthExpiredUi(true);
+    });
   } catch {
     /* Web 预览无 invoke */
   }
@@ -472,6 +528,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopQrPoll();
   unlisten?.();
+  unlistenAuthExpired?.();
 });
 
 watch(drawerOpen, open => {
@@ -491,7 +548,7 @@ watch(drawerOpen, open => {
 
 <template>
   <div ref="fabRef" class="fab-root" :class="{ 'is-dragging': isDragging }" :style="fabStyle">
-    <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步" @click="onFabClick">
+    <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步">
       <IconifyIcon icon="ri:qq-fill" width="28" height="28" />
     </a-button>
   </div>
@@ -512,7 +569,6 @@ watch(drawerOpen, open => {
     </template>
 
     <div v-if="!loggedIn" class="login-block">
-      <p class="hint">使用手机 QQ 扫描下方二维码登录；仅同步本人相册到本地。</p>
       <div class="qr-wrap">
         <a-spin :spinning="qrLoading">
           <img v-if="qrImage" :src="qrImage" class="qr-img" alt="QQ 空间登录二维码" />
@@ -554,33 +610,15 @@ watch(drawerOpen, open => {
 
       <div class="browse-toolbar">
         <span class="browse-hint">左侧选相册，右侧浏览；下载任务见上方进度</span>
-        <a-button
-          size="small"
-          :loading="refreshingCatalog || albumsLoading"
-          :disabled="busy"
-          @click="onRefreshCatalog"
-        >
-          刷新目录
-        </a-button>
+        <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
       </div>
 
       <div class="panes">
         <aside ref="albumPaneRef" class="album-pane">
           <a-spin :spinning="albumsLoading">
-            <div
-              v-for="a in albums"
-              :key="a.topicId"
-              class="album-item"
-              :class="{ active: a.topicId === activeAlbumId }"
-              @click="selectAlbum(a.topicId)"
-            >
+            <div v-for="a in albums" :key="a.topicId" class="album-item" :class="{ active: a.topicId === activeAlbumId }" @click="selectAlbum(a.topicId)">
               <div class="cover">
-                <QzoneLazyImg
-                  v-if="a.coverUrl"
-                  :remote-url="a.coverUrl"
-                  :scroll-root="albumPaneRef"
-                  kind="thumb"
-                />
+                <QzoneLazyImg v-if="a.coverUrl" :remote-url="a.coverUrl" :scroll-root="albumPaneRef" kind="thumb" />
                 <div v-else class="cover-ph">{{ a.name.slice(0, 1) }}</div>
               </div>
               <div class="meta">
@@ -603,31 +641,15 @@ watch(drawerOpen, open => {
                 <section v-for="g in photoGroups" :key="g.key" class="day-group">
                   <h4 class="day-label">{{ g.label }}</h4>
                   <div class="grid">
-                    <button
-                      v-for="row in g.items"
-                      :key="row.photo.assetId"
-                      type="button"
-                      class="cell"
-                      :title="row.photo.name"
-                      @click="openPreview(row.index)"
-                    >
-                      <QzoneLazyImg
-                        v-if="row.photo.thumbUrl"
-                        :remote-url="row.photo.thumbUrl"
-                        :scroll-root="photoScrollRef"
-                        kind="thumb"
-                      />
+                    <button v-for="row in g.items" :key="row.photo.assetId" type="button" class="cell" :title="row.photo.name" @click="openPreview(row.index)">
+                      <QzoneLazyImg v-if="row.photo.thumbUrl" :remote-url="row.photo.thumbUrl" :scroll-root="photoScrollRef" kind="thumb" />
                       <div v-else class="cell-ph" />
                       <span v-if="row.photo.mediaKind === 'video'" class="badge">视频</span>
                     </button>
                   </div>
                 </section>
               </div>
-              <a-empty
-                v-else-if="!photosLoading && activeAlbumId"
-                description="此相册暂无内容"
-                :image="false"
-              />
+              <a-empty v-else-if="!photosLoading && activeAlbumId" description="此相册暂无内容" :image="false" />
             </a-spin>
           </div>
         </section>
@@ -648,13 +670,7 @@ watch(drawerOpen, open => {
     <div class="preview-body">
       <a-button class="nav prev" type="text" @click="previewNav(-1)">‹</a-button>
       <a-spin :spinning="previewLoading" tip="正在准备视频…">
-        <video
-          v-if="previewIsVideo && previewVideoSrc"
-          class="preview-media"
-          controls
-          autoplay
-          :src="previewVideoSrc"
-        />
+        <video v-if="previewIsVideo && previewVideoSrc" class="preview-media" controls autoplay :src="previewVideoSrc" />
         <BaseImage
           v-else-if="!previewIsVideo && previewImageSrc"
           class="preview-base"
@@ -702,17 +718,15 @@ watch(drawerOpen, open => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .login-block {
-  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 .drawer-extra-tag {
   font-size: 12px;
   color: var(--color-text-secondary);
   padding: 0 4px;
-}
-.hint {
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 12px;
 }
 .mt {
   margin-top: 12px;

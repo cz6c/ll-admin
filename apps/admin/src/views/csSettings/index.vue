@@ -8,16 +8,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getAppSettings, hasAppAiApiKey, saveAppSettings, setAppAiApiKey, type AppSettings } from "@/api/appSettings";
 import {
-  buildDefaultOutputDir,
   formatIcloudSyncError,
-  getAlbumRootForDefault,
   getIcloudSyncSettings,
   ICLOUD_SYNC_CONCURRENCY_TIERS,
   saveIcloudSyncSettings,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
 import {
-  getQzoneDefaultOutputDir,
   getQzoneSyncSettings,
   saveQzoneSyncSettings,
   type QzoneSyncSettings
@@ -48,11 +45,7 @@ const form = reactive<AppSettings>({
 
 // 相册设置 state
 const rootDir = ref("");
-const outputDir = ref("");
 const concurrency = ref(1);
-const defaultHint = ref("");
-const qzoneOutputDir = ref("");
-const qzoneDefaultHint = ref("");
 /** 保留 appleId 等已保存字段，避免覆盖登录面板写入项 */
 let cachedIcloudSettings: IcloudSyncSettings | null = null;
 let cachedQzoneSettings: QzoneSyncSettings | null = null;
@@ -77,22 +70,13 @@ async function loadAlbumSettings() {
     rootDir.value = albumSettings.rootDir || "";
 
     if (isTauri()) {
-      const [icloudSettings, albumRoot, qzoneSettings, qzoneSuggested] = await Promise.all([
+      const [icloudSettings, qzoneSettings] = await Promise.all([
         getIcloudSyncSettings(),
-        getAlbumRootForDefault(),
-        getQzoneSyncSettings(),
-        getQzoneDefaultOutputDir()
+        getQzoneSyncSettings()
       ]);
       cachedIcloudSettings = icloudSettings;
-      outputDir.value = icloudSettings.outputDir || "";
       concurrency.value = icloudSettings.concurrency ?? 1;
-      const suggested = buildDefaultOutputDir(albumRoot || rootDir.value);
-      defaultHint.value = suggested ? `未填写时将默认使用：${suggested}` : "请先配置相册根目录，或在此填写绝对路径";
       cachedQzoneSettings = qzoneSettings;
-      qzoneOutputDir.value = qzoneSettings.outputDir || "";
-      qzoneDefaultHint.value = qzoneSuggested
-        ? `未填写时将默认使用：${qzoneSuggested}`
-        : "请先配置相册根目录，或在此填写绝对路径";
     }
   } catch (e) {
     console.error("Failed to load album settings:", e);
@@ -136,18 +120,11 @@ async function onSave() {
   }
 }
 
-/** 保存相册设置：校验 + 写入 album settings 与 iCloud 落盘设置；失败返回 false */
+/** 保存相册设置：校验 + 写入 album settings 与 iCloud 并发设置；失败返回 false */
 async function saveAlbumSettings(): Promise<boolean> {
   if (!rootDir.value.trim()) {
     $feedback.message.warning("请先选择相册根目录");
     return false;
-  }
-  if (isTauri() && !outputDir.value.trim()) {
-    const suggested = buildDefaultOutputDir(rootDir.value);
-    if (!suggested) {
-      $feedback.message.warning("请填写 iCloud 同步落盘目录");
-      return false;
-    }
   }
   try {
     await invoke("album_save_settings", {
@@ -161,21 +138,17 @@ async function saveAlbumSettings(): Promise<boolean> {
       const base = cachedIcloudSettings ?? (await getIcloudSyncSettings());
       const next: IcloudSyncSettings = {
         ...base,
-        outputDir: outputDir.value.trim(),
         concurrency: Math.min(3, Math.max(1, concurrency.value || 1))
       };
       await saveIcloudSyncSettings(next);
       cachedIcloudSettings = next;
-      outputDir.value = next.outputDir;
 
       const qBase = cachedQzoneSettings ?? (await getQzoneSyncSettings());
       const qNext: QzoneSyncSettings = {
-        ...qBase,
-        outputDir: qzoneOutputDir.value.trim()
+        ...qBase
       };
       await saveQzoneSyncSettings(qNext);
       cachedQzoneSettings = qNext;
-      qzoneOutputDir.value = qNext.outputDir;
     }
     return true;
   } catch (e: unknown) {
@@ -190,31 +163,6 @@ async function browseRootDir() {
     const selected = await open({ directory: true, multiple: false, title: "选择相册根目录" });
     if (typeof selected === "string") {
       rootDir.value = selected;
-      if (!outputDir.value.trim() && selected) {
-        defaultHint.value = `未填写时将默认使用：${buildDefaultOutputDir(selected)}`;
-      }
-    }
-  } catch (e) {
-    console.error("Dialog error:", e);
-  }
-}
-
-async function browseOutputDir() {
-  try {
-    const selected = await open({ directory: true, multiple: false, title: "选择 iCloud 同步落盘目录" });
-    if (typeof selected === "string" && selected) {
-      outputDir.value = selected;
-    }
-  } catch (e) {
-    console.error("Dialog error:", e);
-  }
-}
-
-async function browseQzoneOutputDir() {
-  try {
-    const selected = await open({ directory: true, multiple: false, title: "选择 QQ 空间同步落盘目录" });
-    if (typeof selected === "string" && selected) {
-      qzoneOutputDir.value = selected;
     }
   } catch (e) {
     console.error("Dialog error:", e);
@@ -311,11 +259,7 @@ onActivated(load);
             <a-divider orientation="left">iCloud 同步</a-divider>
 
             <a-form-item label="落盘目录">
-              <div class="flex w-full gap-8px">
-                <a-input v-model:value="outputDir" placeholder="留空则使用相册根目录下的 iCloudSync 子文件夹" spellcheck="false" :disabled="loading" />
-                <a-button :disabled="loading" @click="browseOutputDir">浏览</a-button>
-              </div>
-              <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">{{ defaultHint }}</p>
+              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">固定保存至相册根目录下的 iCloudSync 子文件夹</p>
             </a-form-item>
 
             <a-form-item label="下载速度">
@@ -332,16 +276,7 @@ onActivated(load);
             <a-divider orientation="left">QQ 空间同步</a-divider>
 
             <a-form-item label="落盘目录">
-              <div class="flex w-full gap-8px">
-                <a-input
-                  v-model:value="qzoneOutputDir"
-                  placeholder="留空则使用相册根目录下的 QzoneSync 子文件夹"
-                  spellcheck="false"
-                  :disabled="loading"
-                />
-                <a-button :disabled="loading" @click="browseQzoneOutputDir">浏览</a-button>
-              </div>
-              <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">{{ qzoneDefaultHint }}</p>
+              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">固定保存至相册根目录下的 QzoneSync 子文件夹</p>
             </a-form-item>
           </template>
         </a-form>

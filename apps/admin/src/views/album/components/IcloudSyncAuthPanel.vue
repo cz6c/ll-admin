@@ -65,11 +65,23 @@ const accountSwitchPending = computed(() => {
   return prev.length > 0 && next.length > 0 && prev !== next;
 });
 
-/** 将 sidecar 登录错误转为轻提示 */
+/** 将 sidecar 登录错误转为轻提示；pending 失效时退出 2FA 态 */
 function applyAuthFailure(result: IcloudSyncLoginResult) {
   const code = result.errorCode?.trim() || "auth_failed";
   const detail = result.detail?.trim() ?? "";
-  $feedback.message.error(formatIcloudSyncError(detail ? `${code}: ${detail}` : code));
+  const action = result.diagnostic?.userActions?.[0]?.trim();
+  const message = action || formatIcloudSyncError(detail ? `${code}: ${detail}` : code);
+  $feedback.message.error(message);
+
+  // 无 pending / session 失效：回到登录表单，避免用户对着失效 challenge 连点提交
+  if (
+    code === "session_expired" ||
+    detail.includes("pending challenge") ||
+    detail.includes("无 pending challenge") ||
+    result.diagnostic?.hints?.includes("NO_PENDING_2FA")
+  ) {
+    resetTransient();
+  }
 }
 
 function applyNeed2faResult(result: IcloudSyncLoginResult) {

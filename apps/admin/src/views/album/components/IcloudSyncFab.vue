@@ -583,10 +583,10 @@ const showProgress = computed(() => fabState.value.percent > 0 && fabState.value
 const FAB_POS_STORAGE_KEY = "album.icloudSyncFab.pos";
 const FAB_SIZE_PX = 58;
 const FAB_EDGE_MARGIN_PX = 8;
-const FAB_DRAG_CLICK_THRESHOLD_PX = 6;
+const FAB_DRAG_CLICK_THRESHOLD_PX = 12;
 
 const fabRootRef = ref<HTMLElement | null>(null);
-/** 本轮拖动位移超阈值时吞 click，避免松手误开抽屉 */
+/** 本轮拖动位移超阈值时不当作点击；打开抽屉改在 pointerup（避免 click 被吞） */
 let fabDragOrigin = { x: 0, y: 0 };
 let fabDragMoved = false;
 
@@ -642,7 +642,7 @@ const {
   isDragging: fabDragging
 } = useDraggable(fabRootRef, {
   initialValue: typeof window !== "undefined" ? readStoredFabPos() : { x: 24, y: 24 },
-  preventDefault: true,
+  preventDefault: false,
   onStart(pos) {
     fabDragMoved = false;
     fabDragOrigin = { x: pos.x, y: pos.y };
@@ -665,6 +665,9 @@ const {
     fabX.value = next.x;
     fabY.value = next.y;
     persistFabPos(next.x, next.y);
+    if (!fabDragMoved) {
+      drawerOpen.value = true;
+    }
   }
 });
 
@@ -673,11 +676,6 @@ useEventListener(window, "resize", () => {
   fabX.value = next.x;
   fabY.value = next.y;
 });
-
-function onFabClick() {
-  if (fabDragMoved) return;
-  drawerOpen.value = true;
-}
 
 async function onLogout() {
   loggingOut.value = true;
@@ -711,7 +709,6 @@ onMounted(() => {
       shape="circle"
       size="large"
       :title="fabState.label"
-      @click="onFabClick"
     >
       <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
       <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />

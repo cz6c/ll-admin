@@ -32,6 +32,7 @@ _HINT_ACTIONS: dict[str, str] = {
     "STALE_SESSION_MISSING_DSINFO": "旧版 pyicloud session 与 pyicloud_ipd 不兼容：已自动清理，请重新输入密码登录",
     "ICLOUD_CN_DOMAIN_REQUIRED": "中国大陆 Apple ID 需走 iCloud.com.cn；已自动切换 cn 域，请重新登录一次",
     "ACCOUNT_MAY_BE_RATE_LIMITED": "可能触发 Apple 限流：停止一切登录尝试数小时，先用 icloud.com 确认账号正常",
+    "MFA_RATE_LIMITED": "验证码次数过多或已锁定：停止本工具内重试，等待冷却后再完整登录一次",
     "SRP_ALREADY_RAN": "已完成密码登录；2FA 阶段请只提交验证码，勿再点「登录」",
     "KICKOFF_PUT_ONLY": "已用 icloudpd PUT 触发设备验证；请在 iPhone 点「允许」后输入码",
     "KICKOFF_PUT_RETRY": "已重新推送设备验证；请在 iPhone 再次点「允许」后输入新验证码",
@@ -39,7 +40,7 @@ _HINT_ACTIONS: dict[str, str] = {
     "KICKOFF_BRIDGE": "已走 pyicloud bridge 推送；请在 iPhone 点「允许」后尽快输入码",
     "VALIDATE_RETURNED_FALSE": "Apple 拒绝了验证码：确认码未过期且与当前「允许」弹窗对应",
     "VALIDATE_OK_WEBAUTH_PENDING": "验证码已被 Apple 接受，但 trust/accountLogin 未完成；请重新点「允许」换码",
-    "EXCEPTION_DURING_VALIDATE": "校验过程异常：查看 exceptionDetail，通常需新 challenge（退出后重登）",
+    "EXCEPTION_DURING_VALIDATE": "校验过程异常：若提示验证码无效，请用最新码或点「重发验证码」；会话已清则需退出重登",
     "AUTH_SESSION_READY": "登录 session 已就绪，可开始或继续同步",
     "AUTH_PROBE_OK": "session 探测通过，可 catalog / download",
     "AUTH_LOGGED_OUT": "sidecar 内存态已清空；若需彻底登出请同时在应用内点「退出登录」",
@@ -154,7 +155,7 @@ def _infer_hints(
         hints.append("BRIDGE_INACTIVE_AT_VALIDATE")
     if not flags.get("deliveryMethodCached") and flags.get("deliveryMethodLive") in ("", "unknown", None):
         hints.append("DELIVERY_METHOD_UNKNOWN")
-    if stage == "auth_2fa" and not flags.get("waiting2fa"):
+    if stage == "auth_2fa" and not flags.get("waiting2fa") and exc is None:
         hints.append("NO_PENDING_2FA")
     if kickoff_path in ("put", "ipd_put"):
         hints.append("KICKOFF_IPD_PUT")
@@ -162,7 +163,11 @@ def _infer_hints(
         hints.append("KICKOFF_BRIDGE")
     if validate_path == "validate_2fa_code:false":
         hints.append("VALIDATE_RETURNED_FALSE")
-    if validate_path.endswith(":webauth_pending") or validate_path.endswith(":trust_retry"):
+    if (
+        validate_path.endswith(":webauth_pending")
+        or validate_path.endswith(":trust_retry")
+        or validate_path.endswith(":account_login_retry")
+    ):
         hints.append("VALIDATE_OK_WEBAUTH_PENDING")
     if kickoff_path in ("put_retry", "ipd_put_retry", "ipd_put_resend"):
         hints.append("KICKOFF_PUT_RETRY")
@@ -174,6 +179,8 @@ def _infer_hints(
             hints.insert(0, "ICLOUD_CN_DOMAIN_REQUIRED")
     if code in ("account_locked", "rate_limited"):
         hints.append("ACCOUNT_MAY_BE_RATE_LIMITED")
+        if code == "rate_limited":
+            hints.append("MFA_RATE_LIMITED")
     if code == "ok" and flags.get("authenticated"):
         if stage == "auth_probe":
             hints.append("AUTH_PROBE_OK")

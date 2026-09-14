@@ -4,19 +4,22 @@
 
 mod content_hash;
 mod media_meta;
-mod db;
+pub(crate) mod db;
 mod duplicates;
-mod ffmpeg;
+pub(crate) mod ffmpeg;
 mod fs_delete;
 mod heic_decode;
 mod scan_state;
 mod scanner;
-mod settings;
-mod thumbnail;
-mod types;
+pub(crate) mod settings;
+pub(crate) mod thumbnail;
+mod thumb_ingress;
+pub(crate) mod types;
 mod watcher;
 
 pub use types::{AlbumSettings, DuplicateGroup, MediaGroup};
+/// 同步落盘后入队相册缩略图（与 scan 共用管线）
+pub use thumb_ingress::enqueue_thumbs_from_sync;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,6 +28,7 @@ use std::time::Duration;
 use scan_state::ScanCancelToken;
 use settings::album_dir;
 use tauri::{AppHandle, State};
+use thumb_ingress::ThumbPending;
 use watcher::start_watching;
 
 use fs_delete::{
@@ -42,6 +46,8 @@ pub struct AlbumState {
   dirty: Arc<AtomicBool>,
   /// 上一次扫描的根目录，切目录时强制全量 discover（dirty 是进程级单标志，不跟 root 绑定）
   last_root: String,
+  /// 与同步共享的待出图路径；入队只追加，不因此 cancel 管线
+  thumb_pending: Arc<ThumbPending>,
 }
 
 impl AlbumState {
@@ -54,38 +60,49 @@ impl AlbumState {
       // 首次必须全扫，初始化为 true
       dirty: Arc::new(AtomicBool::new(true)),
       last_root: String::new(),
+      thumb_pending: Arc::new(ThumbPending::new()),
     }
   }
 }
 
 /// 读取相册设置
 #[tauri::command]
-pub fn album_get_settings(app: AppHandle) -> Result<AlbumSettings, String> {
-  settings::load_settings(&app)
+pub async fn album_get_settings(app: AppHandle) -> Result<AlbumSettings, String> {
+  tokio::task::spawn_blocking(move || settings::load_settings(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 保存相册设置
 #[tauri::command]
-pub fn album_save_settings(
+pub async fn album_save_settings(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   settings: AlbumSettings,
 ) -> Result<(), String> {
   // rootDir 变化时强制下次 scan 走全量 discover（不跟 dirty 绑定）
-  if let Ok(old) = settings::load_settings(&app) {
-    if old.root_dir != settings.root_dir {
-      if let Ok(mut guard) = state.lock() {
-        guard.dirty.store(true, Ordering::SeqCst);
-        guard.last_root.clear();
-      }
+  let root_changed = tokio::task::spawn_blocking(move || {
+    let root_changed = settings::load_settings(&app)
+      .map(|old| old.root_dir != settings.root_dir)
+      .unwrap_or(false);
+    settings::save_settings(&app, &settings)?;
+    Ok::<bool, String>(root_changed)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))??;
+
+  if root_changed {
+    if let Ok(mut guard) = state.lock() {
+      guard.dirty.store(true, Ordering::SeqCst);
+      guard.last_root.clear();
     }
   }
-  settings::save_settings(&app, &settings)
+  Ok(())
 }
 
 /// 取消进行中的缩略图后台任务
 #[tauri::command]
-pub fn album_cancel_scan(state: State<'_, Mutex<AlbumState>>) -> Result<(), String> {
+pub async fn album_cancel_scan(state: State<'_, Mutex<AlbumState>>) -> Result<(), String> {
   state.lock().map_err(|e| format!("锁失败: {e}"))?.cancel.cancel();
   Ok(())
 }
@@ -231,6 +248,10 @@ pub async fn album_scan(
     let root_for_bg = root.clone();
     let album_dir_for_bg = album_data_dir.clone();
     let groups_bg = groups.clone();
+    let thumb_pending = {
+      let guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
+      Arc::clone(&guard.thumb_pending)
+    };
     let handle = tokio::task::spawn_blocking(move || {
       scanner::run_thumbnail_pipeline(
         app_bg,
@@ -242,6 +263,7 @@ pub async fn album_scan(
         cancel,
         pipeline_epoch,
         my_epoch,
+        thumb_pending,
       );
     });
     if let Ok(mut guard) = state.lock() {
@@ -288,7 +310,7 @@ fn probe_and_persist_video_stream(
 /// @param paths 主文件绝对路径；Live Photo 会一并处理 video_path 与播放代理
 /// @note 原文件（主路径 + Live mov）→ 回收站；thumb/preview/playback 缓存 → 永久删除
 #[tauri::command]
-pub fn album_delete_local(
+pub async fn album_delete_local(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   paths: Vec<String>,
@@ -296,42 +318,47 @@ pub fn album_delete_local(
   if paths.is_empty() {
     return Ok(0);
   }
-  let album_data_dir = album_dir(&app)?;
-  let mut deleted = 0u32;
-  let conn = db::open_db(&album_data_dir)?;
+  let deleted = tokio::task::spawn_blocking(move || {
+    let album_data_dir = album_dir(&app)?;
+    let mut deleted = 0u32;
+    let conn = db::open_db(&album_data_dir)?;
 
-  for path in paths {
-    let path = path.trim();
-    if path.is_empty() {
-      continue;
+    for path in paths {
+      let path = path.trim();
+      if path.is_empty() {
+        continue;
+      }
+      let (thumb, preview, video, playback) = db::get_media_companion_paths(&conn, path)?;
+
+      // 原媒体：主文件 + Live 配对 mov → 回收站
+      let mut originals: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
+      let video_path = video.filter(|s| !s.is_empty() && s != path);
+      if let Some(ref v) = video_path {
+        originals.push(std::path::PathBuf::from(v));
+      }
+
+      let caches = collect_derived_cache_paths(
+        &album_data_dir,
+        path,
+        thumb.as_deref(),
+        preview.as_deref(),
+        video_path.as_deref(),
+        playback.as_deref(),
+      );
+
+      for p in &originals {
+        trash_original_file(p)?;
+      }
+      purge_derived_cache_paths(&caches);
+
+      if db::delete_media_by_path(&conn, path)? {
+        deleted += 1;
+      }
     }
-    let (thumb, preview, video, playback) = db::get_media_companion_paths(&conn, path)?;
-
-    // 原媒体：主文件 + Live 配对 mov → 回收站
-    let mut originals: Vec<std::path::PathBuf> = vec![std::path::PathBuf::from(path)];
-    let video_path = video.filter(|s| !s.is_empty() && s != path);
-    if let Some(ref v) = video_path {
-      originals.push(std::path::PathBuf::from(v));
-    }
-
-    let caches = collect_derived_cache_paths(
-      &album_data_dir,
-      path,
-      thumb.as_deref(),
-      preview.as_deref(),
-      video_path.as_deref(),
-      playback.as_deref(),
-    );
-
-    for p in &originals {
-      trash_original_file(p)?;
-    }
-    purge_derived_cache_paths(&caches);
-
-    if db::delete_media_by_path(&conn, path)? {
-      deleted += 1;
-    }
-  }
+    Ok::<u32, String>(deleted)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))??;
 
   if deleted > 0 {
     if let Ok(guard) = state.lock() {
@@ -343,15 +370,21 @@ pub fn album_delete_local(
 
 /// 列表批量改拍摄时间：仅写 media.db（source=user）；拒绝未探测/已锁定行
 #[tauri::command]
-pub fn album_set_capture_at(
+pub async fn album_set_capture_at(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   request: types::AlbumSetCaptureAtRequest,
 ) -> Result<types::AlbumSetCaptureAtResult, String> {
-  let album_data_dir = album_dir(&app)?;
-  let conn = db::open_db(&album_data_dir)?;
-  let (updated, rejected) =
-    db::set_capture_at_user_batch(&conn, &request.paths, &request.capture_at)?;
+  let (updated, rejected) = tokio::task::spawn_blocking(move || {
+    let album_data_dir = album_dir(&app)?;
+    let conn = db::open_db(&album_data_dir)?;
+    let (updated, rejected) =
+      db::set_capture_at_user_batch(&conn, &request.paths, &request.capture_at)?;
+    Ok::<(u32, u32), String>((updated, rejected))
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))??;
+
   if updated > 0 {
     if let Ok(guard) = state.lock() {
       guard.dirty.store(true, Ordering::SeqCst);
@@ -362,17 +395,21 @@ pub fn album_set_capture_at(
 
 /// 扫描相册根全量媒体重复组（组内落库优先正本；不含删盘）
 #[tauri::command]
-pub fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {
-  duplicates::find_local_duplicates(&app)
+pub async fn album_find_local_duplicates(app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {
+  tokio::task::spawn_blocking(move || duplicates::find_local_duplicates(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 重复清理弹窗：可见行 lazy 拉取缩略图（HEIC/视频等）
 #[tauri::command]
-pub fn album_resolve_duplicate_thumb(
+pub async fn album_resolve_duplicate_thumb(
   app: AppHandle,
   path: String,
 ) -> Result<Option<String>, String> {
-  Ok(duplicates::resolve_display_thumb_on_demand(&app, &path))
+  tokio::task::spawn_blocking(move || Ok(duplicates::resolve_display_thumb_on_demand(&app, &path)))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 返回 WebView 可直接 `<video>` 播放的路径：H.264 等原生格式原样返回；HEVC 转 H.264 MP4 缓存
@@ -545,15 +582,23 @@ fn resolve_album_subdir(root: &std::path::Path, rel: &str) -> Result<std::path::
  * @note 走 Rust opener，避免前端 openPath 的 capability 路径 scope（相册根用户自选）
  */
 #[tauri::command]
-pub fn album_open_dir(app: AppHandle, rel_path: String) -> Result<(), String> {
+pub async fn album_open_dir(app: AppHandle, rel_path: String) -> Result<(), String> {
   use tauri_plugin_opener::OpenerExt;
 
-  let settings = settings::load_settings(&app)?;
-  let root = settings.root_dir.trim();
-  if root.is_empty() {
-    return Err("相册根目录未设置".to_string());
-  }
-  let target = resolve_album_subdir(std::path::Path::new(root), &rel_path)?;
+  let target = {
+    let app = app.clone();
+    tokio::task::spawn_blocking(move || {
+      let settings = settings::load_settings(&app)?;
+      let root = settings.root_dir.trim();
+      if root.is_empty() {
+        return Err("相册根目录未设置".to_string());
+      }
+      resolve_album_subdir(std::path::Path::new(root), &rel_path)
+    })
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
+  }?;
+
   app
     .opener()
     .open_path(target.to_string_lossy().as_ref(), None::<&str>)

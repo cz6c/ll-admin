@@ -1,6 +1,10 @@
 //! iCloud 照片同步
 //! 职责：设置、凭据、SQLite 断点、命名规则、sidecar 队列与 Tauri 命令
 //! 适用：admin CS（Tauri）个人工具，不进 Web / server
+//!
+//! UI 线程：凡可能阻塞（sidecar 请求、auth_probe、钥匙串、SQLite）的 command
+//! 一律 `pub async fn` + `tokio::task::spawn_blocking`，重活丢线程池，避免窗口「未响应」。
+//! `icloudimg` 协议已自行 `thread::spawn`；仍与 sidecar **单飞锁**互斥，登录时缩略图会排队但不堵主线程。
 
 mod catalog_diff;
 pub mod cloud_assets;
@@ -30,22 +34,16 @@ pub(crate) use db::state_db_path;
 /// 供 album 扫描识别同步命名 vs 异物
 pub(crate) use naming::is_sync_asset_filename;
 use settings::{
-  clear_session_for_apple_id, load_settings, normalize_icloud_domain,
-  resolve_default_output_dir, save_settings, session_has_files,
-  session_has_files_for_apple_id,
+  clear_session_for_apple_id, load_settings, normalize_icloud_domain, resolve_output_dir,
+  save_settings, session_has_files, session_has_files_for_apple_id,
 };
 
 /**
- * 当前同步落盘目录：设置里的 output_dir，空则 `{albumRoot}/iCloudSync`
- * @note 相册扫描异物收容用；未配相册根且无自定义目录时返回 None
+ * 同步落盘目录写死：`{albumRoot}/iCloudSync`
+ * @note 相册扫描异物收容用；未配相册根时返回 None
  */
 pub(crate) fn resolve_sync_output_dir(app: &AppHandle) -> Option<PathBuf> {
-  let settings = load_settings(app).ok()?;
-  let trimmed = settings.output_dir.trim();
-  if !trimmed.is_empty() {
-    return Some(PathBuf::from(trimmed));
-  }
-  resolve_default_output_dir(app).ok().flatten()
+  resolve_output_dir(app).ok().flatten()
 }
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
 use types::{CloudState, IcloudSyncSettings};
@@ -255,17 +253,22 @@ pub struct IcloudSyncPingResult {
   pub agent: String,
 }
 
+// `(async)`：同步体仍跑在线程池，避免磁盘 I/O 堵 UI 主线程（Tauri 2）
 #[tauri::command]
-pub fn icloud_sync_get_settings(app: AppHandle) -> Result<IcloudSyncSettings, String> {
-  load_settings(&app)
+pub async fn icloud_sync_get_settings(app: AppHandle) -> Result<IcloudSyncSettings, String> {
+  tokio::task::spawn_blocking(move || load_settings(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[tauri::command]
-pub fn icloud_sync_save_settings(
+pub async fn icloud_sync_save_settings(
   app: AppHandle,
   settings: IcloudSyncSettings,
 ) -> Result<(), String> {
-  save_settings(&app, &settings)
+  tokio::task::spawn_blocking(move || save_settings(&app, &settings))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 清空 sidecar 进程内认证态；logout / 换号前调用
@@ -308,8 +311,9 @@ pub(crate) fn reset_sidecar_auth(app: &AppHandle, client: &SidecarClient) -> Res
 
 /// 保存 Apple ID 到 settings.json（不含密码）
 /// @note Apple ID 变更时会 reset sidecar 并清除旧账号 session，避免误复用
+/// @note 换号可能 reset sidecar（网络），必须离主线程
 #[tauri::command]
-pub fn icloud_sync_set_credentials(
+pub async fn icloud_sync_set_credentials(
   app: AppHandle,
   apple_id: String,
   sidecar: State<'_, SidecarClientHandle>,
@@ -318,204 +322,243 @@ pub fn icloud_sync_set_credentials(
   if apple_id.is_empty() {
     return Err("Apple ID 不能为空".to_string());
   }
-  let mut settings = load_settings(&app)?;
-  let previous = settings.apple_id.trim().to_string();
-  let account_changed = !previous.is_empty() && previous != apple_id;
-  settings.apple_id = apple_id.clone();
-  save_settings(&app, &settings)?;
-  if account_changed {
-    let _ = reset_sidecar_auth(&app, sidecar.client().as_ref());
-    clear_session_for_apple_id(&app, &previous)?;
-  }
-  Ok(account_changed)
+  let client = sidecar.client();
+  tokio::task::spawn_blocking(move || -> Result<bool, String> {
+    let mut settings = load_settings(&app)?;
+    let previous = settings.apple_id.trim().to_string();
+    let account_changed = !previous.is_empty() && previous != apple_id;
+    settings.apple_id = apple_id.clone();
+    save_settings(&app, &settings)?;
+    if account_changed {
+      let _ = reset_sidecar_auth(&app, client.as_ref());
+      clear_session_for_apple_id(&app, &previous)?;
+    }
+    Ok(account_changed)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 仅在 settings.remember_password 为 true 时返回钥匙串密码，供登录面板回填
 /// @note 未勾选「记住我」时恒返回 None，避免无授权把明文送进前端
 #[tauri::command]
-pub fn icloud_sync_get_remembered_password(app: AppHandle) -> Result<Option<String>, String> {
-  let settings = load_settings(&app)?;
-  if !settings.remember_password {
-    return Ok(None);
-  }
-  keyring_store::get_password(&app)
+pub async fn icloud_sync_get_remembered_password(app: AppHandle) -> Result<Option<String>, String> {
+  tokio::task::spawn_blocking(move || -> Result<Option<String>, String> {
+    let settings = load_settings(&app)?;
+    if !settings.remember_password {
+      return Ok(None);
+    }
+    keyring_store::get_password(&app)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 勾选「记住我」时写入钥匙串；未勾选勿调用
 #[tauri::command]
-pub fn icloud_sync_save_remembered_password(app: AppHandle, password: String) -> Result<(), String> {
-  let settings = load_settings(&app)?;
-  if !settings.remember_password {
-    return Err("未勾选记住我，不能写入钥匙串".to_string());
-  }
-  let password = password.trim();
-  if password.is_empty() {
-    return Err("密码不能为空".to_string());
-  }
-  keyring_store::set_password(&app, password)
+pub async fn icloud_sync_save_remembered_password(
+  app: AppHandle,
+  password: String,
+) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    let settings = load_settings(&app)?;
+    if !settings.remember_password {
+      return Err("未勾选记住我，不能写入钥匙串".to_string());
+    }
+    let password = password.trim();
+    if password.is_empty() {
+      return Err("密码不能为空".to_string());
+    }
+    keyring_store::set_password(&app, password)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 登出：清 sidecar 内存态 + 当前账号 session 文件；保留 settings 中的 Apple ID（不碰钥匙串）
 #[tauri::command]
-pub fn icloud_sync_logout(
+pub async fn icloud_sync_logout(
   app: AppHandle,
   sidecar: State<'_, SidecarClientHandle>,
   clear_session: Option<bool>,
 ) -> Result<(), String> {
-  reset_sidecar_auth(&app, sidecar.client().as_ref())?;
-  if clear_session.unwrap_or(true) {
-    let settings = load_settings(&app)?;
-    clear_session_for_apple_id(&app, &settings.apple_id)?;
-  }
-  Ok(())
+  let client = sidecar.client();
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    reset_sidecar_auth(&app, client.as_ref())?;
+    if clear_session.unwrap_or(true) {
+      let settings = load_settings(&app)?;
+      clear_session_for_apple_id(&app, &settings.apple_id)?;
+    }
+    Ok(())
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 向 sidecar 发起 auth：密码由本次调用传入（一次性），不经钥匙串
 /// @note 若磁盘已有 session：先 auth_probe；有效则拒重复登录；失效则清盘后再 SRP
+/// @note `(async)` 必加：SRP/probe 可阻塞数十秒；同步 command 会跑主线程导致窗口「未响应」
 #[tauri::command]
-pub fn icloud_sync_login(
+pub async fn icloud_sync_login(
   app: AppHandle,
   password: String,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncLoginResult, String> {
-  let settings = load_settings(&app)?;
-
-  let apple_id = settings.apple_id.trim().to_string();
-  if apple_id.is_empty() {
-    return Err("请先填写 Apple ID".to_string());
-  }
-
-  let password = password.trim().to_string();
-  if password.is_empty() {
-    return Err("请先填写 Apple ID 密码".to_string());
-  }
-
   let client = sidecar.client();
-  if session_has_files_for_apple_id(&app, &apple_id)? {
-    match run_auth_probe(&app, client.as_ref())? {
-      AuthProbeOutcome::Authenticated => {
-        return Err(format!(
-          "{}: 请先退出当前登录后再重新登录",
-          types::error_codes::ALREADY_LOGGED_IN
-        ));
-      }
-      AuthProbeOutcome::Need2fa {
-        delivery_method,
-        detail,
-      } => {
-        // 已有 pending 2FA：交给面板输码，勿再 SRP
-        return Ok(IcloudSyncLoginResult {
-          status: "need_2fa".to_string(),
+  tokio::task::spawn_blocking(move || -> Result<IcloudSyncLoginResult, String> {
+    let settings = load_settings(&app)?;
+
+    let apple_id = settings.apple_id.trim().to_string();
+    if apple_id.is_empty() {
+      return Err("请先填写 Apple ID".to_string());
+    }
+
+    let password = password.trim().to_string();
+    if password.is_empty() {
+      return Err("请先填写 Apple ID 密码".to_string());
+    }
+
+    if session_has_files_for_apple_id(&app, &apple_id)? {
+      match run_auth_probe(&app, client.as_ref())? {
+        AuthProbeOutcome::Authenticated => {
+          return Err(format!(
+            "{}: 请先退出当前登录后再重新登录",
+            types::error_codes::ALREADY_LOGGED_IN
+          ));
+        }
+        AuthProbeOutcome::Need2fa {
           delivery_method,
           detail,
-          error_code: None,
-          diagnostic: None,
-        });
-      }
-      AuthProbeOutcome::Unavailable { .. } => {
-        discard_invalid_session(&app, client.as_ref(), &apple_id);
+        } => {
+          // 已有 pending 2FA：交给面板输码，勿再 SRP
+          return Ok(IcloudSyncLoginResult {
+            status: "need_2fa".to_string(),
+            delivery_method,
+            detail,
+            error_code: None,
+            diagnostic: None,
+          });
+        }
+        AuthProbeOutcome::Unavailable { .. } => {
+          discard_invalid_session(&app, client.as_ref(), &apple_id);
+        }
       }
     }
-  }
 
-  let session_path = session_dir(&app)?;
-  client.ensure_started(&app).map_err(|e| e.to_string())?;
+    let session_path = session_dir(&app)?;
+    client.ensure_started(&app).map_err(|e| e.to_string())?;
 
-  let event = client
-    .request(
-      &app,
-      serde_json::json!({
-        "cmd": "auth",
-        "apple_id": apple_id,
-        "password": password,
-        "session_dir": session_path.to_string_lossy(),
-        "icloud_domain": normalize_icloud_domain(&settings.icloud_domain),
-      }),
-    )
-    .map_err(|e| e.to_string())?;
+    let event = client
+      .request(
+        &app,
+        serde_json::json!({
+          "cmd": "auth",
+          "apple_id": apple_id,
+          "password": password,
+          "session_dir": session_path.to_string_lossy(),
+          "icloud_domain": normalize_icloud_domain(&settings.icloud_domain),
+        }),
+      )
+      .map_err(|e| e.to_string())?;
 
-  map_login_event(event)
+    map_login_event(event)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 提交 2FA 验证码；sidecar 需处于 pending challenge 状态
+/// @note `(async)`：validate/trust 走 Apple 网络，不可堵主线程
 #[tauri::command]
-pub fn icloud_sync_submit_2fa(
+pub async fn icloud_sync_submit_2fa(
   app: AppHandle,
   sidecar: State<'_, SidecarClientHandle>,
   code: String,
 ) -> Result<IcloudSyncLoginResult, String> {
   let code = code.trim().to_string();
-
   let client = sidecar.client();
-  client.ensure_started(&app).map_err(|e| e.to_string())?;
+  tokio::task::spawn_blocking(move || -> Result<IcloudSyncLoginResult, String> {
+    client.ensure_started(&app).map_err(|e| e.to_string())?;
 
-  let event = client
-    .request(
-      &app,
-      serde_json::json!({
-        "cmd": "auth_2fa",
-        "code": code,
-      }),
-    )
-    .map_err(|e| e.to_string())?;
+    let event = client
+      .request(
+        &app,
+        serde_json::json!({
+          "cmd": "auth_2fa",
+          "code": code,
+        }),
+      )
+      .map_err(|e| e.to_string())?;
 
-  map_login_event(event)
+    map_login_event(event)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 用户显式重发 2FA 推送（不会在提交失败时自动调用）
 #[tauri::command]
-pub fn icloud_sync_resend_2fa(
+pub async fn icloud_sync_resend_2fa(
   app: AppHandle,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncLoginResult, String> {
   let client = sidecar.client();
-  client.ensure_started(&app).map_err(|e| e.to_string())?;
+  tokio::task::spawn_blocking(move || -> Result<IcloudSyncLoginResult, String> {
+    client.ensure_started(&app).map_err(|e| e.to_string())?;
 
-  let event = client
-    .request(
-      &app,
-      serde_json::json!({
-        "cmd": "auth_2fa_resend",
-      }),
-    )
-    .map_err(|e| e.to_string())?;
+    let event = client
+      .request(
+        &app,
+        serde_json::json!({
+          "cmd": "auth_2fa_resend",
+        }),
+      )
+      .map_err(|e| e.to_string())?;
 
-  map_login_event(event)
+    map_login_event(event)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// 读取凭据 / session 概况（不含密码明文）
 /// @note `logged_in` 以 auth_probe 为准；伪 session 会清盘并返回未登录
+/// @note `(async)`：auth_probe 可能打 sidecar/Apple，不可堵主线程
 #[tauri::command]
-pub fn icloud_sync_auth_state(
+pub async fn icloud_sync_auth_state(
   app: AppHandle,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncAuthStateResult, String> {
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.clone();
   let client = sidecar.client();
+  tokio::task::spawn_blocking(move || -> Result<IcloudSyncAuthStateResult, String> {
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.clone();
 
-  let has_files = session_has_files_for_apple_id(&app, &apple_id)?;
-  let (logged_in, session_for_current) = if apple_id.trim().is_empty() || !has_files {
-    (false, false)
-  } else {
-    match run_auth_probe(&app, client.as_ref())? {
-      AuthProbeOutcome::Authenticated => (true, true),
-      AuthProbeOutcome::Need2fa { .. } => (false, true),
-      AuthProbeOutcome::Unavailable { .. } => {
-        discard_invalid_session(&app, client.as_ref(), &apple_id);
-        (false, false)
+    let has_files = session_has_files_for_apple_id(&app, &apple_id)?;
+    let (logged_in, session_for_current) = if apple_id.trim().is_empty() || !has_files {
+      (false, false)
+    } else {
+      match run_auth_probe(&app, client.as_ref())? {
+        AuthProbeOutcome::Authenticated => (true, true),
+        AuthProbeOutcome::Need2fa { .. } => (false, true),
+        AuthProbeOutcome::Unavailable { .. } => {
+          discard_invalid_session(&app, client.as_ref(), &apple_id);
+          (false, false)
+        }
       }
-    }
-  };
+    };
 
-  Ok(IcloudSyncAuthStateResult {
-    apple_id: settings.apple_id.clone(),
-    has_password: keyring_store::has_password(&app)?,
-    icloud_domain: normalize_icloud_domain(&settings.icloud_domain),
-    session_present: session_has_files(&app)?,
-    session_for_current_apple_id: session_for_current,
-    logged_in,
+    Ok(IcloudSyncAuthStateResult {
+      apple_id: settings.apple_id.clone(),
+      has_password: keyring_store::has_password(&app)?,
+      icloud_domain: normalize_icloud_domain(&settings.icloud_domain),
+      session_present: session_has_files(&app)?,
+      session_for_current_apple_id: session_for_current,
+      logged_in,
+    })
   })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 fn diagnostic_from_event(event: &SidecarEvent) -> Option<serde_json::Value> {
@@ -576,19 +619,23 @@ fn map_login_event(event: SidecarEvent) -> Result<IcloudSyncLoginResult, String>
 
 /// 启动 sidecar 并返回 agent 版本（开发/冒烟用）
 #[tauri::command]
-pub fn icloud_sync_ping(
+pub async fn icloud_sync_ping(
   app: AppHandle,
   sidecar: State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncPingResult, String> {
-  let _guard = SIDECAR_PING
-    .lock()
-    .map_err(|_| "sidecar ping lock poisoned".to_string())?;
   let client = sidecar.client();
-  client.ensure_started(&app).map_err(|e| e.to_string())?;
-  Ok(IcloudSyncPingResult {
-    protocol: SIDECAR_PROTOCOL,
-    agent: client.agent_version().map_err(|e| e.to_string())?,
+  tokio::task::spawn_blocking(move || -> Result<IcloudSyncPingResult, String> {
+    let _guard = SIDECAR_PING
+      .lock()
+      .map_err(|_| "sidecar ping lock poisoned".to_string())?;
+    client.ensure_started(&app).map_err(|e| e.to_string())?;
+    Ok(IcloudSyncPingResult {
+      protocol: SIDECAR_PROTOCOL,
+      agent: client.agent_version().map_err(|e| e.to_string())?,
+    })
   })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[cfg(test)]

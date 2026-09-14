@@ -258,10 +258,10 @@ def _looks_like_network_error(exc: BaseException) -> bool:
 
 def _map_exception(exc: BaseException) -> str:
     """
-    将异常映射到稳定机读错误码（占位映射，后续可按实测收敛）。
+    将异常映射到稳定机读错误码。
 
-    @note 这里对异常 message/code 做多条件兜底，是为兼容 pyicloud 在不同路径下
-          抛出类型一致但 detail 差异较大的现实情况。
+    @note session_expired 仅用于「会话/令牌已死」的明确信号；未知 API 错默认 auth_failed，
+          避免把验码/限流误清盘或整 job paused_session。
     """
     exc_type = type(exc).__name__
     msg = str(exc)
@@ -270,6 +270,8 @@ def _map_exception(exc: BaseException) -> str:
 
     if _is_2fa_required_exception(exc):
         return CODE_NEED_2FA
+    if _is_mfa_rate_limited(exc):
+        return CODE_RATE_LIMITED
     # 区域不匹配：须能解析出 Apple 要求的域，避免把纯网络失败当成选错区
     if isinstance(exc, ipd_auth.IcloudDomainMismatchError):
         return CODE_DOMAIN_MISMATCH
@@ -298,9 +300,10 @@ def _map_exception(exc: BaseException) -> str:
             return CODE_AUTH_FAILED
         if code == "-20209" or "-20209" in code:
             return CODE_ACCOUNT_LOCKED
-        if "Authentication required" in msg or "Invalid authentication token" in msg:
+        if _looks_like_session_death(msg, code):
             return CODE_SESSION_EXPIRED
-        return CODE_SESSION_EXPIRED
+        # 未知 Photos/idmsa API 错：勿默认 session_expired（曾误清 2FA pending）
+        return CODE_AUTH_FAILED
     if "-20209" in code or "-20209" in msg:
         return CODE_ACCOUNT_LOCKED
     if any(
@@ -313,9 +316,83 @@ def _map_exception(exc: BaseException) -> str:
         )
     ):
         return CODE_ACCOUNT_LOCKED
-    if "401" in msg:
+    # 裸「401」子串过宽（验码/CDN 都可能出现）；仅明确会话死信号才 session_expired
+    if _looks_like_session_death(msg, code):
         return CODE_SESSION_EXPIRED
     return CODE_AUTH_FAILED
+
+
+def _looks_like_session_death(msg: str, code: str = "") -> bool:
+    """
+    是否像 WEBAUTH/session_token 已失效（可 paused_session / 清盘）。
+
+    @note 不含裸 HTTP 401；验码 401 走 soft-fail / auth_failed。
+    """
+    lowered = msg.lower()
+    code_u = (code or "").upper()
+    if code_u in ("AUTHENTICATION_FAILED", "421", "450", "500"):
+        return True
+    return any(
+        phrase in msg or phrase.lower() in lowered
+        for phrase in (
+            "Authentication required",
+            "Invalid authentication token",
+            "Missing X-APPLE-WEBAUTH",
+            "Invalid session token",
+            "session has expired",
+            "请重新登录",
+        )
+    )
+
+
+def _is_mfa_rate_limited(exc: BaseException) -> bool:
+    """
+    Apple MFA 限流/锁码（body 字段名或文案）。
+
+    @note idmsa：tooManyCodesSent / tooManyCodesValidated / securityCodeLocked /
+          securityCodeCooldown；命中须 rate_limited 硬停，禁止继续盲试。
+    """
+    msg = str(exc)
+    code = _code_to_str(getattr(exc, "code", None))
+    reason = str(getattr(exc, "reason", "") or "")
+    compact = f"{msg}\n{reason}\n{code}".lower().replace("_", "").replace(" ", "").replace("-", "")
+    if any(
+        n in compact
+        for n in (
+            "toomanycodessent",
+            "toomanycodesvalidated",
+            "securitycodelocked",
+            "securitycodecooldown",
+        )
+    ):
+        return True
+    lowered = f"{msg} {reason}".lower()
+    if "too many" in lowered and ("code" in lowered or "verification" in lowered):
+        return True
+    if "security code" in lowered and ("lock" in lowered or "cooldown" in lowered):
+        return True
+    if code.upper() == "ACCESS_DENIED":
+        return True
+    return False
+
+
+def _is_2fa_validate_soft_failure(exc: BaseException) -> bool:
+    """
+    验码 HTTP 失败是否应按「码错/挑战过期」处理（保留 pending，勿清盘）。
+
+    @note Apple 对错码常回 -21669；实机亦见裸 `(401)`。二者都不应映射成整段 session_expired。
+    @note MFA 限流不算软失败（须 rate_limited 硬停）。
+    """
+    if _is_mfa_rate_limited(exc):
+        return False
+    code = _code_to_str(getattr(exc, "code", None))
+    msg = str(exc)
+    if code in ("-21669", "401"):
+        return True
+    if "(401)" in msg or msg.strip() == "401" or " 401" in f" {msg}":
+        return True
+    lowered = msg.lower()
+    return "code verification failed" in lowered or "incorrect verification code" in lowered
 
 
 def _is_stale_download_url_error(exc: BaseException) -> bool:
@@ -699,8 +776,9 @@ def _establish_webauth_after_2fa(
     """
     验证码路径完成后确认 WEBAUTH（锁号优先）。
 
-    @param allow_trust_retry validate_2fa_code 返回 True 但 WEBAUTH 仍缺失时，补 trust / accountLogin。
-    @note 仅使用 session_token + trust_token，禁止 authenticate(force_refresh=True)。
+    @param allow_trust_retry validate 已成功但 WEBAUTH 仍缺失时，至多再补一轮 token 登录 / trust。
+    @note pyicloud validate_2fa_code 内已含一次 trust_session；此处优先 accountLogin（不重复 /2sv/trust），
+          仅 token 路径失败时再补一次 trust，避免双 trust 打 Apple。
     """
     import time
 
@@ -716,15 +794,16 @@ def _establish_webauth_after_2fa(
     if not allow_trust_retry:
         return False
 
-    if _try_finalize_trusted_session(api):
-        suffix = f"{validate_stage}:trust_retry" if validate_stage else "trust_retry"
+    # 优先用 validate 已写入的 session_token / trust_token（不二次 GET /2sv/trust）
+    if _try_account_login_with_token(api):
+        suffix = f"{validate_stage}:account_login_retry" if validate_stage else "account_login_retry"
         _AUTH_STATE.last_validate_path = suffix
     if _is_fully_authenticated(api):
         _persist_session_cookies(api)
         return True
 
-    if _try_account_login_with_token(api):
-        suffix = f"{validate_stage}:account_login_retry" if validate_stage else "account_login_retry"
+    if _try_finalize_trusted_session(api):
+        suffix = f"{validate_stage}:trust_retry" if validate_stage else "trust_retry"
         _AUTH_STATE.last_validate_path = suffix
     if _is_fully_authenticated(api):
         _persist_session_cookies(api)
@@ -784,8 +863,13 @@ def _clear_mfa_kickoff_marker(session_dir: str = "", apple_id: str = "") -> None
 def _auth_2fa_failure_message() -> str:
     """按 last_validate_path 返回更精确的 auth_2fa 失败文案。"""
     path = _AUTH_STATE.last_validate_path
-    if path == "validate_2fa_code:false":
+    if path == "validate_2fa_code:false" or path == "sms:false":
         return "验证码错误；请确认手机上最新的 6 位数字后重试（不会自动重发）"
+    if path.startswith("validate_exception:"):
+        return (
+            "验证码无效或已过期；请使用最新一条短信/设备弹窗中的 6 位码，"
+            "或点「重发验证码」后再试（不会自动重发）"
+        )
     if path.endswith(":webauth_pending") or path.endswith(":trust_retry") or path.endswith(
         ":account_login_retry"
     ):
@@ -829,6 +913,9 @@ def _submit_2fa_code(api: Any, code: str, delivery_method: str) -> bool:
         if _is_fully_authenticated(api):
             _persist_session_cookies(api)
             return True
+        # 401/-21669：保留 waiting_2fa；限流不走此分支（上抛 → rate_limited）
+        if _is_2fa_validate_soft_failure(exc):
+            return False
         raise
 
     if _is_fully_authenticated(api):
@@ -1234,7 +1321,7 @@ def _execute_download_item(api: Any, item: dict[str, Any]) -> dict[str, Any]:
                 return {
                     **base,
                     "ok": False,
-                    "code": CODE_AUTH_FAILED,
+                    "code": CODE_SESSION_EXPIRED,
                     "message": "explicit auth is required before download",
                 }
             if not refreshed_url and _is_stale_download_url_error(exc):
@@ -1287,7 +1374,7 @@ def _handle_delete_assets(cmd: dict[str, Any]) -> dict[str, Any]:
         if str(exc) == "not authenticated":
             return error_event(
                 "delete_assets",
-                CODE_AUTH_FAILED,
+                CODE_SESSION_EXPIRED,
                 "explicit auth is required before delete_assets",
             )
         return error_event("delete_assets", CODE_DELETE_FAILED, str(exc)[:500])
@@ -1415,7 +1502,7 @@ def _handle_download(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("download", code, message)
     except RuntimeError as exc:
         if str(exc) == "not authenticated":
-            return error_event("download", CODE_AUTH_FAILED, "explicit auth is required before download")
+            return error_event("download", CODE_SESSION_EXPIRED, "explicit auth is required before download")
         return error_event("download", CODE_DOWNLOAD_FAILED, str(exc)[:500])
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
@@ -1524,7 +1611,7 @@ def _handle_preview_probe(cmd: dict[str, Any]) -> dict[str, Any]:
         if str(exc) == "not authenticated":
             return error_event(
                 "preview_probe",
-                CODE_AUTH_FAILED,
+                CODE_SESSION_EXPIRED,
                 "explicit auth is required before preview_probe",
             )
         return error_event("preview_probe", CODE_DOWNLOAD_FAILED, str(exc)[:500])
@@ -1569,7 +1656,7 @@ def _handle_download_batch(cmd: dict[str, Any]) -> dict[str, Any]:
         )
     except RuntimeError as exc:
         if str(exc) == "not authenticated":
-            return error_event("download_batch", CODE_AUTH_FAILED, "explicit auth is required before download")
+            return error_event("download_batch", CODE_SESSION_EXPIRED, "explicit auth is required before download")
         return error_event("download_batch", CODE_DOWNLOAD_FAILED, str(exc)[:500])
 
     view = str(cmd.get("view", "library")).strip()
@@ -1714,8 +1801,8 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
     if _AUTH_STATE.api is None or not _AUTH_STATE.waiting_2fa:
         return _auth_error(
             "auth_2fa",
-            CODE_AUTH_FAILED,
-            "auth_2fa requested without pending challenge",
+            CODE_SESSION_EXPIRED,
+            "二次验证已失效（无 pending challenge），请退出后重新登录一次（勿连点）",
             stage="auth_2fa",
         )
 
@@ -1724,7 +1811,7 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
     try:
         if code:
             if not _submit_2fa_code(_AUTH_STATE.api, code, delivery_method):
-                # 禁止自动再推送；需要新码由用户点「重发验证码」
+                # 禁止自动再推送；需要新码由用户点「重发验证码」；pending 保留可重试
                 return _auth_error(
                     "auth_2fa",
                     CODE_AUTH_FAILED,
@@ -1764,9 +1851,28 @@ def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:
         return done_event("auth_2fa", delivery_method=delivery_method)
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)
-        if mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+        # 先组 diagnostic（仍含 waiting2fa），再决定是否清盘，避免误报 NO_PENDING_2FA
+        if mapped == CODE_RATE_LIMITED or _is_mfa_rate_limited(exc):
+            mapped = CODE_RATE_LIMITED
+            message = (
+                "验证码请求过于频繁或已被临时锁定；请停止在本工具内重试，"
+                "等待数小时后再登录（请勿连点登录/重发）"
+            )
+            should_reset = True
+        elif mapped == CODE_SESSION_EXPIRED and _is_2fa_validate_soft_failure(exc):
+            mapped = CODE_AUTH_FAILED
+            message = _auth_2fa_failure_message()
+            should_reset = False
+        elif mapped in (CODE_SESSION_EXPIRED, CODE_ACCOUNT_LOCKED):
+            message = str(exc)[:500]
+            should_reset = True
+        else:
+            message = str(exc)[:500]
+            should_reset = False
+        event = _auth_error("auth_2fa", mapped, message, stage="auth_2fa", exc=exc)
+        if should_reset:
             _reset_auth_state()
-        return _auth_error("auth_2fa", mapped, str(exc)[:500], stage="auth_2fa", exc=exc)
+        return event
 
 
 def _handle_auth_2fa_resend(cmd: dict[str, Any]) -> dict[str, Any]:
@@ -1780,8 +1886,8 @@ def _handle_auth_2fa_resend(cmd: dict[str, Any]) -> dict[str, Any]:
     if _AUTH_STATE.api is None or not _AUTH_STATE.waiting_2fa:
         return _auth_error(
             "auth_2fa_resend",
-            CODE_AUTH_FAILED,
-            "auth_2fa_resend requested without pending challenge",
+            CODE_SESSION_EXPIRED,
+            "二次验证已失效（无 pending challenge），请退出后重新登录一次（勿连点）",
             stage="auth_2fa_resend",
         )
     try:
@@ -1967,7 +2073,7 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
         return error_event("catalog", CODE_LIVE_BIND_MISSING, str(exc))
     except RuntimeError as exc:
         if str(exc) == "not authenticated":
-            return error_event("catalog", CODE_AUTH_FAILED, "explicit auth is required before catalog")
+            return error_event("catalog", CODE_SESSION_EXPIRED, "explicit auth is required before catalog")
         return error_event("catalog", CODE_AUTH_FAILED, str(exc)[:500])
     except Exception as exc:  # noqa: BLE001
         mapped = _map_exception(exc)

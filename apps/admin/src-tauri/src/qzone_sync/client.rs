@@ -22,6 +22,72 @@ const PHOTO_LIST: &str =
 const FLOATVIEW_PHOTO: &str =
   "https://user.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_floatview_photo_list_v2";
 
+/// 机读前缀：Cookie/登录态失效；调用方应 `clear_session` 并引导重新扫码
+pub const AUTH_EXPIRED_PREFIX: &str = "qzone_auth_expired:";
+
+/**
+ * 错误串是否表示 QQ 空间授权/登录态失效
+ * @note 匹配前缀或常见中文/英文文案，供 command / job / 前端统一判断
+ */
+pub fn is_auth_expired_error(err: &str) -> bool {
+  let trimmed = err.trim();
+  if trimmed.starts_with(AUTH_EXPIRED_PREFIX) {
+    return true;
+  }
+  let lower = trimmed.to_lowercase();
+  lower.contains("qzone_auth_expired")
+    || lower.contains("未登录")
+    || lower.contains("登录失效")
+    || lower.contains("登录态")
+    || lower.contains("请先登录")
+    || lower.contains("请重新登录")
+    || lower.contains("登陆失效")
+    || lower.contains("unauthorized")
+    || (lower.contains("login") && (lower.contains("expire") || lower.contains("invalid")))
+}
+
+/// QQ 空间 JSONP `code` / message 是否像登录失效（非业务权限不足）
+fn looks_like_auth_failure(code: i64, msg: &str) -> bool {
+  // 社区常见：-3000 未登录；-10000/-10001 登录态异常；-3001 等
+  if matches!(code, -3000 | -3001 | -10000 | -10001 | -1000 | -12 | -16) {
+    return true;
+  }
+  let lower = msg.to_lowercase();
+  lower.contains("未登录")
+    || lower.contains("登录失效")
+    || lower.contains("登录态")
+    || lower.contains("请先登录")
+    || lower.contains("请重新登录")
+    || lower.contains("登陆失效")
+    || lower.contains("skey")
+    || lower.contains("p_skey")
+    || lower.contains("invalid cookie")
+}
+
+fn api_code_ok(root: &Value) -> Result<(), String> {
+  let code = root.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
+  if code == 0 {
+    return Ok(());
+  }
+  let msg = root
+    .get("message")
+    .or_else(|| root.get("msg"))
+    .and_then(|v| v.as_str())
+    .unwrap_or("未知错误");
+  if looks_like_auth_failure(code, msg) {
+    return Err(format!("{AUTH_EXPIRED_PREFIX}code={code}: {msg}"));
+  }
+  Err(format!("QQ 空间接口错误 code={code}: {msg}"))
+}
+
+fn map_http_status_err(kind: &str, status: reqwest::StatusCode) -> String {
+  let code = status.as_u16();
+  if code == 401 || code == 403 {
+    return format!("{AUTH_EXPIRED_PREFIX}{kind} HTTP {code}");
+  }
+  format!("{kind} HTTP {code}")
+}
+
 fn now_ms() -> u128 {
   SystemTime::now()
     .duration_since(UNIX_EPOCH)
@@ -45,11 +111,83 @@ fn build_client(session: &QzoneSession) -> Result<Client, String> {
     HeaderValue::from_str(&session.cookie_header)
       .map_err(|e| format!("Cookie 非法: {e}"))?,
   );
+  // QQ 空间 CDN 在 rustls+HTTP/2 / 代理 fake-ip 下偶发「error sending request」；强制 HTTP/1.1 更稳
   Client::builder()
     .default_headers(headers)
     .timeout(std::time::Duration::from_secs(60))
+    .http1_only()
     .build()
     .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))
+}
+
+/// 展开 reqwest 错误链，便于区分 TLS / 代理 / 连接复位
+fn format_reqwest_err(kind: &str, err: &reqwest::Error) -> String {
+  let mut parts = vec![err.to_string()];
+  let mut src = std::error::Error::source(err);
+  while let Some(s) = src {
+    let t = s.to_string();
+    if !parts.iter().any(|p| p.contains(&t)) {
+      parts.push(t);
+    }
+    src = s.source();
+  }
+  let detail = parts.join(" | ");
+  // 本机 Clash 等 fake-ip 常见 198.18.0.0/15；传输失败时提示用户排查代理
+  let hint = if detail.contains("error sending request")
+    || detail.contains("connection")
+    || detail.contains("timed out")
+    || detail.contains("dns")
+  {
+    "（若开了 Clash/VPN fake-ip，请确认本应用走 TUN 或把 QQ 域名直连后重试）"
+  } else {
+    ""
+  };
+  format!("{kind}: {detail}{hint}")
+}
+
+/**
+ * GET 文本；传输层失败时短暂重试（代理/fake-ip 抖动常见）
+ * @note 仅重试尚未读到响应体的 send/text 失败，不重试业务 JSONP 错误
+ */
+fn get_text_retry(client: &Client, url: &str, kind: &str) -> Result<String, String> {
+  const ATTEMPTS: u32 = 3;
+  let mut last = String::new();
+  for attempt in 1..=ATTEMPTS {
+    match client.get(url).send() {
+      Ok(resp) => match resp.text() {
+        Ok(body) => return Ok(body),
+        Err(e) => last = format_reqwest_err(kind, &e),
+      },
+      Err(e) => last = format_reqwest_err(kind, &e),
+    }
+    if attempt < ATTEMPTS {
+      // 50ms / 150ms：避开 fake-ip 瞬时黑洞，又不拖 UI 体感
+      let n = u64::from(attempt);
+      std::thread::sleep(std::time::Duration::from_millis(50 * n * n));
+    }
+  }
+  Err(last)
+}
+
+/// 仅重试 `send`（二进制下载 / 媒体流）
+fn send_retry(
+  client: &Client,
+  url: &str,
+  kind: &str,
+) -> Result<reqwest::blocking::Response, String> {
+  const ATTEMPTS: u32 = 3;
+  let mut last = String::new();
+  for attempt in 1..=ATTEMPTS {
+    match client.get(url).send() {
+      Ok(resp) => return Ok(resp),
+      Err(e) => last = format_reqwest_err(kind, &e),
+    }
+    if attempt < ATTEMPTS {
+      let n = u64::from(attempt);
+      std::thread::sleep(std::time::Duration::from_millis(50 * n * n));
+    }
+  }
+  Err(last)
 }
 
 /// 剥 jsonp：`shine0_Callback({...});`
@@ -66,19 +204,6 @@ fn parse_jsonp(body: &str) -> Result<Value, String> {
   }
   let json = &trimmed[start + 1..end];
   serde_json::from_str(json).map_err(|e| format!("解析 JSONP 失败: {e}"))
-}
-
-fn api_code_ok(root: &Value) -> Result<(), String> {
-  let code = root.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
-  if code == 0 {
-    return Ok(());
-  }
-  let msg = root
-    .get("message")
-    .or_else(|| root.get("msg"))
-    .and_then(|v| v.as_str())
-    .unwrap_or("未知错误");
-  Err(format!("QQ 空间接口错误 code={code}: {msg}"))
 }
 
 /// 校验会话：拉一页相册列表
@@ -105,12 +230,7 @@ pub fn list_albums(session: &QzoneSession) -> Result<Vec<QzoneAlbumSummary>, Str
       uin = session.uin,
       ts = now_ms(),
     );
-    let body = client
-      .get(&url)
-      .send()
-      .map_err(|e| format!("相册列表请求失败: {e}"))?
-      .text()
-      .map_err(|e| format!("读取相册列表失败: {e}"))?;
+    let body = get_text_retry(&client, &url, "相册列表请求失败")?;
     let root = parse_jsonp(&body)?;
     api_code_ok(&root)?;
     let data = root.get("data").cloned().unwrap_or(Value::Null);
@@ -207,12 +327,7 @@ pub fn list_photos(
       uin = session.uin,
       ts = now_ms(),
     );
-    let body = client
-      .get(&url)
-      .send()
-      .map_err(|e| format!("相片列表请求失败: {e}"))?
-      .text()
-      .map_err(|e| format!("读取相片列表失败: {e}"))?;
+    let body = get_text_retry(&client, &url, "相片列表请求失败")?;
     let root = parse_jsonp(&body)?;
     api_code_ok(&root)?;
     let data = root.get("data").cloned().unwrap_or(Value::Null);
@@ -334,12 +449,7 @@ pub fn resolve_video_download_url(
     uin = session.uin,
     ts = now_ms(),
   );
-  let body = client
-    .get(&url)
-    .send()
-    .map_err(|e| format!("视频详情请求失败: {e}"))?
-    .text()
-    .map_err(|e| format!("读取视频详情失败: {e}"))?;
+  let body = get_text_retry(&client, &url, "视频详情请求失败")?;
   let root = parse_jsonp(&body)?;
   api_code_ok(&root)?;
   let photos = root
@@ -512,12 +622,9 @@ pub fn fetch_media_bytes(
   }
   let limit = max_bytes.unwrap_or(25 * 1024 * 1024);
   let client = build_client(session)?;
-  let resp = client
-    .get(url)
-    .send()
-    .map_err(|e| format!("拉取媒体失败: {e}"))?;
+  let resp = send_retry(&client, url, "拉取媒体失败")?;
   if !resp.status().is_success() {
-    return Err(format!("拉取媒体 HTTP {}", resp.status()));
+    return Err(map_http_status_err("拉取媒体", resp.status()));
   }
   if let Some(len) = resp.content_length() {
     if len as usize > limit {
@@ -536,7 +643,7 @@ pub fn fetch_media_bytes(
     .to_string();
   let bytes = resp
     .bytes()
-    .map_err(|e| format!("读取媒体失败: {e}"))?;
+    .map_err(|e| format_reqwest_err("读取媒体失败", &e))?;
   if bytes.len() > limit {
     return Err("媒体过大，请下载到本地后查看".into());
   }
@@ -636,12 +743,9 @@ pub fn fetch_media_blob(
 /// 流式下载到目标路径（已存在且非空则跳过，由调用方处理）
 pub fn download_file(session: &QzoneSession, url: &str, dest: &std::path::Path) -> Result<(), String> {
   let client = build_client(session)?;
-  let mut resp = client
-    .get(url)
-    .send()
-    .map_err(|e| format!("下载请求失败: {e}"))?;
+  let mut resp = send_retry(&client, url, "下载请求失败")?;
   if !resp.status().is_success() {
-    return Err(format!("下载 HTTP {}", resp.status()));
+    return Err(map_http_status_err("下载", resp.status()));
   }
   if let Some(parent) = dest.parent() {
     std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
@@ -650,4 +754,22 @@ pub fn download_file(session: &QzoneSession, url: &str, dest: &std::path::Path) 
     std::fs::File::create(dest).map_err(|e| format!("创建文件失败: {e}"))?;
   std::io::copy(&mut resp, &mut file).map_err(|e| format!("写入文件失败: {e}"))?;
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn auth_expired_prefix_and_codes() {
+    assert!(is_auth_expired_error(
+      "qzone_auth_expired:code=-3000: 未登录"
+    ));
+    assert!(is_auth_expired_error("请先登录"));
+    assert!(!is_auth_expired_error(
+      "QQ 空间接口错误 code=-1: 未知错误"
+    ));
+    assert!(looks_like_auth_failure(-3000, "x"));
+    assert!(!looks_like_auth_failure(-1, "rate limited"));
+  }
 }

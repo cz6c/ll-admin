@@ -576,7 +576,7 @@ pub fn get_cloud_state_summary(
 
 /// 抽屉云资产列表
 #[tauri::command]
-pub fn icloud_sync_load_assets(
+pub async fn icloud_sync_load_assets(
   app: AppHandle,
   offset: Option<u32>,
   limit: Option<u32>,
@@ -585,42 +585,50 @@ pub fn icloud_sync_load_assets(
   date_to: Option<String>,
   filename_keyword: Option<String>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.trim();
-  if apple_id.is_empty() {
-    return Err("请先填写 Apple ID".to_string());
-  }
-  let filter = cloud_state
-    .as_deref()
-    .map(str::trim)
-    .filter(|s| !s.is_empty() && *s != "all");
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  load_sync_assets(
-    &conn,
-    apple_id,
-    offset.unwrap_or(0),
-    limit.unwrap_or(50),
-    filter,
-    date_from.as_deref(),
-    date_to.as_deref(),
-    filename_keyword.as_deref(),
-  )
+  tokio::task::spawn_blocking(move || {
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.trim();
+    if apple_id.is_empty() {
+      return Err("请先填写 Apple ID".to_string());
+    }
+    let filter = cloud_state
+      .as_deref()
+      .map(str::trim)
+      .filter(|s| !s.is_empty() && *s != "all");
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    load_sync_assets(
+      &conn,
+      apple_id,
+      offset.unwrap_or(0),
+      limit.unwrap_or(50),
+      filter,
+      date_from.as_deref(),
+      date_to.as_deref(),
+      filename_keyword.as_deref(),
+    )
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 /// FAB / 抽屉 cloud_state 计数
 #[tauri::command]
-pub fn icloud_sync_get_cloud_state_summary(
+pub async fn icloud_sync_get_cloud_state_summary(
   app: AppHandle,
 ) -> Result<IcloudSyncCloudStateSummary, String> {
-  let settings = load_settings(&app)?;
-  let apple_id = settings.apple_id.trim();
-  if apple_id.is_empty() {
-    return Err("请先填写 Apple ID".to_string());
-  }
-  let db_path = state_db_path(&app)?;
-  let conn = open_db(&db_path)?;
-  get_cloud_state_summary(&conn, apple_id)
+  tokio::task::spawn_blocking(move || {
+    let settings = load_settings(&app)?;
+    let apple_id = settings.apple_id.trim();
+    if apple_id.is_empty() {
+      return Err("请先填写 Apple ID".to_string());
+    }
+    let db_path = state_db_path(&app)?;
+    let conn = open_db(&db_path)?;
+    get_cloud_state_summary(&conn, apple_id)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[cfg(test)]

@@ -6,7 +6,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface QzoneSyncSettings {
-  outputDir: string;
   concurrency: number;
 }
 
@@ -60,10 +59,6 @@ export async function saveQzoneSyncSettings(settings: QzoneSyncSettings): Promis
   return invoke<QzoneSyncSettings>("qzone_sync_save_settings", { settings });
 }
 
-export async function getQzoneDefaultOutputDir(): Promise<string | null> {
-  return invoke<string | null>("qzone_sync_default_output_dir");
-}
-
 export async function getQzoneAuthState(): Promise<QzoneAuthState> {
   return invoke<QzoneAuthState>("qzone_sync_auth_state");
 }
@@ -93,6 +88,18 @@ export async function pollQzoneQrLogin(): Promise<QzoneQrPollResult> {
 
 export async function logoutQzone(): Promise<void> {
   return invoke("qzone_sync_logout");
+}
+
+/**
+ * 是否 QQ 空间授权/登录态失效（Rust 会清 session；前端应回到扫码）
+ * @note 匹配 `qzone_auth_expired:` 前缀及常见中文文案
+ */
+export function isQzoneAuthExpiredError(err: unknown): boolean {
+  const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "");
+  const msg = raw.trim();
+  if (!msg) return false;
+  if (msg.includes("qzone_auth_expired:")) return true;
+  return /未登录|登录失效|登录态|请先登录|请重新登录|登陆失效/i.test(msg);
 }
 
 /**

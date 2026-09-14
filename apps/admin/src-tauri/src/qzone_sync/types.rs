@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QzoneSyncSettings {
-  /// 落盘根；空则 `{albumRoot}/QzoneSync`
-  #[serde(default)]
-  pub output_dir: String,
   /// 并发下载 1–3
   #[serde(default = "default_concurrency")]
   pub concurrency: u32,
@@ -22,7 +19,6 @@ fn default_concurrency() -> u32 {
 impl Default for QzoneSyncSettings {
   fn default() -> Self {
     Self {
-      output_dir: String::new(),
       concurrency: default_concurrency(),
     }
   }

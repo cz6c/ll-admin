@@ -282,7 +282,7 @@ const listGridOptions = reactive<VxeGridProps<MediaFile>>({
     remote: false
   },
   checkboxConfig: {
-    // 仅已探测且未因 sync/EXIF 锁定的行可勾选（外观走全局 Ant 风格 vxe 勾选）
+    // 仅已探测且未因 origin/EXIF/文件名锁定的行可勾选（外观走全局 Ant 风格 vxe 勾选）
     checkMethod({ row }) {
       return canManualSetCaptureAt(row as MediaFile);
     }

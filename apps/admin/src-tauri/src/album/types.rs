@@ -68,14 +68,14 @@ pub struct MediaFile {
   pub playback_path: Option<String>,
   /// 实况照片配对的视频路径（仅 LivePhoto 有值）
   pub video_path: Option<String>,
-  /// 拍摄时间（ISO/可解析串）；缩略图后 sync/EXIF 补空，或用户批量覆盖
+  /// 拍摄时间（ISO/可解析串）；下载入库或 EXIF/文件名补空，或用户批量覆盖
   pub capture_at: Option<String>,
-  /// 拍摄时间来源：`sync` / `exif` / `user`；未写入前为空
+  /// 拍摄时间来源：`origin` / `exif` / `filename` / `user`；未写入前为空
   pub capture_at_source: Option<String>,
-  /// 是否已跑过 sync+EXIF 探测（未探测禁止手改勾选）
+  /// 是否已跑过拍摄时间探测（未探测禁止手改勾选）
   #[serde(default)]
   pub capture_at_probed: bool,
-  /// sync 或 EXIF 能提供拍摄时间时为 true（禁止手改）
+  /// origin/EXIF/文件名能提供拍摄时间时为 true（禁止手改）
   #[serde(default)]
   pub capture_at_locked: bool,
   /// 相对相册根的目录（`.` 为根）；供列表目录筛选
@@ -87,10 +87,38 @@ pub struct MediaFile {
   pub width: Option<u32>,
   /// 像素高（优先缩略图解码）
   pub height: Option<u32>,
+  /// 来源：`icloud` / `qzone`；本地扫描为 None
+  pub origin: Option<String>,
+  /// 云端 asset id（与 sync 表 asset_id 对应；断层后仍可追溯）
+  pub origin_asset_id: Option<String>,
+  /// 云端账号：Apple ID / QQ 号
+  pub origin_account: Option<String>,
+  /// QQ 相册名等
+  pub origin_album: Option<String>,
+  /// iCloud 加入图库时间
+  pub added_at: Option<String>,
+  pub latitude: Option<f64>,
+  pub longitude: Option<f64>,
 }
 
 fn default_rel_dir() -> String {
   ".".to_string()
+}
+
+/// 同步下载成功后写入 media.db 的入库载荷（与 sync 表此后断层）
+#[derive(Debug, Clone)]
+pub struct SyncedMediaIngress {
+  pub path: String,
+  /// `icloud` | `qzone`
+  pub origin: String,
+  pub origin_asset_id: String,
+  pub origin_account: String,
+  pub origin_album: Option<String>,
+  /// 云端 catalog 拍摄时间；写入本表时 source=`origin`
+  pub origin_capture_at: Option<String>,
+  pub added_at: Option<String>,
+  pub latitude: Option<f64>,
+  pub longitude: Option<f64>,
 }
 
 /// 目录分组

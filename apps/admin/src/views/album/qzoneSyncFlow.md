@@ -30,7 +30,7 @@
   → 抽屉内浏览：左相册 / 右缩略图（媒体经 Tauri Cookie 代理）
   → 灯箱预览 / 全部下载 / 下载本相册
   → catalog → state.db（cloud_only → synced）
-  → 落盘 {albumRoot}/QzoneSync/<uin>/<相册名>/{unix}_{uin8}_{id16}.ext
+  → 落盘 {albumRoot}/QzoneSync/<uin>/<相册名>/{yyyyMMdd}_{HHmmss}_{id16}.ext
   → album_scan 发现 → media.db
 ```
 
@@ -40,7 +40,7 @@
 | 与 iCloud 平行 | 独立 settings / session / state.db / 任务；互不合并 |
 | 本地优先 | 已存在非空文件则跳过并标 synced；仍补 mtime / 缺省 EXIF 时间 |
 | 合规 | 仅下载有权访问的本人相册；会话只存本机 |
-| 时间元数据 | 对齐 QzonePhoto 优先级：`exif.originalTime` → `modifytime` → `rawshoottime`/`shoottime` → `uploadTime`；**无「现在」兜底**。落盘后写文件 mtime；JPEG 仅在缺 `DateTimeOriginal` 时补写。命名仍 `{unix}_{uin8}_{id16}.ext`。说明/Comment 暂不做。相册判重指纹为 `blake3-no-meta-v1`（JPEG/PNG 去 EXIF/说明类元数据后再哈希），故补写前后可同组 |
+| 时间元数据 | 对齐 QzonePhoto 优先级：`exif.originalTime` → `modifytime` → `rawshoottime`/`shoottime` → `uploadTime`；**无「现在」兜底**。落盘后写文件 mtime；JPEG 仅在缺 `DateTimeOriginal` 时补写。命名 `{yyyyMMdd}_{HHmmss}_{id16}.ext`（本地时区），账号隔离靠目录 `<uin>/`。说明/Comment 暂不做。相册判重指纹为 `blake3-no-meta-v1`（JPEG/PNG 去 EXIF/说明类元数据后再哈希），故补写前后可同组 |
 
 ---
 
@@ -94,7 +94,7 @@
 ## 与相册耦合
 
 - 扫描：`QzoneSync` 输出目录异物收容（命名谓词 `is_sync_asset_filename`）
-- meta：按 `dest_path` 查 QQ `state.db` 的 `capture_at`（次于 iCloud 同路径命中）
+- meta：下载时写入 media（`origin` 拍摄时间等）；事后回填仅 EXIF → 文件名前缀（**不**再查 QQ state.db）
 - 缩略图：下载/跳过已存在成功后 `enqueue_thumbs_from_sync`，与相册 scan **同一管线**（共享 pending，不另开 worker 互盖）
 
 ---

@@ -75,6 +75,8 @@ fn jpeg_has_datetime_original(path: &Path) -> bool {
 
 /**
  * 仅当文件尚无有效 DateTimeOriginal 时写入拍摄时间（不覆盖相机原 EXIF）
+ * @note QQ 空间下发的 JPEG 常被重编码、无 APP1 EXIF；little_exif 的 new_from_vec
+ *       会报 "No EXIF data found!"，此时改用空 Metadata 再 write_to_vec 插入段
  */
 fn fill_jpeg_datetime_if_missing(path: &Path, unix_secs: i64) -> Result<(), String> {
   if jpeg_has_datetime_original(path) {
@@ -83,8 +85,18 @@ fn fill_jpeg_datetime_if_missing(path: &Path, unix_secs: i64) -> Result<(), Stri
   let exif_str =
     capture_time::to_exif_datetime(unix_secs).ok_or_else(|| "无法格式化 EXIF 时间".to_string())?;
   let mut buf = std::fs::read(path).map_err(|e| format!("读 JPEG 失败: {e}"))?;
-  let mut metadata = Metadata::new_from_vec(&buf, FileExtension::JPEG)
-    .map_err(|e| format!("解析 JPEG EXIF 失败: {e}"))?;
+  let mut metadata = match Metadata::new_from_vec(&buf, FileExtension::JPEG) {
+    Ok(m) => m,
+    Err(e) => {
+      let msg = e.to_string();
+      // 无 EXIF 段是补写的主路径，不是失败
+      if msg.contains("No EXIF data found") {
+        Metadata::new()
+      } else {
+        return Err(format!("解析 JPEG EXIF 失败: {e}"));
+      }
+    }
+  };
   metadata.set_tag(ExifTag::DateTimeOriginal(exif_str.clone()));
   // CreateDate ≈ DateTimeDigitized
   metadata.set_tag(ExifTag::CreateDate(exif_str));

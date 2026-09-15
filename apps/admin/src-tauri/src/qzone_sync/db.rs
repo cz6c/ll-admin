@@ -1,5 +1,6 @@
 //! QQ 空间同步 SQLite
-//! 职责：assets 断点（dest_path / capture_at / cloud_state）；供相册 meta 按 path 回查
+//! 职责：assets 云端断点（dest_path / capture_at / cloud_state）；与相册 media.db 断层
+//! 适用：catalog 覆盖、下载标记；相册拍摄时间不再反查本库
 
 use std::path::PathBuf;
 
@@ -175,44 +176,52 @@ pub fn list_pending_downloads(
   Ok(rows)
 }
 
-/// 供 album duplicates：已同步本地行
-pub fn list_synced_dest_paths(conn: &Connection) -> Result<Vec<(String, String, String)>, String> {
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT asset_id, dest_path, original_filename
-      FROM assets
-      WHERE cloud_state = 'synced'
-        AND dest_path IS NOT NULL AND trim(dest_path) != ''
-      "#,
-    )
-    .map_err(|e| format!("准备 synced 查询失败: {e}"))?;
-  let rows = stmt
-    .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-    .map_err(|e| format!("查询 synced 失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 synced 失败: {e}"))?;
-  Ok(rows)
-}
-
-/// 按 dest_path 查 capture_at（相册 meta）
-pub fn lookup_capture_at(conn: &Connection, path: &str) -> Option<String> {
-  let try_one = |p: &str| -> Option<String> {
-    conn
-      .query_row(
-        "SELECT capture_at FROM assets
-         WHERE dest_path = ?1 AND capture_at IS NOT NULL AND trim(capture_at) != ''",
-        params![p],
-        |r| r.get::<_, String>(0),
-      )
-      .ok()
-  };
-  try_one(path).or_else(|| {
-    let norm = path.replace('\\', "/");
-    if norm != path {
-      try_one(&norm)
-    } else {
-      None
+/// 覆盖模式：删除本次 catalog 未见的资产行（不删本地文件）
+/// @param album_id 有值时仅清理该相册，避免单相册同步误删其它相册断点
+pub fn purge_assets_not_in(
+  conn: &Connection,
+  keep_ids: &[String],
+  album_id: Option<&str>,
+) -> Result<u32, String> {
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启覆盖删除事务失败: {e}"))?;
+  tx.execute_batch(
+    "CREATE TEMP TABLE IF NOT EXISTS qzone_keep_ids (asset_id TEXT PRIMARY KEY);
+     DELETE FROM qzone_keep_ids;",
+  )
+  .map_err(|e| format!("准备 keep 临时表失败: {e}"))?;
+  {
+    let mut insert = tx
+      .prepare("INSERT OR IGNORE INTO qzone_keep_ids(asset_id) VALUES (?1)")
+      .map_err(|e| format!("准备 keep 插入失败: {e}"))?;
+    for id in keep_ids {
+      insert
+        .execute(params![id])
+        .map_err(|e| format!("写入 keep id 失败: {e}"))?;
     }
-  })
+  }
+  let changed = if let Some(aid) = album_id {
+    tx.execute(
+      r#"
+      DELETE FROM assets
+      WHERE album_id = ?1
+        AND asset_id NOT IN (SELECT asset_id FROM qzone_keep_ids)
+      "#,
+      params![aid],
+    )
+  } else {
+    tx.execute(
+      r#"
+      DELETE FROM assets
+      WHERE asset_id NOT IN (SELECT asset_id FROM qzone_keep_ids)
+      "#,
+      [],
+    )
+  }
+  .map_err(|e| format!("覆盖删除 assets 失败: {e}"))?;
+  let _ = tx.execute_batch("DROP TABLE IF EXISTS qzone_keep_ids;");
+  tx.commit()
+    .map_err(|e| format!("提交覆盖删除失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
 }

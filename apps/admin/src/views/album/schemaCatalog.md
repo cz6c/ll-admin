@@ -2,7 +2,7 @@
 
 > **职责：** 陈列 `media.db` / `state.db` 各表作用（给人与可视化工具对照用）。  
 > **不合并：** 两库职责分离，见下文边界。  
-> **对齐：** 2026-09-05  
+> **对齐：** 2026-09-15  
 > 流程：[本地扫描](./loadingFlow.md) · [云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
 
 SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
@@ -16,7 +16,7 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | **media.db** | `<appData>/album/media.db` | 本地相册根上的文件索引、缩略图/代理缓存路径、展示用 meta |
 | **state.db** | `<appData>/icloud-sync/state.db` | iCloud 账号下的资产注册、同步/删云任务与队列 |
 
-跨库关联（非 FK）：`media.path` ≈ `assets.dest_path`（仅 sync 已落盘项）。
+跨库关联（非 FK）：下载入库时把云侧身份写入 `media.origin*`；之后 **media 与 sync 解耦**（不再为 capture 反查 `dest_path`）。`media.path` 与 `assets.dest_path` 仅在「仍已同步且未硬删」时可能重合。
 
 ---
 
@@ -38,9 +38,11 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `thumb_path` / `preview_path` | 宫格 WebP；HEIC 全尺寸 JPEG |
 | `video_path` | Live 配对 mov 路径 |
 | `playback_path` | H.264 播放代理（单独视频或 Live mov） |
-| `capture_at` / `camera` | 拍摄时间 / 机型（sync→EXIF 仅补空；用户可覆盖写 `capture_at`） |
-| `capture_at_source` | `sync` / `exif` / `user` |
-| `capture_at_probed` / `capture_at_locked` | 已探测；sync/EXIF 能提供时间则锁定（禁手改） |
+| `capture_at` / `camera` | 拍摄时间 / 机型（仅补空：本表已有 → origin → EXIF → 文件名前缀；用户可覆盖写 `capture_at`） |
+| `capture_at_source` | `origin` / `exif` / `filename` / `user` |
+| `capture_at_probed` / `capture_at_locked` | 已探测；origin/EXIF/文件名能提供时间则锁定（禁手改） |
+| `origin` / `origin_asset_id` / `origin_account` / `origin_album` | 同步下载入库时复制的云侧身份；catalog 刷新后仍留在本表 |
+| `added_at` / `latitude` / `longitude` | 下载时从云侧 catalog 带入（仅补空） |
 | `width` / `height` | 图=解码；单独视频=打开时 ffprobe |
 | `content_hash` / `hash_algo` | 重复清理用 BLAKE3 |
 | `fail_count` | 缩略图连续失败；≥3 跳过 |
@@ -82,8 +84,8 @@ wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧�
 | `asset_id` + `part` | 云侧主键分量（part 区分 still/mov 等） |
 | `media_kind` / `live_pair_id` | 类型与 Live 配对 |
 | `original_filename` / `sort_key` | 展示与排序 |
-| `dest_path` | 已下载本地绝对路径；供相册 meta 反查。进「已移除」后仍可保留；列表用磁盘探测派生 `localFilePresent`（不落库） |
-| `cloud_state` | 如 `cloud_only` / 已同步 / 删云相关态 |
+| `dest_path` | 已下载本地绝对路径；删云/catalog 硬删行时一并消失（本地 media/文件不动） |
+| `cloud_state` | `cloud_only` / `synced` / `cloud_delete_queued` / `failed_delete`（旧 `deleted_cloud_pending` 打开库 scrub） |
 | `download_status` / `active_job_id` | 当前下载态与所属 job |
 | `cpl_asset_*` | CloudKit 记录名 / change tag |
 | `capture_at` / `added_at` | 云侧拍摄/加入时间 |

@@ -1,7 +1,8 @@
-//! 本地重复检测：相册根全量扫盘，按稳定内容哈希归组，组内落库优先正本
+//! 本地重复检测：相册根全量扫盘，按稳定内容哈希归组，组内同步入库正本优先
 //! 职责：图片按去元数据 BLAKE3（`blake3-no-meta-v1`）归组（不依赖同 size）；
 //!       视频仍同 size 预筛；Live 成对后比 mov 哈希定置信度
 //! 适用：`album_find_local_duplicates`、清理重复弹窗
+//! @note 正本判定只读 media.origin*，不打开 sync state.db
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -9,9 +10,6 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 use tauri::AppHandle;
 use walkdir::WalkDir;
-
-use crate::icloud_sync::list_synced_local_rows;
-use crate::qzone_sync::list_synced_local_rows as list_qzone_synced_local_rows;
 
 use super::scanner::{pair_live_photos, SKIP_DIRS};
 use super::types::{
@@ -28,14 +26,8 @@ const VIDEO_EXTS: &[&str] = &[
   "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp", "mpeg", "mpg",
 ];
 
-/// sync 库落库元数据（按 dest_path 索引）
-struct DbPathMeta {
-  asset_id: String,
-  original_filename: String,
-  media_kind: String,
-  /// still / mov / full；展示原名优先取 still
-  part: String,
-}
+/// media 同步入库身份：path → (origin_asset_id?, kind)
+type OriginPathMeta = (Option<String>, String);
 
 /// 全量扫盘后的一条逻辑媒体（Live 已成对）
 #[derive(Clone)]
@@ -128,39 +120,6 @@ fn ensure_content_hash(
   Some(hash)
 }
 
-fn load_db_path_meta(app: &AppHandle) -> Result<HashMap<String, DbPathMeta>, String> {
-  let mut map = HashMap::new();
-  for row in list_synced_local_rows(app)? {
-    let dest = row.dest_path.trim();
-    if dest.is_empty() {
-      continue;
-    }
-    map.insert(
-      normalize_path_key(dest),
-      DbPathMeta {
-        asset_id: row.asset_id,
-        original_filename: row.original_filename,
-        media_kind: row.media_kind,
-        part: row.part,
-      },
-    );
-  }
-  // QQ 空间第二源：无 Live part，写入空 part
-  for (asset_id, dest_path, original_filename) in list_qzone_synced_local_rows(app)? {
-    let dest = dest_path.trim();
-    if dest.is_empty() {
-      continue;
-    }
-    map.entry(normalize_path_key(dest)).or_insert(DbPathMeta {
-      asset_id,
-      original_filename,
-      media_kind: "image".into(),
-      part: String::new(),
-    });
-  }
-  Ok(map)
-}
-
 /// 相册根全量扫媒体（含 sync 落盘目录）；同目录 Live 成对
 fn scan_all_media(root: &Path) -> Vec<MediaFile> {
   let mut dir_map: HashMap<PathBuf, Vec<MediaFile>> = HashMap::new();
@@ -219,6 +178,13 @@ fn scan_all_media(root: &Path) -> Vec<MediaFile> {
       camera: None,
       width: None,
       height: None,
+      origin: None,
+      origin_asset_id: None,
+      origin_account: None,
+      origin_album: None,
+      added_at: None,
+      latitude: None,
+      longitude: None,
     });
   }
 
@@ -231,7 +197,7 @@ fn scan_all_media(root: &Path) -> Vec<MediaFile> {
 }
 
 fn media_kind_label(kind: &MediaKind, db_kind: Option<&str>, has_video: bool) -> String {
-  if has_video || db_kind == Some("live") {
+  if has_video || matches!(db_kind, Some("live") | Some("livephoto")) {
     return "live".into();
   }
   if db_kind == Some("video") || matches!(kind, MediaKind::Video) {
@@ -242,7 +208,7 @@ fn media_kind_label(kind: &MediaKind, db_kind: Option<&str>, has_video: bool) ->
 
 fn build_scanned_entries(
   files: Vec<MediaFile>,
-  db_meta: &HashMap<String, DbPathMeta>,
+  origin_meta: &HashMap<String, OriginPathMeta>,
 ) -> Vec<ScannedEntry> {
   let mut entries = Vec::with_capacity(files.len());
   let mut seen_paths: HashSet<String> = HashSet::new();
@@ -256,31 +222,19 @@ fn build_scanned_entries(
       seen_paths.insert(normalize_path_key(vp));
     }
 
-    let still_meta = db_meta.get(&path_key);
+    let still_meta = origin_meta.get(&path_key);
     let mov_meta = file
       .video_path
       .as_ref()
-      .and_then(|vp| db_meta.get(&normalize_path_key(vp)));
+      .and_then(|vp| origin_meta.get(&normalize_path_key(vp)));
 
+    // 有 origin* → 同步入库正本（优先保留）
     let in_db = still_meta.is_some() || mov_meta.is_some();
-    // 展示原名：优先 still/full 行，避免 mov 行文件名干扰
-    let name_meta = still_meta
-      .filter(|m| m.part != "mov")
-      .or(still_meta)
-      .or(mov_meta);
-    let asset_id = name_meta.map(|m| m.asset_id.clone());
-    let db_kind = name_meta.map(|m| m.media_kind.as_str());
-
-    let display_key = if let Some(meta) = name_meta {
-      let key = content_key_from_filename(&meta.original_filename);
-      if key.is_empty() {
-        content_key_from_filename(&file.name)
-      } else {
-        key
-      }
-    } else {
-      content_key_from_filename(&file.name)
-    };
+    let name_meta = still_meta.or(mov_meta);
+    let asset_id = name_meta.and_then(|(id, _)| id.clone());
+    let db_kind = name_meta.map(|(_, kind)| kind.as_str());
+    // 展示键用本地文件名（不再反查云侧 original_filename）
+    let display_key = content_key_from_filename(&file.name);
 
     let (mov_size, mov_modified) = file
       .video_path
@@ -617,17 +571,21 @@ pub fn find_local_duplicates(app: &AppHandle) -> Result<Vec<DuplicateGroup>, Str
     return Err(format!("相册根目录不存在: {root}"));
   }
 
-  let db_meta = load_db_path_meta(app)?;
-  let files = scan_all_media(&root_path);
-  let mut entries = build_scanned_entries(files, &db_meta);
-  if entries.len() < 2 {
-    return Ok(Vec::new());
-  }
-
   let album_data_dir = settings::album_dir(app).ok();
   let media_conn = album_data_dir
     .as_ref()
     .and_then(|dir| db::open_db(dir).ok());
+  let origin_meta = media_conn
+    .as_ref()
+    .map(db::load_origin_path_index)
+    .transpose()?
+    .unwrap_or_default();
+  let files = scan_all_media(&root_path);
+  let mut entries = build_scanned_entries(files, &origin_meta);
+  if entries.len() < 2 {
+    return Ok(Vec::new());
+  }
+
   fill_hashes_for_size_candidates(media_conn.as_ref(), &mut entries);
 
   // content_hash → 条目下标

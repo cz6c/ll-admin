@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 
 use super::db;
 use super::ffmpeg;
-use super::media_meta::{MediaMetaFill, MediaMetaResolver};
+use super::media_meta::{resolve_capture_meta, MediaMetaFill};
 use super::scan_state::ScanCancelToken;
 use super::thumbnail;
 use super::types::{
@@ -88,13 +88,10 @@ fn persist_meta_for_paths(
     let handles: Vec<_> = paths
       .chunks(chunk_size)
       .map(|chunk| {
-        let app = app.clone();
         s.spawn(move || {
-          // 每线程独立打开 sync 只读库，避免 Connection 跨线程
-          let resolver = MediaMetaResolver::new(&app);
           chunk
             .iter()
-            .map(|path| (path.clone(), resolver.resolve(path)))
+            .map(|path| (path.clone(), resolve_capture_meta(path, None)))
             .collect::<Vec<_>>()
         })
       })
@@ -709,6 +706,13 @@ pub fn discover_groups(
       camera,
       width,
       height,
+      origin: None,
+      origin_asset_id: None,
+      origin_account: None,
+      origin_album: None,
+      added_at: None,
+      latitude: None,
+      longitude: None,
     });
     discovered += 1;
     if discovered % 20 == 0 {
@@ -993,6 +997,13 @@ mod tests {
       camera: None,
       width: None,
       height: None,
+      origin: None,
+      origin_asset_id: None,
+      origin_account: None,
+      origin_album: None,
+      added_at: None,
+      latitude: None,
+      longitude: None,
     }
   }
 
@@ -1016,6 +1027,13 @@ mod tests {
       camera: None,
       width: None,
       height: None,
+      origin: None,
+      origin_asset_id: None,
+      origin_account: None,
+      origin_album: None,
+      added_at: None,
+      latitude: None,
+      longitude: None,
     }
   }
 
@@ -1061,14 +1079,12 @@ mod tests {
     use crate::icloud_sync::types::AssetPart;
     let still = sync_asset_filename(
       Some("2024-01-15T12:30:45Z"),
-      "user@icloud.com",
       "LIVE1",
       "x.HEIC",
       AssetPart::Still,
     );
     let mov = sync_asset_filename(
       Some("2024-01-15T12:30:45Z"),
-      "user@icloud.com",
       "LIVE1",
       "x.HEIC",
       AssetPart::Mov,
@@ -1085,14 +1101,12 @@ mod tests {
     use crate::icloud_sync::types::AssetPart;
     let still = sync_asset_filename(
       Some("2024-01-15T12:30:45Z"),
-      "user@icloud.com",
       "PHOTO_A",
       "a.HEIC",
       AssetPart::Still,
     );
     let mov = sync_asset_filename(
       Some("2024-01-15T12:30:45Z"),
-      "user@icloud.com",
       "CLIP_B",
       "b.HEIC",
       AssetPart::Mov,

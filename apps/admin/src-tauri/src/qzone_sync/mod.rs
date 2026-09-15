@@ -24,8 +24,7 @@ use types::{QzoneAuthState, QzoneJobSnapshot, QzoneSyncSettings};
 
 /// 供 album 扫描识别本源落盘命名
 pub(crate) use naming::is_sync_asset_filename;
-/// 供 album meta 按 path 查 capture_at
-pub(crate) use db::{lookup_capture_at, open_db, state_db_path};
+use db::{open_db, state_db_path};
 
 /**
  * 授权失效时清 session、取消任务，并通知前端回到扫码态
@@ -297,16 +296,4 @@ pub async fn qzone_sync_pending_count(app: AppHandle) -> Result<u32, String> {
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?
-}
-
-/// 供 album duplicates：已同步本地行
-pub fn list_synced_local_rows(
-  app: &AppHandle,
-) -> Result<Vec<(String, String, String)>, String> {
-  let path = state_db_path(app)?;
-  if !path.is_file() {
-    return Ok(Vec::new());
-  }
-  let conn = open_db(&path)?;
-  db::list_synced_dest_paths(&conn)
 }

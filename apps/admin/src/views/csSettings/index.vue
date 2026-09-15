@@ -259,7 +259,9 @@ onActivated(load);
             <a-divider orientation="left">iCloud 同步</a-divider>
 
             <a-form-item label="落盘目录">
-              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">固定保存至相册根目录下的 iCloudSync 子文件夹</p>
+              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
+              </p>
             </a-form-item>
 
             <a-form-item label="下载速度">
@@ -276,7 +278,9 @@ onActivated(load);
             <a-divider orientation="left">QQ 空间同步</a-divider>
 
             <a-form-item label="落盘目录">
-              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">固定保存至相册根目录下的 QzoneSync 子文件夹</p>
+              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                固定路径：相册根/QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
+              </p>
             </a-form-item>
           </template>
         </a-form>

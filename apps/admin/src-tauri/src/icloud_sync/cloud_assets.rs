@@ -60,7 +60,7 @@ fn resolve_live_mov_display_filename(still_filename: &str, mov_original: &str) -
   if !mov_original.is_empty() && mov_original != still_filename {
     return mov_original.to_string();
   }
-  // 不用 dest_path basename：落盘名为 {unix}_{apple8}_{id16}.ext，仅用于本地路径
+  // 不用 dest_path basename：落盘名为 {unix}_{id16}.ext，仅用于本地路径
   derive_live_mov_filename(still_filename)
 }
 
@@ -112,7 +112,6 @@ fn enrich_live_pair_meta(
 fn cloud_display_rank(state: &str) -> u8 {
   match state {
     "failed_delete" => 7,
-    "deleted_cloud_pending" => 6,
     "cloud_delete_queued" => 4,
     "cloud_only" => 2,
     "synced" => 1,
@@ -531,7 +530,6 @@ pub fn get_cloud_state_summary(
     total: 0,
     cloud_only: 0,
     synced: 0,
-    deleted_cloud_pending: 0,
     cloud_delete_queued: 0,
     failed_delete: 0,
     download_failed: 0,
@@ -551,9 +549,6 @@ pub fn get_cloud_state_summary(
       match CloudState::parse(&state) {
         Some(CloudState::CloudOnly) => summary.cloud_only = summary.cloud_only.saturating_add(1),
         Some(CloudState::Synced) => summary.synced = summary.synced.saturating_add(1),
-        Some(CloudState::DeletedCloudPending) => {
-          summary.deleted_cloud_pending = summary.deleted_cloud_pending.saturating_add(1)
-        }
         Some(CloudState::CloudDeleteQueued) => {
           summary.cloud_delete_queued = summary.cloud_delete_queued.saturating_add(1)
         }
@@ -568,7 +563,6 @@ pub fn get_cloud_state_summary(
   summary.total = summary
     .cloud_only
     .saturating_add(summary.synced)
-    .saturating_add(summary.deleted_cloud_pending)
     .saturating_add(summary.cloud_delete_queued)
     .saturating_add(summary.failed_delete);
   Ok(summary)
@@ -662,7 +656,7 @@ mod tests {
   }
 
   #[test]
-  fn load_assets_reports_local_file_present_for_deleted_rows() {
+  fn load_assets_reports_local_file_present_for_synced_rows() {
     let (path, conn) = temp_db();
     let dir = std::env::temp_dir().join(format!(
       "icloud-local-present-{}",
@@ -683,15 +677,15 @@ mod tests {
           apple_id, asset_id, sort_key, original_filename, media_kind,
           part, download_status, cloud_state, dest_path
         ) VALUES
-          ('u@x.com', 'KEEP', '2024-01-01', 'keep.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', ?1),
-          ('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', ?2),
-          ('u@x.com', 'EMPTY', '2024-01-03', 'empty.jpg', 'photo', 'full', NULL, 'deleted_cloud_pending', NULL)
+          ('u@x.com', 'KEEP', '2024-01-01', 'keep.jpg', 'photo', 'full', NULL, 'synced', ?1),
+          ('u@x.com', 'GONE', '2024-01-02', 'gone.jpg', 'photo', 'full', NULL, 'synced', ?2),
+          ('u@x.com', 'EMPTY', '2024-01-03', 'empty.jpg', 'photo', 'full', NULL, 'synced', NULL)
         "#,
         params![present.to_str().unwrap(), gone.to_str().unwrap()],
       )
-      .expect("insert deleted");
+      .expect("insert synced");
 
-    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("deleted_cloud_pending"), None, None, None)
+    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None)
       .expect("load");
     let by_id: std::collections::HashMap<_, _> = result
       .items

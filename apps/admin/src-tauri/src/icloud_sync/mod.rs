@@ -28,9 +28,6 @@ use tauri::{AppHandle, State};
 
 pub use cloud_delete::init_cloud_delete_worker;
 pub use queue::SidecarClientHandle;
-use db::open_db;
-/// 供 album 只读打开 sync 库（查 dest_path → capture_at）
-pub(crate) use db::state_db_path;
 /// 供 album 扫描识别同步命名 vs 异物
 pub(crate) use naming::is_sync_asset_filename;
 use settings::{
@@ -46,51 +43,7 @@ pub(crate) fn resolve_sync_output_dir(app: &AppHandle) -> Option<PathBuf> {
   resolve_output_dir(app).ok().flatten()
 }
 use sidecar::{session_dir, SidecarClient, SidecarEvent, SIDECAR_PROTOCOL};
-use types::{CloudState, IcloudSyncSettings};
-
-/// 供 album 重复检测：已同步且 dest_path 非空的资产行
-#[derive(Debug, Clone)]
-pub struct SyncedLocalRow {
-  pub asset_id: String,
-  pub part: String,
-  pub dest_path: String,
-  pub original_filename: String,
-  pub media_kind: String,
-}
-
-/// 列出 cloud_state=synced 且 dest_path 已绑定的行（不校验文件是否在盘）
-pub fn list_synced_local_rows(app: &AppHandle) -> Result<Vec<SyncedLocalRow>, String> {
-  let db_path = state_db_path(app)?;
-  if !db_path.is_file() {
-    return Ok(Vec::new());
-  }
-  let conn = open_db(&db_path)?;
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT asset_id, part, dest_path, original_filename, media_kind
-      FROM assets
-      WHERE cloud_state = ?1
-        AND dest_path IS NOT NULL AND trim(dest_path) != ''
-      "#,
-    )
-    .map_err(|e| format!("准备重复检测查询失败: {e}"))?;
-
-  let rows = stmt
-    .query_map([CloudState::Synced.as_str()], |row| {
-      Ok(SyncedLocalRow {
-        asset_id: row.get(0)?,
-        part: row.get(1)?,
-        dest_path: row.get(2)?,
-        original_filename: row.get(3)?,
-        media_kind: row.get(4)?,
-      })
-    })
-    .map_err(|e| format!("查询 synced 资产失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 synced 资产失败: {e}"))?;
-  Ok(rows)
-}
+use types::IcloudSyncSettings;
 
 /// 将 sidecar error 事件格式化为 `code` 或 `code: message` 供上层展示。
 fn format_sidecar_error_event(event: &SidecarEvent, default_code: &str) -> String {

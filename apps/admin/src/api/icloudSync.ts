@@ -169,7 +169,6 @@ export interface IcloudSyncCloudStateSummary {
   total: number;
   cloudOnly: number;
   synced: number;
-  deletedCloudPending: number;
   cloudDeleteQueued: number;
   failedDelete: number;
   /** 活跃同步任务内失败的逻辑资产数（Live=1）；任务结束后为 0 */
@@ -182,7 +181,6 @@ export type IcloudSyncCloudStateFilter =
   | "all"
   | "cloud_only"
   | "synced"
-  | "deleted_cloud_pending"
   | "cloud_delete_queued"
   | "failed_delete"
   | "download_failed";

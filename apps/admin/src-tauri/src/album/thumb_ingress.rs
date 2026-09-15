@@ -1,6 +1,7 @@
 //! 相册缩略图入队（与 album_scan 共用 single-flight 管线）
 //! 职责：同步落盘后把 path 写入共享 pending；已有 worker 则只追加，空闲才启动
 //! 适用：icloud_sync / qzone_sync 下载成功；禁止每次入队 new pipeline 覆盖相册管线
+//! @note 下载即 upsert media（origin 元数据 + 初始 capture_at），与 sync 表此后断层
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ use super::scan_state::ScanCancelToken;
 use super::scanner;
 use super::settings::{self, album_dir};
 use super::thumbnail;
+use super::types::SyncedMediaIngress;
 use super::AlbumState;
 
 /// 进程内共享待出图路径（scan 与同步共同写入）
@@ -66,12 +68,12 @@ fn is_album_image_ext(ext: &str) -> bool {
 }
 
 /**
- * 同步下载成功后入队出图（不堵下载：只写 pending + 必要时拉起 worker）
+ * 同步下载成功后：写入 media.db（含 origin 字段与初始拍摄时间）并入队出图
  * @note 不 cancel 正在跑的相册管线；仅追加。空闲时才 bump epoch 开新 worker。
- * @note path 须落在当前相册 root 下；ensure media 行且不擦已有 thumb_path。
+ * @note path 须落在当前相册 root 下；不擦已有 thumb_path。
  */
-pub fn enqueue_thumbs_from_sync(app: &AppHandle, paths: Vec<String>) {
-  if paths.is_empty() {
+pub fn enqueue_thumbs_from_sync(app: &AppHandle, items: Vec<SyncedMediaIngress>) {
+  if items.is_empty() {
     return;
   }
   let Some(state) = app.try_state::<Mutex<AlbumState>>() else {
@@ -90,9 +92,9 @@ pub fn enqueue_thumbs_from_sync(app: &AppHandle, paths: Vec<String>) {
   let thumb_size = settings.thumb_size;
   let root_path = Path::new(&root);
 
-  let mut accepted: Vec<String> = Vec::with_capacity(paths.len());
-  for raw in paths {
-    let path = Path::new(&raw);
+  let mut accepted: Vec<SyncedMediaIngress> = Vec::with_capacity(items.len());
+  for item in items {
+    let path = Path::new(&item.path);
     if !path.is_file() || !path.starts_with(root_path) {
       continue;
     }
@@ -104,36 +106,31 @@ pub fn enqueue_thumbs_from_sync(app: &AppHandle, paths: Vec<String>) {
     if !is_album_image_ext(&ext) && !thumbnail::is_video_ext(&ext) {
       continue;
     }
-    accepted.push(raw);
+    accepted.push(item);
   }
   if accepted.is_empty() {
     return;
   }
 
   if let Ok(conn) = db::open_db(&album_data_dir) {
-    for p in &accepted {
-      if let Err(e) = db::ensure_media_row(&conn, &root, p) {
-        log::warn!("album thumb ingress: ensure media row {p}: {e}");
+    for item in &accepted {
+      if let Err(e) = db::upsert_media_from_sync(&conn, &root, item) {
+        log::warn!("album sync ingress: upsert media {}: {e}", item.path);
       }
     }
   }
+
+  let paths: Vec<String> = accepted.into_iter().map(|i| i.path).collect();
 
   let pending = {
     let Ok(guard) = state.lock() else {
       return;
     };
-    guard.thumb_pending.extend(accepted);
+    guard.thumb_pending.extend(paths);
     Arc::clone(&guard.thumb_pending)
   };
 
-  ensure_thumb_worker(
-    app,
-    &state,
-    pending,
-    root,
-    album_data_dir,
-    thumb_size,
-  );
+  ensure_thumb_worker(app, &state, pending, root, album_data_dir, thumb_size);
 }
 
 /// 若管线空闲则启动 drain worker；已在跑则只依赖 pending 追加

@@ -212,49 +212,18 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
 
 
 const CLOUD_STATE_LABELS: Record<string, string> = {
-
   cloud_only: "待同步",
-
   modified_cloud: "待同步",
-
   synced: "已同步",
-
-  deleted_cloud_pending: "已移除",
-
   cloud_delete_queued: "待移除",
-
   failed_delete: "移除失败",
-
   download_failed: "同步失败"
-
 };
 
-
-
 /** iCloud 资产状态 Tag 文案 */
-
 export function cloudStateLabel(state: string): string {
-
   return CLOUD_STATE_LABELS[state] ?? state;
-
 }
-
-
-
-/**
- * 「已移除」行本地留存标记（列表派生 localFilePresent）
- * @note 仅 cloud_state=deleted_cloud_pending 展示；不改变主态文案
- */
-export function cloudDeletedLocalPresenceLabel(present: boolean): string {
-  return present ? "本地仍在" : "本地已无";
-}
-
-/** 「已移除」本地留存 Tag 色 */
-export function cloudDeletedLocalPresenceColor(present: boolean): string {
-  return present ? "green" : "default";
-}
-
-
 
 /** iCloud 列表状态 Tab 单项；value 对应后端 filter */
 export interface CloudListStateFilterOption {
@@ -276,7 +245,6 @@ export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true },
   { value: "synced", countKey: "synced", tabLabel: "已同步" },
   { value: "cloud_delete_queued", countKey: "cloudDeleteQueued", tabLabel: "待移除" },
-  { value: "deleted_cloud_pending", countKey: "deletedCloudPending", tabLabel: "已移除" },
   { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
 ];
 
@@ -292,13 +260,11 @@ export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
 ];
 
 /**
- * 「释放iCloud空间」分栏 Tab：全部 / 待移除（已同步） / 已移除 / 移除失败
- * @note 排队中 cloud_delete_queued 不单独占 Tab；取消整任务走进度区「取消任务」
+ * 「释放 iCloud 空间」相关 Tab：待移除（已同步） / 移除失败
  */
 export const CLOUD_LIST_FREE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "all", countKey: "total", tabLabel: "全部" },
   { value: "synced", countKey: "synced", tabLabel: "待移除（已同步）" },
-  { value: "deleted_cloud_pending", countKey: "deletedCloudPending", tabLabel: "已移除" },
   { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
 ];
 
@@ -313,28 +279,16 @@ export function cloudFilterTabLabel(option: CloudListStateFilterOption): string 
   return option.tabLabel ?? cloudListStateFilterLabel(option.value);
 }
 
-
-
 /** iCloud 资产状态 Tag 颜色（Ant Design Vue） */
-
 export function cloudStateColor(state: string): string {
-
   const normalized = state === "modified_cloud" ? "cloud_only" : state;
-
   if (normalized === "synced") return "success";
-
   if (normalized === "cloud_only") return "processing";
-
   if (normalized === "cloud_delete_queued") return "warning";
-
-  if (normalized === "deleted_cloud_pending" || normalized === "failed_delete" || normalized === "download_failed") {
-
+  if (normalized === "failed_delete" || normalized === "download_failed") {
     return "error";
-
   }
-
   return "default";
-
 }
 
 

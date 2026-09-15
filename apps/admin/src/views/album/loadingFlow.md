@@ -4,7 +4,7 @@
 > **页面：** `index.vue` · `MediaViewer.vue` · `LivePhotoPlayer.vue`  
 > **实现：** `src-tauri/src/album/`（mod / scanner / thumbnail / db / media_meta / watcher / ffmpeg …）  
 > **前置：** 设置页已配 `rootDir`；HEIC/视频建议捆绑 `ffmpeg` + `ffprobe`  
-> **对齐：** 2026-09-05
+> **对齐：** 2026-09-15
 
 姊妹文档：[云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md) · [表目录](./schemaCatalog.md)
 
@@ -17,13 +17,13 @@
 
 ```text
 ① 索引 discover     路径 / size / mtime / Live 配对           → 秒出列表（阻塞 invoke）
-   └─ sync 异物     output_dir 下非 `{unix}_{apple8}_{id16}` 媒体 → 移入 `pending/`（随后仍 discover，扁平宫格可见）
+   └─ sync 异物     output_dir 下非 `{yyyyMMdd}_{HHmmss}_{id16}`（及旧式 unix / `{unix}_{acct8}_{id16}`）媒体 → 移入 `pending/`（随后仍 discover，扁平宫格可见）
 ② 展示 thumb        网格图 + HEIC preview + 尺寸真源         → 不挡首屏
-③ 元数据 meta       仅补 capture_at、camera（空才写）         → 紧挨②成功之后
+③ 元数据 meta       仅补 capture_at、camera（空才写；EXIF→文件名前缀） → 紧挨②成功之后
 ④ 播放 playback     H.264 代理 `_play.mp4`                   → 时机见下表
 ```
 
-宫格：扁平时间线无目录树（`groups` 全部 files flatMap）；**排序/筛选只在前端** `filteredFiles`（`capture_at` 升序旧→新，同秒/无拍摄时间再比文件名；**不用** `modified`；无拍摄时间沉底）；Rust discover/DB 不排拍摄序。列表另有目录下拉、勾选与「改拍摄时间」（设为同一日期，只写 `media.capture_at`+`source=user`；sync/EXIF 可提供或未探测则禁止勾选）。扫描/筛选后滚到底部；工具栏含筛选统计与宫格/列表切换（列表 vxe 虚拟滚动）；文件名模糊 + 拍摄日区间；宫格左下角浮层为可视区首～末张 `YYYY年MM月DD日`。
+宫格：扁平时间线无目录树（`groups` 全部 files flatMap）；**排序/筛选只在前端** `filteredFiles`（`capture_at` 升序旧→新，同秒/无拍摄时间再比文件名；**不用** `modified`；无拍摄时间沉底）；Rust discover/DB 不排拍摄序。列表另有目录下拉、勾选与「改拍摄时间」（设为同一日期，只写 `media.capture_at`+`source=user`；origin/EXIF/文件名可提供或未探测则禁止勾选）。扫描/筛选后滚到底部；工具栏含筛选统计与宫格/列表切换（列表 vxe 虚拟滚动）；文件名模糊 + 拍摄日区间；宫格左下角浮层为可视区首～末张 `YYYY年MM月DD日`。
 
 | 对象 | ④ 时机 | 说明 |
 |------|--------|------|
@@ -37,8 +37,8 @@ Viewer / LivePhotoPlayer：**优先**已有 `playbackPath`；缺失再懒转码�
 
 | 类型 | ② 展示 | ③ 元数据 | ④ 播放 | 宫格画面 |
 |------|--------|----------|--------|----------|
-| JPG/PNG 等 | 解码→WebP；&lt;100KB 非 HEIC 可复用原图 | sync→EXIF 时间；EXIF 机型 | — | thumb/原图 |
-| HEIC/HEIF | 全尺寸解码→WebP + `_full.jpg` | 同上（EXIF 常弱，时间靠 sync） | — | thumb；预览必须 preview |
+| JPG/PNG 等 | 解码→WebP；&lt;100KB 非 HEIC 可复用原图 | origin→EXIF→文件名；EXIF 机型 | — | thumb/原图 |
+| HEIC/HEIF | 全尺寸解码→WebP + `_full.jpg` | 同上（EXIF 常弱，时间靠 origin/文件名） | — | thumb；预览必须 preview |
 | **单独视频** | **只抽 1 帧**封面 | 通常无 EXIF | **打开再转**；**分辨率在打开时 ffprobe 落库** | 封面 WebP |
 | **Live** | still 同上；**mov 不抽宫格帧** | still 的时间/机型 | **扫描期预热** mov | **still** thumb |
 
@@ -58,7 +58,7 @@ Viewer / LivePhotoPlayer：**优先**已有 `playbackPath`；缺失再懒转码�
 
 | 字段 | 真源 |
 |------|------|
-| `capture_at` | sync `dest_path` → EXIF DateTime*（仅补空） |
+| `capture_at` | 本表已有 → EXIF → 同步文件名前缀；下载时可将云端时间一次写入本表（`origin`） |
 | `camera` | EXIF Make+Model（仅补空） |
 | `width`/`height` | 尺寸真源表；③ **不写尺寸** |
 
@@ -164,7 +164,7 @@ flowchart LR
 | `album_get/save_settings` | `rootDir`；改 root 会强制下次全扫 |
 | `album_ensure_playback` | 单独视频（及 Live 兜底）懒转码；**顺带 ffprobe 分辨率落库** |
 | `album_delete_local` | 原媒体回收站；缓存永久删；清 media.db；不碰 sync |
-| `album_find_local_duplicates` | sync 正本 vs legacy |
+| `album_find_local_duplicates` | media.origin* 正本 vs 其它副本 |
 
 ### 缓存路径
 
@@ -216,7 +216,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 | 范围 | 相册根**全量**媒体（含 sync 落盘目录） |
 | 归组 | 主文件 **BLAKE3** 相同成组（先同 `size` 预筛再算哈希）；**不再**以文件名 stem 为主键 |
 | 指纹缓存 | 写 `media.content_hash` + `hash_algo=blake3`；`size`/`modified` 变则清空；弹窗内懒算 |
-| 正本 | **落库** → **完整 Live（有 mov）** → 修改时间较新 |
+| 正本 | **有 media.origin*** → **完整 Live（有 mov）** → 修改时间较新 |
 | 一致程度 | **完全一致**（主文件及 Live mov 哈希同）/ **部分一致**（主画面同但 mov 缺或不一致） |
 | Live | 同目录成对；归组看 still 哈希，再比 mov |
 | 歧义 | 同组多个不同 `asset_id` → `ambiguousStem` |
@@ -227,7 +227,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 ### Live 配对（同目录）
 
 完整 stem 相等，或 mov stem 去 `_hevc`/`_heic`/`_mov` 后与静帧 stem 相等 → `livephoto`，MOV 剔出列表。  
-同步命名：`{unix_secs}_{apple8}_{id16}.{ext}`。
+同步命名：`{yyyyMMdd}_{HHmmss}_{id16}.{ext}`（本地时区；账号隔离靠 `iCloudSync/<AppleID>/`、`QzoneSync/<uin>/`；旧 unix 名仍被扫描谓词接受，避免误收进 pending）。
 
 ### ffmpeg / ffprobe
 

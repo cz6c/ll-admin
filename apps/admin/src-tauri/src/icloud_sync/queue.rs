@@ -382,12 +382,13 @@ fn sidecar_part_for_download(asset: &AssetRow) -> &'static str {
 fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
   let name = sync_asset_filename(
     asset.capture_at.as_deref(),
-    &asset.apple_id,
     &asset.asset_id,
     &asset.original_filename,
     asset.part,
   );
-  Path::new(output_dir).join(name)
+  Path::new(output_dir)
+    .join(super::naming::account_dir_name(&asset.apple_id))
+    .join(name)
 }
 
 fn emit_progress(
@@ -426,6 +427,23 @@ fn random_jitter_ms() -> u64 {
 
 /// 输出目录中目标文件已存在且非空，视为该资产已完成。
 /// sidecar 原子落盘成功后若在写 stdout 前断连，Rust 会误判为 pending/paused。
+fn icloud_ingress_item(
+  asset: &AssetRow,
+  dest: &std::path::Path,
+) -> crate::album::types::SyncedMediaIngress {
+  crate::album::types::SyncedMediaIngress {
+    path: dest.to_string_lossy().into_owned(),
+    origin: "icloud".into(),
+    origin_asset_id: asset.asset_id.clone(),
+    origin_account: asset.apple_id.clone(),
+    origin_album: None,
+    origin_capture_at: asset.capture_at.clone(),
+    added_at: asset.added_at.clone(),
+    latitude: asset.latitude,
+    longitude: asset.longitude,
+  }
+}
+
 fn local_dest_ready(dest: &Path) -> bool {
   dest.is_file()
     && std::fs::metadata(dest)
@@ -433,16 +451,16 @@ fn local_dest_ready(dest: &Path) -> bool {
       .unwrap_or(false)
 }
 
-/// 磁盘已有有效文件时补记 done，避免重复下载与进度卡在最后一张。
-/// 仅精确匹配当前落盘名 `{unix}_{apple8}_{id16}.{ext}`。
+/// 磁盘已有有效文件时补记 done，并返回 media 入库载荷（由调用方统一 enqueue）
+/// 仅精确匹配当前落盘名 `{yyyyMMdd}_{HHmmss}_{id16}.{ext}`（账号子目录下）。
 fn mark_asset_done_if_on_disk(
   conn: &rusqlite::Connection,
   asset: &AssetRow,
   output_dir: &str,
-) -> Result<bool, String> {
+) -> Result<Option<crate::album::types::SyncedMediaIngress>, String> {
   let dest = dest_path_for_asset(output_dir, asset);
   if !local_dest_ready(&dest) {
-    return Ok(false);
+    return Ok(None);
   }
   mark_asset_status(
     conn,
@@ -450,19 +468,26 @@ fn mark_asset_done_if_on_disk(
     AssetStatus::Done,
     Some(&dest.to_string_lossy()),
   )?;
-  Ok(true)
+  Ok(Some(icloud_ingress_item(asset, &dest)))
 }
 
-/// 扫描 pending 资产：磁盘已有文件则补记 done；若全部完成则将 job 置为 done。
+/// 扫描 pending 资产：磁盘已有文件则补记 done + media 入库；若全部完成则将 job 置为 done。
 /// @returns 是否在本次 reconcile 中将 job 置为 done（调用方负责 emit）
 fn reconcile_job_with_disk(
+  app: &AppHandle,
   conn: &rusqlite::Connection,
   job_id: i64,
   output_dir: &str,
 ) -> Result<bool, String> {
   let pending = list_pending_assets(conn, job_id)?;
+  let mut ingress: Vec<crate::album::types::SyncedMediaIngress> = Vec::new();
   for asset in &pending {
-    mark_asset_done_if_on_disk(conn, asset, output_dir)?;
+    if let Some(item) = mark_asset_done_if_on_disk(conn, asset, output_dir)? {
+      ingress.push(item);
+    }
+  }
+  if !ingress.is_empty() {
+    crate::album::enqueue_thumbs_from_sync(app, ingress);
   }
 
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
@@ -741,7 +766,7 @@ fn apply_batch_results(
 ) -> Result<Option<JobStatus>, String> {
   let mut last_filename = String::new();
   let mut terminal: Option<JobStatus> = None;
-  let mut thumb_paths: Vec<String> = Vec::new();
+  let mut thumb_items: Vec<crate::album::types::SyncedMediaIngress> = Vec::new();
 
   for (asset, result) in assets.iter().zip(results.iter()) {
     last_filename = asset.original_filename.clone();
@@ -756,12 +781,12 @@ fn apply_batch_results(
         None,
         None,
       )?;
-      thumb_paths.push(dest.to_string_lossy().into_owned());
+      thumb_items.push(icloud_ingress_item(asset, &dest));
       continue;
     }
 
-    if mark_asset_done_if_on_disk(conn, asset, output_dir)? {
-      thumb_paths.push(dest.to_string_lossy().into_owned());
+    if let Some(item) = mark_asset_done_if_on_disk(conn, asset, output_dir)? {
+      thumb_items.push(item);
       continue;
     }
 
@@ -804,8 +829,8 @@ fn apply_batch_results(
     }
   }
 
-  if !thumb_paths.is_empty() {
-    crate::album::enqueue_thumbs_from_sync(app, thumb_paths);
+  if !thumb_items.is_empty() {
+    crate::album::enqueue_thumbs_from_sync(app, thumb_items);
   }
 
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
@@ -875,8 +900,10 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
 
       let batch_size = usize::try_from(concurrency).unwrap_or(1);
       let mut batch: Vec<AssetRow> = Vec::with_capacity(batch_size);
+      let mut skip_ingress: Vec<crate::album::types::SyncedMediaIngress> = Vec::new();
       for asset in pending {
-        if mark_asset_done_if_on_disk(&conn, &asset, &job.output_dir)? {
+        if let Some(item) = mark_asset_done_if_on_disk(&conn, &asset, &job.output_dir)? {
+          skip_ingress.push(item);
           emit_progress_from_db(&app, &conn, job_id, total, &asset.original_filename);
           continue;
         }
@@ -884,6 +911,9 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
         if batch.len() >= batch_size {
           break;
         }
+      }
+      if !skip_ingress.is_empty() {
+        crate::album::enqueue_thumbs_from_sync(&app, skip_ingress);
       }
 
       if batch.is_empty() {
@@ -951,7 +981,8 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
             return Err(err.message);
           }
           for asset in &batch {
-            if mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
+            if let Some(item) = mark_asset_done_if_on_disk(&conn, asset, &job.output_dir)? {
+              crate::album::enqueue_thumbs_from_sync(&app, vec![item]);
               continue;
             }
             let summary = if err.message.is_empty() {
@@ -1231,7 +1262,7 @@ pub async fn icloud_sync_resume_job(
     ensure_job_matches_current_account(&app, &conn, job_id)?;
 
     if let Some(output_dir) = get_job(&conn, job_id)?.map(|j| j.output_dir) {
-      if reconcile_job_with_disk(&conn, job_id, &output_dir)? {
+      if reconcile_job_with_disk(&app, &conn, job_id, &output_dir)? {
         emit_job_status(&app, &conn, job_id);
         return Ok(());
       }
@@ -1303,7 +1334,7 @@ pub async fn icloud_sync_job_status(app: AppHandle, job_id: i64) -> Result<Iclou
     let db_path = state_db_path(&app)?;
     let conn = open_db(&db_path)?;
     if let Some(job) = get_job(&conn, job_id)? {
-      if reconcile_job_with_disk(&conn, job_id, &job.output_dir)? {
+      if reconcile_job_with_disk(&app, &conn, job_id, &job.output_dir)? {
         emit_job_status(&app, &conn, job_id);
       }
     }
@@ -1677,13 +1708,20 @@ mod tests {
       .expect("asset id");
 
     assert!(
-      !mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy()).expect("check")
+      mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy())
+        .expect("check")
+        .is_none()
     );
 
     let expected = dest_path_for_asset(&dir.to_string_lossy(), &asset);
+    if let Some(parent) = expected.parent() {
+      std::fs::create_dir_all(parent).expect("mkdir account");
+    }
     std::fs::write(&expected, b"ok").expect("write expected");
     assert!(
-      mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy()).expect("check")
+      mark_asset_done_if_on_disk(&conn, &asset, &dir.to_string_lossy())
+        .expect("check")
+        .is_some()
     );
 
     let _ = std::fs::remove_dir_all(&dir);

@@ -197,6 +197,8 @@ fn run_pipeline(
   };
 
   let mut cataloged = 0u32;
+  let mut albums_scanned = 0u32;
+  let mut seen_ids: Vec<String> = Vec::new();
   for (i, album) in albums.iter().enumerate() {
     if runtime().cancel.load(Ordering::SeqCst) {
       return;
@@ -213,7 +215,10 @@ fn run_pipeline(
       &app,
     );
     let photos = match client::list_photos(&session, &album.topic_id) {
-      Ok(p) => p,
+      Ok(p) => {
+        albums_scanned += 1;
+        p
+      }
       Err(e) => {
         if client::is_auth_expired_error(&e) {
           let e = super::on_auth_expired(&app, e);
@@ -238,7 +243,15 @@ fn run_pipeline(
         log::warn!("qzone_sync: upsert {}: {e}", photo.asset_id);
         continue;
       }
+      seen_ids.push(photo.asset_id.clone());
       cataloged += 1;
+    }
+  }
+
+  // 至少成功扫过一个相册才覆盖删除，避免枚举全失败时清空断点
+  if albums_scanned > 0 {
+    if let Err(e) = db::purge_assets_not_in(&conn, &seen_ids, album_filter.as_deref()) {
+      log::warn!("qzone_sync: purge missing assets: {e}");
     }
   }
 
@@ -307,8 +320,11 @@ fn run_pipeline(
     let safe_album = sanitize_dir_name(&album_name);
     let ext = guess_ext(&fetch_url, &original_filename, &asset_id);
     let unix_secs = capture_time::unix_secs_from_stored(capture_at.as_deref());
-    let filename = naming::build_filename(unix_secs, &session.uin, &asset_id, &ext);
-    let dest = output.join(&session.uin).join(&safe_album).join(&filename);
+    let filename = naming::build_filename(unix_secs, &asset_id, &ext);
+    let dest = output
+      .join(naming::account_dir_name(&session.uin))
+      .join(&safe_album)
+      .join(&filename);
 
     if dest.is_file() {
       if let Ok(meta) = std::fs::metadata(&dest) {
@@ -318,7 +334,17 @@ fn run_pipeline(
           let _ = db::mark_synced(&conn, &asset_id, &dest.to_string_lossy());
           crate::album::enqueue_thumbs_from_sync(
             &app,
-            vec![dest.to_string_lossy().into_owned()],
+            vec![crate::album::types::SyncedMediaIngress {
+              path: dest.to_string_lossy().into_owned(),
+              origin: "qzone".into(),
+              origin_asset_id: asset_id.clone(),
+              origin_account: session.uin.clone(),
+              origin_album: Some(album_name.clone()),
+              origin_capture_at: capture_at.clone(),
+              added_at: None,
+              latitude: None,
+              longitude: None,
+            }],
           );
           skipped += 1;
           set_snapshot(
@@ -345,7 +371,17 @@ fn run_pipeline(
         let _ = db::mark_synced(&conn, &asset_id, &dest.to_string_lossy());
         crate::album::enqueue_thumbs_from_sync(
           &app,
-          vec![dest.to_string_lossy().into_owned()],
+          vec![crate::album::types::SyncedMediaIngress {
+            path: dest.to_string_lossy().into_owned(),
+            origin: "qzone".into(),
+            origin_asset_id: asset_id.clone(),
+            origin_account: session.uin.clone(),
+            origin_album: Some(album_name.clone()),
+            origin_capture_at: capture_at.clone(),
+            added_at: None,
+            latitude: None,
+            longitude: None,
+          }],
         );
         updated += 1;
       }

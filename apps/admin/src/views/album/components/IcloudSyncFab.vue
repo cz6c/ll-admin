@@ -28,7 +28,6 @@ import {
   cloudFilterTabLabel,
   cloudStateLabel,
   cloudStateColor,
-  cloudDeletedLocalPresenceLabel,
   CLOUD_LIST_PULL_FILTER_OPTIONS,
   type CloudListStateFilterOption,
   type IcloudSyncCloudListRow
@@ -196,9 +195,6 @@ const previewMeta = computed(() => {
   const row = previewRow.value;
   if (!row || previewIndex.value < 0) return "";
   const parts = [formatSortKeyTime(row.captureAt ?? row.sortKey), row.displayStateLabel];
-  if (row.cloudState === "deleted_cloud_pending") {
-    parts.push(cloudDeletedLocalPresenceLabel(Boolean(row.localFilePresent)));
-  }
   parts.push(`${previewIndex.value + 1} / ${cloudRows.value.length}`);
   return parts.join(" · ");
 });

@@ -36,8 +36,8 @@ export interface AlbumThumbReadyPayload {
 
 export type MediaKind = "image" | "video" | "livephoto";
 
-/** 拍摄时间来源：sync 表 / EXIF / 用户手改 */
-export type CaptureAtSource = "sync" | "exif" | "user";
+/** 拍摄时间来源：下载写入的云端 origin / EXIF / 文件名前缀 / 用户手改 */
+export type CaptureAtSource = "origin" | "exif" | "filename" | "user";
 
 export interface MediaFile {
   path: string;
@@ -51,13 +51,13 @@ export interface MediaFile {
   videoPath?: string;
   /** HEVC→H.264 播放代理；Live 绑 still，值为 mov 的代理路径 */
   playbackPath?: string;
-  /** 拍摄时间（sync/EXIF/user） */
+  /** 拍摄时间（本表优先；下载时可带 origin） */
   captureAt?: string;
-  /** sync | exif | user */
+  /** origin | exif | filename | user */
   captureAtSource?: CaptureAtSource | string;
-  /** 已跑过 sync+EXIF 探测 */
+  /** 已跑过拍摄时间探测 */
   captureAtProbed?: boolean;
-  /** sync/EXIF 能提供时间 → 禁止手改勾选 */
+  /** origin/EXIF/文件名能提供时间 → 禁止手改勾选 */
   captureAtLocked?: boolean;
   /** 相对相册根目录（`.` 为根） */
   relDir?: string;
@@ -67,10 +67,18 @@ export interface MediaFile {
   width?: number;
   /** 像素高（优先缩略图解码） */
   height?: number;
+  /** icloud | qzone */
+  origin?: string;
+  originAssetId?: string;
+  originAccount?: string;
+  originAlbum?: string;
+  addedAt?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
- * 是否允许列表勾选手改拍摄时间：已探测且未因 sync/EXIF 锁定
+ * 是否允许列表勾选手改拍摄时间：已探测且未因 origin/EXIF/文件名锁定
  */
 export function canManualSetCaptureAt(file: MediaFile): boolean {
   return !!file.captureAtProbed && !file.captureAtLocked;
@@ -106,7 +114,7 @@ export interface DuplicateLegacyItem {
   duplicateSize: number;
 }
 
-/** 重复清理：全量按内容哈希归组；正本优先落库路径 */
+/** 重复清理：全量按内容哈希归组；正本优先有 media.origin* 的路径 */
 export interface DuplicateGroup {
   /** 展示用（原名 stem）；实际归组按 BLAKE3 */
   contentKey: string;

@@ -31,7 +31,7 @@ flowchart LR
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
 | 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（Tab：全部/待同步/已同步/同步失败）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；删云进度由**全屏浮层**接管 |
-| 本地排序 | 落盘 `{unix_secs}_{apple8}_{id16}.ext`（无原始 stem；apple8 隔离换号同目录），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
+| 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
@@ -101,7 +101,7 @@ flowchart LR
   B --> C[enqueue queue + cloud_delete_queued]
   C --> D[worker delete_assets]
   D --> E{ok?}
-  E -->|是| F[cloud_state → deleted_cloud_pending]
+  E -->|是| F[DELETE assets 行]
   E -->|否≥3| G[failed_delete]
 ```
 
@@ -110,7 +110,8 @@ flowchart LR
 | 1 | Modal 确认（Live 默认成对 still+mov） | 冷却 1.5s |
 | 2 | 读库 CPL + **本地 `dest_path` 必须 is_file** | 缺文件则 reject（需先同步或刷新 reconcile） |
 | 3 | worker 调 sidecar | 全屏浮层进度条（无取消）；失败浮层内可重试 |
-| 4 | 成功 → **保留 assets 行**，`cloud_state=deleted_cloud_pending` | 浮层完成摘要 → 关闭后刷新列表（不自动切 Tab） |
+| 4 | 成功 → **DELETE assets 行**（同步表只反映云端；本地 media/文件不动） | 浮层完成摘要 → 关闭后刷新列表 |
+| — | catalog 刷新覆盖：库中不见的行 **硬删除**（保留 `cloud_delete_queued` / `failed_delete`） | — |
 
 **门禁：** `canManageCloudSpace` 为假时禁用删云 / 刷新 catalog（与全局单任务互斥）。
 
@@ -130,18 +131,19 @@ flowchart LR
 6. Live = still + mov 两行（终态无 `index_num`）；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
 7. CDN **410/404 ≠ session** → 单文件 lookup 重试。
 8. **`assets` 跨 job 唯一** `(apple_id, asset_id, part)`。
-9. 用户删云 → `cloud_delete_queued`；catalog 报删 → `deleted_cloud_pending`；**禁止混用**。
+9. 用户删云 → `cloud_delete_queued`；成功或 catalog 不见 → **硬删 assets 行**（本地 media/文件不动）。
 10. **绝不静默自动删云端**（Modal + 1.5s）。
 11. **本地文件缺失**：不在列表展示单独态；catalog 时 **`reconcile_synced_missing_local_files_in_catalog`**（仅扫本次 catalog 仍存在的 `synced` 行）写回 `cloud_only`（清 `dest_path`）。全库版 `reconcile_synced_missing_local_files` 保留供单测/诊断。
 12. 全局**同时仅一个** worker 槽（`try_claim_job`）；`require_no_incomplete_task` 拦截并行 start / 删云 / 刷新。
 13. **删云入队前本地必须在盘**；否则 `rejected_local_missing`。
 14. **主动退出不 discard**；**换号登录 discard**；**会话失效 paused_session 不 discard**。
-15. **同步落盘后入队相册缩略图**：与 `album_scan` 共用 single-flight 管线 + 共享 pending；只追加不 new pipeline；关抽屉不影响；用户刷新才 cancel/epoch。
+15. **同步落盘后入队相册缩略图**：与 `album_scan` 共用 single-flight 管线 + 共享 pending；只追加不 new pipeline；关抽屉不影响；用户刷新才 cancel/epoch。盘上已存在跳过下载时同样走 media ingress。
 15. **`modified_cloud` 已并入 `cloud_only`**（schema v3 迁移）；diff 的 modified 也写 `cloud_only`。
-16. 删云成功 **不 DELETE assets 行**，改为 `deleted_cloud_pending` 供列表追溯。
+16. 删云成功 **DELETE assets 行**（同步表只反映云端）；本地 media/文件不动。
+17. catalog 刷新覆盖：不见于 catalog 的行硬删除（保留进行中的 `cloud_delete_queued` / `failed_delete`）。
 17. **catalog diff 前** 调用 `prepare_catalog_keys_temp`；`mark_catalog_deletions` / `enqueue_outstanding_for_full_sync` / in-catalog reconcile **依赖该临时表**，禁止逐行 N 次 SQL 旧路径。
-18. **`assets` 产品元数据**（schema v4）：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。
-19. **schema 终态（user_version=5）**：无 `assets.index_num`、`jobs.mode`、`cloud_cursors`；已取消 v2–v4 自动迁移（排序/命名用 `sort_key` 与 unix 秒文件名）。
+18. **`assets` 产品元数据**（schema v4）：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。下载入库时复制到 album `media`（origin 字段）；之后两库解耦。
+19. **schema 终态（user_version=5）**：无 `assets.index_num`、`jobs.mode`、`cloud_cursors`；已取消 v2–v4 自动迁移（排序/命名用 `sort_key` 与 `yyyyMMdd_HHmmss` 文件名）。历史 `deleted_cloud_pending` 打开库时 scrub 删除。
 
 ---
 
@@ -174,8 +176,9 @@ flowchart LR
 | `cloud_only` | 待同步 | catalog 有、未下载（含原 `modified_cloud`） |
 | `synced` | 已同步 | 已下载且 catalog 未报改/删 |
 | `cloud_delete_queued` | 待移除 | 用户删云已入队 |
-| `deleted_cloud_pending` | 已移除 | catalog 报删或删云 API 成功；**不清 `dest_path`**。列表额外派生 Tag「本地仍在 / 本地已无」（`dest_path` 是否 `is_file`；Live 任一侧有文件即仍在） |
 | `failed_delete` | 移除失败 | 云删单条 ≥3 次仍失败（中断回退不计次） |
+
+> 旧态 `deleted_cloud_pending` 已废弃：catalog 不见或删云成功直接 **DELETE** 行；打开库时 scrub 历史残留。
 
 **派生（不写库，仅列表展示 / 筛选）**
 
@@ -239,10 +242,10 @@ fingerprint = sort_key | original_filename | media_kind
 | 分类 | 条件 | DB 效果 |
 |------|------|---------|
 | **Added** | 库内无此行 | INSERT → `cloud_only` + `pending` |
-| **Modified** | fingerprint 变 / **`cpl_asset_change_tag` 变** / `deleted_cloud_pending` 恢复 | UPDATE → `cloud_only` + `pending`（重下） |
+| **Modified** | fingerprint 变 / **`cpl_asset_change_tag` 变** | UPDATE → `cloud_only` + `pending`（重下） |
 | **MetadataRefresh** | fp + changeTag 不变，仅产品元数据变（时间/GPS/CPL 名） | UPDATE 元数据；**不改** `cloud_state` / `download_status` |
 | **Unchanged** | 全部一致 | **跳过逐行 UPDATE**；批量 `last_catalog_at` |
-| **Deleted** | 库内有、catalog 无（`mark_catalog_deletions`） | `deleted_cloud_pending` |
+| **Deleted** | 库内有、catalog 无（`mark_catalog_deletions`） | **硬删除** assets 行 |
 
 日志示例：
 

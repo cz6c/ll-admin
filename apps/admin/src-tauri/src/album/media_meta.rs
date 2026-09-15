@@ -1,122 +1,110 @@
 //! 相册媒体元数据（拍摄时间 / 机型）
-//! 职责：缩略图就绪后补写 media.db 的 capture_at、camera；**不写尺寸**
-//! 尺寸真源：图/HEIC=解码；单独视频=打开 ensure_playback 时 ffprobe
-//! 优先级：capture_at = sync → EXIF；camera = EXIF Make/Model（仅补空）
-//! 同时落 `capture_at_probed` / `capture_at_locked` / `capture_at_source`（有 sync/EXIF 能力则锁定）
-//! 适用：thumbnail pipeline 成功后 / 已有缩略图缺字段回填
+//! 职责：下载入库与缩略图后回填共用同一套解析；**不写尺寸**
+//! 优先级：调用方本表仅补空；建议值 = 可选 origin → EXIF → 同步文件名前缀 `yyyyMMdd_HHmmss`
+//! @note 不再反查 sync state.db；云端时间仅下载时经 origin 一次性写入本表
+//! 适用：sync ingress / thumbnail pipeline
 
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+use chrono::{Local, NaiveDateTime, TimeZone};
 use exif::{In, Reader, Tag};
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
-use tauri::AppHandle;
 
-use crate::icloud_sync::state_db_path as icloud_state_db_path;
-use crate::qzone_sync::{
-  lookup_capture_at as qzone_lookup_capture_at, state_db_path as qzone_state_db_path,
-};
-
-/// 单次 sync+EXIF 解析结果；调用方按「仅补空」写 capture/camera，并总是写探测/锁定
+/// 单次解析结果；调用方按「仅补空」写 capture/camera，并总是写探测/锁定
 #[derive(Debug, Clone, Default)]
 pub struct MediaMetaFill {
-  /// 建议补空写入的拍摄时间（sync 优先于 EXIF）
+  /// 建议写入的拍摄时间
   pub capture_at: Option<String>,
-  /// 与 `capture_at` 对应的来源：`sync` / `exif`
+  /// `origin` / `exif` / `filename`
   pub capture_at_source: Option<String>,
   pub camera: Option<String>,
-  /// sync 或 EXIF 能提供拍摄时间 → 禁止用户手改
+  /// 能提供拍摄时间 → 禁止用户手改
   pub capture_at_locked: bool,
 }
 
-/// 可复用的解析器：整批回填时只打开一次各源 sync 只读库
-pub struct MediaMetaResolver {
-  icloud: Option<Connection>,
-  qzone: Option<Connection>,
-}
+/**
+ * 统一解析拍摄时间与机型
+ * @param origin_capture_at 下载入库时传入云端 catalog 时间；回填传 None
+ */
+pub fn resolve_capture_meta(
+  path: &str,
+  origin_capture_at: Option<&str>,
+) -> MediaMetaFill {
+  let exif = read_exif_bundle(Path::new(path));
 
-impl MediaMetaResolver {
-  /// 打开 iCloud / QQ 空间 state.db（只读）；不存在或打不开则跳过该源
-  pub fn new(app: &AppHandle) -> Self {
-    let open_ro = |path: &std::path::Path| -> Option<Connection> {
-      if !path.is_file() {
-        return None;
-      }
-      Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
-    };
-    let icloud = icloud_state_db_path(app)
-      .ok()
-      .and_then(|path| open_ro(&path));
-    let qzone = qzone_state_db_path(app)
-      .ok()
-      .and_then(|path| open_ro(&path));
-    Self { icloud, qzone }
-  }
-
-  /// 解析建议写入的拍摄时间与机型，并判定锁定（多源 sync 优先于 EXIF）
-  pub fn resolve(&self, path: &str) -> MediaMetaFill {
-    let sync_at = self
-      .icloud
-      .as_ref()
-      .and_then(|conn| lookup_icloud_capture_at(conn, path))
-      .or_else(|| {
-        self
-          .qzone
-          .as_ref()
-          .and_then(|conn| qzone_lookup_capture_at(conn, path))
-      });
-    let exif = read_exif_bundle(Path::new(path));
-    let locked = sync_at.is_some() || exif.capture_at.is_some();
-
-    let (capture_at, capture_at_source) = if let Some(at) = sync_at {
-      (Some(at), Some("sync".to_string()))
-    } else if let Some(at) = exif.capture_at {
+  let (capture_at, capture_at_source) =
+    if let Some(raw) = origin_capture_at.map(str::trim).filter(|s| !s.is_empty()) {
+      (
+        Some(normalize_origin_capture(raw)),
+        Some("origin".to_string()),
+      )
+    } else if let Some(at) = exif.capture_at.clone() {
       (Some(at), Some("exif".to_string()))
+    } else if let Some(at) = parse_capture_at_from_sync_filename(path) {
+      (Some(at), Some("filename".to_string()))
     } else {
       (None, None)
     };
 
-    MediaMetaFill {
-      capture_at,
-      capture_at_source,
-      camera: exif.camera,
-      capture_at_locked: locked,
-    }
+  MediaMetaFill {
+    capture_at_locked: capture_at.is_some(),
+    capture_at,
+    capture_at_source,
+    camera: exif.camera,
   }
 }
 
-fn lookup_icloud_capture_at(conn: &Connection, path: &str) -> Option<String> {
-  let try_one = |p: &str| -> Option<String> {
-    conn
-      .query_row(
-        "SELECT capture_at FROM assets
-         WHERE dest_path = ?1
-           AND capture_at IS NOT NULL
-           AND trim(capture_at) != ''
-         LIMIT 1",
-        params![p],
-        |row| row.get::<_, String>(0),
-      )
-      .optional()
-      .ok()
-      .flatten()
-  };
+fn normalize_origin_capture(raw: &str) -> String {
+  let s = raw.trim();
+  if let Some(norm) = normalize_exif_datetime(s) {
+    return norm;
+  }
+  if s.len() >= 19 && s.as_bytes().get(10) == Some(&b' ') {
+    let mut out = s[..19].to_string();
+    out.replace_range(10..11, "T");
+    return out;
+  }
+  s.to_string()
+}
 
-  try_one(path).or_else(|| {
-    // Windows 路径大小写 / 分隔符差异：再试一遍规范化
-    let alt = path.replace('/', "\\");
-    if alt != path {
-      try_one(&alt)
-    } else {
-      let alt2 = path.replace('\\', "/");
-      if alt2 != path {
-        try_one(&alt2)
-      } else {
-        None
-      }
-    }
-  })
+/**
+ * 从同步落盘文件名解析拍摄时间（`yyyyMMdd_HHmmss_{id16}`）
+ * @note 等于 epoch 占位前缀时视为无效
+ */
+pub fn parse_capture_at_from_sync_filename(path_or_name: &str) -> Option<String> {
+  let base = Path::new(path_or_name)
+    .file_name()
+    .and_then(|s| s.to_str())?;
+  let stem = Path::new(base).file_stem()?.to_str()?;
+  let parts: Vec<&str> = stem.split('_').collect();
+  let [ymd, hms, id16] = parts.as_slice() else {
+    return None;
+  };
+  if ymd.len() != 8 || !ymd.bytes().all(|b| b.is_ascii_digit()) {
+    return None;
+  }
+  if hms.len() != 6 || !hms.bytes().all(|b| b.is_ascii_digit()) {
+    return None;
+  }
+  if id16.len() != 16
+    || !id16.bytes().all(|b| {
+      b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b)
+    })
+  {
+    return None;
+  }
+  let prefix = format!("{ymd}_{hms}");
+  let epoch_prefix = Local
+    .timestamp_opt(0, 0)
+    .single()
+    .map(|dt| dt.format("%Y%m%d_%H%M%S").to_string())
+    .unwrap_or_else(|| "19700101_000000".into());
+  if prefix == epoch_prefix {
+    return None;
+  }
+  let naive = NaiveDateTime::parse_from_str(&format!("{ymd}{hms}"), "%Y%m%d%H%M%S").ok()?;
+  Some(naive.format("%Y-%m-%dT%H:%M:%S").to_string())
 }
 
 struct ExifBundle {
@@ -163,7 +151,6 @@ fn read_exif_bundle(path: &Path) -> ExifBundle {
   }
 }
 
-/// Make + Model → 展示串；Model 已含 Make 时不重复
 fn format_camera(make: Option<&str>, model: Option<&str>) -> Option<String> {
   let make = make.map(str::trim).filter(|s| !s.is_empty());
   let model = model.map(str::trim).filter(|s| !s.is_empty());
@@ -181,7 +168,6 @@ fn format_camera(make: Option<&str>, model: Option<&str>) -> Option<String> {
   }
 }
 
-/// EXIF 常见 `YYYY:MM:DD HH:MM:SS` → `YYYY-MM-DDTHH:MM:SS`
 fn normalize_exif_datetime(raw: &str) -> Option<String> {
   let s = raw.trim().trim_matches('"');
   if s.len() < 19 {
@@ -200,47 +186,40 @@ fn normalize_exif_datetime(raw: &str) -> Option<String> {
     out.replace_range(10..11, "T");
     return Some(out);
   }
-  // 已是可解析串则原样保留
-  if s.contains('-') || s.contains('T') {
-    return Some(s.to_string());
-  }
   None
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{format_camera, normalize_exif_datetime};
+  use super::*;
 
   #[test]
-  fn normalize_classic_exif() {
+  fn parse_filename_prefix() {
+    let name = "20240115_123045_0123456789abcdef.jpg";
     assert_eq!(
-      normalize_exif_datetime("2024:01:15 12:30:45"),
-      Some("2024-01-15T12:30:45".into())
+      parse_capture_at_from_sync_filename(name).as_deref(),
+      Some("2024-01-15T12:30:45")
     );
   }
 
   #[test]
-  fn normalize_iso_passthrough() {
-    assert_eq!(
-      normalize_exif_datetime("2024-01-15T12:30:45Z"),
-      Some("2024-01-15T12:30:45Z".into())
-    );
+  fn reject_epoch_placeholder_filename() {
+    let prefix = Local
+      .timestamp_opt(0, 0)
+      .single()
+      .unwrap()
+      .format("%Y%m%d_%H%M%S");
+    let name = format!("{prefix}_0123456789abcdef.jpg");
+    assert_eq!(parse_capture_at_from_sync_filename(&name), None);
   }
 
   #[test]
-  fn normalize_rejects_short() {
-    assert_eq!(normalize_exif_datetime("2024"), None);
-  }
-
-  #[test]
-  fn camera_dedupes_make_prefix() {
-    assert_eq!(
-      format_camera(Some("Apple"), Some("Apple iPhone 15 Pro")),
-      Some("Apple iPhone 15 Pro".into())
+  fn ingress_prefers_origin_over_filename() {
+    let fill = resolve_capture_meta(
+      "20240115_123045_0123456789abcdef.jpg",
+      Some("2020-05-01 08:00:00"),
     );
-    assert_eq!(
-      format_camera(Some("Canon"), Some("EOS R5")),
-      Some("Canon EOS R5".into())
-    );
+    assert_eq!(fill.capture_at_source.as_deref(), Some("origin"));
+    assert!(fill.capture_at.as_deref().unwrap().starts_with("2020-05-01"));
   }
 }

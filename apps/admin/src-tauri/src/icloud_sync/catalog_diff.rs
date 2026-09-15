@@ -4,14 +4,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::types::{AssetRow, CloudState, MediaKind};
+use super::types::{AssetRow, MediaKind};
 
 /// catalog 行相对库内基线的变更类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogDeltaKind {
   /// catalog 新见、库内无行
   Added,
-  /// fingerprint / changeTag 变化，或云端删后重新出现 → 需重下
+  /// fingerprint / changeTag 变化 → 需重下
   Modified,
   /// fingerprint 与 changeTag 一致，仅产品元数据（时间/GPS/CPL 名）需刷新
   MetadataRefresh,
@@ -23,7 +23,6 @@ pub enum CatalogDeltaKind {
 #[derive(Debug, Clone)]
 pub struct ExistingAssetBaseline {
   pub fingerprint: String,
-  pub cloud_state: CloudState,
   pub cpl_asset_record_name: Option<String>,
   pub cpl_asset_change_tag: Option<String>,
   pub capture_at: Option<String>,
@@ -58,7 +57,6 @@ pub fn classify_catalog_row(
   let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
   match existing.get(&key) {
     None => CatalogDeltaKind::Added,
-    Some(base) if base.cloud_state == CloudState::DeletedCloudPending => CatalogDeltaKind::Modified,
     Some(base) if base.fingerprint != fp => CatalogDeltaKind::Modified,
     Some(base) if norm_tag(&base.cpl_asset_change_tag) != norm_tag(&row.cpl_asset_change_tag) => {
       CatalogDeltaKind::Modified
@@ -87,7 +85,7 @@ pub fn classify_catalog_rows(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::icloud_sync::types::{AssetPart, AssetStatus};
+  use crate::icloud_sync::types::{AssetPart, AssetStatus, CloudState};
 
   fn sample_row(asset_id: &str, filename: &str) -> AssetRow {
     AssetRow {
@@ -116,10 +114,9 @@ mod tests {
     }
   }
 
-  fn baseline(fp: &str, cloud_state: CloudState) -> ExistingAssetBaseline {
+  fn baseline(fp: &str) -> ExistingAssetBaseline {
     ExistingAssetBaseline {
       fingerprint: fp.into(),
-      cloud_state,
       cpl_asset_record_name: None,
       cpl_asset_change_tag: None,
       capture_at: Some("2024-01-01".into()),
@@ -140,10 +137,7 @@ mod tests {
     let row = sample_row("A1", "a.jpg");
     let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
     let mut existing = HashMap::new();
-    existing.insert(
-      ("A1".into(), "full".into()),
-      baseline(&fp, CloudState::Synced),
-    );
+    existing.insert(("A1".into(), "full".into()), baseline(&fp));
     assert_eq!(classify_catalog_row(&row, &existing), CatalogDeltaKind::Unchanged);
   }
 
@@ -153,22 +147,7 @@ mod tests {
     let mut existing = HashMap::new();
     existing.insert(
       ("A1".into(), "full".into()),
-      baseline(
-        &catalog_fingerprint(&row.sort_key, "a.jpg", row.media_kind),
-        CloudState::Synced,
-      ),
-    );
-    assert_eq!(classify_catalog_row(&row, &existing), CatalogDeltaKind::Modified);
-  }
-
-  #[test]
-  fn deleted_cloud_pending_in_catalog_is_modified() {
-    let row = sample_row("A1", "a.jpg");
-    let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
-    let mut existing = HashMap::new();
-    existing.insert(
-      ("A1".into(), "full".into()),
-      baseline(&fp, CloudState::DeletedCloudPending),
+      baseline(&catalog_fingerprint(&row.sort_key, "a.jpg", row.media_kind)),
     );
     assert_eq!(classify_catalog_row(&row, &existing), CatalogDeltaKind::Modified);
   }
@@ -178,7 +157,7 @@ mod tests {
     let row = sample_row("A1", "a.jpg");
     let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
     let mut existing = HashMap::new();
-    let mut base = baseline(&fp, CloudState::Synced);
+    let mut base = baseline(&fp);
     base.cpl_asset_change_tag = Some("old".into());
     existing.insert(("A1".into(), "full".into()), base);
     let mut row = row;
@@ -191,7 +170,7 @@ mod tests {
     let row = sample_row("A1", "a.jpg");
     let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
     let mut existing = HashMap::new();
-    existing.insert(("A1".into(), "full".into()), baseline(&fp, CloudState::Synced));
+    existing.insert(("A1".into(), "full".into()), baseline(&fp));
     let mut row = row;
     row.latitude = Some(31.2);
     row.longitude = Some(121.5);

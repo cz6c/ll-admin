@@ -194,6 +194,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
   }
 
   if cur == SCHEMA_VERSION {
+    scrub_legacy_deleted_cloud_pending(conn)?;
     return Ok(());
   }
 
@@ -210,6 +211,17 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
   Err(format!(
     "icloud_sync state.db user_version={cur} 低于终态 {SCHEMA_VERSION}，本版本已取消自动升级，已中止且未清空数据库"
   ))
+}
+
+/// 覆盖硬删后不再保留「已移除」行；打开库时清掉历史 deleted_cloud_pending
+fn scrub_legacy_deleted_cloud_pending(conn: &Connection) -> Result<(), String> {
+  conn
+    .execute(
+      "DELETE FROM assets WHERE cloud_state = 'deleted_cloud_pending'",
+      [],
+    )
+    .map_err(|e| format!("清理历史 deleted_cloud_pending 失败: {e}"))?;
+  Ok(())
 }
 
 /// 插入任务行，返回自增 id
@@ -400,7 +412,7 @@ pub fn load_existing_baselines(
   let mut stmt = conn
     .prepare(
       r#"
-      SELECT asset_id, part, sort_key, original_filename, media_kind, cloud_state,
+      SELECT asset_id, part, sort_key, original_filename, media_kind,
              cpl_asset_record_name, cpl_asset_change_tag,
              capture_at, added_at, latitude, longitude
       FROM assets WHERE apple_id = ?1
@@ -414,19 +426,17 @@ pub fn load_existing_baselines(
       let sort_key: String = row.get(2)?;
       let filename: String = row.get(3)?;
       let media_kind_s: String = row.get(4)?;
-      let cloud_s: String = row.get(5)?;
       let media_kind = MediaKind::parse(&media_kind_s).unwrap_or(MediaKind::Photo);
       Ok((
         (asset_id, part),
         ExistingAssetBaseline {
           fingerprint: catalog_fingerprint(&sort_key, &filename, media_kind),
-          cloud_state: CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly),
-          cpl_asset_record_name: row.get(6)?,
-          cpl_asset_change_tag: row.get(7)?,
-          capture_at: row.get(8)?,
-          added_at: row.get(9)?,
-          latitude: row.get(10)?,
-          longitude: row.get(11)?,
+          cpl_asset_record_name: row.get(5)?,
+          cpl_asset_change_tag: row.get(6)?,
+          capture_at: row.get(7)?,
+          added_at: row.get(8)?,
+          latitude: row.get(9)?,
+          longitude: row.get(10)?,
         },
       ))
     })
@@ -652,25 +662,25 @@ pub fn enqueue_cloud_only_for_sync(
   Ok(u32::try_from(changed).unwrap_or(0))
 }
 
-/// catalog 中消失的 (asset_id, part) → deleted_cloud_pending（需先 `prepare_catalog_keys_temp`）
+/// catalog 中消失的行硬删除（覆盖模式）；进行中的云删队列行保留
+/// @note 不删本地磁盘 / media.db；需先 `prepare_catalog_keys_temp`
 pub fn mark_catalog_deletions(conn: &Connection, apple_id: &str) -> Result<u32, String> {
-  let now = chrono::Utc::now().timestamp();
   let changed = conn
     .execute(
       &format!(
         r#"
-        UPDATE assets SET cloud_state = 'deleted_cloud_pending', last_catalog_at = ?1
-        WHERE apple_id = ?2
-          AND cloud_state NOT IN ('deleted_cloud_pending', 'cloud_delete_queued', 'failed_delete')
+        DELETE FROM assets
+        WHERE apple_id = ?1
+          AND cloud_state NOT IN ('cloud_delete_queued', 'failed_delete')
           AND NOT EXISTS (
             SELECT 1 FROM {CATALOG_KEYS_TEMP} t
             WHERE t.asset_id = assets.asset_id AND t.part = assets.part
           )
         "#
       ),
-      params![now, apple_id],
+      params![apple_id],
     )
-    .map_err(|e| format!("批量标记 deleted_cloud_pending 失败: {e}"))?;
+    .map_err(|e| format!("覆盖删除过期 catalog 行失败: {e}"))?;
   Ok(u32::try_from(changed).unwrap_or(0))
 }
 
@@ -1963,7 +1973,7 @@ pub fn mark_cloud_deletes_deleting(conn: &Connection, ids: &[i64]) -> Result<(),
   Ok(())
 }
 
-/// 云删 API 成功：标记 deleted_cloud_pending，保留注册表行供用户在云列表查看
+/// 云删 API 成功：从 sync 表删除该行（同步表只反映云端；本地 media/文件不动）
 pub fn finalize_cloud_delete_success(
   conn: &Connection,
   queue_id: i64,
@@ -1977,22 +1987,12 @@ pub fn finalize_cloud_delete_success(
     .map_err(|e| format!("开启云删成功事务失败: {e}"))?;
   tx.execute(
     r#"
-    UPDATE assets SET
-      cloud_state = ?1,
-      download_status = NULL,
-      active_job_id = NULL,
-      last_catalog_at = ?2
-    WHERE apple_id = ?3 AND asset_id = ?4 AND part = ?5
+    DELETE FROM assets
+    WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
     "#,
-    params![
-      CloudState::DeletedCloudPending.as_str(),
-      now,
-      apple_id,
-      asset_id,
-      part,
-    ],
+    params![apple_id, asset_id, part],
   )
-  .map_err(|e| format!("标记 deleted_cloud_pending 失败: {e}"))?;
+  .map_err(|e| format!("删除已云删 asset 失败: {e}"))?;
   tx.execute(
     r#"
     UPDATE cloud_delete_queue
@@ -2427,7 +2427,7 @@ mod tests {
   }
 
   #[test]
-  fn finalize_cloud_delete_success_keeps_asset_as_deleted_cloud_pending() {
+  fn finalize_cloud_delete_success_removes_asset_row() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
     let media = std::env::temp_dir().join(format!(
@@ -2459,18 +2459,16 @@ mod tests {
       .query_row("SELECT id FROM cloud_delete_queue LIMIT 1", [], |r| r.get(0))
       .expect("id");
     finalize_cloud_delete_success(&conn, queue_id, "user@icloud.com", "D1", "full").expect("success");
-    let cloud_state: String = conn
-      .query_row(
-        "SELECT cloud_state FROM assets WHERE asset_id = 'D1'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("state");
-    assert_eq!(cloud_state, CloudState::DeletedCloudPending.as_str());
     let count: i64 = conn
       .query_row("SELECT COUNT(*) FROM assets WHERE asset_id = 'D1'", [], |r| r.get(0))
       .expect("count");
-    assert_eq!(count, 1);
+    assert_eq!(count, 0);
+    let qstatus: String = conn
+      .query_row("SELECT status FROM cloud_delete_queue WHERE id = ?1", params![queue_id], |r| {
+        r.get(0)
+      })
+      .expect("q");
+    assert_eq!(qstatus, "done");
     let _ = std::fs::remove_file(&media);
     let _ = std::fs::remove_file(path);
   }

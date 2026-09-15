@@ -677,7 +677,14 @@ watch(drawerOpen, open => {
                   <h4 class="day-label">{{ g.label }}</h4>
                   <div class="grid">
                     <button v-for="row in g.items" :key="row.photo.assetId" type="button" class="cell" :title="row.photo.name" @click="openPreview(row.index)">
-                      <QzoneLazyImg v-if="row.photo.thumbUrl" :remote-url="row.photo.thumbUrl" :scroll-root="photoScrollRef" kind="thumb" :media-kind="row.photo.mediaKind === 'video' ? 'video' : 'image'" :ext="row.photo.name?.split('.').pop()" />
+                      <QzoneLazyImg
+                        v-if="row.photo.thumbUrl"
+                        :remote-url="row.photo.thumbUrl"
+                        :scroll-root="photoScrollRef"
+                        kind="thumb"
+                        :media-kind="row.photo.mediaKind === 'video' ? 'video' : 'image'"
+                        :ext="row.photo.name?.split('.').pop()"
+                      />
                       <div v-else class="cell-ph" />
                     </button>
                   </div>
@@ -688,7 +695,6 @@ watch(drawerOpen, open => {
           </div>
         </section>
       </div>
-      <p class="foot-hint">文件落在 <code>QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/</code>；完成后请刷新相册。</p>
     </div>
   </a-drawer>
 
@@ -1031,13 +1037,6 @@ watch(drawerOpen, open => {
   border-radius: 4px;
   color: #fff;
   background: rgba(0, 0, 0, 0.55);
-}
-.foot-hint {
-  margin: 0;
-  padding: 0;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  flex-shrink: 0;
 }
 .preview-empty {
   color: var(--color-text-tertiary);

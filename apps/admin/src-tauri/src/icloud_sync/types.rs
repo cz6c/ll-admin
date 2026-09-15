@@ -207,7 +207,6 @@ pub enum CloudState {
   /// 待同步（含 catalog 新增与 iCloud 有更新）
   CloudOnly,
   Synced,
-  DeletedCloudPending,
   CloudDeleteQueued,
   FailedDelete,
 }
@@ -217,7 +216,6 @@ impl CloudState {
     match self {
       Self::CloudOnly => "cloud_only",
       Self::Synced => "synced",
-      Self::DeletedCloudPending => "deleted_cloud_pending",
       Self::CloudDeleteQueued => "cloud_delete_queued",
       Self::FailedDelete => "failed_delete",
     }
@@ -227,7 +225,8 @@ impl CloudState {
     match s {
       "cloud_only" | "modified_cloud" => Some(Self::CloudOnly),
       "synced" => Some(Self::Synced),
-      "deleted_cloud_pending" => Some(Self::DeletedCloudPending),
+      // 历史态：覆盖硬删后不再写入；读到则忽略（open_db 会 scrub）
+      "deleted_cloud_pending" => None,
       "cloud_delete_queued" => Some(Self::CloudDeleteQueued),
       "failed_delete" => Some(Self::FailedDelete),
       _ => None,
@@ -314,7 +313,6 @@ pub struct IcloudSyncCloudStateSummary {
   pub total: u32,
   pub cloud_only: u32,
   pub synced: u32,
-  pub deleted_cloud_pending: u32,
   pub cloud_delete_queued: u32,
   pub failed_delete: u32,
   /// 派生：活跃 sync job 内 download_status=failed 的行数；任务结束 finalize 后为 0

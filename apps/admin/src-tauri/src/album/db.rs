@@ -77,6 +77,14 @@ fn migrate(conn: &Connection) -> Result<(), String> {
     "ALTER TABLE media ADD COLUMN capture_at_locked INTEGER NOT NULL DEFAULT 0",
     [],
   );
+  // 同步入库后与 sync 表断层：云端身份与产品元数据落在本表
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_asset_id TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_account TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_album TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN added_at TEXT", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN latitude REAL", []);
+  let _ = conn.execute("ALTER TABLE media ADD COLUMN longitude REAL", []);
   Ok(())
 }
 
@@ -144,7 +152,8 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
   let mut stmt = conn
     .prepare(
       "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir,
-              capture_at, camera, width, height, capture_at_source, capture_at_probed, capture_at_locked
+              capture_at, camera, width, height, capture_at_source, capture_at_probed, capture_at_locked,
+              origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -191,6 +200,18 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let capture_at_source = capture_at_source.filter(|s| !s.trim().is_empty());
       let capture_at_probed = row.get::<_, i64>(16).unwrap_or(0) != 0;
       let capture_at_locked = row.get::<_, i64>(17).unwrap_or(0) != 0;
+      let origin: Option<String> = row.get(18)?;
+      let origin = origin.filter(|s| !s.trim().is_empty());
+      let origin_asset_id: Option<String> = row.get(19)?;
+      let origin_asset_id = origin_asset_id.filter(|s| !s.trim().is_empty());
+      let origin_account: Option<String> = row.get(20)?;
+      let origin_account = origin_account.filter(|s| !s.trim().is_empty());
+      let origin_album: Option<String> = row.get(21)?;
+      let origin_album = origin_album.filter(|s| !s.trim().is_empty());
+      let added_at: Option<String> = row.get(22)?;
+      let added_at = added_at.filter(|s| !s.trim().is_empty());
+      let latitude: Option<f64> = row.get(23)?;
+      let longitude: Option<f64> = row.get(24)?;
       Ok((rel_dir.clone(), dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -210,6 +231,13 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         camera,
         width,
         height,
+        origin,
+        origin_asset_id,
+        origin_account,
+        origin_album,
+        added_at,
+        latitude,
+        longitude,
       }))
     })
     .map_err(|e| format!("查询缓存失败: {e}"))?;
@@ -280,8 +308,14 @@ fn upsert_media_impl(
       "
       INSERT INTO media(
         path, root, rel_dir, name, kind, size, modified, ext,
-        thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count
-      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,0)
+        thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count,
+        origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude,
+        capture_at, capture_at_source, capture_at_probed, capture_at_locked, camera, width, height
+      ) VALUES (
+        ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,0,
+        ?14,?15,?16,?17,?18,?19,?20,
+        ?21,?22,?23,?24,?25,?26,?27
+      )
       ON CONFLICT(path) DO UPDATE SET
         root=excluded.root, rel_dir=excluded.rel_dir, name=excluded.name,
         kind=excluded.kind, size=excluded.size, modified=excluded.modified,
@@ -289,13 +323,11 @@ fn upsert_media_impl(
         preview_path=excluded.preview_path, playback_path=excluded.playback_path,
         video_path=excluded.video_path,
         scanned_at=excluded.scanned_at,
-        -- 文件已变（modified/size 不同）时重置失败计数，给坏文件一次重试机会
         fail_count = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.fail_count
           ELSE 0
         END,
-        -- 文件内容变了则清空拍摄时间/机型/尺寸/来源探测，等下次缩略图后再解析
         capture_at = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.capture_at
@@ -331,7 +363,6 @@ fn upsert_media_impl(
             THEN media.height
           ELSE NULL
         END,
-        -- 内容变了则清空指纹，下次重复检测再算
         content_hash = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.content_hash
@@ -341,7 +372,15 @@ fn upsert_media_impl(
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.hash_algo
           ELSE NULL
-        END
+        END,
+        -- 同步身份：ingress 有值则写入/更新；discover 传 NULL 时保留本表
+        origin = COALESCE(excluded.origin, media.origin),
+        origin_asset_id = COALESCE(excluded.origin_asset_id, media.origin_asset_id),
+        origin_account = COALESCE(excluded.origin_account, media.origin_account),
+        origin_album = COALESCE(excluded.origin_album, media.origin_album),
+        added_at = COALESCE(excluded.added_at, media.added_at),
+        latitude = COALESCE(excluded.latitude, media.latitude),
+        longitude = COALESCE(excluded.longitude, media.longitude)
       ",
       params![
         file.path,
@@ -357,6 +396,20 @@ fn upsert_media_impl(
         playback_path,
         file.video_path,
         scanned_at,
+        file.origin,
+        file.origin_asset_id,
+        file.origin_account,
+        file.origin_album,
+        file.added_at,
+        file.latitude,
+        file.longitude,
+        file.capture_at,
+        file.capture_at_source,
+        if file.capture_at_probed { 1i64 } else { 0 },
+        if file.capture_at_locked { 1i64 } else { 0 },
+        file.camera,
+        file.width.map(|v| v as i64),
+        file.height.map(|v| v as i64),
       ],
     )
     .map_err(|e| format!("写入媒体索引失败: {e}"))?;
@@ -472,10 +525,14 @@ pub fn update_cache_paths_batch(
 }
 
 /**
- * 同步落盘后确保 media 行存在，供缩略图管线 UPDATE
- * @note ON CONFLICT 不覆盖已有 thumb/preview/playback，避免擦掉已生成缓存
+ * 同步下载成功：复用 discover upsert + 仅补空 meta（不另写一套 SQL）
  */
-pub fn ensure_media_row(conn: &Connection, root: &str, path: &str) -> Result<(), String> {
+pub fn upsert_media_from_sync(
+  conn: &Connection,
+  root: &str,
+  item: &super::types::SyncedMediaIngress,
+) -> Result<(), String> {
+  let path = item.path.as_str();
   let file_path = Path::new(path);
   if !file_path.is_file() {
     return Err(format!("文件不存在: {path}"));
@@ -486,12 +543,12 @@ pub fn ensure_media_row(conn: &Connection, root: &str, path: &str) -> Result<(),
     .map(|e| e.to_lowercase())
     .unwrap_or_default();
   let kind = if super::thumbnail::is_video_ext(&ext) {
-    "video"
+    MediaKind::Video
   } else {
-    "image"
+    MediaKind::Image
   };
   let meta = std::fs::metadata(file_path).map_err(|e| format!("读文件元数据失败: {e}"))?;
-  let size = meta.len() as i64;
+  let size = meta.len();
   let modified = meta
     .modified()
     .ok()
@@ -501,7 +558,8 @@ pub fn ensure_media_row(conn: &Connection, root: &str, path: &str) -> Result<(),
   let name = file_path
     .file_name()
     .and_then(|n| n.to_str())
-    .unwrap_or_default();
+    .unwrap_or_default()
+    .to_string();
   let parent = file_path.parent().unwrap_or(file_path);
   let rel_dir = parent
     .strip_prefix(Path::new(root))
@@ -515,36 +573,44 @@ pub fn ensure_media_row(conn: &Connection, root: &str, path: &str) -> Result<(),
       }
     })
     .unwrap_or_else(|| ".".to_string());
-  let scanned_at = now_secs();
-  conn
-    .execute(
-      "
-      INSERT INTO media(
-        path, root, rel_dir, name, kind, size, modified, ext,
-        thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count
-      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,NULL,NULL,NULL,NULL,?9,0)
-      ON CONFLICT(path) DO UPDATE SET
-        root=excluded.root,
-        rel_dir=excluded.rel_dir,
-        name=excluded.name,
-        kind=excluded.kind,
-        size=excluded.size,
-        modified=excluded.modified,
-        ext=excluded.ext,
-        scanned_at=excluded.scanned_at,
-        fail_count = CASE
-          WHEN media.modified = excluded.modified AND media.size = excluded.size
-            THEN media.fail_count
-          ELSE 0
-        END
-      ",
-      params![path, root, rel_dir, name, kind, size, modified, ext, scanned_at],
-    )
-    .map_err(|e| format!("ensure media 行失败: {e}"))?;
-  Ok(())
+
+  let fill =
+    super::media_meta::resolve_capture_meta(path, item.origin_capture_at.as_deref());
+  let nonempty = |s: &str| (!s.is_empty()).then_some(s.to_string());
+  let file = MediaFile {
+    path: path.to_string(),
+    name,
+    kind,
+    size,
+    modified,
+    ext,
+    thumb_path: None,
+    preview_path: None,
+    playback_path: None,
+    video_path: None,
+    capture_at: fill.capture_at.clone(),
+    capture_at_source: fill.capture_at_source.clone(),
+    capture_at_probed: true,
+    capture_at_locked: fill.capture_at_locked,
+    rel_dir: rel_dir.clone(),
+    camera: fill.camera.clone(),
+    width: None,
+    height: None,
+    origin: nonempty(&item.origin),
+    origin_asset_id: nonempty(&item.origin_asset_id),
+    origin_account: nonempty(&item.origin_account),
+    origin_album: item.origin_album.clone(),
+    added_at: item.added_at.clone(),
+    latitude: item.latitude,
+    longitude: item.longitude,
+  };
+  upsert_media_impl(conn, root, &rel_dir, &file, None, None, None)
+    .map_err(|e| format!("同步入库 media 失败: {e}"))?;
+  // 指纹变时 upsert 会清空 capture；仅补空写回 origin/EXIF/文件名
+  update_meta_fill_batch(conn, &[(path.to_string(), fill)])
 }
 
-/// 批量补写 EXIF/sync 元数据：仅补空 capture/camera；**总是**写 probed + locked
+/// 批量补写 EXIF/文件名元数据：仅补空 capture/camera；**总是**写 probed + locked
 pub fn update_meta_fill_batch(
   conn: &Connection,
   updates: &[(String, super::media_meta::MediaMetaFill)],
@@ -1037,6 +1103,45 @@ pub fn save_content_hash(
     )
     .map_err(|e| format!("写入 content_hash 失败: {e}"))?;
   Ok(())
+}
+
+/**
+ * 同步入库身份索引：有 `origin` / `origin_asset_id` 的 media 行
+ * @returns 规范化 path → (origin_asset_id?, kind)；供重复检测正本优先，不读 sync 库
+ */
+pub fn load_origin_path_index(
+  conn: &Connection,
+) -> Result<HashMap<String, (Option<String>, String)>, String> {
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT path, origin_asset_id, kind
+      FROM media
+      WHERE (origin_asset_id IS NOT NULL AND trim(origin_asset_id) != '')
+         OR (origin IS NOT NULL AND trim(origin) != '')
+      "#,
+    )
+    .map_err(|e| format!("准备 origin 索引查询失败: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| {
+      let path: String = row.get(0)?;
+      let origin_asset_id: Option<String> = row.get(1)?;
+      let kind: String = row.get(2)?;
+      Ok((path, origin_asset_id, kind))
+    })
+    .map_err(|e| format!("查询 origin 索引失败: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("解析 origin 索引失败: {e}"))?;
+
+  let mut map = HashMap::with_capacity(rows.len());
+  for (path, origin_asset_id, kind) in rows {
+    let key = path.replace('\\', "/").to_lowercase();
+    let asset_id = origin_asset_id
+      .map(|s| s.trim().to_string())
+      .filter(|s| !s.is_empty());
+    map.insert(key, (asset_id, kind));
+  }
+  Ok(map)
 }
 
 #[cfg(test)]

@@ -176,6 +176,70 @@ pub fn list_pending_downloads(
   Ok(rows)
 }
 
+/**
+ * 某相册（或全库）已下载 asset_id 集合：synced 且 dest_path 非空
+ */
+pub fn synced_asset_ids(
+  conn: &Connection,
+  album_id: Option<&str>,
+) -> Result<std::collections::HashSet<String>, String> {
+  let sql = if album_id.is_some() {
+    r#"
+      SELECT asset_id FROM assets
+      WHERE cloud_state = 'synced'
+        AND dest_path IS NOT NULL AND trim(dest_path) != ''
+        AND album_id = ?1
+      "#
+  } else {
+    r#"
+      SELECT asset_id FROM assets
+      WHERE cloud_state = 'synced'
+        AND dest_path IS NOT NULL AND trim(dest_path) != ''
+      "#
+  };
+  let mut stmt = conn
+    .prepare(sql)
+    .map_err(|e| format!("准备已下载查询失败: {e}"))?;
+  let rows = if let Some(aid) = album_id {
+    stmt
+      .query_map(params![aid], |row| row.get::<_, String>(0))
+      .map_err(|e| format!("查询已下载失败: {e}"))?
+      .collect::<Result<std::collections::HashSet<_>, _>>()
+      .map_err(|e| format!("解析已下载失败: {e}"))?
+  } else {
+    stmt
+      .query_map([], |row| row.get::<_, String>(0))
+      .map_err(|e| format!("查询已下载失败: {e}"))?
+      .collect::<Result<std::collections::HashSet<_>, _>>()
+      .map_err(|e| format!("解析已下载失败: {e}"))?
+  };
+  Ok(rows)
+}
+
+/// 云端已删：硬删 sync 行（不碰本地文件 / media.db）
+pub fn delete_assets_by_ids(conn: &Connection, asset_ids: &[String]) -> Result<u32, String> {
+  if asset_ids.is_empty() {
+    return Ok(0);
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启删 sync 行事务失败: {e}"))?;
+  let mut n = 0u32;
+  {
+    let mut stmt = tx
+      .prepare("DELETE FROM assets WHERE asset_id = ?1")
+      .map_err(|e| format!("准备删 sync 行失败: {e}"))?;
+    for id in asset_ids {
+      n += stmt
+        .execute(params![id])
+        .map_err(|e| format!("删 sync 行失败: {e}"))? as u32;
+    }
+  }
+  tx.commit()
+    .map_err(|e| format!("提交删 sync 行失败: {e}"))?;
+  Ok(n)
+}
+
 /// 覆盖模式：删除本次 catalog 未见的资产行（不删本地文件）
 /// @param album_id 有值时仅清理该相册，避免单相册同步误删其它相册断点
 pub fn purge_assets_not_in(

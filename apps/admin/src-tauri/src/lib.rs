@@ -92,8 +92,6 @@ pub fn run() {
       icloud_sync::cloud_assets::icloud_sync_get_cloud_state_summary,
       icloud_sync::cloud_delete::icloud_sync_delete_assets,
       icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
-      icloud_sync::cloud_delete::icloud_sync_cancel_cloud_delete,
-      icloud_sync::cloud_delete::icloud_sync_retry_cloud_deletes,
       qzone_sync::qzone_sync_get_settings,
       qzone_sync::qzone_sync_save_settings,
       qzone_sync::qzone_sync_default_output_dir,
@@ -108,6 +106,7 @@ pub fn run() {
       qzone_sync::qzone_sync_job_status,
       qzone_sync::qzone_sync_list_albums,
       qzone_sync::qzone_sync_list_photos,
+      qzone_sync::qzone_sync_delete_photos,
       qzone_sync::qzone_sync_fetch_media,
       qzone_sync::qzone_sync_prepare_preview,
       qzone_sync::qzone_sync_pending_count,
@@ -157,11 +156,6 @@ pub fn run() {
           }
         })
         .build(app)?;
-
-      icloud_sync::init_cloud_delete_worker(
-        handle.clone(),
-        handle.state::<icloud_sync::SidecarClientHandle>().client(),
-      );
 
       Ok(())
     })

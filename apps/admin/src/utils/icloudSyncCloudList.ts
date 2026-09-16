@@ -60,7 +60,7 @@ export function cloudListDisplayFilename(row: IcloudSyncSyncAssetRow): string {
 
 
 
-/** still+mov 任一侧 failed 即同步失败；任一侧 pending 视为未完成（cloud_state 仍主导） */
+/** still+mov 任一侧 failed 即下载失败；任一侧 pending 视为未完成（cloud_state 仍主导） */
 
 function pairDownloadStatus(still?: string | null, mov?: string | null): string | null {
 
@@ -191,7 +191,7 @@ export function prepareCloudListRows(items: IcloudSyncSyncAssetRow[]): IcloudSyn
 
  * 抽屉列表展示态：以 cloud_state 为主；活跃 job 内 download_status=failed 覆盖为 download_failed
 
- * @note cloud_state 持久（腾空间/删云）；download_status 仅 job 期间有效，与 cloud_only 待同步高度重叠
+ * @note cloud_state 持久（腾空间/删云）；download_status 仅 job 期间有效，与 cloud_only 待下载高度重叠
 
  */
 
@@ -201,7 +201,7 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
 
   if (activeDl === "failed") return "download_failed";
 
-  // legacy DB 行可能仍为 modified_cloud，展示与待同步一致
+  // legacy DB 行可能仍为 modified_cloud，展示与待下载一致
 
   if (row.cloudState === "modified_cloud") return "cloud_only";
 
@@ -212,12 +212,10 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
 
 
 const CLOUD_STATE_LABELS: Record<string, string> = {
-  cloud_only: "待同步",
-  modified_cloud: "待同步",
-  synced: "已同步",
-  cloud_delete_queued: "待移除",
-  failed_delete: "移除失败",
-  download_failed: "同步失败"
+  cloud_only: "待下载",
+  modified_cloud: "待下载",
+  synced: "已下载",
+  download_failed: "下载失败"
 };
 
 /** iCloud 资产状态 Tag 文案 */
@@ -241,31 +239,20 @@ export interface CloudListStateFilterOption {
  */
 export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "all", countKey: "total", tabLabel: "全部" },
-  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
-  { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true },
-  { value: "synced", countKey: "synced", tabLabel: "已同步" },
-  { value: "cloud_delete_queued", countKey: "cloudDeleteQueued", tabLabel: "待移除" },
-  { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
+  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待下载" },
+  { value: "download_failed", countKey: "downloadFailed", tabLabel: "下载失败", dangerCount: true },
+  { value: "synced", countKey: "synced", tabLabel: "已下载" }
 ];
 
 /**
- * 「同步到本地」列表 Tab：全部 / 待同步 / 已同步 / 同步失败
- * @note 抽屉仅保留此子集；删云走工具栏勾选已同步项，不另开释放分栏
+ * 「下载到本地」列表 Tab：全部 / 待下载 / 已下载 / 下载失败
+ * @note 抽屉仅保留此子集；删云走工具栏勾选已下载项
  */
 export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
   { value: "all", countKey: "total", tabLabel: "全部" },
-  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待同步" },
-  { value: "synced", countKey: "synced", tabLabel: "已同步" },
-  { value: "download_failed", countKey: "downloadFailed", tabLabel: "同步失败", dangerCount: true }
-];
-
-/**
- * 「释放 iCloud 空间」相关 Tab：待移除（已同步） / 移除失败
- */
-export const CLOUD_LIST_FREE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", countKey: "total", tabLabel: "全部" },
-  { value: "synced", countKey: "synced", tabLabel: "待移除（已同步）" },
-  { value: "failed_delete", countKey: "failedDelete", tabLabel: "移除失败", dangerCount: true }
+  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待下载" },
+  { value: "synced", countKey: "synced", tabLabel: "已下载" },
+  { value: "download_failed", countKey: "downloadFailed", tabLabel: "下载失败", dangerCount: true }
 ];
 
 /** 状态筛选完整文案；all 为筛选用，其余与表格状态列 Tag 一致 */
@@ -284,10 +271,7 @@ export function cloudStateColor(state: string): string {
   const normalized = state === "modified_cloud" ? "cloud_only" : state;
   if (normalized === "synced") return "success";
   if (normalized === "cloud_only") return "processing";
-  if (normalized === "cloud_delete_queued") return "warning";
-  if (normalized === "failed_delete" || normalized === "download_failed") {
-    return "error";
-  }
+  if (normalized === "download_failed") return "error";
   return "default";
 }
 

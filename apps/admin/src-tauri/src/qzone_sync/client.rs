@@ -21,6 +21,9 @@ const PHOTO_LIST: &str =
 /// 浮层详情：列表里的视频常只有封面或 m3u8，需此接口取 MP4 `download_url`
 const FLOATVIEW_PHOTO: &str =
   "https://user.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_floatview_photo_list_v2";
+/// 批量删图（对齐 qzone-api：cgi_delpic_multi_v2）；只删云端，本机保留
+const DELETE_PHOTO: &str =
+  "https://user.qzone.qq.com/proxy/domain/photo.qzone.qq.com/cgi-bin/common/cgi_delpic_multi_v2";
 
 /// 机读前缀：Cookie/登录态失效；调用方应 `clear_session` 并引导重新扫码
 pub const AUTH_EXPIRED_PREFIX: &str = "qzone_auth_expired:";
@@ -276,11 +279,17 @@ pub fn list_albums(session: &QzoneSession) -> Result<Vec<QzoneAlbumSummary>, Str
       .find_map(|k| item.get(*k).and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
       .unwrap_or("")
       .to_string();
+      let priv_code = item
+        .get("priv")
+        .or_else(|| item.get("rights"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1) as i32;
       out.push(QzoneAlbumSummary {
         topic_id,
         name,
         total,
         cover_url,
+        album_priv: if priv_code == 0 { 1 } else { priv_code },
       });
     }
     if list.len() < page_num as usize {
@@ -304,6 +313,8 @@ pub struct QzonePhotoItem {
   pub download_url: String,
   pub thumb_url: String,
   pub preview_url: String,
+  /// 删图用；与 lloc 不同时必填
+  pub sloc: String,
 }
 
 /// 分页拉取某相册媒体（本人 hostUin = uin）
@@ -368,15 +379,24 @@ pub fn list_photo_views(
   Ok(
     list_photos(session, album_id)?
       .into_iter()
-      .map(|p| QzonePhotoView {
-        asset_id: p.asset_id,
-        album_id: album_id.to_string(),
-        name: p.name,
-        media_kind: p.media_kind,
-        thumb_url: p.thumb_url,
-        preview_url: p.preview_url,
-        download_url: p.download_url,
-        capture_at: p.capture_at,
+      .map(|p| {
+        let sloc = if p.sloc.is_empty() {
+          p.asset_id.clone()
+        } else {
+          p.sloc
+        };
+        QzonePhotoView {
+          asset_id: p.asset_id,
+          album_id: album_id.to_string(),
+          name: p.name,
+          media_kind: p.media_kind,
+          thumb_url: p.thumb_url,
+          preview_url: p.preview_url,
+          download_url: p.download_url,
+          capture_at: p.capture_at,
+          sloc,
+          downloaded: false,
+        }
       })
       .collect(),
   )
@@ -575,7 +595,7 @@ fn map_photo_item(item: &Value) -> Option<QzonePhotoItem> {
   };
   let capture_at = capture_time::resolve_from_photo_json(item).map(|i| i.display);
   Some(QzonePhotoItem {
-    asset_id,
+    asset_id: asset_id.clone(),
     name,
     media_kind: if is_video {
       "video".into()
@@ -586,6 +606,11 @@ fn map_photo_item(item: &Value) -> Option<QzonePhotoItem> {
     download_url,
     thumb_url,
     preview_url,
+    sloc: if sloc.is_empty() {
+      asset_id
+    } else {
+      sloc.to_string()
+    },
   })
 }
 
@@ -725,6 +750,106 @@ fn ext_from_url_or_ctype(url: &str, ctype: &str) -> String {
     }
   }
   "bin".into()
+}
+
+/**
+ * 从 QQ 空间删除本人相册中的照片/视频（本机文件不动）
+ * @param priv_code 相册 priv/rights；≤0 时按 1
+ * @param pairs (lloc, sloc)；sloc 空则用 lloc
+ * @note 对齐公开网页端 `cgi_delpic_multi_v2` + form `codelist`
+ */
+pub fn delete_photos(
+  session: &QzoneSession,
+  album_id: &str,
+  priv_code: i32,
+  pairs: &[(String, String)],
+) -> Result<(), String> {
+  if album_id.trim().is_empty() {
+    return Err("album_id 不能为空".into());
+  }
+  if pairs.is_empty() {
+    return Ok(());
+  }
+  let priv_n = if priv_code <= 0 { 1 } else { priv_code };
+  let client = build_client(session)?;
+  let g_tk = calc_g_tk(&session.p_skey);
+  let uin: i64 = session
+    .uin
+    .parse()
+    .map_err(|_| format!("uin 非法: {}", session.uin))?;
+
+  // 分批：单请求过多易失败；每批最多 20
+  for chunk in pairs.chunks(20) {
+    let codelist = chunk
+      .iter()
+      .map(|(lloc, sloc)| {
+        let s = if sloc.trim().is_empty() {
+          lloc.as_str()
+        } else {
+          sloc.as_str()
+        };
+        format!("{lloc}|53|0|0||{s}|{priv_n}|0")
+      })
+      .collect::<Vec<_>>()
+      .join(",");
+    let url = format!("{DELETE_PHOTO}?g_tk={g_tk}");
+    let form = [
+      ("qzreferrer", format!("https://user.qzone.qq.com/{uin}")),
+      ("albumid", album_id.to_string()),
+      ("nvip", "1".into()),
+      ("priv", priv_n.to_string()),
+      ("codelist", codelist),
+      ("ismultiup", "0".into()),
+      ("resetcover", "1".into()),
+      ("newcover", String::new()),
+      ("uin", uin.to_string()),
+      ("hostUin", uin.to_string()),
+      ("plat", "qzone".into()),
+      ("source", "qzone".into()),
+      ("inCharset", "utf-8".into()),
+      ("outCharset", "utf-8".into()),
+      ("format", "json".into()),
+    ];
+    let resp = client
+      .post(&url)
+      .form(&form)
+      .send()
+      .map_err(|e| format_reqwest_err("删图请求失败", &e))?;
+    let status = resp.status();
+    if !status.is_success() {
+      return Err(map_http_status_err("删图", status));
+    }
+    let body = resp
+      .text()
+      .map_err(|e| format_reqwest_err("读删图响应失败", &e))?;
+    let root = parse_delete_response(&body)?;
+    api_code_ok(&root)?;
+  }
+  Ok(())
+}
+
+/// 删图响应可能是纯 JSON 或带 callback 的包装
+fn parse_delete_response(body: &str) -> Result<Value, String> {
+  let trimmed = body.trim();
+  if trimmed.starts_with('{') {
+    return serde_json::from_str(trimmed).map_err(|e| format!("解析删图 JSON 失败: {e}"));
+  }
+  if let Ok(v) = parse_jsonp(trimmed) {
+    return Ok(v);
+  }
+  // frameElement.callback({...})
+  if let Some(start) = trimmed.find('{') {
+    if let Some(end) = trimmed.rfind('}') {
+      if end > start {
+        return serde_json::from_str(&trimmed[start..=end])
+          .map_err(|e| format!("解析删图回调 JSON 失败: {e}"));
+      }
+    }
+  }
+  Err(format!(
+    "无法解析删图响应: {}",
+    trimmed.chars().take(120).collect::<String>()
+  ))
 }
 
 /// invoke 用：字节再转 base64（热路径请走 qzoneimg 协议，勿用此接口刷缩略图）

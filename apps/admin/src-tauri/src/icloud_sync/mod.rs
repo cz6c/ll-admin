@@ -26,7 +26,6 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-pub use cloud_delete::init_cloud_delete_worker;
 pub use queue::SidecarClientHandle;
 /// 供 album 扫描识别同步命名 vs 异物
 pub(crate) use naming::is_sync_asset_filename;
@@ -192,9 +191,9 @@ pub struct IcloudSyncAuthStateResult {
   pub icloud_domain: String,
   /// session 目录是否有落盘文件；不保证仍有效
   pub session_present: bool,
-  /// 当前 Apple ID 是否已有专属 session 文件（可能待 2FA，不保证可同步）
+  /// 当前 Apple ID 是否已有专属 session 文件（可能待 2FA，不保证仍可访问 Photos）
   pub session_for_current_apple_id: bool,
-  /// 是否已登录且可同步：须 auth_probe 成功（非仅磁盘有文件）
+  /// UI 已登录：当前账号有落盘 session。不在本命令里 auth_probe / 清盘，避免重启 sidecar 时把仍有效的 cookie 误删
   pub logged_in: bool,
 }
 
@@ -475,39 +474,22 @@ pub async fn icloud_sync_resend_2fa(
 }
 
 /// 读取凭据 / session 概况（不含密码明文）
-/// @note `logged_in` 以 auth_probe 为准；伪 session 会清盘并返回未登录
-/// @note `(async)`：auth_probe 可能打 sidecar/Apple，不可堵主线程
+/// @note UI `logged_in` 只看当前账号是否有落盘 session；不打 Apple、不清盘。
+/// @note 探活 / 清伪 session 留给 `ensure_sidecar_authenticated`、显式 login / logout。
 #[tauri::command]
-pub async fn icloud_sync_auth_state(
-  app: AppHandle,
-  sidecar: State<'_, SidecarClientHandle>,
-) -> Result<IcloudSyncAuthStateResult, String> {
-  let client = sidecar.client();
+pub async fn icloud_sync_auth_state(app: AppHandle) -> Result<IcloudSyncAuthStateResult, String> {
   tokio::task::spawn_blocking(move || -> Result<IcloudSyncAuthStateResult, String> {
     let settings = load_settings(&app)?;
     let apple_id = settings.apple_id.clone();
-
     let has_files = session_has_files_for_apple_id(&app, &apple_id)?;
-    let (logged_in, session_for_current) = if apple_id.trim().is_empty() || !has_files {
-      (false, false)
-    } else {
-      match run_auth_probe(&app, client.as_ref())? {
-        AuthProbeOutcome::Authenticated => (true, true),
-        AuthProbeOutcome::Need2fa { .. } => (false, true),
-        AuthProbeOutcome::Unavailable { .. } => {
-          discard_invalid_session(&app, client.as_ref(), &apple_id);
-          (false, false)
-        }
-      }
-    };
 
     Ok(IcloudSyncAuthStateResult {
       apple_id: settings.apple_id.clone(),
       has_password: keyring_store::has_password(&app)?,
       icloud_domain: normalize_icloud_domain(&settings.icloud_domain),
       session_present: session_has_files(&app)?,
-      session_for_current_apple_id: session_for_current,
-      logged_in,
+      session_for_current_apple_id: has_files,
+      logged_in: has_files,
     })
   })
   .await

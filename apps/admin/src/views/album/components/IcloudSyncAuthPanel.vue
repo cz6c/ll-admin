@@ -1,5 +1,5 @@
 <!--
-  iCloud 同步 — Apple ID 登录面板（抽屉内嵌）
+  iCloud 下载 — Apple ID 登录面板（抽屉内嵌）
   职责：凭据、区域、2FA、「记住我」；账号前提 tip
   主流程：密码直传 login 换 session；仅勾选记住我且成功后写入钥匙串供下次回填
   @note 面板回填只读 settings/钥匙串，不调 auth_state（探活见 hydrate / 写操作 ensure）
@@ -30,7 +30,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** accountChanged：本次登录变更了 Apple ID（旧同步任务不可续传） */
+  /** accountChanged：本次登录变更了 Apple ID（旧下载任务不可续传） */
   loggedIn: [payload: { accountChanged: boolean }];
 }>();
 
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
 <template>
   <a-spin :spinning="loading" class="auth-panel-spin">
     <div class="auth-panel">
-      <a-alert v-if="accountSwitchPending" type="warning" show-icon class="mb-12px" message="即将切换 Apple ID，旧账号同步任务将无法续传" />
+      <a-alert v-if="accountSwitchPending" type="warning" show-icon class="mb-12px" message="即将切换 Apple ID，旧账号下载任务将无法续传" />
 
       <a-alert type="info" show-icon class="mb-12px" message="登录前请确认">
         <template #description>

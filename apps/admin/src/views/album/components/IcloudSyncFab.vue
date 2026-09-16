@@ -1,7 +1,7 @@
 <!--
-  iCloud 同步浮动触发区
-  职责：右下角 FAB；抽屉顶部全局进度 +「同步到本地」网格浏览（在线 thumb）；工具栏危险区删云
-  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱（MediaLightboxShell）；synced 勾选删云经确认后全屏浮层
+  iCloud 下载浮动触发区
+  职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；工具栏危险区删云
+  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱；synced 勾选删云经确认后一次性移除（toast，不占任务队列）
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -16,7 +16,6 @@ import {
   loadIcloudSyncCloudList,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
-  retryIcloudSyncCloudDeletes,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetsResult
@@ -41,9 +40,6 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
-/** 删云全屏浮层阶段：入队后 running，任务终态切 done/failed；关闭回 idle */
-type CloudDeleteOverlayPhase = "idle" | "running" | "done" | "failed";
-
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
   displayStateLabel: string;
@@ -58,17 +54,11 @@ const {
   downloadProgressTick,
   canManageCloudSpace,
   refreshingCatalog,
-  bindActiveTask,
   onRefreshCatalog,
-  isCloudDeleteTask,
-  jobStatus,
-  progress,
-  progressPercent,
   onLoggedIn,
   onLogoutAccount,
   hydrateFromStorage,
-  refreshAccountSettings,
-  clearActiveJob
+  refreshAccountSettings
 } = useIcloudSyncJob();
 
 const drawerOpen = ref(false);
@@ -77,7 +67,7 @@ const loggingOut = ref(false);
 /** 抽屉打开且未登录：内嵌登录面板（替代原弹窗） */
 const authPanelActive = computed(() => drawerOpen.value && !isLoggedIn.value);
 
-/** 列表筛选项（仅「同步到本地」PULL 子集） */
+/** 列表筛选项（仅「下载到本地」PULL 子集） */
 const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
@@ -98,15 +88,9 @@ const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deletingAllSynced = ref(false);
-const retryingCloudDelete = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
-/** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云/取消须用此 Map */
+/** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云须用此 Map */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
-
-/** 删云进度浮层：无取消；失败可在浮层内重试 */
-const cloudDeleteOverlayPhase = ref<CloudDeleteOverlayPhase>("idle");
-const cloudDeleteOverlayVisible = computed(() => cloudDeleteOverlayPhase.value !== "idle");
-
 /**
  * 合并当前页勾选与他页已选。
  * antd Table 的 onChange 默认只回传本页 keys，直接赋值会丢掉跨页勾选。
@@ -254,7 +238,7 @@ function guardCloudManageAction(): boolean {
   return false;
 }
 
-/** Tab：PULL 子集；同步失败角标为 0 时隐藏该项 */
+/** Tab：PULL 子集；下载失败角标为 0 时隐藏该项 */
 const cloudStateFilterTabs = computed((): CloudListStateFilterOption[] => {
   return CLOUD_LIST_PULL_FILTER_OPTIONS.filter(tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0);
 });
@@ -268,7 +252,7 @@ function ensureCloudFilter() {
   } else if (cloudFilter.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
     cloudFilter.value = "cloud_only";
   }
-  if (cloudFilter.value !== prev) cloudPage.value = 1;  // refreshCloudAssets 会重置，保留语义
+  if (cloudFilter.value !== prev) cloudPage.value = 1; // refreshCloudAssets 会重置，保留语义
 }
 
 /** Tab 角标数字；0 返回 null */
@@ -279,10 +263,10 @@ function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | n
   return count;
 }
 
-const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value || retryingCloudDelete.value);
+const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value);
 
-/** 有勾选 → 移除所选；否则 → 移除全部已同步 */
-const deleteCloudPrimaryLabel = computed(() => (cloudSelectedKeys.value.length > 0 ? `移除所选（${cloudSelectedKeys.value.length}）` : "移除全部已同步"));
+/** 有勾选 → 移除所选；否则 → 移除全部已下载 */
+const deleteCloudPrimaryLabel = computed(() => (cloudSelectedKeys.value.length > 0 ? `移除所选（${cloudSelectedKeys.value.length}）` : "移除全部已下载"));
 
 const deleteCloudPrimaryDisabled = computed(() => {
   if (!canManageCloudSpace.value || deleteBusy.value) return true;
@@ -423,32 +407,28 @@ const ICLOUD_REMOVE_HINT =
   "只删除 iCloud 上的副本，电脑里的文件会保留。照片会先进入 iCloud「最近删除」，通常约 30 天后才彻底释放空间；此期间可在 iPhone 或 iCloud.com 恢复。";
 
 /**
- * 格式化「从 iCloud 移除」入队结果（区分缺 CPL / 本地缺失，文案可行动）
+ * 一次性删云结果 toast（对齐 QQ：不入任务队列、无全屏浮层）
  */
-function formatDeleteEnqueueMessage(result: IcloudSyncDeleteAssetsResult): string {
-  const parts = [`已安排从 iCloud 移除 ${result.accepted} 项`];
+function notifyDeleteResult(result: IcloudSyncDeleteAssetsResult) {
+  const parts: string[] = [];
+  if (result.deleted > 0) parts.push(`已移除 ${result.deleted} 项`);
+  if (result.failed > 0) parts.push(`失败 ${result.failed} 项`);
   if (result.rejectedLocalMissing > 0) {
-    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过（可先「刷新状态」核对）`);
+    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过`);
   }
   if (result.rejectedMissingCpl > 0) {
-    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据（请先「同步到本地」或「刷新状态」）`);
+    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据`);
   }
-  const other = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
-  if (other > 0) {
-    parts.push(`${other} 项无法入队`);
-  }
-  return parts.join("，");
-}
-
-/** 入队结果：有跳过项用 warning，全部成功用 success */
-function notifyDeleteEnqueueResult(result: IcloudSyncDeleteAssetsResult) {
-  const text = formatDeleteEnqueueMessage(result);
-  if (result.rejected > 0) $feedback.message.warning(text);
+  const otherRejected = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
+  if (otherRejected > 0) parts.push(`${otherRejected} 项已跳过`);
+  const text = result.message?.trim() || parts.join("，") || "操作完成";
+  if (result.failed > 0 && result.deleted === 0) $feedback.message.error(text);
+  else if (result.failed > 0 || result.rejected > 0) $feedback.message.warning(text);
   else $feedback.message.success(text);
 }
 
 /**
- * 删云相关操作失败：轻提示，不写抽屉底栏（避免与进行中任务矛盾粘住）
+ * 删云相关操作失败：轻提示，不写抽屉底栏
  * @note 「没有可删除…」属可纠正条件，用 warning
  */
 function notifyDeleteOpError(e: unknown) {
@@ -456,59 +436,6 @@ function notifyDeleteOpError(e: unknown) {
   if (text.includes("没有可删除")) $feedback.message.warning(text);
   else $feedback.message.error(text);
 }
-
-/** 打开删云浮层并绑定任务（入队 / 重试成功后） */
-async function beginCloudDeleteOverlay(jobId: number) {
-  if (jobId <= 0) return;
-  cloudDeleteOverlayPhase.value = "running";
-  await bindActiveTask(jobId);
-}
-
-/** 关闭浮层：刷新列表并清空勾选；终态删云任务卸掉，进度卡回到同步空闲 */
-function closeCloudDeleteOverlay() {
-  cloudDeleteOverlayPhase.value = "idle";
-  if (isCloudDeleteTask.value && (jobStatus.value === "done" || jobStatus.value === "failed")) {
-    clearActiveJob();
-  }
-  clearCloudSelection();
-  void refreshCloudAssets();
-}
-
-const cloudDeleteOverlayTitle = computed(() => {
-  switch (cloudDeleteOverlayPhase.value) {
-    case "running":
-      return "正在从 iCloud 移除…";
-    case "done":
-      return "从 iCloud 移除已完成";
-    case "failed":
-      return "从 iCloud 移除失败";
-    default:
-      return "";
-  }
-});
-
-const cloudDeleteOverlayStats = computed(() => {
-  const p = progress.value;
-  if (p.total <= 0) return "";
-  return `共 ${p.total} · 已移除 ${p.done} · 待处理 ${p.pending} · 失败 ${p.failed}`;
-});
-
-const cloudDeleteOverlayDetail = computed(() => {
-  const p = progress.value;
-  if (cloudDeleteOverlayPhase.value === "running" && p.filename) {
-    return `当前：${p.filename}`;
-  }
-  if (cloudDeleteOverlayPhase.value === "done") {
-    if (p.failed > 0) return `成功 ${p.done} 项，失败 ${p.failed} 项。本地文件均保留。`;
-    return `已成功移除 ${p.done || p.total} 项 iCloud 副本，本地文件保留。`;
-  }
-  if (cloudDeleteOverlayPhase.value === "failed") {
-    const failPart = p.failed > 0 ? `失败 ${p.failed} 项` : "任务失败";
-    const donePart = p.done > 0 ? `，已移除 ${p.done} 项` : "";
-    return `${failPart}${donePart}。可关闭或重试失败项。`;
-  }
-  return "";
-});
 
 /** 删云确认：1.5s 冷却后才可点确认（设计 §安全） */
 async function openDeleteConfirmModal(opts: { title: string; content: string; onConfirm: () => Promise<void> }) {
@@ -528,12 +455,12 @@ async function openDeleteConfirmModal(opts: { title: string; content: string; on
   }
 }
 
-/** 从 iCloud 移除确认 Modal：1.5s 冷却后才可点确认（设计 §安全） */
+/** 从 iCloud 移除所选（一次性；本机保留） */
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
   const selected = selectedCloudRows().filter(row => row.cloudState === "synced");
   if (selected.length === 0) {
-    $feedback.message.warning("请先勾选要从 iCloud 移除的照片（须已同步到本地）");
+    $feedback.message.warning("请先勾选要从 iCloud 移除的照片（须已下载到本地）");
     return;
   }
 
@@ -544,9 +471,9 @@ function confirmDeleteCloud() {
       deletingCloud.value = true;
       try {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
-        notifyDeleteEnqueueResult(result);
+        notifyDeleteResult(result);
         clearCloudSelection();
-        await beginCloudDeleteOverlay(result.jobId);
+        await refreshCloudAssets();
       } catch (e) {
         notifyDeleteOpError(e);
         throw e;
@@ -557,25 +484,25 @@ function confirmDeleteCloud() {
   });
 }
 
-/** 全部已同步项从 iCloud 移除（跨页） */
+/** 全部已下载项从 iCloud 移除（跨页；一次性） */
 function confirmDeleteAllSynced() {
   if (!guardCloudManageAction()) return;
   const syncedCount = cloudSummary.value?.synced ?? 0;
   if (syncedCount <= 0) {
-    $feedback.message.info("没有已同步到本地、可从 iCloud 移除的项");
+    $feedback.message.info("没有已下载到本地、可从 iCloud 移除的项");
     return;
   }
 
   openDeleteConfirmModal({
-    title: `从 iCloud 移除全部已同步项（约 ${syncedCount} 项）？`,
+    title: `从 iCloud 移除全部已下载项（约 ${syncedCount} 项）？`,
     content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
     onConfirm: async () => {
       deletingAllSynced.value = true;
       try {
         const result = await deleteAllSyncedIcloudAssets();
-        notifyDeleteEnqueueResult(result);
+        notifyDeleteResult(result);
         clearCloudSelection();
-        await beginCloudDeleteOverlay(result.jobId);
+        await refreshCloudAssets();
       } catch (e) {
         notifyDeleteOpError(e);
         throw e;
@@ -585,42 +512,6 @@ function confirmDeleteAllSynced() {
     }
   });
 }
-
-/** 浮层内重试失败项（方案 A） */
-async function onRetryCloudDeletesFromOverlay() {
-  if (retryingCloudDelete.value) return;
-  retryingCloudDelete.value = true;
-  try {
-    const result = await retryIcloudSyncCloudDeletes();
-    if (result.retried === 0) {
-      $feedback.message.info("没有需要从 iCloud 移除的失败项");
-      return;
-    }
-    $feedback.message.success(`已重新安排 ${result.retried} 项从 iCloud 移除`);
-    await beginCloudDeleteOverlay(result.jobId);
-  } catch (e) {
-    notifyDeleteOpError(e);
-  } finally {
-    retryingCloudDelete.value = false;
-  }
-}
-
-/** 删云任务终态驱动浮层 phase（仅浮层已打开且为 cloudDelete 时） */
-watch(
-  () => ({
-    visible: cloudDeleteOverlayVisible.value,
-    isDelete: isCloudDeleteTask.value,
-    status: jobStatus.value
-  }),
-  ({ visible, isDelete, status }) => {
-    if (!visible || !isDelete || !status) return;
-    if (status === "done") cloudDeleteOverlayPhase.value = "done";
-    else if (status === "failed") cloudDeleteOverlayPhase.value = "failed";
-    else if (status === "running" || status === "pending" || status === "paused_user" || status === "paused_session") {
-      cloudDeleteOverlayPhase.value = "running";
-    }
-  }
-);
 
 watch(canManageCloudSpace, ok => {
   if (!ok) clearCloudSelection();
@@ -738,10 +629,7 @@ const {
       fabX.value = next.x;
       fabY.value = next.y;
     }
-    if (
-      Math.abs(pos.x - fabDragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX ||
-      Math.abs(pos.y - fabDragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX
-    ) {
+    if (Math.abs(pos.x - fabDragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX || Math.abs(pos.y - fabDragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX) {
       fabDragMoved = true;
     }
   },
@@ -787,19 +675,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    ref="fabRootRef"
-    class="fab-root"
-    :class="{ 'is-dragging': fabDragging }"
-    :style="fabDragStyle"
-  >
-    <a-button
-      class="fab-btn"
-      :class="`fab-${fabState.color}`"
-      shape="circle"
-      size="large"
-      :title="fabState.label"
-    >
+  <div ref="fabRootRef" class="fab-root" :class="{ 'is-dragging': fabDragging }" :style="fabDragStyle">
+    <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
       <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
       <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
     </a-button>
@@ -807,9 +684,9 @@ onBeforeUnmount(() => {
 
   <a-drawer
     v-model:open="drawerOpen"
-    title="iCloud 同步"
+    title="iCloud 下载"
     placement="right"
-    :width="920"
+    :width="1024"
     class="icloud-sync-drawer"
     :keyboard="!previewOpen"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
@@ -934,30 +811,6 @@ onBeforeUnmount(() => {
     <BaseImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
     <a-empty v-else description="无法加载预览" :image="false" />
   </MediaLightboxShell>
-
-  <!-- 删云全屏浮层：进度 / 完成 / 失败摘要；无取消；失败可重试 -->
-  <Teleport to="body">
-    <div v-if="cloudDeleteOverlayVisible" class="icloud-cloud-delete-overlay" role="dialog" aria-modal="true" :aria-label="cloudDeleteOverlayTitle">
-      <div class="icloud-cloud-delete-overlay__panel">
-        <h3 class="icloud-cloud-delete-overlay__title">{{ cloudDeleteOverlayTitle }}</h3>
-        <a-progress
-          v-if="cloudDeleteOverlayPhase === 'running' || progress.total > 0"
-          class="icloud-cloud-delete-overlay__bar"
-          :percent="cloudDeleteOverlayPhase === 'done' ? 100 : progressPercent"
-          :status="cloudDeleteOverlayPhase === 'failed' ? 'exception' : cloudDeleteOverlayPhase === 'done' ? 'success' : 'active'"
-          :show-info="true"
-        />
-        <p v-if="cloudDeleteOverlayStats" class="icloud-cloud-delete-overlay__stats">{{ cloudDeleteOverlayStats }}</p>
-        <p v-if="cloudDeleteOverlayDetail" class="icloud-cloud-delete-overlay__detail">{{ cloudDeleteOverlayDetail }}</p>
-        <div v-if="cloudDeleteOverlayPhase === 'done' || cloudDeleteOverlayPhase === 'failed'" class="icloud-cloud-delete-overlay__actions">
-          <a-button @click="closeCloudDeleteOverlay()">关闭</a-button>
-          <a-button v-if="cloudDeleteOverlayPhase === 'failed'" type="primary" :loading="retryingCloudDelete" @click="onRetryCloudDeletesFromOverlay()">
-            重试失败项
-          </a-button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped lang="scss">
@@ -1207,68 +1060,5 @@ onBeforeUnmount(() => {
 .icloud-sync-drawer.ant-drawer .ant-drawer-body {
   display: flex;
   flex-direction: column;
-}
-
-/*
- * 删云全屏浮层：高于抽屉；CS 壳下避让顶栏（与 antd.scss 全屏遮罩同理）
- * Teleport body，故不用 scoped
- */
-.icloud-cloud-delete-overlay {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: var(--cs-shell-bar-height, 0px);
-  z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-}
-
-.icloud-cloud-delete-overlay__panel {
-  width: min(440px, 100%);
-  padding: 24px;
-  border-radius: 8px;
-  background: var(--color-bg-container, #fff);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.icloud-cloud-delete-overlay__title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.icloud-cloud-delete-overlay__bar {
-  margin: 0;
-}
-
-.icloud-cloud-delete-overlay__stats,
-.icloud-cloud-delete-overlay__detail {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-
-.icloud-cloud-delete-overlay__actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .icloud-cloud-delete-overlay {
-    backdrop-filter: none;
-  }
 }
 </style>

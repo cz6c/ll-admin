@@ -24,7 +24,7 @@ use types::{QzoneAuthState, QzoneJobSnapshot, QzoneSyncSettings};
 
 /// 供 album 扫描识别本源落盘命名
 pub(crate) use naming::is_sync_asset_filename;
-use db::{open_db, state_db_path};
+use db::{open_app_db, open_db, state_db_path};
 
 /**
  * 授权失效时清 session、取消任务，并通知前端回到扫码态
@@ -222,7 +222,107 @@ pub async fn qzone_sync_list_photos(
     return Err("album_id 不能为空".into());
   }
   tokio::task::spawn_blocking(move || {
-    with_qzone_session(&app, |sess| client::list_photo_views(sess, &album_id))
+    with_qzone_session(&app, |sess| {
+      let mut views = client::list_photo_views(sess, &album_id)?;
+      if let Ok(conn) = open_app_db(&app) {
+        if let Ok(synced) = db::synced_asset_ids(&conn, Some(&album_id)) {
+          for v in &mut views {
+            v.downloaded = synced.contains(&v.asset_id);
+          }
+        }
+      }
+      Ok(views)
+    })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
+}
+
+/**
+ * 从 QQ 空间移除所选照片（只删云端；本机文件与 media.db 保留）
+ * @note 成功后硬删 sync assets 行，与「同步表只反映云端」一致
+ */
+#[tauri::command]
+pub async fn qzone_sync_delete_photos(
+  app: AppHandle,
+  items: Vec<types::QzoneDeletePhotoItem>,
+) -> Result<types::QzoneDeletePhotosResult, String> {
+  if items.is_empty() {
+    return Ok(types::QzoneDeletePhotosResult {
+      deleted: 0,
+      failed: 0,
+      message: "未选择照片".into(),
+    });
+  }
+  tokio::task::spawn_blocking(move || {
+    // 按相册分组
+    use std::collections::HashMap;
+    let mut by_album: HashMap<(String, i32), Vec<(String, String)>> = HashMap::new();
+    for it in &items {
+      let album = it.album_id.trim();
+      let aid = it.asset_id.trim();
+      if album.is_empty() || aid.is_empty() {
+        continue;
+      }
+      let sloc = if it.sloc.trim().is_empty() {
+        aid.to_string()
+      } else {
+        it.sloc.trim().to_string()
+      };
+      by_album
+        .entry((album.to_string(), it.album_priv))
+        .or_default()
+        .push((aid.to_string(), sloc));
+    }
+    if by_album.is_empty() {
+      return Ok(types::QzoneDeletePhotosResult {
+        deleted: 0,
+        failed: items.len() as u32,
+        message: "无效的删除项".into(),
+      });
+    }
+
+    let mut deleted = 0u32;
+    let mut failed = 0u32;
+    let mut last_err = String::new();
+    let mut ok_ids: Vec<String> = Vec::new();
+
+    with_qzone_session(&app, |sess| {
+      for ((album_id, priv_code), pairs) in &by_album {
+        match client::delete_photos(sess, album_id, *priv_code, pairs) {
+          Ok(()) => {
+            deleted += pairs.len() as u32;
+            ok_ids.extend(pairs.iter().map(|(id, _)| id.clone()));
+          }
+          Err(e) => {
+            failed += pairs.len() as u32;
+            last_err = e.clone();
+            // 单相册失败不阻断其它相册
+            log::warn!("qzone_sync: delete album {album_id}: {e}");
+          }
+        }
+      }
+      Ok(())
+    })?;
+
+    if !ok_ids.is_empty() {
+      if let Ok(conn) = open_app_db(&app) {
+        let _ = db::delete_assets_by_ids(&conn, &ok_ids);
+      }
+    }
+
+    let message = if failed == 0 {
+      format!("已从 QQ 空间移除 {deleted} 项（本机文件保留）")
+    } else if deleted == 0 {
+      format!("移除失败：{last_err}")
+    } else {
+      format!("已移除 {deleted} 项，失败 {failed} 项：{last_err}")
+    };
+    Ok(types::QzoneDeletePhotosResult {
+      deleted,
+      failed,
+      message,
+    })
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?

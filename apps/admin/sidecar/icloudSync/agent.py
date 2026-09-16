@@ -1972,9 +1972,8 @@ def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
             _AUTH_STATE.session_dir = session_dir
             _AUTH_STATE.icloud_domain = ipd_auth.api_domain(api)
         except Exception as exc:  # noqa: BLE001
+            # 冷启动 / 网络抖动也会进这里；清盘会让「重启即退出」
             code = _map_exception(exc)
-            if session_dir and apple_id:
-                ipd_auth.clear_session_artifacts(session_dir, apple_id)
             _reset_auth_state()
             diagnostic = _record_diagnostic(
                 "auth_probe",
@@ -1999,9 +1998,7 @@ def _handle_auth_probe(cmd: dict[str, Any]) -> dict[str, Any]:
     if _mfa_still_required(api) or _AUTH_STATE.waiting_2fa:
         return _finalize_auth_or_need_2fa(api, "auth_probe", kickoff_delivery=False)
 
-    # 有文件但不可同步：清盘，避免宿主误判已登录
-    if session_dir and apple_id:
-        ipd_auth.clear_session_artifacts(session_dir, apple_id)
+    # 不在 probe 清盘：sidecar 刚重启时 cookie 尚未判为 WEBAUTH 也会进这里
     _reset_auth_state()
     diagnostic = _record_diagnostic(
         "auth_probe",

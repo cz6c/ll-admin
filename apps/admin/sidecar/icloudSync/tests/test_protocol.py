@@ -475,6 +475,61 @@ def test_auth_probe_mock_mode() -> None:
     assert ev["cmd"] == "auth_probe"
 
 
+def test_auth_probe_build_failure_keeps_session_files(tmp_path: Path) -> None:
+    """冷启动 restore 失败不得删 cookie，否则重启开发进程会把仍有效的登录态清掉。"""
+    agent = _load_agent(mock=False)
+    apple_id = "user@example.com"
+    cookiejar_path, session_path = ipd_auth.session_artifact_paths(str(tmp_path), apple_id)
+    cookiejar_path.write_text("cookies", encoding="utf-8")
+    session_path.write_text("{}", encoding="utf-8")
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("network down")
+
+    agent._build_api = _boom  # type: ignore[method-assign]
+    ev = agent._handle_auth_probe(
+        {
+            "apple_id": apple_id,
+            "session_dir": str(tmp_path),
+            "icloud_domain": "com",
+        }
+    )
+    assert ev["type"] == "error"
+    assert cookiejar_path.exists()
+    assert session_path.exists()
+
+
+def test_auth_probe_incomplete_auth_keeps_session_files(tmp_path: Path) -> None:
+    """有落盘但尚未判为 WEBAUTH 时只报 session_expired，不清盘。"""
+    agent = _load_agent(mock=False)
+    apple_id = "user@example.com"
+    cookiejar_path, session_path = ipd_auth.session_artifact_paths(str(tmp_path), apple_id)
+    cookiejar_path.write_text("cookies", encoding="utf-8")
+    session_path.write_text("{}", encoding="utf-8")
+
+    class _PartialApi:
+        def get_auth_status(self) -> dict[str, bool]:
+            return {
+                "authenticated": False,
+                "trusted_session": False,
+                "requires_2fa": False,
+                "requires_2sa": False,
+            }
+
+    agent._build_api = lambda **_kwargs: _PartialApi()  # type: ignore[method-assign]
+    ev = agent._handle_auth_probe(
+        {
+            "apple_id": apple_id,
+            "session_dir": str(tmp_path),
+            "icloud_domain": "com",
+        }
+    )
+    assert ev["type"] == "error"
+    assert ev.get("code") == "session_expired"
+    assert cookiejar_path.exists()
+    assert session_path.exists()
+
+
 def test_trigger_2fa_push_notification_puts_securitycode() -> None:
     agent = _load_agent(mock=False)
 

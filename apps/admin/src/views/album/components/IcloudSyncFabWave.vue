@@ -1,5 +1,5 @@
 <!--
-  iCloud 同步 FAB 水波球进度
+  iCloud 下载 FAB 水波球进度
   职责：echarts-liquidfill 渲染 46px 圆内液体进度，仅下载中使用
   适用：IcloudSyncFab 替换 a-progress circle
 -->

@@ -89,7 +89,7 @@ pub fn icloud_sync_dir(app: &AppHandle) -> Result<PathBuf, String> {
     .app_data_dir()
     .map_err(|e| format!("无法解析应用数据目录: {e}"))?;
   let dir = base.join("icloud-sync");
-  fs::create_dir_all(&dir).map_err(|e| format!("创建 iCloud 同步目录失败: {e}"))?;
+  fs::create_dir_all(&dir).map_err(|e| format!("创建 iCloud 下载目录失败: {e}"))?;
   Ok(dir)
 }
 
@@ -103,8 +103,8 @@ pub fn load_settings(app: &AppHandle) -> Result<IcloudSyncSettings, String> {
   if !path.exists() {
     return Ok(IcloudSyncSettings::default());
   }
-  let raw = fs::read_to_string(&path).map_err(|e| format!("读取 iCloud 同步设置失败: {e}"))?;
-  serde_json::from_str(&raw).map_err(|e| format!("解析 iCloud 同步设置失败: {e}"))
+  let raw = fs::read_to_string(&path).map_err(|e| format!("读取 iCloud 下载设置失败: {e}"))?;
+  serde_json::from_str(&raw).map_err(|e| format!("解析 iCloud 下载设置失败: {e}"))
 }
 
 /// 覆盖写入设置（不含 Apple ID 密码）
@@ -114,8 +114,8 @@ pub fn save_settings(app: &AppHandle, settings: &IcloudSyncSettings) -> Result<(
   normalized.concurrency = normalize_concurrency(settings.concurrency);
   normalized.icloud_domain = normalize_icloud_domain(&settings.icloud_domain);
   let raw =
-    serde_json::to_string_pretty(&normalized).map_err(|e| format!("序列化 iCloud 同步设置失败: {e}"))?;
-  fs::write(&path, raw).map_err(|e| format!("写入 iCloud 同步设置失败: {e}"))
+    serde_json::to_string_pretty(&normalized).map_err(|e| format!("序列化 iCloud 下载设置失败: {e}"))?;
+  fs::write(&path, raw).map_err(|e| format!("写入 iCloud 下载设置失败: {e}"))
 }
 
 /// 落盘目录写死：`{albumRoot}/iCloudSync`；相册根未配置时返回 None

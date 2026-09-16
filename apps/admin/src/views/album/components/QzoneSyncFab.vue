@@ -1,12 +1,14 @@
 <!--
   QQ 空间同步浮动入口（第二备份源）
-  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部/本相册下载
+  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部/本相册下载；
+  角标「已下载」+ 勾选后从 QQ 空间移除（本机文件保留）
   适用：相册页与 IcloudSyncFab 并列；交互结构参考开源客户端，不嵌入 GPL 源码
   @note 进度区对齐 IcloudSyncStatusCard：顶栏状态卡 + 进度条统计；账号放抽屉 #extra
 -->
 <script setup lang="ts">
 import {
   cancelQzoneSyncJob,
+  deleteQzonePhotos,
   getQzoneAuthState,
   getQzoneJobStatus,
   isQzoneAuthExpiredError,
@@ -56,6 +58,11 @@ const activeAlbumId = ref("");
 const photos = ref<QzonePhotoView[]>([]);
 const photosLoading = ref(false);
 const photoScrollRef = ref<HTMLElement | null>(null);
+
+/** 勾选模式：点格切换选中，用于从 QQ 空间移除（本机保留） */
+const selectMode = ref(false);
+const selectedIds = ref<Set<string>>(new Set());
+const deletingCloud = ref(false);
 
 const previewOpen = ref(false);
 const previewIndex = ref(0);
@@ -114,6 +121,84 @@ const progressStatsText = computed(() => {
 const showProgressBar = computed(() => busy.value || job.value.total > 0);
 
 const activeAlbum = computed(() => albums.value.find(a => a.topicId === activeAlbumId.value));
+
+const selectedCount = computed(() => selectedIds.value.size);
+
+function isSelected(assetId: string) {
+  return selectedIds.value.has(assetId);
+}
+
+function toggleSelect(assetId: string) {
+  const next = new Set(selectedIds.value);
+  if (next.has(assetId)) next.delete(assetId);
+  else next.add(assetId);
+  selectedIds.value = next;
+}
+
+function clearSelection() {
+  selectedIds.value = new Set();
+}
+
+function exitSelectMode() {
+  selectMode.value = false;
+  clearSelection();
+}
+
+function onCellClick(row: { photo: QzonePhotoView; index: number }) {
+  if (selectMode.value) {
+    toggleSelect(row.photo.assetId);
+    return;
+  }
+  openPreview(row.index);
+}
+
+/**
+ * 从 QQ 空间移除勾选（本机文件保留）；1.5s 冷却确认对齐 iCloud 删云
+ */
+async function onDeleteSelectedFromCloud() {
+  if (!isTauri() || deletingCloud.value || selectedCount.value === 0) return;
+  const album = activeAlbum.value;
+  const albumId = activeAlbumId.value;
+  if (!albumId) return;
+  const picked = photos.value.filter(p => selectedIds.value.has(p.assetId));
+  if (!picked.length) return;
+
+  const CLOUD_DELETE_HINT = "只删除 QQ 空间云端副本，电脑里已下载的文件会保留。删除后通常无法在空间回收站恢复，请确认后再继续。";
+  try {
+    await $feedback.confirm(CLOUD_DELETE_HINT, {
+      title: `确定从 QQ 空间移除所选 ${picked.length} 项？`,
+      okText: "确认移除",
+      cooldownMs: 1500
+    });
+  } catch {
+    return;
+  }
+
+  deletingCloud.value = true;
+  try {
+    const result = await deleteQzonePhotos(
+      picked.map(p => ({
+        albumId: p.albumId || albumId,
+        assetId: p.assetId,
+        sloc: p.sloc || p.assetId,
+        albumPriv: album?.albumPriv ?? 1
+      }))
+    );
+    if (result.failed > 0 && result.deleted === 0) {
+      $feedback.message.error(result.message || "移除失败");
+    } else if (result.failed > 0) {
+      $feedback.message.warning(result.message);
+    } else {
+      $feedback.message.success(result.message || `已移除 ${result.deleted} 项`);
+    }
+    clearSelection();
+    await selectAlbum(albumId, true);
+  } catch (e) {
+    await handleQzoneApiError(e, "移除失败");
+  } finally {
+    deletingCloud.value = false;
+  }
+}
 
 const previewImageSrc = computed(() => {
   if (previewIsVideo.value) return "";
@@ -207,6 +292,7 @@ async function applyAuthExpiredUi(showToast = true) {
     albums.value = [];
     photos.value = [];
     activeAlbumId.value = "";
+    exitSelectMode();
     closePreview();
     try {
       await refreshJob();
@@ -267,6 +353,7 @@ async function selectAlbum(topicId: string, force = false) {
   if (!topicId) return;
   if (!force && activeAlbumId.value === topicId && photos.value.length) return;
   closePreview();
+  clearSelection();
   activeAlbumId.value = topicId;
   photosLoading.value = true;
   photos.value = [];
@@ -591,7 +678,7 @@ watch(drawerOpen, open => {
     v-model:open="drawerOpen"
     title="QQ 空间同步"
     placement="right"
-    :width="960"
+    :width="1024"
     class="qzone-sync-drawer"
     :keyboard="!previewOpen"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
@@ -644,8 +731,18 @@ watch(drawerOpen, open => {
       </section>
 
       <div class="browse-toolbar">
-        <span class="browse-hint">左侧选相册，右侧浏览；下载任务见上方进度</span>
-        <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
+        <span class="browse-hint">左侧选相册，右侧浏览；角标「已下载」表示本机已有；可勾选后从 QQ 空间移除（本机保留）</span>
+        <div class="browse-actions">
+          <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
+          <a-button v-if="!selectMode" size="small" :disabled="!activeAlbumId || !photos.length || busy" @click="selectMode = true"> 勾选 </a-button>
+          <template v-else>
+            <a-button size="small" :disabled="selectedCount === 0" @click="clearSelection">清空</a-button>
+            <a-button size="small" danger :loading="deletingCloud" :disabled="selectedCount === 0 || busy" @click="onDeleteSelectedFromCloud">
+              从 QQ 空间移除{{ selectedCount ? ` (${selectedCount})` : "" }}
+            </a-button>
+            <a-button size="small" :disabled="deletingCloud" @click="exitSelectMode">取消勾选</a-button>
+          </template>
+        </div>
       </div>
 
       <div class="panes">
@@ -676,7 +773,15 @@ watch(drawerOpen, open => {
                 <section v-for="g in photoGroups" :key="g.key" class="day-group">
                   <h4 class="day-label">{{ g.label }}</h4>
                   <div class="grid">
-                    <button v-for="row in g.items" :key="row.photo.assetId" type="button" class="cell" :title="row.photo.name" @click="openPreview(row.index)">
+                    <button
+                      v-for="row in g.items"
+                      :key="row.photo.assetId"
+                      type="button"
+                      class="cell"
+                      :class="{ selected: selectMode && isSelected(row.photo.assetId) }"
+                      :title="row.photo.name"
+                      @click="onCellClick(row)"
+                    >
                       <QzoneLazyImg
                         v-if="row.photo.thumbUrl"
                         :remote-url="row.photo.thumbUrl"
@@ -686,6 +791,9 @@ watch(drawerOpen, open => {
                         :ext="row.photo.name?.split('.').pop()"
                       />
                       <div v-else class="cell-ph" />
+                      <!-- 角标：本机已同步下载（state.db），非实时探测磁盘 -->
+                      <span v-if="row.photo.downloaded" class="cell-badge">已下载</span>
+                      <span v-if="selectMode && isSelected(row.photo.assetId)" class="cell-check" aria-hidden="true">✓</span>
                     </button>
                   </div>
                 </section>
@@ -885,6 +993,15 @@ watch(drawerOpen, open => {
 .browse-hint {
   font-size: 12px;
   color: var(--color-text-tertiary);
+  min-width: 0;
+  flex: 1;
+}
+.browse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
 .panes {
   display: flex;
@@ -1008,12 +1125,15 @@ watch(drawerOpen, open => {
 .cell {
   position: relative;
   aspect-ratio: 1;
-  border: none;
+  border: 2px solid transparent;
   padding: 0;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   background: #f5f5f5;
+  &.selected {
+    border-color: var(--color-primary);
+  }
   img {
     width: 100%;
     height: 100%;
@@ -1026,6 +1146,32 @@ watch(drawerOpen, open => {
   height: 100%;
   background: linear-gradient(90deg, #f0f0f0, #e8e8e8, #f0f0f0);
   background-size: 200% 100%;
+}
+.cell-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.6;
+  pointer-events: none;
+}
+.cell-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  pointer-events: none;
 }
 .badge {
   position: absolute;

@@ -85,25 +85,12 @@ wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧�
 | `media_kind` / `live_pair_id` | 类型与 Live 配对 |
 | `original_filename` / `sort_key` | 展示与排序 |
 | `dest_path` | 已下载本地绝对路径；删云/catalog 硬删行时一并消失（本地 media/文件不动） |
-| `cloud_state` | `cloud_only` / `synced` / `cloud_delete_queued` / `failed_delete`（旧 `deleted_cloud_pending` 打开库 scrub） |
+| `cloud_state` | `cloud_only` / `synced`（旧 `cloud_delete_queued` / `failed_delete` / `deleted_cloud_pending` 打开库 scrub） |
 | `download_status` / `active_job_id` | 当前下载态与所属 job |
 | `cpl_asset_*` | CloudKit 记录名 / change tag |
 | `capture_at` / `added_at` | 云侧拍摄/加入时间 |
 | `latitude` / `longitude` | 可选 GPS |
 | `last_error` / `attempt_count` | 失败与重试 |
-
-### `cloud_delete_queue`
-
-**作用：** 「释放 iCloud 空间」删云队列。用户显式发起后入队；worker 按 job 执行删云，并记录尝试与错误。本地文件是否保留由产品路径决定（与 `album_delete_local` 不同）。
-
-| 列（摘要） | 含义 |
-|------------|------|
-| `job_id` | 所属删云任务 |
-| `asset_id` + `part` | 与 assets 对齐的云侧键 |
-| `reason` / `prev_cloud_state` | 入队原因、删前云态 |
-| `local_path` | 可选本地路径备查 |
-| `status` / `attempts` / `last_error` | 队列执行态 |
-| `cpl_asset_*` | 删云 API 所需 CPL 标识 |
 
 ### 临时表（连接级，可视化工具通常看不到持久行）
 
@@ -123,9 +110,8 @@ media.db
 └── media                 本地文件索引 + 展示缓存 + meta
 
 state.db
-├── （文件头）user_version  schema 代际（现 = 5）
-├── jobs                  同步/刷新/删云任务头
+├── （文件头）user_version  schema 代际（现 = 6）
+├── jobs                  同步 / 刷新目录任务头
 ├── assets                iCloud 资产注册 + 下载态
-├── cloud_delete_queue    删云待办队列
 └── (temp) catalog_*      catalog 批处理辅助
 ```

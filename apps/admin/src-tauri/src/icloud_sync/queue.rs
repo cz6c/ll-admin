@@ -22,7 +22,7 @@ use super::db::{
   finalize_job_download, find_incomplete_task_for_apple, get_job,
   insert_job, job_has_assets, list_asset_tasks, list_failed_assets, list_pending_assets,
   load_existing_baselines, mark_asset_outcome, mark_asset_status, mark_catalog_deletions,
-  open_db, prepare_catalog_keys_temp, refresh_cloud_delete_job_counts,
+  open_db, prepare_catalog_keys_temp,
   reconcile_synced_missing_local_files_in_catalog,
   reset_failed_to_pending, set_job_catalog_counts,
   state_db_path, update_job_status,
@@ -162,14 +162,6 @@ fn is_pause_requested() -> bool {
     .unwrap_or(false)
 }
 
-/// worker 槽位是否被占用（同步/删云/刷新 catalog 全局互斥）
-pub fn is_worker_slot_active() -> bool {
-  queue_runner()
-    .lock()
-    .map(|r| r.active_job_id.is_some())
-    .unwrap_or(false)
-}
-
 pub fn try_claim_job(job_id: i64) -> Result<(), String> {
   let mut runner = queue_runner()
     .lock()
@@ -203,7 +195,7 @@ fn ensure_job_matches_current_account(
     return Ok(());
   }
   Err(format!(
-    "{}: 任务属于 {job_id_str}，当前登录 {current}，请开始新同步",
+    "{}: 任务属于 {job_id_str}，当前登录 {current}，请开始新下载",
     error_codes::ACCOUNT_MISMATCH
   ))
 }
@@ -1040,11 +1032,6 @@ fn spawn_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) 
 }
 
 fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSyncJobStatusResult, String> {
-  if let Some(job) = get_job(conn, job_id)? {
-    if job.task_type == TaskType::CloudDelete && job.status != JobStatus::Done {
-      refresh_cloud_delete_job_counts(conn, job_id)?;
-    }
-  }
   let job = get_job(conn, job_id)?
     .ok_or_else(|| format!("job {job_id} 不存在"))?;
   let (done, failed, pending, total) = if job.status == JobStatus::Done {
@@ -1053,13 +1040,6 @@ fn build_job_status(conn: &rusqlite::Connection, job_id: i64) -> Result<IcloudSy
       job.failed_count,
       job.pending_count,
       job.total_count,
-    )
-  } else if job.task_type == TaskType::CloudDelete {
-    (
-      job.done_count,
-      job.failed_count,
-      job.pending_count,
-      job.total_count.max(job.done_count + job.failed_count + job.pending_count),
     )
   } else {
     let (d, f, p) = count_assets_by_status(conn, job_id)?;
@@ -1097,28 +1077,6 @@ fn emit_job_status(app: &AppHandle, conn: &rusqlite::Connection, job_id: i64) {
   emit_task_status(app, conn, job_id);
 }
 
-/// 推送任务进度（同步下载 / 删云共用）
-pub fn emit_task_progress(
-  app: &AppHandle,
-  conn: &rusqlite::Connection,
-  job_id: i64,
-  filename: &str,
-) {
-  match build_job_status(conn, job_id) {
-    Ok(status) => {
-      emit_progress(
-        app,
-        status.done,
-        status.total,
-        status.failed,
-        status.pending,
-        filename,
-      );
-    }
-    Err(e) => log::warn!("icloud task emit progress: {e}"),
-  }
-}
-
 /// 更新任务状态并 emit
 pub fn set_task_status(
   app: &AppHandle,
@@ -1132,24 +1090,15 @@ pub fn set_task_status(
       .ok_or_else(|| format!("job {job_id} 不存在"))?;
     match job.task_type {
       TaskType::Sync => finalize_job_download(conn, job_id)?,
-      TaskType::CloudDelete => {
-        refresh_cloud_delete_job_counts(conn, job_id)?;
+      TaskType::CloudDelete | TaskType::Catalog => {
+        // CloudDelete 仅为历史残留；与 Catalog 一样只写 finished_at
         let now = chrono::Utc::now().timestamp();
         conn
           .execute(
             "UPDATE jobs SET finished_at = ?1 WHERE id = ?2",
             rusqlite::params![now, job_id],
           )
-          .map_err(|e| format!("更新删云 finished_at 失败: {e}"))?;
-      }
-      TaskType::Catalog => {
-        let now = chrono::Utc::now().timestamp();
-        conn
-          .execute(
-            "UPDATE jobs SET finished_at = ?1 WHERE id = ?2",
-            rusqlite::params![now, job_id],
-          )
-          .map_err(|e| format!("更新 catalog finished_at 失败: {e}"))?;
+          .map_err(|e| format!("更新 finished_at 失败: {e}"))?;
       }
     }
     emit_cloud_state_changed(app);
@@ -1204,7 +1153,7 @@ pub async fn icloud_sync_start_job(
     let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id)?;
     if enqueued == 0 {
       let _ = discard_sync_job(&conn, job_id);
-      return Err("没有待同步项。请先「刷新 iCloud 状态」更新列表后再开始同步。".to_string());
+      return Err("没有待下载项。请先「刷新 iCloud 状态」更新列表后再开始下载。".to_string());
     }
     set_job_catalog_counts(&conn, job_id)?;
     emit_cloud_state_changed(&app);
@@ -1233,16 +1182,7 @@ pub async fn icloud_sync_resume_job(
     let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
 
     if job.task_type == TaskType::CloudDelete {
-      ensure_job_matches_current_account(&app, &conn, job_id)?;
-      match job.status {
-        JobStatus::PausedSession | JobStatus::PausedUser | JobStatus::Pending | JobStatus::Running => {
-          set_task_status(&app, &conn, job_id, JobStatus::Running)?;
-        }
-        JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
-        JobStatus::Done => return Err("任务已完成".to_string()),
-        JobStatus::Failed => return Err("任务已失败，请新建任务".to_string()),
-      }
-      return Ok(());
+      return Err("删云已改为一次性操作，请取消残留任务后重试".to_string());
     }
     if job.task_type == TaskType::Catalog {
       return Err("刷新 iCloud 目录任务无法续传，请取消后重试".to_string());
@@ -1256,7 +1196,7 @@ pub async fn icloud_sync_resume_job(
     }
 
     if !job_has_assets(&conn, job_id)? {
-      return Err("任务无待下载项，请先「刷新 iCloud 状态」后再「开始同步」".to_string());
+      return Err("任务无待下载项，请先「刷新 iCloud 状态」后再「开始下载」".to_string());
     }
 
     ensure_job_matches_current_account(&app, &conn, job_id)?;
@@ -1289,17 +1229,7 @@ pub async fn icloud_sync_pause_job(app: AppHandle, job_id: i64) -> Result<(), St
     let job = get_job(&conn, job_id)?.ok_or_else(|| format!("job {job_id} 不存在"))?;
 
     if job.task_type == TaskType::CloudDelete {
-      match job.status {
-        JobStatus::Running | JobStatus::Pending => {
-          set_task_status(&app, &conn, job_id, JobStatus::PausedUser)?;
-        }
-        JobStatus::PausedUser => {}
-        JobStatus::PausedSession => return Err("登录已失效，请先重新登录".to_string()),
-        JobStatus::Cataloging => return Err("任务尚未就绪，请稍候".to_string()),
-        JobStatus::Done => return Err("任务已完成".to_string()),
-        JobStatus::Failed => return Err("任务已失败".to_string()),
-      }
-      return Ok(());
+      return Err("删云已改为一次性操作，无需暂停".to_string());
     }
 
     match job.status {
@@ -1435,6 +1365,7 @@ pub async fn icloud_sync_active_task(app: AppHandle) -> Result<Option<IcloudSync
     }
     let db_path = state_db_path(&app)?;
     let conn = open_db(&db_path)?;
+    // open_db/ensure_schema 已 scrub 历史 cloud_delete job/queue
     let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)? else {
       return Ok(None);
     };

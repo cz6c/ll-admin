@@ -3,7 +3,8 @@
 > **产品目的：** 与 iCloud 并列，把 **本人** QQ 空间相册原图/视频 **单向同步到本地**，供本地相册扫描浏览。  
 > **页面：** `index.vue` + `QzoneSyncFab.vue`  
 > **实现：** `src-tauri/src/qzone_sync/*` · `api/qzoneSync.ts`  
-> **不涉及：** 好友相册、动态、上传、删远端；**不嵌入** GPL 第三方客户端源码。  
+> **不涉及：** 好友相册、动态、上传；**不嵌入** GPL 第三方客户端源码。  
+> **删云：** 支持从 QQ 空间移除勾选项；**本机已下载文件与 media.db 保留**；同步 state 行硬删。  
 > **对齐决策：** 平行 Tauri 模块 + **扫码登录** + 独立 FAB；浏览交互参考开源客户端左右布局  
 
 姊妹文档：[iCloud 同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
@@ -57,10 +58,11 @@
 | 能力 | 命令 / 行为 |
 |------|-------------|
 | 相册列表 | `qzone_sync_list_albums` |
-| 相片列表 | `qzone_sync_list_photos`（含 `captureAt`，右侧按日时间轴） |
+| 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`downloaded`；右侧按日时间轴；角标「已下载」） |
 | 缩略图/灯箱 | 图：`QzoneLazyImg`→`BaseImage`+`qzoneimg`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
 | 全部下载 | `qzone_sync_start_job`（`albumId=null`） |
 | 本相册下载 | `qzone_sync_start_job`（传入 `albumId`） |
+| 从 QQ 空间移除 | 勾选 → 确认（1.5s 冷却）→ `qzone_sync_delete_photos`；**只删云端**，本机文件与 media.db 保留；sync state 行硬删 |
 
 抽屉约 960px；顶栏状态卡对齐 iCloud（标题/主操作/进度统计）；账号在抽屉右上角；「刷新目录」重拉相册列表与当前相册内容。下载中可暂停 / 继续 / 取消。
 
@@ -75,7 +77,8 @@
 | `qzone_sync_qr_poll` | 轮询扫码 |
 | `qzone_sync_logout` | 清会话 |
 | `qzone_sync_list_albums` | 相册列表 |
-| `qzone_sync_list_photos` | 相片浏览列表 |
+| `qzone_sync_list_photos` | 相片浏览列表（`downloaded` 来自 state.db synced） |
+| `qzone_sync_delete_photos` | 从 QQ 空间移除；本机保留；硬删 sync 行 |
 | `qzone_sync_fetch_media` | Cookie 代理媒体 |
 | `qzone_sync_prepare_preview` | 视频：floatview→MP4→落盘；返回本地路径 |
 | `qzone_sync_start_job` | catalog + 下载（可选相册） |
@@ -105,4 +108,5 @@
 2. 点击缩略图可灯箱预览（含视频控件）  
 3. 「全部下载」/「下载本相册」落盘到 `QzoneSync/`，刷新相册可见  
 4. 再次同步跳过已下文件；iCloud 不受影响  
-5. `cargo check` 0 warning  
+5. 已下载项角标「已下载」；勾选「从 QQ 空间移除」后云端消失、本机文件仍在  
+6. `cargo check` 0 warning  

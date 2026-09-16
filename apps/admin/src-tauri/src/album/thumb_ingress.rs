@@ -159,7 +159,9 @@ fn ensure_thumb_worker(
 
   let app_bg = app.clone();
   let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(app);
-  let handle = tokio::task::spawn_blocking(move || {
+  // sync / qzone worker 在 std::thread 上，无当前 Tokio Handle；
+  // 须经 Tauri 全局 runtime，不能 tokio::task::spawn_blocking（会 panic: no reactor）
+  let handle = match tauri::async_runtime::handle().spawn_blocking(move || {
     scanner::run_thumbnail_pipeline(
       app_bg,
       root,
@@ -172,7 +174,9 @@ fn ensure_thumb_worker(
       my_epoch,
       thumb_pending,
     );
-  });
+  }) {
+    tauri::async_runtime::JoinHandle::Tokio(h) => h,
+  };
   if let Ok(mut guard) = state.lock() {
     guard.pipeline = Some(handle);
   }

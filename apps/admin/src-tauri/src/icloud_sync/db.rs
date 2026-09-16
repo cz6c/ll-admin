@@ -1,8 +1,8 @@
 //! iCloud 同步 SQLite 断点库
 //! 职责：jobs/assets 终态 schema、pending/done 查询与状态更新
 //! 适用：队列 catalog 落库与串行 download 续传
-//! @note schema 只认 `PRAGMA user_version = 5` 终态；已砍 v2–v4 链式迁移与 index_num 残留清理。
-//!       无业务表 → 建终态；user_version∈{0,1} 怪库 → 重建空库；其它非 5 → 报错不清空。
+//! @note schema 只认 `PRAGMA user_version = 6` 终态；已砍 v2–v4 链式迁移与 index_num 残留清理。
+//!       无业务表 → 建终态；user_version∈{0,1} 怪库 → 重建空库；5→6 去掉 cloud_delete_queue；其它非终态 → 报错不清空。
 
 use std::path::{Path, PathBuf};
 
@@ -18,8 +18,8 @@ use super::types::{
   JobRow, JobStatus, JobView, MediaKind, TaskType,
 };
 
-/// 应用期望的 state.db schema 代际（历史迁移已收口，数字保持 5 以免现网重标定）
-const SCHEMA_VERSION: i32 = 5;
+/// 应用期望的 state.db schema 代际（6：移除 cloud_delete_queue；历史删云改一次性消费）
+const SCHEMA_VERSION: i32 = 6;
 
 /// icloud_sync SQLite 路径
 pub fn state_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -148,27 +148,6 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
       CREATE INDEX idx_assets_apple ON assets(apple_id);
       CREATE INDEX idx_assets_active_job ON assets(active_job_id, download_status);
       CREATE INDEX idx_assets_capture_at ON assets(apple_id, capture_at);
-
-      CREATE TABLE cloud_delete_queue (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id INTEGER NOT NULL,
-        apple_id TEXT NOT NULL,
-        asset_id TEXT NOT NULL,
-        part TEXT NOT NULL,
-        reason TEXT NOT NULL,
-        prev_cloud_state TEXT NOT NULL,
-        local_path TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        attempts INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        cpl_asset_record_name TEXT,
-        cpl_asset_change_tag TEXT,
-        UNIQUE(apple_id, asset_id, part)
-      );
-      CREATE INDEX idx_cloud_delete_status ON cloud_delete_queue(apple_id, status);
-      CREATE INDEX idx_cloud_delete_job ON cloud_delete_queue(job_id, status);
       "#,
     )
     .map_err(|e| format!("初始化 SQLite schema 失败: {e}"))?;
@@ -194,7 +173,14 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
   }
 
   if cur == SCHEMA_VERSION {
-    scrub_legacy_deleted_cloud_pending(conn)?;
+    scrub_legacy_cloud_delete_artifacts(conn)?;
+    return Ok(());
+  }
+
+  // 5 → 6：去掉 cloud_delete_queue 与历史删云态（可在线升级，不清空整库）
+  if cur == 5 {
+    migrate_v5_drop_cloud_delete_queue(conn)?;
+    set_user_version(conn, SCHEMA_VERSION)?;
     return Ok(());
   }
 
@@ -213,8 +199,39 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
   ))
 }
 
-/// 覆盖硬删后不再保留「已移除」行；打开库时清掉历史 deleted_cloud_pending
-fn scrub_legacy_deleted_cloud_pending(conn: &Connection) -> Result<(), String> {
+/**
+ * v5→v6：删除 cloud_delete_queue；清历史 CloudDelete job；
+ * cloud_delete_queued / failed_delete → synced（有本地路径）或 cloud_only
+ */
+fn migrate_v5_drop_cloud_delete_queue(conn: &Connection) -> Result<(), String> {
+  scrub_legacy_cloud_delete_artifacts(conn)?;
+  Ok(())
+}
+
+/**
+ * 打开库幂等清理：历史删云 queue / 态 / job（一次性删云后不再使用）
+ * @note 亦清旧 `deleted_cloud_pending`
+ */
+fn scrub_legacy_cloud_delete_artifacts(conn: &Connection) -> Result<(), String> {
+  conn
+    .execute("DROP TABLE IF EXISTS cloud_delete_queue", [])
+    .map_err(|e| format!("删除 cloud_delete_queue 失败: {e}"))?;
+  conn
+    .execute("DELETE FROM jobs WHERE task_type = 'cloud_delete'", [])
+    .map_err(|e| format!("清理历史 cloud_delete job 失败: {e}"))?;
+  conn
+    .execute(
+      r#"
+      UPDATE assets
+      SET cloud_state = CASE
+        WHEN dest_path IS NOT NULL AND trim(dest_path) != '' THEN 'synced'
+        ELSE 'cloud_only'
+      END
+      WHERE cloud_state IN ('cloud_delete_queued', 'failed_delete')
+      "#,
+      [],
+    )
+    .map_err(|e| format!("重置历史删云 cloud_state 失败: {e}"))?;
   conn
     .execute(
       "DELETE FROM assets WHERE cloud_state = 'deleted_cloud_pending'",
@@ -633,7 +650,7 @@ pub fn enqueue_outstanding_for_full_sync(
       ),
       params![job_id, apple_id],
     )
-    .map_err(|e| format!("full 同步补入队失败: {e}"))?;
+    .map_err(|e| format!("full 下载补入队失败: {e}"))?;
   Ok(u32::try_from(changed).unwrap_or(0))
 }
 
@@ -671,7 +688,6 @@ pub fn mark_catalog_deletions(conn: &Connection, apple_id: &str) -> Result<u32, 
         r#"
         DELETE FROM assets
         WHERE apple_id = ?1
-          AND cloud_state NOT IN ('cloud_delete_queued', 'failed_delete')
           AND NOT EXISTS (
             SELECT 1 FROM {CATALOG_KEYS_TEMP} t
             WHERE t.asset_id = assets.asset_id AND t.part = assets.part
@@ -976,42 +992,12 @@ pub fn discard_sync_job(conn: &Connection, job_id: i64) -> Result<(), String> {
   Ok(())
 }
 
-/// 取消未完成的删云任务：撤销队列并删除 job
-pub fn discard_cloud_delete_job(conn: &Connection, job_id: i64) -> Result<(), String> {
-  let keys: Vec<(String, String)> = conn
-    .prepare(
-      r#"
-      SELECT asset_id, part FROM cloud_delete_queue
-      WHERE job_id = ?1 AND status IN ('pending', 'deleting')
-      "#,
-    )
-    .map_err(|e| format!("准备删云任务撤销查询失败: {e}"))?
-    .query_map(params![job_id], |row| Ok((row.get(0)?, row.get(1)?)))
-    .map_err(|e| format!("查询删云任务队列失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析删云任务队列失败: {e}"))?;
-
-  if !keys.is_empty() {
-    let apple_id: String = conn
-      .query_row("SELECT apple_id FROM jobs WHERE id = ?1", params![job_id], |r| r.get(0))
-      .map_err(|e| format!("读取删云任务 apple_id 失败: {e}"))?;
-    cancel_cloud_deletes(conn, &apple_id, &keys)?;
-  }
-
-  conn
-    .execute("DELETE FROM cloud_delete_queue WHERE job_id = ?1", params![job_id])
-    .map_err(|e| format!("删除删云队列失败: {e}"))?;
-  conn
-    .execute("DELETE FROM jobs WHERE id = ?1", params![job_id])
-    .map_err(|e| format!("删除删云 job 失败: {e}"))?;
-  Ok(())
-}
-
-/// 按任务类型取消未完成任务
+/// 按任务类型取消未完成任务（历史 cloud_delete job 仅删 jobs 行）
 pub fn discard_task(conn: &Connection, job: &JobRow) -> Result<(), String> {
   match job.task_type {
     TaskType::Sync | TaskType::Catalog => discard_sync_job(conn, job.id),
-    TaskType::CloudDelete => discard_cloud_delete_job(conn, job.id),
+    // 一次性删云后不再有 queue；残留 cloud_delete job 直接丢弃
+    TaskType::CloudDelete => discard_sync_job(conn, job.id),
   }
 }
 
@@ -1255,63 +1241,12 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
   })
 }
 
-/// 云删队列行状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CloudDeleteQueueStatus {
-  Pending,
-  Deleting,
-  Done,
-  Failed,
-}
-
-impl CloudDeleteQueueStatus {
-  pub fn as_str(self) -> &'static str {
-    match self {
-      Self::Pending => "pending",
-      Self::Deleting => "deleting",
-      Self::Done => "done",
-      Self::Failed => "failed",
-    }
-  }
-
-  pub fn parse(s: &str) -> Option<Self> {
-    match s {
-      "pending" => Some(Self::Pending),
-      "deleting" => Some(Self::Deleting),
-      "done" => Some(Self::Done),
-      "failed" => Some(Self::Failed),
-      _ => None,
-    }
-  }
-}
-
-/// 云删队列表行（Rust 内部）
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CloudDeleteQueueRow {
-  pub id: i64,
-  pub apple_id: String,
-  pub asset_id: String,
-  pub part: String,
-  pub original_filename: String,
-  pub reason: String,
-  pub prev_cloud_state: String,
-  pub local_path: Option<String>,
-  pub status: CloudDeleteQueueStatus,
-  pub attempts: u32,
-  pub last_error: Option<String>,
-  pub created_at: i64,
-  pub updated_at: i64,
-  /// 入队时从 assets 快照；sidecar 只读此字段删云
-  pub cpl_asset_record_name: Option<String>,
-  pub cpl_asset_change_tag: Option<String>,
-}
-
-/// 入队删云结果（UI 按逻辑资产计；rejected = missing_cpl + local_missing + 其它跳过）
+/// 一次性删云校验结果（逻辑资产口径；rejected = missing_cpl + local_missing + 其它跳过）
 #[derive(Debug, Clone, Default)]
 pub struct EnqueueCloudDeleteResult {
-  /// 至少有一个 part 入队成功的逻辑资产数（Live=1）
+  /// 至少有一个 part 通过校验的逻辑资产数（Live=1）
   pub accepted: u32,
-  /// 无任何 part 入队成功的逻辑资产数
+  /// 无任何 part 通过校验的逻辑资产数
   pub rejected: u32,
   /// 缺 catalog 落库的 CPL 元数据（按逻辑资产）
   pub rejected_missing_cpl: u32,
@@ -1319,7 +1254,7 @@ pub struct EnqueueCloudDeleteResult {
   pub rejected_local_missing: u32,
 }
 
-/// 腾空间硬门禁：本地非空文件必须存在，否则禁止入队删云
+/// 腾空间硬门禁：本地非空文件必须存在，否则禁止删云
 fn local_file_ready_for_cloud_delete(dest_path: Option<&str>) -> bool {
   let Some(p) = dest_path.map(str::trim).filter(|s| !s.is_empty()) else {
     return false;
@@ -1351,160 +1286,138 @@ pub fn collect_synced_keys_for_cloud_delete(
   Ok(rows)
 }
 
-/// 单条 sidecar 删云失败累计上限：达到后进入 failed_delete（1 次正式 + 2 次自动重试）
-const MAX_CLOUD_DELETE_ATTEMPTS: u32 = 3;
-
-/// 启动时：中断的 deleting 行退回 pending
-/// @note 不 ++attempts：进程被杀/重启不应吞掉正式重试额度
-pub fn reset_interrupted_cloud_deletes(conn: &Connection) -> Result<u32, String> {
-  let now = chrono::Utc::now().timestamp();
-  let changed = conn
-    .execute(
-      r#"
-      UPDATE cloud_delete_queue
-      SET status = 'pending', updated_at = ?1
-      WHERE status = 'deleting'
-      "#,
-      params![now],
-    )
-    .map_err(|e| format!("重置中断云删队列失败: {e}"))?;
-  u32::try_from(changed).map_err(|_| "重置行数超出 u32".to_string())
+/// 一次性删云候选（不入 queue；sidecar 按 CPL 定点删）
+#[derive(Debug, Clone)]
+pub struct CloudDeleteCandidate {
+  pub asset_id: String,
+  pub part: String,
+  pub original_filename: String,
+  pub local_path: Option<String>,
+  pub reason: String,
+  pub cpl_asset_record_name: String,
+  pub cpl_asset_change_tag: Option<String>,
 }
 
-/// 全局待下载数：仅统计**未完成** sync job 占用的 pending 行（测试用）
-#[cfg(test)]
-pub fn count_global_pending_downloads(conn: &Connection) -> Result<u32, String> {
-  let n: i64 = conn
-    .query_row(
-      r#"
-      SELECT COUNT(*) FROM assets a
-      INNER JOIN jobs j ON j.id = a.active_job_id
-      WHERE a.download_status = ?1
-        AND j.status IN ('cataloging', 'pending', 'running', 'paused_session', 'paused_user')
-      "#,
-      params![AssetStatus::Pending.as_str()],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("统计 pending 下载失败: {e}"))?;
-  Ok(u32::try_from(n).unwrap_or(u32::MAX))
-}
-
-/// 删云 queue 同行逻辑资产的展示态：有 pending/deleting 优先，否则 failed，否则 done
-fn fold_cloud_delete_queue_statuses(statuses: &[&str]) -> &'static str {
-  if statuses
-    .iter()
-    .any(|s| *s == "pending" || *s == "deleting")
-  {
-    "pending"
-  } else if statuses.iter().any(|s| *s == "failed") {
-    "failed"
-  } else {
-    "done"
+/**
+ * 解析可删云候选：校验 CPL + 本地非空文件；不写 queue / 不改 cloud_state
+ * @returns (candidates, 逻辑资产口径的 accepted/rejected 计数)
+ */
+pub fn resolve_cloud_delete_candidates(
+  conn: &Connection,
+  apple_id: &str,
+  keys: &[(String, String)],
+  reason: &str,
+) -> Result<(Vec<CloudDeleteCandidate>, EnqueueCloudDeleteResult), String> {
+  #[derive(Clone, Copy)]
+  enum PartOutcome {
+    Accepted,
+    RejectedMissingCpl,
+    RejectedLocalMissing,
+    RejectedOther,
   }
-}
-
-/// 云删任务进度（按 job_id 统计 queue；Live still+mov 同 asset_id 计 1）
-pub fn refresh_cloud_delete_job_counts(conn: &Connection, job_id: i64) -> Result<(), String> {
-  let mut stmt = conn
-    .prepare("SELECT asset_id, status FROM cloud_delete_queue WHERE job_id = ?1")
-    .map_err(|e| format!("准备删云任务统计失败: {e}"))?;
-  let rows = stmt
-    .query_map(params![job_id], |row| {
-      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })
-    .map_err(|e| format!("查询删云任务统计失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析删云任务统计失败: {e}"))?;
-
-  let mut by_asset: std::collections::HashMap<String, Vec<String>> =
+  let mut outcomes: std::collections::HashMap<String, Vec<PartOutcome>> =
     std::collections::HashMap::new();
-  for (asset_id, status) in rows {
-    by_asset.entry(asset_id).or_default().push(status);
+  let mut candidates = Vec::new();
+
+  for (asset_id, part) in keys {
+    let row: Option<(
+      String,
+      Option<String>,
+      Option<String>,
+      Option<String>,
+      String,
+    )> = conn
+      .query_row(
+        r#"
+        SELECT cloud_state, dest_path, cpl_asset_record_name, cpl_asset_change_tag, original_filename
+        FROM assets
+        WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
+        "#,
+        params![apple_id, asset_id, part],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+      )
+      .optional()
+      .map_err(|e| format!("读取 asset 云态失败: {e}"))?;
+
+    let Some((_cloud_state, dest_path, cpl_name, cpl_tag, filename)) = row else {
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedOther);
+      continue;
+    };
+    let cpl = cpl_name.as_deref().map(str::trim).unwrap_or("").to_string();
+    if cpl.is_empty() {
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedMissingCpl);
+      continue;
+    }
+    if !local_file_ready_for_cloud_delete(dest_path.as_deref()) {
+      outcomes
+        .entry(asset_id.clone())
+        .or_default()
+        .push(PartOutcome::RejectedLocalMissing);
+      continue;
+    }
+
+    candidates.push(CloudDeleteCandidate {
+      asset_id: asset_id.clone(),
+      part: part.clone(),
+      original_filename: filename,
+      local_path: dest_path,
+      reason: reason.to_string(),
+      cpl_asset_record_name: cpl,
+      cpl_asset_change_tag: cpl_tag,
+    });
+    outcomes
+      .entry(asset_id.clone())
+      .or_default()
+      .push(PartOutcome::Accepted);
   }
 
-  let mut done = 0u32;
-  let mut failed = 0u32;
-  let mut pending = 0u32;
-  for statuses in by_asset.values() {
-    let refs: Vec<&str> = statuses.iter().map(String::as_str).collect();
-    match fold_cloud_delete_queue_statuses(&refs) {
-      "done" => done = done.saturating_add(1),
-      "failed" => failed = failed.saturating_add(1),
-      _ => pending = pending.saturating_add(1),
+  let mut result = EnqueueCloudDeleteResult::default();
+  for part_outcomes in outcomes.values() {
+    if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::Accepted))
+    {
+      result.accepted = result.accepted.saturating_add(1);
+      continue;
+    }
+    result.rejected = result.rejected.saturating_add(1);
+    if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::RejectedMissingCpl))
+    {
+      result.rejected_missing_cpl = result.rejected_missing_cpl.saturating_add(1);
+    } else if part_outcomes
+      .iter()
+      .any(|o| matches!(o, PartOutcome::RejectedLocalMissing))
+    {
+      result.rejected_local_missing = result.rejected_local_missing.saturating_add(1);
     }
   }
-  let total = done.saturating_add(failed).saturating_add(pending);
-  let stored_total: i32 = conn
-    .query_row(
-      "SELECT COALESCE(total_count, 0) FROM jobs WHERE id = ?1",
-      params![job_id],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("读取删云任务 total 失败: {e}"))?;
-  let total_count = (stored_total as u32).max(total);
+  Ok((candidates, result))
+}
+
+/// 删云成功：硬删 sync assets 行（本地 media/文件不动）
+pub fn hard_delete_asset_part(
+  conn: &Connection,
+  apple_id: &str,
+  asset_id: &str,
+  part: &str,
+) -> Result<(), String> {
   conn
     .execute(
       r#"
-      UPDATE jobs
-      SET total_count = ?1,
-          done_count = ?2,
-          failed_count = ?3,
-          pending_count = ?4
-      WHERE id = ?5
+      DELETE FROM assets
+      WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
       "#,
-      params![
-        i32::try_from(total_count).unwrap_or(i32::MAX),
-        i32::try_from(done).unwrap_or(i32::MAX),
-        i32::try_from(failed).unwrap_or(i32::MAX),
-        i32::try_from(pending).unwrap_or(i32::MAX),
-        job_id
-      ],
+      params![apple_id, asset_id, part],
     )
-    .map_err(|e| format!("更新删云任务计数失败: {e}"))?;
-  Ok(())
-}
-
-/// 删云任务 queue 是否还有待处理项
-pub fn cloud_delete_job_has_work(conn: &Connection, job_id: i64) -> Result<bool, String> {
-  let n: i64 = conn
-    .query_row(
-      r#"
-      SELECT COUNT(*) FROM cloud_delete_queue
-      WHERE job_id = ?1 AND status IN ('pending', 'deleting')
-      "#,
-      params![job_id],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("统计删云待处理失败: {e}"))?;
-  Ok(n > 0)
-}
-
-/// sidecar 整批 delete_assets 失败：deleting 行退回 pending，避免永久卡死
-pub fn revert_cloud_deletes_batch(
-  conn: &Connection,
-  ids: &[i64],
-  error_summary: &str,
-) -> Result<(), String> {
-  if ids.is_empty() {
-    return Ok(());
-  }
-  let now = chrono::Utc::now().timestamp();
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启云删回退事务失败: {e}"))?;
-  for id in ids {
-    tx.execute(
-      r#"
-      UPDATE cloud_delete_queue
-      SET status = 'pending', attempts = attempts + 1, last_error = ?1, updated_at = ?2
-      WHERE id = ?3 AND status = 'deleting'
-      "#,
-      params![error_summary, now, id],
-    )
-    .map_err(|e| format!("云删 queue 回退 pending 失败: {e}"))?;
-  }
-  tx.commit()
-    .map_err(|e| format!("提交云删回退事务失败: {e}"))?;
+    .map_err(|e| format!("删除已云删 asset 失败: {e}"))?;
   Ok(())
 }
 
@@ -1530,279 +1443,6 @@ pub fn expand_live_delete_pair(
     keys.push((asset_id.to_string(), "mov".to_string()));
   }
   Ok(keys)
-}
-
-/// 用户发起删云：INSERT queue + cloud_state=cloud_delete_queued（须绑定 job_id）
-/// 返回计数按逻辑资产（Live still+mov 计 1）；queue 仍按 part 入队。
-pub fn enqueue_cloud_deletes(
-  conn: &Connection,
-  job_id: i64,
-  apple_id: &str,
-  keys: &[(String, String)],
-  reason: &str,
-) -> Result<EnqueueCloudDeleteResult, String> {
-  let now = chrono::Utc::now().timestamp();
-  #[derive(Clone, Copy)]
-  enum PartOutcome {
-    Accepted,
-    RejectedMissingCpl,
-    RejectedLocalMissing,
-    RejectedOther,
-  }
-  let mut outcomes: std::collections::HashMap<String, Vec<PartOutcome>> =
-    std::collections::HashMap::new();
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启云删入队事务失败: {e}"))?;
-
-  for (asset_id, part) in keys {
-    let row: Option<(String, Option<String>, Option<String>, Option<String>)> = tx
-      .query_row(
-        r#"
-        SELECT cloud_state, dest_path, cpl_asset_record_name, cpl_asset_change_tag
-        FROM assets
-        WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
-        "#,
-        params![apple_id, asset_id, part],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-      )
-      .optional()
-      .map_err(|e| format!("读取 asset 云态失败: {e}"))?;
-
-    let Some((cloud_state, dest_path, cpl_name, cpl_tag)) = row else {
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::RejectedOther);
-      continue;
-    };
-    // 无 CPLAsset 元数据无法定点删云（需重新 catalog）；禁止扫库补齐
-    if cpl_name.as_deref().map(str::trim).unwrap_or("").is_empty() {
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::RejectedMissingCpl);
-      continue;
-    }
-    if cloud_state == CloudState::CloudDeleteQueued.as_str() {
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::Accepted);
-      continue;
-    }
-    // 腾空间：本地文件必须在盘；避免「云删了、本地也没了」
-    if !local_file_ready_for_cloud_delete(dest_path.as_deref()) {
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::RejectedLocalMissing);
-      continue;
-    }
-
-    let inserted = tx
-      .execute(
-        r#"
-        INSERT OR IGNORE INTO cloud_delete_queue(
-          job_id, apple_id, asset_id, part, reason, prev_cloud_state, local_path,
-          status, attempts, created_at, updated_at,
-          cpl_asset_record_name, cpl_asset_change_tag
-        ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0, ?8, ?8, ?9, ?10)
-        "#,
-        params![
-          job_id,
-          apple_id,
-          asset_id,
-          part,
-          reason,
-          cloud_state,
-          dest_path,
-          now,
-          cpl_name,
-          cpl_tag
-        ],
-      )
-      .map_err(|e| format!("写入 cloud_delete_queue 失败: {e}"))?;
-
-    if inserted == 0 {
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::Accepted);
-    } else {
-      tx.execute(
-        r#"
-        UPDATE assets SET cloud_state = ?1
-        WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
-        "#,
-        params![
-          CloudState::CloudDeleteQueued.as_str(),
-          apple_id,
-          asset_id,
-          part,
-        ],
-      )
-      .map_err(|e| format!("更新 asset cloud_delete_queued 失败: {e}"))?;
-      outcomes
-        .entry(asset_id.clone())
-        .or_default()
-        .push(PartOutcome::Accepted);
-    }
-  }
-
-  tx.commit().map_err(|e| format!("提交云删入队事务失败: {e}"))?;
-
-  let mut result = EnqueueCloudDeleteResult::default();
-  for part_outcomes in outcomes.values() {
-    if part_outcomes
-      .iter()
-      .any(|o| matches!(o, PartOutcome::Accepted))
-    {
-      result.accepted = result.accepted.saturating_add(1);
-      continue;
-    }
-    result.rejected = result.rejected.saturating_add(1);
-    if part_outcomes
-      .iter()
-      .any(|o| matches!(o, PartOutcome::RejectedMissingCpl))
-    {
-      result.rejected_missing_cpl = result.rejected_missing_cpl.saturating_add(1);
-    } else if part_outcomes
-      .iter()
-      .any(|o| matches!(o, PartOutcome::RejectedLocalMissing))
-    {
-      result.rejected_local_missing = result.rejected_local_missing.saturating_add(1);
-    }
-  }
-  Ok(result)
-}
-
-/// 撤销 pending 云删：删 queue 行并恢复 prev_cloud_state
-/// @returns 取消成功的逻辑资产数（Live still+mov 计 1）
-pub fn cancel_cloud_deletes(
-  conn: &Connection,
-  apple_id: &str,
-  keys: &[(String, String)],
-) -> Result<u32, String> {
-  let mut cancelled_assets = std::collections::HashSet::new();
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启取消云删事务失败: {e}"))?;
-
-  for (asset_id, part) in keys {
-    let row: Option<(String, String)> = tx
-      .query_row(
-        r#"
-        SELECT prev_cloud_state, status FROM cloud_delete_queue
-        WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
-        "#,
-        params![apple_id, asset_id, part],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-      )
-      .optional()
-      .map_err(|e| format!("读取云删队列失败: {e}"))?;
-
-    let Some((prev_state, status)) = row else {
-      continue;
-    };
-    if status != CloudDeleteQueueStatus::Pending.as_str() {
-      continue;
-    }
-    tx.execute(
-      "DELETE FROM cloud_delete_queue WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3",
-      params![apple_id, asset_id, part],
-    )
-    .map_err(|e| format!("删除云删队列行失败: {e}"))?;
-    tx.execute(
-      r#"
-      UPDATE assets SET cloud_state = ?1
-      WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
-        AND cloud_state = ?5
-      "#,
-      params![
-        prev_state,
-        apple_id,
-        asset_id,
-        part,
-        CloudState::CloudDeleteQueued.as_str(),
-      ],
-    )
-    .map_err(|e| format!("恢复 asset cloud_state 失败: {e}"))?;
-    cancelled_assets.insert(asset_id.clone());
-  }
-
-  tx.commit().map_err(|e| format!("提交取消云删事务失败: {e}"))?;
-  Ok(u32::try_from(cancelled_assets.len()).unwrap_or(u32::MAX))
-}
-
-/// 将 failed_delete 资产重新入队
-/// @returns 重新入队的逻辑资产数（Live still+mov 计 1）
-pub fn retry_failed_cloud_deletes(conn: &Connection, apple_id: &str) -> Result<u32, String> {
-  let now = chrono::Utc::now().timestamp();
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT asset_id, part, cloud_state, dest_path,
-             cpl_asset_record_name, cpl_asset_change_tag
-      FROM assets
-      WHERE apple_id = ?1 AND cloud_state = ?2
-      "#,
-    )
-    .map_err(|e| format!("准备 failed_delete 扫描失败: {e}"))?;
-  let rows = stmt
-    .query_map(
-      params![apple_id, CloudState::FailedDelete.as_str()],
-      |row| {
-        Ok((
-          row.get::<_, String>(0)?,
-          row.get::<_, String>(1)?,
-          row.get::<_, String>(2)?,
-          row.get::<_, Option<String>>(3)?,
-          row.get::<_, Option<String>>(4)?,
-          row.get::<_, Option<String>>(5)?,
-        ))
-      },
-    )
-    .map_err(|e| format!("扫描 failed_delete 失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 failed_delete 行失败: {e}"))?;
-
-  let mut retried_assets = std::collections::HashSet::new();
-  for (asset_id, part, prev, dest_path, cpl_name, cpl_tag) in rows {
-    if cpl_name.as_deref().map(str::trim).unwrap_or("").is_empty() {
-      continue;
-    }
-    // 与入队一致：本地不在则不重试删云，避免腾空间误伤
-    if !local_file_ready_for_cloud_delete(dest_path.as_deref()) {
-      continue;
-    }
-    conn.execute(
-      r#"
-      INSERT OR REPLACE INTO cloud_delete_queue(
-        apple_id, asset_id, part, reason, prev_cloud_state, local_path,
-        status, attempts, last_error, created_at, updated_at,
-        cpl_asset_record_name, cpl_asset_change_tag
-      ) VALUES(?1, ?2, ?3, 'retry', ?4, ?5, 'pending', 0, NULL, ?6, ?6, ?7, ?8)
-      "#,
-      params![apple_id, asset_id, part, prev, dest_path, now, cpl_name, cpl_tag],
-    )
-    .map_err(|e| format!("重试入队 failed_delete 失败: {e}"))?;
-    conn.execute(
-      r#"
-      UPDATE assets SET cloud_state = ?1
-      WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
-      "#,
-      params![
-        CloudState::CloudDeleteQueued.as_str(),
-        apple_id,
-        asset_id,
-        part,
-      ],
-    )
-    .map_err(|e| format!("更新 failed_delete 为 queued 失败: {e}"))?;
-    retried_assets.insert(asset_id);
-  }
-  Ok(u32::try_from(retried_assets.len()).unwrap_or(u32::MAX))
 }
 
 /// 移除本地绑定：清 dest_path，cloud_state→cloud_only（不删盘）
@@ -1899,175 +1539,6 @@ fn reconcile_synced_missing_local_files_scoped(
   Ok(changed)
 }
 
-/// 取指定删云任务的 pending 批次
-pub fn list_pending_cloud_deletes(
-  conn: &Connection,
-  job_id: i64,
-  limit: u32,
-) -> Result<Vec<CloudDeleteQueueRow>, String> {
-  let lim = i64::from(limit.clamp(1, 50));
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT q.id, q.apple_id, q.asset_id, q.part, a.original_filename,
-             q.reason, q.prev_cloud_state, q.local_path, q.status,
-             q.attempts, q.last_error, q.created_at, q.updated_at,
-             q.cpl_asset_record_name, q.cpl_asset_change_tag
-      FROM cloud_delete_queue q
-      LEFT JOIN assets a
-        ON a.apple_id = q.apple_id AND a.asset_id = q.asset_id AND a.part = q.part
-      WHERE q.job_id = ?1 AND q.status = 'pending'
-      ORDER BY q.created_at ASC
-      LIMIT ?2
-      "#,
-    )
-    .map_err(|e| format!("准备 pending 云删查询失败: {e}"))?;
-  let rows = stmt
-    .query_map(params![job_id, lim], |row| {
-      let status_s: String = row.get(8)?;
-      Ok(CloudDeleteQueueRow {
-        id: row.get(0)?,
-        apple_id: row.get(1)?,
-        asset_id: row.get(2)?,
-        part: row.get(3)?,
-        original_filename: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-        reason: row.get(5)?,
-        prev_cloud_state: row.get(6)?,
-        local_path: row.get(7)?,
-        status: CloudDeleteQueueStatus::parse(&status_s)
-          .unwrap_or(CloudDeleteQueueStatus::Pending),
-        attempts: row.get::<_, i32>(9)? as u32,
-        last_error: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
-        cpl_asset_record_name: row.get(13)?,
-        cpl_asset_change_tag: row.get(14)?,
-      })
-    })
-    .map_err(|e| format!("查询 pending 云删失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 pending 云删失败: {e}"))?;
-  Ok(rows)
-}
-
-pub fn mark_cloud_deletes_deleting(conn: &Connection, ids: &[i64]) -> Result<(), String> {
-  if ids.is_empty() {
-    return Ok(());
-  }
-  let now = chrono::Utc::now().timestamp();
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启 deleting 事务失败: {e}"))?;
-  for id in ids {
-    tx.execute(
-      r#"
-      UPDATE cloud_delete_queue
-      SET status = 'deleting', updated_at = ?1
-      WHERE id = ?2 AND status = 'pending'
-      "#,
-      params![now, id],
-    )
-    .map_err(|e| format!("标记 deleting 失败: {e}"))?;
-  }
-  tx.commit().map_err(|e| format!("提交 deleting 事务失败: {e}"))?;
-  Ok(())
-}
-
-/// 云删 API 成功：从 sync 表删除该行（同步表只反映云端；本地 media/文件不动）
-pub fn finalize_cloud_delete_success(
-  conn: &Connection,
-  queue_id: i64,
-  apple_id: &str,
-  asset_id: &str,
-  part: &str,
-) -> Result<(), String> {
-  let now = chrono::Utc::now().timestamp();
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启云删成功事务失败: {e}"))?;
-  tx.execute(
-    r#"
-    DELETE FROM assets
-    WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
-    "#,
-    params![apple_id, asset_id, part],
-  )
-  .map_err(|e| format!("删除已云删 asset 失败: {e}"))?;
-  tx.execute(
-    r#"
-    UPDATE cloud_delete_queue
-    SET status = 'done', last_error = NULL, updated_at = ?1
-    WHERE id = ?2
-    "#,
-    params![now, queue_id],
-  )
-  .map_err(|e| format!("标记云删 done 失败: {e}"))?;
-  tx.commit().map_err(|e| format!("提交云删成功事务失败: {e}"))?;
-  Ok(())
-}
-
-/// 云删 API 失败：attempts++，≥ MAX_CLOUD_DELETE_ATTEMPTS 则 failed_delete
-pub fn finalize_cloud_delete_failure(
-  conn: &Connection,
-  queue_id: i64,
-  apple_id: &str,
-  asset_id: &str,
-  part: &str,
-  error_summary: &str,
-) -> Result<bool, String> {
-  let now = chrono::Utc::now().timestamp();
-  let attempts: i32 = conn
-    .query_row(
-      "SELECT attempts FROM cloud_delete_queue WHERE id = ?1",
-      params![queue_id],
-      |row| row.get(0),
-    )
-    .map_err(|e| format!("读取云删 attempts 失败: {e}"))?;
-  let next = attempts + 1;
-  let terminal = u32::try_from(next).unwrap_or(MAX_CLOUD_DELETE_ATTEMPTS) >= MAX_CLOUD_DELETE_ATTEMPTS;
-
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启云删失败事务失败: {e}"))?;
-
-  if terminal {
-    tx.execute(
-      r#"
-      UPDATE cloud_delete_queue
-      SET status = 'failed', attempts = ?1, last_error = ?2, updated_at = ?3
-      WHERE id = ?4
-      "#,
-      params![next, error_summary, now, queue_id],
-    )
-    .map_err(|e| format!("标记云删 queue failed 失败: {e}"))?;
-    tx.execute(
-      r#"
-      UPDATE assets SET cloud_state = ?1
-      WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
-      "#,
-      params![
-        CloudState::FailedDelete.as_str(),
-        apple_id,
-        asset_id,
-        part,
-      ],
-    )
-    .map_err(|e| format!("标记 asset failed_delete 失败: {e}"))?;
-  } else {
-    tx.execute(
-      r#"
-      UPDATE cloud_delete_queue
-      SET status = 'pending', attempts = ?1, last_error = ?2, updated_at = ?3
-      WHERE id = ?4
-      "#,
-      params![next, error_summary, now, queue_id],
-    )
-    .map_err(|e| format!("云删退回 pending 失败: {e}"))?;
-  }
-
-  tx.commit().map_err(|e| format!("提交云删失败事务失败: {e}"))?;
-  Ok(terminal)
-}
 
 #[cfg(test)]
 mod tests {
@@ -2083,25 +1554,12 @@ mod tests {
     std::env::temp_dir().join(format!("icloud-sync-test-{nanos}.db"))
   }
 
-  fn test_cloud_delete_job(conn: &Connection) -> i64 {
-    insert_job(
-      conn,
-      TaskType::CloudDelete,
-      JobView::Library,
-      "",
-      "user@icloud.com",
-      JobStatus::Running,
-      1,
-    )
-    .expect("cloud delete job")
-  }
-
   #[test]
-  fn enqueue_cloud_delete_sets_queued_state() {
+  fn resolve_cloud_delete_accepts_synced_with_local_file() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
     let media = std::env::temp_dir().join(format!(
-      "icloud-enqueue-ok-{}.jpg",
+      "icloud-resolve-ok-{}.jpg",
       SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time")
@@ -2109,8 +1567,9 @@ mod tests {
     ));
     std::fs::write(&media, b"ok").expect("write media");
     let dest = media.to_string_lossy().to_string();
-    conn.execute(
-      r#"
+    conn
+      .execute(
+        r#"
       INSERT INTO assets(
         apple_id, asset_id, sort_key, original_filename, media_kind,
         part, download_status, cloud_state, dest_path,
@@ -2118,23 +1577,21 @@ mod tests {
       ) VALUES('user@icloud.com', 'A1', '2024', 'a.jpg', 'photo', 'full', NULL, 'synced', ?1,
                'CPL-A1', 'tag1')
       "#,
-      params![dest],
-    )
-    .expect("insert asset");
+        params![dest],
+      )
+      .expect("insert asset");
 
-    let job_id = test_cloud_delete_job(&conn);
-    let summary = enqueue_cloud_deletes(
+    let (cands, summary) = resolve_cloud_delete_candidates(
       &conn,
-      job_id,
       "user@icloud.com",
       &[("A1".into(), "full".into())],
       "test",
     )
-    .expect("enqueue");
+    .expect("resolve");
+    assert_eq!(cands.len(), 1);
     assert_eq!(summary.accepted, 1);
     assert_eq!(summary.rejected, 0);
-    assert_eq!(summary.rejected_local_missing, 0);
-
+    // 一次性路径不改 cloud_state，成功后才硬删行
     let state: String = conn
       .query_row(
         "SELECT cloud_state FROM assets WHERE asset_id = 'A1'",
@@ -2142,33 +1599,25 @@ mod tests {
         |r| r.get(0),
       )
       .expect("state");
-    assert_eq!(state, CloudState::CloudDeleteQueued.as_str());
-
-    let pending: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM cloud_delete_queue WHERE status = 'pending'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("count");
-    assert_eq!(pending, 1);
+    assert_eq!(state, CloudState::Synced.as_str());
     let _ = std::fs::remove_file(&media);
     let _ = std::fs::remove_file(path);
   }
 
   #[test]
-  fn enqueue_cloud_delete_rejects_when_local_file_missing() {
+  fn resolve_cloud_delete_rejects_when_local_file_missing() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
     let gone = std::env::temp_dir().join(format!(
-      "icloud-enqueue-missing-{}.jpg",
+      "icloud-resolve-missing-{}.jpg",
       SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time")
         .as_nanos()
     ));
-    conn.execute(
-      r#"
+    conn
+      .execute(
+        r#"
       INSERT INTO assets(
         apple_id, asset_id, sort_key, original_filename, media_kind,
         part, download_status, cloud_state, dest_path,
@@ -2176,37 +1625,30 @@ mod tests {
       ) VALUES('user@icloud.com', 'A2', '2024', 'b.jpg', 'photo', 'full', 'done', 'synced', ?1,
                'CPL-A2', 'tag2')
       "#,
-      params![gone.to_string_lossy().to_string()],
-    )
-    .expect("insert");
+        params![gone.to_string_lossy().to_string()],
+      )
+      .expect("insert");
 
-    let job_id = test_cloud_delete_job(&conn);
-    let summary = enqueue_cloud_deletes(
+    let (cands, summary) = resolve_cloud_delete_candidates(
       &conn,
-      job_id,
       "user@icloud.com",
       &[("A2".into(), "full".into())],
       "test",
     )
-    .expect("enqueue");
+    .expect("resolve");
+    assert!(cands.is_empty());
     assert_eq!(summary.accepted, 0);
     assert_eq!(summary.rejected, 1);
     assert_eq!(summary.rejected_local_missing, 1);
-    assert_eq!(summary.rejected_missing_cpl, 0);
-
-    let queued: i64 = conn
-      .query_row("SELECT COUNT(*) FROM cloud_delete_queue", [], |r| r.get(0))
-      .expect("q");
-    assert_eq!(queued, 0);
     let _ = std::fs::remove_file(path);
   }
 
   #[test]
-  fn enqueue_live_pair_counts_as_one_accepted() {
+  fn resolve_live_pair_counts_as_one_accepted() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
     let dir = std::env::temp_dir().join(format!(
-      "icloud-enqueue-live-{}",
+      "icloud-resolve-live-{}",
       SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time")
@@ -2236,10 +1678,8 @@ mod tests {
         .expect("insert live part");
     }
 
-    let job_id = test_cloud_delete_job(&conn);
-    let summary = enqueue_cloud_deletes(
+    let (cands, summary) = resolve_cloud_delete_candidates(
       &conn,
-      job_id,
       "user@icloud.com",
       &[
         ("L1".into(), "still".into()),
@@ -2247,156 +1687,18 @@ mod tests {
       ],
       "test",
     )
-    .expect("enqueue");
-    assert_eq!(summary.accepted, 1, "UI logical count");
-    let queued: i64 = conn
-      .query_row("SELECT COUNT(*) FROM cloud_delete_queue", [], |r| r.get(0))
-      .expect("q");
-    assert_eq!(queued, 2, "queue still has two parts");
-
-    refresh_cloud_delete_job_counts(&conn, job_id).expect("counts");
-    let (done, failed, pending, total) = {
-      let job = get_job(&conn, job_id).unwrap().unwrap();
-      (
-        job.done_count,
-        job.failed_count,
-        job.pending_count,
-        job.total_count,
-      )
-    };
-    assert_eq!((done, failed, pending), (0, 0, 1));
-    assert!(total >= 1);
-
+    .expect("resolve");
+    assert_eq!(cands.len(), 2);
+    assert_eq!(summary.accepted, 1);
+    assert_eq!(summary.rejected, 0);
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(path);
   }
 
   #[test]
-  fn count_assets_by_status_folds_live_parts() {
+  fn hard_delete_asset_part_removes_row() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
-    let job_id = insert_job(
-      &conn,
-      TaskType::Sync,
-      JobView::Library,
-      "/tmp/out",
-      "user@icloud.com",
-      JobStatus::Running,
-      1,
-    )
-    .expect("job");
-    for (part, status) in [("still", "done"), ("mov", "pending")] {
-      conn
-        .execute(
-          r#"
-          INSERT INTO assets(
-            apple_id, asset_id, sort_key, original_filename, media_kind,
-            part, download_status, active_job_id, cloud_state
-          ) VALUES('user@icloud.com', 'L1', '2024', 'a.HEIC', 'live', ?1, ?2, ?3, 'cloud_only')
-          "#,
-          params![part, status, job_id],
-        )
-        .expect("insert");
-    }
-    conn
-      .execute(
-        r#"
-        INSERT INTO assets(
-          apple_id, asset_id, sort_key, original_filename, media_kind,
-          part, download_status, active_job_id, cloud_state
-        ) VALUES('user@icloud.com', 'P1', '2024', 'b.jpg', 'photo', 'full', 'done', ?1, 'synced')
-        "#,
-        params![job_id],
-      )
-      .expect("photo");
-
-    let (done, failed, pending) = count_assets_by_status(&conn, job_id).expect("count");
-    assert_eq!(done, 1);
-    assert_eq!(failed, 0);
-    assert_eq!(pending, 1, "live still done + mov pending → one pending");
-
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
-  fn collect_synced_keys_for_cloud_delete_lists_synced_parts() {
-    let path = temp_db_path();
-    let conn = open_db(&path).expect("open");
-    let media = std::env::temp_dir().join(format!(
-      "icloud-synced-all-{}.jpg",
-      SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos()
-    ));
-    std::fs::write(&media, b"ok").expect("write");
-    let dest = media.to_string_lossy().to_string();
-    for (id, state) in [("S1", "synced"), ("S2", "synced"), ("C1", "cloud_only")] {
-      conn
-        .execute(
-          r#"
-          INSERT INTO assets(
-            apple_id, asset_id, sort_key, original_filename, media_kind,
-            part, download_status, cloud_state, dest_path,
-            cpl_asset_record_name, cpl_asset_change_tag
-          ) VALUES('user@icloud.com', ?1, '2024', 'x.jpg', 'photo', 'full', 'done', ?2, ?3,
-                   'CPL', 'tag')
-          "#,
-          params![id, state, dest],
-        )
-        .expect("insert");
-    }
-
-    let keys = collect_synced_keys_for_cloud_delete(&conn, "user@icloud.com").expect("keys");
-    assert_eq!(keys.len(), 2);
-    assert!(keys.iter().any(|(a, p)| a == "S1" && p == "full"));
-    assert!(keys.iter().any(|(a, p)| a == "S2" && p == "full"));
-    let _ = std::fs::remove_file(&media);
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
-  fn count_global_pending_downloads_ignores_done_job_orphans() {
-    let path = temp_db_path();
-    let conn = open_db(&path).expect("open");
-    let done_job = insert_job(
-      &conn,
-      TaskType::Sync,
-      JobView::Library,
-      "C:\\out",
-      "user@icloud.com",
-      JobStatus::Done,
-      1,
-    )
-    .expect("job");
-    conn
-      .execute(
-        r#"
-        INSERT INTO assets(
-          apple_id, asset_id, sort_key, original_filename, media_kind,
-          part, download_status, active_job_id, cloud_state
-        ) VALUES('user@icloud.com', 'D1', '2024', 'd.jpg', 'photo', 'full', 'pending', ?1, 'cloud_only')
-        "#,
-        params![done_job],
-      )
-      .expect("insert orphan pending");
-    assert_eq!(count_global_pending_downloads(&conn).expect("count"), 0);
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
-  fn revert_cloud_deletes_batch_restores_pending_after_sidecar_failure() {
-    let path = temp_db_path();
-    let conn = open_db(&path).expect("open");
-    let media = std::env::temp_dir().join(format!(
-      "icloud-revert-del-{}.jpg",
-      SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos()
-    ));
-    std::fs::write(&media, b"ok").expect("write");
-    let dest = media.to_string_lossy().to_string();
     conn
       .execute(
         r#"
@@ -2404,72 +1706,33 @@ mod tests {
           apple_id, asset_id, sort_key, original_filename, media_kind,
           part, download_status, cloud_state, dest_path,
           cpl_asset_record_name, cpl_asset_change_tag
-        ) VALUES('user@icloud.com', 'R1', '2024', 'r.jpg', 'photo', 'full', 'done', 'synced', ?1,
-                 'CPL-R1', 'tag1')
-        "#,
-        params![dest],
-      )
-      .expect("insert");
-    let job_id = test_cloud_delete_job(&conn);
-    enqueue_cloud_deletes(&conn, job_id, "user@icloud.com", &[("R1".into(), "full".into())], "test")
-      .expect("enqueue");
-    let queue_id: i64 = conn
-      .query_row("SELECT id FROM cloud_delete_queue LIMIT 1", [], |r| r.get(0))
-      .expect("id");
-    mark_cloud_deletes_deleting(&conn, &[queue_id]).expect("deleting");
-    revert_cloud_deletes_batch(&conn, &[queue_id], "delete_failed: batch error").expect("revert");
-    let status: String = conn
-      .query_row("SELECT status FROM cloud_delete_queue WHERE id = ?1", params![queue_id], |r| r.get(0))
-      .expect("status");
-    assert_eq!(status, "pending");
-    let _ = std::fs::remove_file(&media);
-    let _ = std::fs::remove_file(path);
-  }
-
-  #[test]
-  fn finalize_cloud_delete_success_removes_asset_row() {
-    let path = temp_db_path();
-    let conn = open_db(&path).expect("open");
-    let media = std::env::temp_dir().join(format!(
-      "icloud-del-success-{}.jpg",
-      SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos()
-    ));
-    std::fs::write(&media, b"ok").expect("write");
-    let dest = media.to_string_lossy().to_string();
-    conn
-      .execute(
-        r#"
-        INSERT INTO assets(
-          apple_id, asset_id, sort_key, original_filename, media_kind,
-          part, download_status, cloud_state, dest_path,
-          cpl_asset_record_name, cpl_asset_change_tag
-        ) VALUES('user@icloud.com', 'D1', '2024', 'd.jpg', 'photo', 'full', 'done', 'synced', ?1,
+        ) VALUES('user@icloud.com', 'D1', '2024', 'd.jpg', 'photo', 'full', 'done', 'synced', 'C:/x.jpg',
                  'CPL-D1', 'tag1')
         "#,
-        params![dest],
+        [],
       )
       .expect("insert");
-    let job_id = test_cloud_delete_job(&conn);
-    enqueue_cloud_deletes(&conn, job_id, "user@icloud.com", &[("D1".into(), "full".into())], "test")
-      .expect("enqueue");
-    let queue_id: i64 = conn
-      .query_row("SELECT id FROM cloud_delete_queue LIMIT 1", [], |r| r.get(0))
-      .expect("id");
-    finalize_cloud_delete_success(&conn, queue_id, "user@icloud.com", "D1", "full").expect("success");
+    hard_delete_asset_part(&conn, "user@icloud.com", "D1", "full").expect("delete");
     let count: i64 = conn
       .query_row("SELECT COUNT(*) FROM assets WHERE asset_id = 'D1'", [], |r| r.get(0))
       .expect("count");
     assert_eq!(count, 0);
-    let qstatus: String = conn
-      .query_row("SELECT status FROM cloud_delete_queue WHERE id = ?1", params![queue_id], |r| {
-        r.get(0)
-      })
-      .expect("q");
-    assert_eq!(qstatus, "done");
-    let _ = std::fs::remove_file(&media);
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn scrub_drops_cloud_delete_queue_table() {
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    // 终态 schema 不应再有 cloud_delete_queue
+    let n: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_delete_queue'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    assert_eq!(n, 0);
     let _ = std::fs::remove_file(path);
   }
 

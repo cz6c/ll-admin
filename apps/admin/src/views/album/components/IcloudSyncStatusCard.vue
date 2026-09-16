@@ -1,8 +1,8 @@
 <!--
   iCloud 统一任务状态卡片（抽屉版）
-  职责：抽屉顶部同步/catalog 任务态与主按钮；不随列表 Tab 切换
+  职责：抽屉顶部下载/catalog 任务态与主按钮；不随列表 Tab 切换
   适用：IcloudSyncFab 抽屉顶部
-  @note 删云进度/成败一律由全屏浮层承接，本卡在 cloudDelete 时只保留「同步到本地」壳，不展示移除进度
+  @note 删云为一次性消费（不占 jobs）；本卡只管 sync / catalog
   @note 失败 / 会话失效 / 账号不一致走标题+主按钮行，不用 a-alert
 -->
 <script setup lang="ts">
@@ -12,11 +12,8 @@ defineOptions({ name: "IcloudSyncStatusCard" });
 
 const {
   isFailed,
-  isLoggedIn,
   hasActiveJob,
-  hasIncompleteTask,
   isCataloging,
-  isCloudDeleteTask,
   progress,
   progressPercent,
   showProgressBar,
@@ -25,50 +22,25 @@ const {
   canCancelJob,
   discarding,
   pausing,
-  starting,
   onPause,
-  onSyncToLocal,
   confirmCancelJob,
   statusHeadline,
   statusDescription
 } = useIcloudSyncJob();
 
-/** 删云由浮层接管：状态卡不提供取消 */
-const showCancelJobButton = computed(() => canCancelJob.value && !isCloudDeleteTask.value);
+const showCancelJobButton = computed(() => canCancelJob.value);
 
 const progressStatsText = computed(() => {
   const p = progress.value;
   if (p.total <= 0) return "";
-  return `${p.total} · 已同步 ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
+  return `${p.total} · 已下载 ${p.done} · 待 ${p.pending} · 失败 ${p.failed}`;
 });
 
-/** taskType === cloudDelete：进度卡只留同步壳，不展示移除进度/文案 */
-const cardHeadline = computed(() => (isCloudDeleteTask.value ? "准备就绪" : statusHeadline.value));
-
-const cardDescription = computed(() => {
-  if (isCloudDeleteTask.value) {
-    return isLoggedIn.value ? "可勾选已同步项，或使用「移除全部已同步」从 iCloud 移除副本" : "";
-  }
-  return statusDescription.value;
-});
-
-const cardShowProgress = computed(() => !isCloudDeleteTask.value && showProgressBar.value);
-
-const cardPrimary = computed((): IcloudSyncPrimaryAction | null => {
-  if (!isCloudDeleteTask.value) return primaryAction.value;
-  return {
-    label: "同步到本地",
-    kind: "primary",
-    loading: starting.value,
-    disabled: starting.value || hasIncompleteTask.value,
-    tip: "将先更新 iCloud 状态，再把待同步项同步到本地",
-    handler: onSyncToLocal
-  };
-});
-
-const showPauseButton = computed(
-  () => !isCloudDeleteTask.value && canPause.value && cardPrimary.value?.label !== "暂停同步"
-);
+const cardHeadline = computed(() => statusHeadline.value);
+const cardDescription = computed(() => statusDescription.value);
+const cardShowProgress = computed(() => showProgressBar.value);
+const cardPrimary = computed((): IcloudSyncPrimaryAction | null => primaryAction.value);
+const showPauseButton = computed(() => canPause.value && cardPrimary.value?.label !== "暂停下载");
 </script>
 
 <template>
@@ -102,7 +74,7 @@ const showPauseButton = computed(
           {{ cardPrimary.label }}
         </a-button>
         <a-button v-if="showPauseButton" danger :loading="pausing" @click="onPause()">暂停</a-button>
-        <a-tooltip v-if="hasActiveJob && isCataloging && !isCloudDeleteTask" title="扫描图库中，请稍候再取消">
+        <a-tooltip v-if="hasActiveJob && isCataloging" title="扫描图库中，请稍候再取消">
           <a-button disabled>取消任务</a-button>
         </a-tooltip>
         <a-button v-else-if="showCancelJobButton" danger :loading="discarding" @click="confirmCancelJob()">取消任务</a-button>

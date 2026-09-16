@@ -19,6 +19,8 @@ export interface QzoneAlbumSummary {
   name: string;
   total: number;
   coverUrl?: string;
+  /** 相册权限码；删图接口需要 */
+  albumPriv?: number;
 }
 
 export interface QzonePhotoView {
@@ -33,6 +35,23 @@ export interface QzonePhotoView {
   downloadUrl?: string;
   /** 拍摄/上传时间原文；有则前端按日分组 */
   captureAt?: string | null;
+  /** 删图定位串；缺省同 assetId */
+  sloc?: string;
+  /** 本机已下载（sync synced + dest_path） */
+  downloaded?: boolean;
+}
+
+export interface QzoneDeletePhotoItem {
+  albumId: string;
+  assetId: string;
+  sloc?: string;
+  albumPriv?: number;
+}
+
+export interface QzoneDeletePhotosResult {
+  deleted: number;
+  failed: number;
+  message: string;
 }
 
 export interface QzoneMediaBlob {
@@ -135,6 +154,13 @@ export async function listQzoneAlbums(): Promise<QzoneAlbumSummary[]> {
 /** 某相册相片浏览列表 */
 export async function listQzonePhotos(albumId: string): Promise<QzonePhotoView[]> {
   return invoke<QzonePhotoView[]>("qzone_sync_list_photos", { albumId });
+}
+
+/**
+ * 从 QQ 空间移除所选（只删云端；本机文件保留）
+ */
+export async function deleteQzonePhotos(items: QzoneDeletePhotoItem[]): Promise<QzoneDeletePhotosResult> {
+  return invoke<QzoneDeletePhotosResult>("qzone_sync_delete_photos", { items });
 }
 
 /**

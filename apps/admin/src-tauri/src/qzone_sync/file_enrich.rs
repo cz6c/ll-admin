@@ -73,10 +73,55 @@ fn jpeg_has_datetime_original(path: &Path) -> bool {
     .unwrap_or(false)
 }
 
+/// 快速扫 APP1：是否已有 Exif 段（避免无段时调 little_exif 读库刷 ERROR）
+fn jpeg_buffer_has_exif_app1(data: &[u8]) -> bool {
+  if data.len() < 4 || data[0] != 0xff || data[1] != 0xd8 {
+    return false;
+  }
+  let mut i = 2usize;
+  while i + 1 < data.len() {
+    if data[i] != 0xff {
+      return false;
+    }
+    while i < data.len() && data[i] == 0xff {
+      i += 1;
+    }
+    if i >= data.len() {
+      break;
+    }
+    let marker = data[i];
+    i += 1;
+    if marker == 0x01 || (0xd0..=0xd9).contains(&marker) {
+      if marker == 0xd9 {
+        break;
+      }
+      continue;
+    }
+    if i + 1 >= data.len() {
+      break;
+    }
+    let len = u16::from_be_bytes([data[i], data[i + 1]]) as usize;
+    if len < 2 || i + len > data.len() {
+      break;
+    }
+    let payload = &data[i + 2..i + len];
+    if marker == 0xe1
+      && (payload.starts_with(b"Exif\0\0") || payload.starts_with(b"Exif\0"))
+    {
+      return true;
+    }
+    i += len;
+    if marker == 0xda {
+      break;
+    }
+  }
+  false
+}
+
 /**
  * 仅当文件尚无有效 DateTimeOriginal 时写入拍摄时间（不覆盖相机原 EXIF）
- * @note QQ 空间下发的 JPEG 常被重编码、无 APP1 EXIF；little_exif 的 new_from_vec
- *       会报 "No EXIF data found!"，此时改用空 Metadata 再 write_to_vec 插入段
+ * @note QQ 空间 JPEG 常无 APP1：直接 `Metadata::new()` 插入，**不要**先 `new_from_vec`
+ *       （little_exif 无段时会 ERROR 打日志并返回 "No EXIF data found!"）
  */
 fn fill_jpeg_datetime_if_missing(path: &Path, unix_secs: i64) -> Result<(), String> {
   if jpeg_has_datetime_original(path) {
@@ -85,18 +130,19 @@ fn fill_jpeg_datetime_if_missing(path: &Path, unix_secs: i64) -> Result<(), Stri
   let exif_str =
     capture_time::to_exif_datetime(unix_secs).ok_or_else(|| "无法格式化 EXIF 时间".to_string())?;
   let mut buf = std::fs::read(path).map_err(|e| format!("读 JPEG 失败: {e}"))?;
-  let mut metadata = match Metadata::new_from_vec(&buf, FileExtension::JPEG) {
-    Ok(m) => m,
-    Err(e) => {
-      let msg = e.to_string();
-      // 无 EXIF 段是补写的主路径，不是失败
-      if msg.contains("No EXIF data found") {
-        Metadata::new()
-      } else {
-        return Err(format!("解析 JPEG EXIF 失败: {e}"));
-      }
-    }
+
+  // 有 APP1 才解析保留其它标签；无段则新建，避免库内 ERROR 日志噪音
+  let mut metadata = if jpeg_buffer_has_exif_app1(&buf) {
+    Metadata::new_from_vec(&buf, FileExtension::JPEG).unwrap_or_else(|e| {
+      log::debug!(
+        "qzone_sync: jpeg has APP1 but little_exif decode failed ({e}); rewrite with empty Metadata"
+      );
+      Metadata::new()
+    })
+  } else {
+    Metadata::new()
   };
+
   metadata.set_tag(ExifTag::DateTimeOriginal(exif_str.clone()));
   // CreateDate ≈ DateTimeDigitized
   metadata.set_tag(ExifTag::CreateDate(exif_str));
@@ -109,8 +155,35 @@ fn fill_jpeg_datetime_if_missing(path: &Path, unix_secs: i64) -> Result<(), Stri
 
 #[cfg(test)]
 mod tests {
-  use super::apply_file_times;
+  use super::*;
   use std::time::{Duration, UNIX_EPOCH};
+
+  /// 最小可写 JPEG：SOI + APP0 + EOI（无 APP1 Exif）
+  fn jpeg_without_exif() -> Vec<u8> {
+    vec![
+      0xFF, 0xD8, // SOI
+      0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+      0x00, 0x01, 0x00, 0x00, // APP0 JFIF
+      0xFF, 0xD9, // EOI
+    ]
+  }
+
+  #[test]
+  fn detect_no_exif_app1() {
+    assert!(!jpeg_buffer_has_exif_app1(&jpeg_without_exif()));
+  }
+
+  #[test]
+  fn fill_datetime_on_jpeg_without_exif() {
+    let dir = std::env::temp_dir().join(format!("qzone_exif_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("no_exif.jpg");
+    std::fs::write(&path, jpeg_without_exif()).unwrap();
+    fill_jpeg_datetime_if_missing(&path, 1_704_067_200).expect("fill should succeed");
+    assert!(jpeg_has_datetime_original(&path));
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+  }
 
   #[test]
   fn set_mtime_roundtrip() {

@@ -111,8 +111,6 @@ fn enrich_live_pair_meta(
 
 fn cloud_display_rank(state: &str) -> u8 {
   match state {
-    "failed_delete" => 7,
-    "cloud_delete_queued" => 4,
     "cloud_only" => 2,
     "synced" => 1,
     _ => 0,
@@ -530,8 +528,6 @@ pub fn get_cloud_state_summary(
     total: 0,
     cloud_only: 0,
     synced: 0,
-    cloud_delete_queued: 0,
-    failed_delete: 0,
     download_failed: 0,
     last_catalog_at,
   };
@@ -549,22 +545,12 @@ pub fn get_cloud_state_summary(
       match CloudState::parse(&state) {
         Some(CloudState::CloudOnly) => summary.cloud_only = summary.cloud_only.saturating_add(1),
         Some(CloudState::Synced) => summary.synced = summary.synced.saturating_add(1),
-        Some(CloudState::CloudDeleteQueued) => {
-          summary.cloud_delete_queued = summary.cloud_delete_queued.saturating_add(1)
-        }
-        Some(CloudState::FailedDelete) => {
-          summary.failed_delete = summary.failed_delete.saturating_add(1)
-        }
         None => {}
       }
     }
   }
-  // 「全部」= 各 cloud_state 桶之和（与列表 Live 折合口径一致；不含派生 download_failed）
-  summary.total = summary
-    .cloud_only
-    .saturating_add(summary.synced)
-    .saturating_add(summary.cloud_delete_queued)
-    .saturating_add(summary.failed_delete);
+  // 「全部」= cloud_only + synced（与列表 Live 折合口径一致；不含派生 download_failed）
+  summary.total = summary.cloud_only.saturating_add(summary.synced);
   Ok(summary)
 }
 

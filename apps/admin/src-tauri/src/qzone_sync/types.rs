@@ -55,6 +55,13 @@ pub struct QzoneAlbumSummary {
   /// 封面图 URL（需经 fetch_media 代理，防盗链）
   #[serde(default)]
   pub cover_url: String,
+  /// 相册权限码（删图接口 priv；缺省 1=公开）
+  #[serde(default = "default_album_priv")]
+  pub album_priv: i32,
+}
+
+fn default_album_priv() -> i32 {
+  1
 }
 
 /// 前端浏览用相片摘要（缩略图 / 预览 / 原图 URL 均可能需代理）
@@ -77,6 +84,34 @@ pub struct QzonePhotoView {
   /// 拍摄/上传时间原文（有则前端按日分组时间轴）
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub capture_at: Option<String>,
+  /// 删图用定位串；缺省与 asset_id（lloc）相同
+  #[serde(default)]
+  pub sloc: String,
+  /// 本机已下载（sync `cloud_state=synced` 且 dest_path 非空）
+  #[serde(default)]
+  pub downloaded: bool,
+}
+
+/// 批量从 QQ 空间移除（本机文件保留）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QzoneDeletePhotoItem {
+  pub album_id: String,
+  pub asset_id: String,
+  #[serde(default)]
+  pub sloc: String,
+  /// 相册权限码；0/缺省时服务端按 1
+  #[serde(default)]
+  pub album_priv: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QzoneDeletePhotosResult {
+  pub deleted: u32,
+  pub failed: u32,
+  #[serde(default)]
+  pub message: String,
 }
 
 /// Tauri 代理拉回的媒体（前端拼 data URL）

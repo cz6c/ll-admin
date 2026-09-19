@@ -54,6 +54,12 @@ export interface QzoneDeletePhotosResult {
   message: string;
 }
 
+export interface QzoneUploadPhotosResult {
+  uploaded: number;
+  failed: number;
+  message: string;
+}
+
 export interface QzoneMediaBlob {
   contentType: string;
   dataBase64: string;
@@ -161,6 +167,15 @@ export async function listQzonePhotos(albumId: string): Promise<QzonePhotoView[]
  */
 export async function deleteQzonePhotos(items: QzoneDeletePhotoItem[]): Promise<QzoneDeletePhotosResult> {
   return invoke<QzoneDeletePhotosResult>("qzone_sync_delete_photos", { items });
+}
+
+/**
+ * 本机文件上传到指定 QQ 相册（当前仅图片；视频会计入 failed）
+ * @param albumId 目标相册 topicId
+ * @param paths 本地绝对路径
+ */
+export async function uploadQzonePhotos(albumId: string, paths: string[]): Promise<QzoneUploadPhotosResult> {
+  return invoke<QzoneUploadPhotosResult>("qzone_sync_upload_photos", { albumId, paths });
 }
 
 /**

@@ -44,6 +44,12 @@ alwaysApply: false
 ## Vue 组件
 
 - 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
+
+### 组件设计
+
+- **单一职责**。一个组件只负责一个功能或一块 UI。不要在同一个组件里同时取数、展示、编辑。单文件超过 **300** 行时，拆子组件，或把逻辑抽到 composable。
+- **高内聚、低耦合**。内部逻辑只服务这一职责，不绑死某一个页面的实现细节。输入用 **Props**，结果用 **Events**。禁止改父组件状态，禁止直接操作全局 DOM。组件职责内的请求、loading、成功/失败提示在内部完成；禁止把待提交数据 `emit` 给页面去请求，再用 `ref` 把结果塞回来。页面只在要刷新自己持有的数据时接收完成事件。
+- **开放封闭**。对扩展开放，对修改封闭。用 Props 和 Slots 留扩展点，调用方不改组件源码就能换展示或补操作。
 - 图表用 ECharts（见 `views/charts`）。
 - **业务图片统一 `BaseImage`**（`src/components/BaseImage`）：头像、列表/上传缩略图、相册预览、远端图展示等**内容图**必须走该组件（加载占位 `imgLoading`、失败 `imgError`、可选 PreviewGroup）。禁止业务页再手写一套 `<img>` / `a-image` 的 loading·fallback 逻辑。
   - **允许例外**（勿硬套）：品牌 Logo、404 等装饰静态图、扫码二维码 data URL、裁剪器实时预览、视频/`LivePhotoPlayer` 静帧等与播控强耦合画面。

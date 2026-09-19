@@ -1,7 +1,8 @@
 <!--
   iCloud 下载浮动触发区
   职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；工具栏危险区删云
-  主流程：hydrate → FAB → StatusCard → 网格筛选；点格灯箱；synced 勾选删云经确认后一次性移除（toast，不占任务队列）
+  主流程：hydrate → FAB → StatusCard → 宫格（固定全部，无状态 Tab）；点格灯箱；
+  删云勾选对齐 QQ：先「勾选」再点格切换，左键拖拽框选复用相册宫格；删除走 $feedback 全屏蒙层；成功后刷新云列表
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -9,6 +10,7 @@ import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import IcloudLazyImg from "./IcloudLazyImg.vue";
 import MediaLightboxShell from "./MediaLightboxShell.vue";
+import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
@@ -16,7 +18,6 @@ import {
   loadIcloudSyncCloudList,
   deleteIcloudSyncAssets,
   deleteAllSyncedIcloudAssets,
-  type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetsResult
 } from "@/api/icloudSync";
@@ -24,16 +25,13 @@ import {
   cloudListRowsToAssetItems,
   cloudListDisplayState,
   cloudListDisplayFilename,
-  cloudFilterTabLabel,
   cloudStateLabel,
   cloudStateColor,
-  CLOUD_LIST_PULL_FILTER_OPTIONS,
-  type CloudListStateFilterOption,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
-import { useDebounceFn, useDraggable, useEventListener, useThrottleFn } from "@vueuse/core";
+import { useDraggable, useEventListener, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -67,12 +65,10 @@ const loggingOut = ref(false);
 /** 抽屉打开且未登录：内嵌登录面板（替代原弹窗） */
 const authPanelActive = computed(() => drawerOpen.value && !isLoggedIn.value);
 
-/** 列表筛选项（仅「下载到本地」PULL 子集） */
-const cloudFilter = ref<IcloudSyncCloudStateFilter>("cloud_only");
+/** 无状态 Tab：宫格固定全部（待下载 / 已下载 / 失败） */
+const CLOUD_LIST_STATE = "all" as const;
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
-/** 文件名模糊搜索（对 original_filename） */
-const cloudFilenameKeyword = ref("");
 const cloudPage = ref(1);
 const cloudPageSize = ref(100);
 const cloudTotal = ref(0);
@@ -88,35 +84,25 @@ const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deletingAllSynced = ref(false);
+/** 勾选模式：点格切换选中（对齐 QQ）；未进入时点格仍开灯箱 */
+const selectMode = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
-/** 跨页勾选的行快照；翻页后当前 dataSource 不含他页行，删云须用此 Map */
+/** 跨页勾选的行快照；无限滚动后当前页不含他页行，删云须用此 Map */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
-/**
- * 合并当前页勾选与他页已选。
- * antd Table 的 onChange 默认只回传本页 keys，直接赋值会丢掉跨页勾选。
- */
-function mergeCloudPageSelection(keys: (string | number)[], rows: CloudListDisplayRow[]) {
-  const pageKeySet = new Set(cloudRows.value.map(row => row.rowKey));
-  const reported = keys.map(String);
-  const reportedOffPage = reported.some(key => !pageKeySet.has(key));
-  const nextKeys = reportedOffPage
-    ? reported
-    : [...cloudSelectedKeys.value.filter(key => !pageKeySet.has(key)), ...reported.filter(key => pageKeySet.has(key))];
-  const nextKeySet = new Set(nextKeys);
-  const nextMap = new Map(cloudSelectedRowsByKey.value);
-  for (const key of [...nextMap.keys()]) {
-    if (!nextKeySet.has(key)) nextMap.delete(key);
-  }
-  for (const row of rows) {
-    if (row?.rowKey && nextKeySet.has(row.rowKey)) nextMap.set(row.rowKey, row);
-  }
-  cloudSelectedKeys.value = nextKeys;
-  cloudSelectedRowsByKey.value = nextMap;
-}
 
 function clearCloudSelection() {
   cloudSelectedKeys.value = [];
   cloudSelectedRowsByKey.value = new Map();
+}
+
+function exitSelectMode() {
+  selectMode.value = false;
+  clearCloudSelection();
+}
+
+function enterSelectMode() {
+  if (!guardCloudManageAction()) return;
+  selectMode.value = true;
 }
 
 /** 用当前页最新行刷新已选快照（catalog 刷新后 cloudState 可能已变） */
@@ -134,6 +120,8 @@ function selectedCloudRows(): CloudListDisplayRow[] {
   return cloudSelectedKeys.value.map(key => cloudSelectedRowsByKey.value.get(key)).filter((row): row is CloudListDisplayRow => !!row);
 }
 
+const selectedCloudCount = computed(() => cloudSelectedKeys.value.length);
+
 /** 已登录且可腾空间时：仅 synced 可勾选删云 */
 function canSelectCloudRow(row: CloudListDisplayRow): boolean {
   return canManageCloudSpace.value && row.cloudState === "synced";
@@ -143,21 +131,96 @@ function isCloudRowSelected(row: CloudListDisplayRow): boolean {
   return cloudSelectedKeys.value.includes(row.rowKey);
 }
 
-function toggleCloudRowSelect(row: CloudListDisplayRow, event?: Event) {
-  event?.stopPropagation();
+function toggleCloudRowSelect(row: CloudListDisplayRow) {
   if (!canSelectCloudRow(row)) return;
-  const selected = isCloudRowSelected(row);
-  if (selected) {
-    mergeCloudPageSelection(
-      cloudSelectedKeys.value.filter(k => k !== row.rowKey),
-      []
-    );
-  } else {
-    mergeCloudPageSelection([...cloudSelectedKeys.value, row.rowKey], [row]);
+  const nextKeys = isCloudRowSelected(row)
+    ? cloudSelectedKeys.value.filter(k => k !== row.rowKey)
+    : [...cloudSelectedKeys.value, row.rowKey];
+  const nextKeySet = new Set(nextKeys);
+  const nextMap = new Map(cloudSelectedRowsByKey.value);
+  for (const key of [...nextMap.keys()]) {
+    if (!nextKeySet.has(key)) nextMap.delete(key);
   }
+  if (nextKeySet.has(row.rowKey)) nextMap.set(row.rowKey, row);
+  cloudSelectedKeys.value = nextKeys;
+  cloudSelectedRowsByKey.value = nextMap;
+}
+
+/** 勾选模式点格切换；否则开灯箱 */
+function onCloudCellClick(row: CloudListDisplayRow) {
+  if (selectMode.value) {
+    if (!canSelectCloudRow(row)) {
+      $feedback.message.info("仅已下载到本地的项可勾选移除");
+      return;
+    }
+    toggleCloudRowSelect(row);
+    return;
+  }
+  openCloudPreview(row);
 }
 
 const cloudGridScrollRef = ref<HTMLElement | null>(null);
+const cloudGridFrameRef = ref<HTMLElement | null>(null);
+/** 框选开始前的勾选（含跨页快照）；拖太短或取消时还原 */
+let cloudSelectSnapshot: { keys: string[]; rows: Map<string, CloudListDisplayRow> } | null = null;
+
+/**
+ * 框选替换勾选，只收当前已加载且可删云的格
+ * @note 与相册宫格一样是替换而不是追加；没画进框的已选项会清掉
+ */
+function replaceCloudMarquee(keys: string[]) {
+  const want = new Set(keys);
+  const nextMap = new Map<string, CloudListDisplayRow>();
+  for (const row of cloudRows.value) {
+    if (!want.has(row.rowKey) || !canSelectCloudRow(row)) continue;
+    nextMap.set(row.rowKey, row);
+  }
+  cloudSelectedKeys.value = [...nextMap.keys()];
+  cloudSelectedRowsByKey.value = nextMap;
+  if (nextMap.size > 0) selectMode.value = true;
+}
+
+function restoreCloudSelectSnapshot() {
+  if (!cloudSelectSnapshot) return;
+  cloudSelectedKeys.value = [...cloudSelectSnapshot.keys];
+  cloudSelectedRowsByKey.value = new Map(cloudSelectSnapshot.rows);
+}
+
+const {
+  marqueeStyle: cloudMarqueeStyle,
+  marqueeActive: cloudMarqueeActive,
+  onPointerDown: onCloudMarqueePointerDown,
+  onDragStart: onCloudDragStart
+} = useMarqueeDrag({
+  onBegin() {
+    cloudSelectSnapshot = {
+      keys: [...cloudSelectedKeys.value],
+      rows: new Map(cloudSelectedRowsByKey.value)
+    };
+  },
+  onUpdate(box) {
+    const frame = cloudGridFrameRef.value;
+    if (!frame) return;
+    if (box.width < MIN_MARQUEE_PX && box.height < MIN_MARQUEE_PX) {
+      restoreCloudSelectSnapshot();
+      return;
+    }
+    replaceCloudMarquee(hitTestMarqueeKeys(frame, box));
+  },
+  onEnd(committed) {
+    if (!committed) restoreCloudSelectSnapshot();
+    else if (cloudSelectedKeys.value.length > 0) selectMode.value = true;
+    cloudSelectSnapshot = null;
+  }
+});
+
+function onCloudPointerDown(event: PointerEvent) {
+  if (!canManageCloudSpace.value) return;
+  const scroll = cloudGridScrollRef.value;
+  const frame = cloudGridFrameRef.value;
+  if (!scroll || !frame) return;
+  onCloudMarqueePointerDown(event, { scrollEl: scroll, frameEl: frame });
+}
 const previewOpen = ref(false);
 /** 用 rowKey 锚定灯箱，列表刷新后仍能对上同一行 */
 const previewRowKey = ref<string | null>(null);
@@ -238,47 +301,16 @@ function guardCloudManageAction(): boolean {
   return false;
 }
 
-/** Tab：PULL 子集；下载失败角标为 0 时隐藏该项 */
-const cloudStateFilterTabs = computed((): CloudListStateFilterOption[] => {
-  return CLOUD_LIST_PULL_FILTER_OPTIONS.filter(tab => tab.value !== "download_failed" || (cloudSummary.value?.downloadFailed ?? 0) > 0);
-});
-
-/** 校正非法 / 已消失的角标筛选项 */
-function ensureCloudFilter() {
-  const allowed = new Set(CLOUD_LIST_PULL_FILTER_OPTIONS.map(t => t.value));
-  const prev = cloudFilter.value;
-  if (!allowed.has(cloudFilter.value)) {
-    cloudFilter.value = "cloud_only";
-  } else if (cloudFilter.value === "download_failed" && !(cloudSummary.value?.downloadFailed ?? 0)) {
-    cloudFilter.value = "cloud_only";
-  }
-  if (cloudFilter.value !== prev) cloudPage.value = 1; // refreshCloudAssets 会重置，保留语义
-}
-
-/** Tab 角标数字；0 返回 null */
-function summaryTabCountNum(key?: keyof IcloudSyncCloudStateSummary): number | null {
-  if (!key || !cloudSummary.value) return null;
-  const count = cloudSummary.value[key] as number | undefined;
-  if (!count || count <= 0) return null;
-  return count;
-}
-
-const deleteBusy = computed(() => deletingCloud.value || deletingAllSynced.value);
-
-/** 有勾选 → 移除所选；否则 → 移除全部已下载 */
-const deleteCloudPrimaryLabel = computed(() => (cloudSelectedKeys.value.length > 0 ? `移除所选（${cloudSelectedKeys.value.length}）` : "移除全部已下载"));
-
-const deleteCloudPrimaryDisabled = computed(() => {
-  if (!canManageCloudSpace.value || deleteBusy.value) return true;
-  if (cloudSelectedKeys.value.length > 0) return false;
+/** 无勾选时的「移除全部已下载」是否可点 */
+const deleteAllSyncedDisabled = computed(() => {
+  if (!canManageCloudSpace.value || deletingAllSynced.value) return true;
   return !cloudSummary.value?.synced;
 });
 
-function onDeleteCloudPrimaryClick() {
-  if (!guardCloudManageAction()) return;
-  if (cloudSelectedKeys.value.length > 0) confirmDeleteCloud();
-  else confirmDeleteAllSynced();
-}
+/** 勾选入口：有已下载项且无任务占用 */
+const canEnterSelectMode = computed(
+  () => canManageCloudSpace.value && (cloudSummary.value?.synced ?? 0) > 0
+);
 
 /**
  * 展示 catalog 时间键（Library=拍摄时间；Recents=加入时间）
@@ -307,14 +339,12 @@ async function refreshCloudAssets() {
   try {
     const summary = await getIcloudSyncCloudStateSummary();
     cloudSummary.value = summary;
-    ensureCloudFilter();
     cloudPage.value = 1;
     const list = await loadIcloudSyncCloudList({
       offset: 0,
       limit: cloudPageSize.value,
-      cloudState: cloudFilter.value,
-      ...cloudDateBounds(),
-      filenameKeyword: cloudFilenameKeyword.value.trim() || undefined
+      cloudState: CLOUD_LIST_STATE,
+      ...cloudDateBounds()
     });
     cloudRows.value = list.items.map(toDisplayRow);
     cloudTotal.value = list.total;
@@ -337,9 +367,8 @@ async function loadMoreCloudAssets() {
     const list = await loadIcloudSyncCloudList({
       offset: (next - 1) * cloudPageSize.value,
       limit: cloudPageSize.value,
-      cloudState: cloudFilter.value,
-      ...cloudDateBounds(),
-      filenameKeyword: cloudFilenameKeyword.value.trim() || undefined
+      cloudState: CLOUD_LIST_STATE,
+      ...cloudDateBounds()
     });
     const rows = list.items.map(toDisplayRow);
     cloudRows.value = [...cloudRows.value, ...rows];
@@ -390,11 +419,6 @@ function onCloudFilterChange() {
   clearCloudSelection();
   void refreshCloudAssets();
 }
-
-/** 文件名输入防抖刷新（与 Tab/日期筛选共用重置页码） */
-const onCloudFilenameKeywordChange = useDebounceFn(() => {
-  onCloudFilterChange();
-}, 300);
 
 /** 抽屉打开且已登录时刷新列表 */
 function refreshCloudIfVisible() {
@@ -455,7 +479,7 @@ async function openDeleteConfirmModal(opts: { title: string; content: string; on
   }
 }
 
-/** 从 iCloud 移除所选（一次性；本机保留） */
+/** 从 iCloud 移除所选（一次性；本机保留）；全屏蒙层禁操作 */
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
   const selected = selectedCloudRows().filter(row => row.cloudState === "synced");
@@ -468,23 +492,28 @@ function confirmDeleteCloud() {
     title: `从 iCloud 移除所选 ${selected.length} 项？`,
     content: ICLOUD_REMOVE_HINT,
     onConfirm: async () => {
+      if (deletingCloud.value) return;
       deletingCloud.value = true;
+      $feedback.loading("正在从 iCloud 移除…");
       try {
         const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
-        notifyDeleteResult(result);
         clearCloudSelection();
         await refreshCloudAssets();
+        $feedback.closeLoading();
+        notifyDeleteResult(result);
       } catch (e) {
+        $feedback.closeLoading();
         notifyDeleteOpError(e);
         throw e;
       } finally {
+        $feedback.closeLoading();
         deletingCloud.value = false;
       }
     }
   });
 }
 
-/** 全部已下载项从 iCloud 移除（跨页；一次性） */
+/** 全部已下载项从 iCloud 移除（跨页；一次性）；全屏蒙层禁操作 */
 function confirmDeleteAllSynced() {
   if (!guardCloudManageAction()) return;
   const syncedCount = cloudSummary.value?.synced ?? 0;
@@ -497,16 +526,21 @@ function confirmDeleteAllSynced() {
     title: `从 iCloud 移除全部已下载项（约 ${syncedCount} 项）？`,
     content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
     onConfirm: async () => {
+      if (deletingAllSynced.value) return;
       deletingAllSynced.value = true;
+      $feedback.loading("正在从 iCloud 移除…");
       try {
         const result = await deleteAllSyncedIcloudAssets();
-        notifyDeleteResult(result);
-        clearCloudSelection();
+        exitSelectMode();
         await refreshCloudAssets();
+        $feedback.closeLoading();
+        notifyDeleteResult(result);
       } catch (e) {
+        $feedback.closeLoading();
         notifyDeleteOpError(e);
         throw e;
       } finally {
+        $feedback.closeLoading();
         deletingAllSynced.value = false;
       }
     }
@@ -514,7 +548,7 @@ function confirmDeleteAllSynced() {
 }
 
 watch(canManageCloudSpace, ok => {
-  if (!ok) clearCloudSelection();
+  if (!ok) exitSelectMode();
 });
 
 watch(drawerOpen, open => {
@@ -523,6 +557,7 @@ watch(drawerOpen, open => {
     void refreshAccountSettings();
     refreshCloudIfVisible();
   } else {
+    exitSelectMode();
     closeCloudPreview();
   }
 });
@@ -707,33 +742,8 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="cloud-toolbar">
-          <a-tabs v-model:activeKey="cloudFilter" size="small" class="filter-tabs" @change="onCloudFilterChange">
-            <a-tab-pane v-for="tab in cloudStateFilterTabs" :key="tab.value">
-              <template #tab>
-                <span class="filter-tab-label">
-                  {{ cloudFilterTabLabel(tab) }}
-                  <a-badge
-                    v-if="summaryTabCountNum(tab.countKey)"
-                    :count="summaryTabCountNum(tab.countKey)!"
-                    :overflow-count="9999"
-                    :number-style="tab.dangerCount ? { backgroundColor: '#ff4d4f' } : undefined"
-                    :class="['tab-count-badge', tab.dangerCount ? 'tab-count-badge--danger' : undefined]"
-                  />
-                </span>
-              </template>
-            </a-tab-pane>
-          </a-tabs>
-
           <div class="toolbar-actions">
             <div class="toolbar-left">
-              <a-input
-                v-model:value="cloudFilenameKeyword"
-                class="cloud-filename-search"
-                allow-clear
-                placeholder="原文件名"
-                spellcheck="false"
-                @change="onCloudFilenameKeywordChange"
-              />
               <a-range-picker
                 v-model:value="cloudDateRange"
                 class="cloud-date-range"
@@ -744,13 +754,31 @@ onBeforeUnmount(() => {
             </div>
             <div class="toolbar-right">
               <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
-              </a-tooltip>
-              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button type="primary" danger :loading="deleteBusy" :disabled="deleteCloudPrimaryDisabled" @click="onDeleteCloudPrimaryClick()">
-                  {{ deleteCloudPrimaryLabel }}
+                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">
+                  刷新状态
                 </a-button>
               </a-tooltip>
+              <template v-if="!selectMode">
+                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                  <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">勾选</a-button>
+                </a-tooltip>
+                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                  <a-button type="primary" danger :loading="deletingAllSynced" :disabled="deleteAllSyncedDisabled" @click="confirmDeleteAllSynced()">
+                    移除全部已下载
+                  </a-button>
+                </a-tooltip>
+              </template>
+                <template v-else>
+                  <a-button
+                    danger
+                    :loading="deletingCloud"
+                    :disabled="selectedCloudCount === 0 || !canManageCloudSpace"
+                    @click="confirmDeleteCloud()"
+                  >
+                    从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}
+                  </a-button>
+                  <a-button @click="exitSelectMode">取消勾选</a-button>
+                </template>
             </div>
           </div>
         </div>
@@ -759,15 +787,22 @@ onBeforeUnmount(() => {
           <div v-if="loadingCloud" class="cloud-grid-loading" aria-busy="true">
             <a-spin />
           </div>
-          <div ref="cloudGridScrollRef" class="cloud-grid-scroll">
-            <div v-if="cloudRows.length" class="cloud-grid">
+          <div
+            ref="cloudGridScrollRef"
+            class="cloud-grid-scroll"
+            :class="{ 'is-marquee': cloudMarqueeActive }"
+            @pointerdown="onCloudPointerDown"
+            @dragstart="onCloudDragStart"
+          >
+            <div v-if="cloudRows.length" ref="cloudGridFrameRef" class="cloud-grid">
               <div
                 v-for="row in cloudRows"
                 :key="row.rowKey"
                 class="cloud-cell"
-                :class="{ selected: isCloudRowSelected(row) }"
+                :data-marquee-key="canSelectCloudRow(row) ? row.rowKey : undefined"
+                :class="{ selected: selectMode && isCloudRowSelected(row), 'select-mode': selectMode }"
                 :title="`${row.displayFilename}\n${formatSortKeyTime(row.captureAt ?? row.sortKey)} · ${row.displayStateLabel}`"
-                @click="openCloudPreview(row)"
+                @click="onCloudCellClick(row)"
               >
                 <IcloudLazyImg
                   :asset-id="row.assetId"
@@ -777,10 +812,9 @@ onBeforeUnmount(() => {
                   :ext="row.displayFilename?.split('.').pop()"
                 />
                 <span class="cell-state" :style="{ background: row.displayStateColor || '#999' }">{{ row.displayStateLabel }}</span>
-                <label v-if="canSelectCloudRow(row)" class="cell-check" @click.stop>
-                  <a-checkbox :checked="isCloudRowSelected(row)" @change="toggleCloudRowSelect(row)" />
-                </label>
+                <span v-if="selectMode && isCloudRowSelected(row)" class="cell-check" aria-hidden="true">✓</span>
               </div>
+              <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
             </div>
             <a-empty v-else-if="!loadingCloud" description="当前筛选下暂无内容" :image="false" />
             <!-- 无限滚动哨兵：触底自动加载下一页 -->
@@ -790,7 +824,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="cloud-grid-foot">
             <span v-if="cloudTotal > 0" class="cloud-grid-count">
-              {{ cloudSelectedKeys.length ? `共 ${cloudTotal} 条，已选 ${cloudSelectedKeys.length} 项` : `共 ${cloudTotal} 条` }}
+              {{ selectMode && selectedCloudCount ? `共 ${cloudTotal} 条，已选 ${selectedCloudCount} 项` : `共 ${cloudTotal} 条` }}
             </span>
           </div>
         </div>
@@ -909,25 +943,11 @@ onBeforeUnmount(() => {
 .cloud-toolbar {
   flex-shrink: 0;
 }
-.filter-tabs {
-  :deep(.ant-tabs-nav) {
-    margin-bottom: 0;
-  }
-  :deep(.ant-tabs-content) {
-    display: none;
-  }
-}
-.filter-tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 .toolbar-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
   flex-wrap: wrap;
 }
 .toolbar-left,
@@ -937,24 +957,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex-wrap: wrap;
 }
-.cloud-filename-search {
-  width: 180px;
-}
 .cloud-date-range {
   width: 260px;
-}
-.tab-count-badge {
-  :deep(.ant-badge-count) {
-    min-width: 16px;
-    height: 16px;
-    line-height: 16px;
-    padding: 0 5px;
-    font-size: 11px;
-    box-shadow: none;
-  }
-}
-:deep(.ant-tabs-tab-active) .tab-count-badge:not(.tab-count-badge--danger) .ant-badge-count {
-  background: var(--color-primary);
 }
 .cloud-grid-wrap {
   flex: 1 1 0;
@@ -981,11 +985,24 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px 2px 8px;
+  user-select: none;
+  &.is-marquee {
+    cursor: crosshair;
+  }
 }
 .cloud-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: 8px;
+}
+.sync-marquee {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  pointer-events: none;
 }
 .cloud-cell {
   position: relative;
@@ -995,6 +1012,9 @@ onBeforeUnmount(() => {
   border: 2px solid transparent;
   cursor: zoom-in;
   background: var(--color-fill-quaternary, rgba(0, 0, 0, 0.04));
+  &.select-mode {
+    cursor: pointer;
+  }
   &.selected {
     border-color: var(--color-primary);
   }
@@ -1029,11 +1049,15 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   right: 4px;
-  margin: 0;
-  line-height: 1;
-  padding: 2px;
+  width: 20px;
+  height: 20px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  pointer-events: none;
 }
 .cloud-grid-sentinel {
   flex-shrink: 0;

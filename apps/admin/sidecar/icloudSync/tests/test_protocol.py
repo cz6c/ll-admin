@@ -7,6 +7,7 @@ Protocol contract tests for icloudSync sidecar.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -528,6 +529,57 @@ def test_auth_probe_incomplete_auth_keeps_session_files(tmp_path: Path) -> None:
     assert ev.get("code") == "session_expired"
     assert cookiejar_path.exists()
     assert session_path.exists()
+
+
+def test_auth_error_persists_diagnostic_after_reset(tmp_path: Path) -> None:
+    """登录失败会先 reset 内存态；须仍能按传入 session_dir 落盘，否则排查网络错误无据。"""
+    agent = _load_agent(mock=False)
+    agent._reset_auth_state()
+    exc = ConnectionError("timed out connecting to idmsa.apple.com")
+    ev = agent._auth_error(
+        "auth",
+        "network_error",
+        str(exc),
+        stage="auth",
+        exc=exc,
+        apple_id="user@example.com",
+        session_dir=str(tmp_path),
+    )
+    assert ev["type"] == "error"
+    disk = tmp_path / "auth-diagnostic.json"
+    assert disk.is_file()
+    report = json.loads(disk.read_text(encoding="utf-8"))
+    assert report["code"] == "network_error"
+    assert report["exceptionType"] == "ConnectionError"
+    assert "timed out" in (report.get("exceptionDetail") or "")
+
+
+def test_auth_login_network_failure_writes_diagnostic(tmp_path: Path) -> None:
+    """auth 命令 ConnectionError → network_error，且诊断落盘含 exceptionDetail。"""
+    agent = _load_agent(mock=False)
+    apple_id = "user@example.com"
+
+    def _boom(**_kwargs):
+        raise ConnectionError("failed to establish a new connection: icloud.com.cn")
+
+    agent._build_api = _boom  # type: ignore[method-assign]
+    ev = agent._handle_auth(
+        {
+            "cmd": "auth",
+            "apple_id": apple_id,
+            "password": "secret",
+            "session_dir": str(tmp_path),
+            "icloud_domain": "cn",
+        }
+    )
+    assert ev["type"] == "error"
+    assert ev.get("code") == "network_error"
+    disk = tmp_path / "auth-diagnostic.json"
+    assert disk.is_file()
+    report = json.loads(disk.read_text(encoding="utf-8"))
+    assert report["stage"] == "auth"
+    assert report["code"] == "network_error"
+    assert report.get("exceptionType") == "ConnectionError"
 
 
 def test_trigger_2fa_push_notification_puts_securitycode() -> None:

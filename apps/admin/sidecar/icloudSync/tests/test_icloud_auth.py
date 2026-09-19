@@ -81,6 +81,13 @@ def test_parse_required_domain_cn() -> None:
     assert ipd_auth.is_domain_mismatch_exception(exc) is True
 
 
+def test_parse_required_domain_ignores_connection_url() -> None:
+    """连接失败文案含 icloud.com.cn 不得误判为选错区域。"""
+    exc = ConnectionError("HTTPSConnectionPool(host='setup.icloud.com.cn'): Max retries exceeded")
+    assert ipd_auth.parse_required_domain(exc) is None
+    assert ipd_auth.is_domain_mismatch_exception(exc) is False
+
+
 def test_build_domain_attempt_order_prefers_saved_hint(tmp_path: Path) -> None:
     apple_id = "user@example.com"
     hint = ipd_auth.domain_hint_path(str(tmp_path), apple_id)

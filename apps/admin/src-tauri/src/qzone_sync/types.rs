@@ -114,6 +114,16 @@ pub struct QzoneDeletePhotosResult {
   pub message: String,
 }
 
+/// 批量上传到指定相册的结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QzoneUploadPhotosResult {
+  pub uploaded: u32,
+  pub failed: u32,
+  #[serde(default)]
+  pub message: String,
+}
+
 /// Tauri 代理拉回的媒体（前端拼 data URL）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

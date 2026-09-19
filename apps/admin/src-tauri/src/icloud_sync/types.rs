@@ -58,14 +58,6 @@ impl JobView {
       Self::Recents => "recents",
     }
   }
-
-  pub fn parse(s: &str) -> Option<Self> {
-    match s {
-      "library" => Some(Self::Library),
-      "recents" => Some(Self::Recents),
-      _ => None,
-    }
-  }
 }
 
 /// 任务生命周期状态
@@ -78,41 +70,14 @@ pub enum JobStatus {
   Pending,
   /// 下载进行中
   Running,
-  /// session 失效暂停，保留 SQLite 进度，待用户显式重认证
+  /// session 失效暂停；进度只在本次进程，重启后不续传
   PausedSession,
-  /// 用户手动暂停，保留 SQLite 进度，可 resume 续传
+  /// 用户手动暂停；本次进程内可 resume
   PausedUser,
   /// 全部资产处理完毕
   Done,
   /// 锁定/限流等不可恢复错误
   Failed,
-}
-
-impl JobStatus {
-  pub fn as_str(self) -> &'static str {
-    match self {
-      Self::Cataloging => "cataloging",
-      Self::Pending => "pending",
-      Self::Running => "running",
-      Self::PausedSession => "paused_session",
-      Self::PausedUser => "paused_user",
-      Self::Done => "done",
-      Self::Failed => "failed",
-    }
-  }
-
-  pub fn parse(s: &str) -> Option<Self> {
-    match s {
-      "cataloging" => Some(Self::Cataloging),
-      "pending" => Some(Self::Pending),
-      "running" => Some(Self::Running),
-      "paused_session" => Some(Self::PausedSession),
-      "paused_user" => Some(Self::PausedUser),
-      "done" => Some(Self::Done),
-      "failed" => Some(Self::Failed),
-      _ => None,
-    }
-  }
 }
 
 /// sidecar catalog 媒体类型
@@ -237,25 +202,6 @@ pub enum TaskType {
   Catalog,
 }
 
-impl TaskType {
-  pub fn as_str(self) -> &'static str {
-    match self {
-      Self::Sync => "sync",
-      Self::CloudDelete => "cloud_delete",
-      Self::Catalog => "catalog",
-    }
-  }
-
-  pub fn parse(s: &str) -> Option<Self> {
-    match s {
-      "sync" => Some(Self::Sync),
-      "cloud_delete" => Some(Self::CloudDelete),
-      "catalog" => Some(Self::Catalog),
-      _ => None,
-    }
-  }
-}
-
 /// 抽屉云管理列表行
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -314,7 +260,7 @@ pub struct IcloudSyncCloudStateSummary {
   pub last_catalog_at: Option<i64>,
 }
 
-/// SQLite jobs 行
+/// 进程内任务（不落库；进程退出后不可续传）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobRow {
   pub id: i64,
@@ -323,7 +269,7 @@ pub struct JobRow {
   pub output_dir: String,
   pub apple_id: String,
   pub status: JobStatus,
-  /// 已弃用占位：schema v5 无 jobs.mode；恒为 full
+  /// API 占位，恒为 full
   pub mode: String,
   pub created_at: i64,
   pub finished_at: Option<i64>,

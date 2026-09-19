@@ -611,9 +611,22 @@ def _auth_error(
     *,
     stage: str,
     exc: Exception | None = None,
+    apple_id: str | None = None,
+    session_dir: str | None = None,
 ) -> dict[str, Any]:
-    """构造带 diagnostic 的 error 事件并落盘。"""
-    diagnostic = _build_diagnostic(stage=stage, code=code, message=message, exc=exc)
+    """
+    构造带 diagnostic 的 error 事件并落盘。
+
+    @note 调用方若已 `_reset_auth_state()`，须显式传入 apple_id/session_dir，否则无法落盘。
+    """
+    diagnostic = _build_diagnostic(
+        stage=stage,
+        code=code,
+        message=message,
+        exc=exc,
+        apple_id=apple_id,
+        session_dir=session_dir,
+    )
     return error_event(cmd, code, message, diagnostic=diagnostic)
 
 
@@ -1768,6 +1781,8 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
                 "登录会话已损坏或不完整（旧版缓存不兼容），请退出登录后重新输入密码",
                 stage="auth",
                 exc=exc,
+                apple_id=apple_id,
+                session_dir=session_dir,
             )
         if _is_2fa_required_exception(exc):
             # pyicloud 可能在构造/鉴权阶段直接抛 2SA 异常而非设置 requires_2fa 标志。
@@ -1782,7 +1797,11 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
             ipd_auth.clear_session_artifacts(session_dir, apple_id)
         _reset_auth_state()
         code = _map_exception(exc)
-        message = str(exc)[:500]
+        # 展开 cause：pyicloud 会把 SSL/DNS 包成「Cannot connect to Apple iCloud service」
+        message = (
+            auth_diag.format_exception_chain(exc, limit=500)
+            or (str(exc).strip().splitlines()[0][:500] if str(exc).strip() else type(exc).__name__)
+        )
         if ipd_auth._is_dsinfo_key_error(exc) or isinstance(exc, ipd_auth.IcloudIncompleteAuthError):
             message = "登录会话已损坏或不完整（旧版缓存不兼容），请退出登录后重新输入密码"
         elif isinstance(exc, ipd_auth.IcloudDomainMismatchError):
@@ -1790,7 +1809,15 @@ def _handle_auth(cmd: dict[str, Any]) -> dict[str, Any]:
         elif ipd_auth.is_domain_mismatch_exception(exc):
             required = ipd_auth.parse_required_domain(exc) or "cn"
             message = ipd_auth.format_domain_mismatch_message(icloud_domain, required)
-        return _auth_error("auth", code, message, stage="auth", exc=exc)
+        return _auth_error(
+            "auth",
+            code,
+            message,
+            stage="auth",
+            exc=exc,
+            apple_id=apple_id,
+            session_dir=session_dir,
+        )
 
 
 def _handle_auth_2fa(cmd: dict[str, Any]) -> dict[str, Any]:

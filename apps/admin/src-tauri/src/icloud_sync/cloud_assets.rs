@@ -289,16 +289,15 @@ fn build_sync_asset_row(
   })
 }
 
-/// 活跃 sync job 内 download_status=failed 的逻辑资产数（Live=1；任务结束 finalize 后归零）
+/// 当前下载批次里 download_status=failed 的逻辑资产数（Live=1；任务结束 finalize 后归零）
 fn count_download_failed(conn: &Connection, apple_id: &str) -> Result<u32, String> {
   let count: i64 = conn
     .query_row(
       r#"
       SELECT COUNT(DISTINCT a.asset_id) FROM assets a
-      INNER JOIN jobs j ON j.id = a.active_job_id
       WHERE a.apple_id = ?1
         AND a.download_status = 'failed'
-        AND j.task_type = 'sync'
+        AND a.active_job_id IS NOT NULL
       "#,
       params![apple_id],
       |row| row.get(0),
@@ -408,7 +407,7 @@ pub fn load_sync_assets(
   })
 }
 
-/// download_failed 筛选：活跃 sync job 内 download_status=failed（派生态，不写 cloud_state）
+/// download_failed 筛选：active_job_id 仍绑着且 download_status=failed（任务结束 finalize 后归零）
 fn load_sync_assets_download_failed(
   conn: &Connection,
   apple_id: &str,
@@ -424,7 +423,6 @@ fn load_sync_assets_download_failed(
     "apple_id = ?".to_string(),
     "download_status = 'failed'".to_string(),
     "active_job_id IS NOT NULL".to_string(),
-    "EXISTS (SELECT 1 FROM jobs j WHERE j.id = assets.active_job_id AND j.task_type = 'sync')".to_string(),
   ];
   date_filter.push_where(&mut where_parts);
   let filename_kw = push_filename_keyword(&mut where_parts, filename_keyword);
@@ -934,18 +932,8 @@ mod tests {
   }
 
   #[test]
-  fn download_failed_summary_and_filter_only_active_sync_job() {
+  fn download_failed_summary_and_filter_only_active_job() {
     let (path, conn) = temp_db();
-    conn
-      .execute(
-        r#"
-        INSERT INTO jobs(
-          id, task_type, view, output_dir, apple_id, status, created_at
-        ) VALUES(1, 'sync', 'library', '/tmp/out', 'u@x.com', 'running', 1)
-        "#,
-        [],
-      )
-      .expect("insert job");
     conn
       .execute(
         r#"

@@ -1091,14 +1091,7 @@ pub fn set_task_status(
     match job.task_type {
       TaskType::Sync => finalize_job_download(conn, job_id)?,
       TaskType::CloudDelete | TaskType::Catalog => {
-        // CloudDelete 仅为历史残留；与 Catalog 一样只写 finished_at
-        let now = chrono::Utc::now().timestamp();
-        conn
-          .execute(
-            "UPDATE jobs SET finished_at = ?1 WHERE id = ?2",
-            rusqlite::params![now, job_id],
-          )
-          .map_err(|e| format!("更新 finished_at 失败: {e}"))?;
+        super::job_mem::set_finished_at(job_id, chrono::Utc::now().timestamp())?;
       }
     }
     emit_cloud_state_changed(app);
@@ -1365,7 +1358,6 @@ pub async fn icloud_sync_active_task(app: AppHandle) -> Result<Option<IcloudSync
     }
     let db_path = state_db_path(&app)?;
     let conn = open_db(&db_path)?;
-    // open_db/ensure_schema 已 scrub 历史 cloud_delete job/queue
     let Some(job) = find_incomplete_task_for_apple(&conn, &apple_id)? else {
       return Ok(None);
     };

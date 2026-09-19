@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -14,22 +15,57 @@ const DB_FILE: &str = "media.db";
 /// 缩略图连续失败次数达到此阈值后跳过重试，避免对坏文件反复解码
 pub const FAIL_THRESHOLD: u32 = 3;
 
-/// 打开或初始化相册数据库
+/// 打开相册库。已有 `media` 表则只设连接参数，不再改表
+/// @note 结构变更不写在这里：单独 SQL 手工执行后删除脚本，避免每次 open 抢写锁
 pub fn open_db(album_dir: &Path) -> Result<Connection, String> {
   let path = album_dir.join(DB_FILE);
   let conn = Connection::open(&path).map_err(|e| format!("打开相册数据库失败: {e}"))?;
-  migrate(&conn)?;
+  prepare_conn(&conn)?;
+  if !table_exists(&conn, "media")? {
+    create_schema(&conn)?;
+  }
   Ok(conn)
 }
 
-fn migrate(conn: &Connection) -> Result<(), String> {
-  // WAL 模式：discover / 缩略图 pipeline 并发写时不再互相阻塞
+fn prepare_conn(conn: &Connection) -> Result<(), String> {
+  conn
+    .busy_timeout(Duration::from_secs(5))
+    .map_err(|e| format!("设置相册库 busy_timeout 失败: {e}"))?;
+  ensure_wal(conn)
+}
+
+/// 已是 WAL 则不再写 journal_mode，避免每次 open 抢锁
+fn ensure_wal(conn: &Connection) -> Result<(), String> {
+  let mode: String = conn
+    .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+    .map_err(|e| format!("读取 journal_mode 失败: {e}"))?;
+  if mode.eq_ignore_ascii_case("wal") {
+    return Ok(());
+  }
+  conn
+    .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+    .map_err(|e| format!("设置相册库 WAL 失败: {e}"))
+}
+
+fn table_exists(conn: &Connection, table: &str) -> Result<bool, String> {
+  let exists: bool = conn
+    .query_row(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+      params![table],
+      |_| Ok(true),
+    )
+    .optional()
+    .map_err(|e| format!("探测表 {table} 失败: {e}"))?
+    .unwrap_or(false);
+  Ok(exists)
+}
+
+/// 空库建终态表（含指纹、来源、拍摄时间列）。已有库不走此函数
+fn create_schema(conn: &Connection) -> Result<(), String> {
   conn
     .execute_batch(
       "
-      PRAGMA journal_mode=WAL;
-      PRAGMA synchronous=NORMAL;
-      CREATE TABLE IF NOT EXISTS media (
+      CREATE TABLE media (
         path TEXT PRIMARY KEY,
         root TEXT NOT NULL,
         rel_dir TEXT NOT NULL,
@@ -40,52 +76,31 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ext TEXT NOT NULL,
         thumb_path TEXT,
         preview_path TEXT,
+        playback_path TEXT,
         video_path TEXT,
         scanned_at INTEGER NOT NULL,
         fail_count INTEGER NOT NULL DEFAULT 0,
         capture_at TEXT,
+        capture_at_source TEXT,
+        capture_at_probed INTEGER NOT NULL DEFAULT 0,
         camera TEXT,
         width INTEGER,
-        height INTEGER
+        height INTEGER,
+        content_hash TEXT,
+        hash_algo TEXT,
+        origin TEXT,
+        origin_asset_id TEXT,
+        origin_account TEXT,
+        origin_album TEXT,
+        added_at TEXT,
+        latitude REAL,
+        longitude REAL
       );
-      CREATE INDEX IF NOT EXISTS idx_media_root ON media(root);
-      CREATE INDEX IF NOT EXISTS idx_media_root_rel ON media(root, rel_dir);
+      CREATE INDEX idx_media_root ON media(root);
+      CREATE INDEX idx_media_root_rel ON media(root, rel_dir);
       ",
     )
-    .map_err(|e| format!("迁移相册表失败: {e}"))?;
-  // 兼容旧库：补列，已存在则忽略 duplicate column 错误
-  let _ = conn.execute(
-    "ALTER TABLE media ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0",
-    [],
-  );
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN playback_path TEXT", []);
-  // 拍摄时间：缩略图就绪后由 sync/EXIF 回填；文件变更时在 upsert 中清空
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN capture_at TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN camera TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN width INTEGER", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN height INTEGER", []);
-  // 内容指纹：稳定 blake3 hex；size/modified 变化时在 upsert 中清空
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN content_hash TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN hash_algo TEXT", []);
-  // 拍摄时间来源 / 探测 / 锁定：手改仅允许「已探测且未锁定」
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN capture_at_source TEXT", []);
-  let _ = conn.execute(
-    "ALTER TABLE media ADD COLUMN capture_at_probed INTEGER NOT NULL DEFAULT 0",
-    [],
-  );
-  let _ = conn.execute(
-    "ALTER TABLE media ADD COLUMN capture_at_locked INTEGER NOT NULL DEFAULT 0",
-    [],
-  );
-  // 同步入库后与 sync 表断层：云端身份与产品元数据落在本表
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_asset_id TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_account TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN origin_album TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN added_at TEXT", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN latitude REAL", []);
-  let _ = conn.execute("ALTER TABLE media ADD COLUMN longitude REAL", []);
-  Ok(())
+    .map_err(|e| format!("初始化相册表失败: {e}"))
 }
 
 /// 读取某根目录下已索引的 path → (size, modified, 缓存路径)
@@ -97,7 +112,7 @@ pub fn load_indexed_paths(
   let mut stmt = conn
     .prepare(
       "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at, camera, width, height,
-              capture_at_source, capture_at_probed, capture_at_locked
+              capture_at_source, capture_at_probed
        FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
@@ -117,7 +132,6 @@ pub fn load_indexed_paths(
         height: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
         capture_at_source: row.get(10)?,
         capture_at_probed: row.get::<_, i64>(11).unwrap_or(0) != 0,
-        capture_at_locked: row.get::<_, i64>(12).unwrap_or(0) != 0,
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -142,7 +156,6 @@ pub struct IndexedRow {
   pub height: Option<u32>,
   pub capture_at_source: Option<String>,
   pub capture_at_probed: bool,
-  pub capture_at_locked: bool,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -152,7 +165,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
   let mut stmt = conn
     .prepare(
       "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir,
-              capture_at, camera, width, height, capture_at_source, capture_at_probed, capture_at_locked,
+              capture_at, camera, width, height, capture_at_source, capture_at_probed,
               origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
@@ -199,19 +212,18 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let capture_at_source: Option<String> = row.get(15)?;
       let capture_at_source = capture_at_source.filter(|s| !s.trim().is_empty());
       let capture_at_probed = row.get::<_, i64>(16).unwrap_or(0) != 0;
-      let capture_at_locked = row.get::<_, i64>(17).unwrap_or(0) != 0;
-      let origin: Option<String> = row.get(18)?;
+      let origin: Option<String> = row.get(17)?;
       let origin = origin.filter(|s| !s.trim().is_empty());
-      let origin_asset_id: Option<String> = row.get(19)?;
+      let origin_asset_id: Option<String> = row.get(18)?;
       let origin_asset_id = origin_asset_id.filter(|s| !s.trim().is_empty());
-      let origin_account: Option<String> = row.get(20)?;
+      let origin_account: Option<String> = row.get(19)?;
       let origin_account = origin_account.filter(|s| !s.trim().is_empty());
-      let origin_album: Option<String> = row.get(21)?;
+      let origin_album: Option<String> = row.get(20)?;
       let origin_album = origin_album.filter(|s| !s.trim().is_empty());
-      let added_at: Option<String> = row.get(22)?;
+      let added_at: Option<String> = row.get(21)?;
       let added_at = added_at.filter(|s| !s.trim().is_empty());
-      let latitude: Option<f64> = row.get(23)?;
-      let longitude: Option<f64> = row.get(24)?;
+      let latitude: Option<f64> = row.get(22)?;
+      let longitude: Option<f64> = row.get(23)?;
       Ok((rel_dir.clone(), dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -226,7 +238,6 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         capture_at,
         capture_at_source,
         capture_at_probed,
-        capture_at_locked,
         rel_dir,
         camera,
         width,
@@ -310,11 +321,11 @@ fn upsert_media_impl(
         path, root, rel_dir, name, kind, size, modified, ext,
         thumb_path, preview_path, playback_path, video_path, scanned_at, fail_count,
         origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude,
-        capture_at, capture_at_source, capture_at_probed, capture_at_locked, camera, width, height
+        capture_at, capture_at_source, capture_at_probed, camera, width, height
       ) VALUES (
         ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,0,
         ?14,?15,?16,?17,?18,?19,?20,
-        ?21,?22,?23,?24,?25,?26,?27
+        ?21,?22,?23,?24,?25,?26
       )
       ON CONFLICT(path) DO UPDATE SET
         root=excluded.root, rel_dir=excluded.rel_dir, name=excluded.name,
@@ -341,11 +352,6 @@ fn upsert_media_impl(
         capture_at_probed = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.capture_at_probed
-          ELSE 0
-        END,
-        capture_at_locked = CASE
-          WHEN media.modified = excluded.modified AND media.size = excluded.size
-            THEN media.capture_at_locked
           ELSE 0
         END,
         camera = CASE
@@ -406,7 +412,6 @@ fn upsert_media_impl(
         file.capture_at,
         file.capture_at_source,
         if file.capture_at_probed { 1i64 } else { 0 },
-        if file.capture_at_locked { 1i64 } else { 0 },
         file.camera,
         file.width.map(|v| v as i64),
         file.height.map(|v| v as i64),
@@ -591,7 +596,6 @@ pub fn upsert_media_from_sync(
     capture_at: fill.capture_at.clone(),
     capture_at_source: fill.capture_at_source.clone(),
     capture_at_probed: true,
-    capture_at_locked: fill.capture_at_locked,
     rel_dir: rel_dir.clone(),
     camera: fill.camera.clone(),
     width: None,
@@ -610,7 +614,7 @@ pub fn upsert_media_from_sync(
   update_meta_fill_batch(conn, &[(path.to_string(), fill)])
 }
 
-/// 批量补写 EXIF/文件名元数据：仅补空 capture/camera；**总是**写 probed + locked
+/// 批量补写 EXIF/文件名元数据：仅补空 capture/camera；总是写 probed
 pub fn update_meta_fill_batch(
   conn: &Connection,
   updates: &[(String, super::media_meta::MediaMetaFill)],
@@ -622,7 +626,6 @@ pub fn update_meta_fill_batch(
     .unchecked_transaction()
     .map_err(|e| format!("开启元数据更新事务失败: {e}"))?;
   for (path, fill) in updates {
-    let locked: i64 = if fill.capture_at_locked { 1 } else { 0 };
     tx.execute(
       "UPDATE media SET
          capture_at = CASE
@@ -642,15 +645,13 @@ pub fn update_meta_fill_batch(
              THEN ?3
            ELSE camera
          END,
-         capture_at_probed = 1,
-         capture_at_locked = ?5
+         capture_at_probed = 1
        WHERE path = ?1",
       params![
         path,
         fill.capture_at,
         fill.camera,
         fill.capture_at_source,
-        locked
       ],
     )
     .map_err(|e| format!("更新媒体元数据失败: {e}"))?;
@@ -660,8 +661,9 @@ pub fn update_meta_fill_batch(
   Ok(())
 }
 
-/// 解析拍摄时间串 → unix 秒（本地/UTC naive 均按 UTC 解释，与排序键一致）
-fn parse_capture_timestamp(raw: &str) -> Option<i64> {
+/// 解析拍摄时间串 → unix 秒
+/// 带时区的 RFC3339 按其偏移；无时区的墙钟按本地时区，使文件名前缀 / EXIF 与用户所选时分秒一致
+pub(crate) fn parse_capture_timestamp(raw: &str) -> Option<i64> {
   let raw = raw.trim();
   if raw.is_empty() {
     return None;
@@ -678,83 +680,200 @@ fn parse_capture_timestamp(raw: &str) -> Option<i64> {
     "%Y-%m-%d",
   ] {
     if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(raw, fmt) {
-      return Some(naive.and_utc().timestamp());
+      return local_naive_to_unix(naive);
     }
     if let Ok(d) = chrono::NaiveDate::parse_from_str(raw, fmt) {
-      return d.and_hms_opt(0, 0, 0).map(|n| n.and_utc().timestamp());
+      let naive = d.and_hms_opt(0, 0, 0)?;
+      return local_naive_to_unix(naive);
     }
   }
   None
 }
 
-/// 用户批量覆盖拍摄时间：全部设为同一时间（仅 `capture_at_probed=1` 且 `capture_at_locked=0`）
-/// @returns (updated, rejected)
+fn local_naive_to_unix(naive: chrono::NaiveDateTime) -> Option<i64> {
+  use chrono::{LocalResult, TimeZone};
+
+  match chrono::Local.from_local_datetime(&naive) {
+    LocalResult::Single(dt) | LocalResult::Ambiguous(dt, _) => Some(dt.timestamp()),
+    LocalResult::None => None,
+  }
+}
+
+/// 用户批量修改拍摄时间：可覆盖已有值；同步风格文件名改前缀
+/// @returns (updated, rejected, 最终 path + unix_secs 供 EXIF, 路径变更 from→to)
 pub fn set_capture_at_user_batch(
   conn: &Connection,
-  paths: &[String],
-  capture_at: &str,
-) -> Result<(u32, u32), String> {
+  items: &[(String, String)],
+) -> Result<(u32, u32, Vec<(String, i64)>, Vec<(String, String)>), String> {
   let mut updated = 0u32;
   let mut rejected = 0u32;
-  if paths.is_empty() {
-    return Ok((0, 0));
+  let mut written: Vec<(String, i64)> = Vec::new();
+  let mut renames: Vec<(String, String)> = Vec::new();
+  if items.is_empty() {
+    return Ok((0, 0, written, renames));
   }
-
-  let raw = capture_at.trim();
-  if raw.is_empty() {
-    return Err("缺少目标时间".into());
-  }
-  if parse_capture_timestamp(raw).is_none() {
-    return Err(format!("无法解析目标时间: {raw}"));
-  }
-  // 统一存可解析串；日期-only 补 T00:00:00
-  let next = if raw.len() == 10 && raw.chars().filter(|c| *c == '-').count() == 2 {
-    format!("{raw}T00:00:00")
-  } else {
-    raw.to_string()
-  };
 
   let tx = conn
     .unchecked_transaction()
     .map_err(|e| format!("开启拍摄时间写入事务失败: {e}"))?;
 
-  for path in paths {
-    let row: Option<(i64, i64)> = tx
+  for (path, capture_at) in items {
+    let raw = capture_at.trim();
+    let Some(secs) = parse_capture_timestamp(raw) else {
+      rejected += 1;
+      continue;
+    };
+    let next = if raw.len() == 10 && raw.chars().filter(|c| *c == '-').count() == 2 {
+      format!("{raw}T00:00:00")
+    } else {
+      raw.to_string()
+    };
+
+    let row: Option<(String, Option<String>)> = tx
       .query_row(
-        "SELECT COALESCE(capture_at_probed, 0), COALESCE(capture_at_locked, 0)
-         FROM media WHERE path = ?1",
+        "SELECT name, video_path FROM media WHERE path = ?1",
         params![path],
         |r| Ok((r.get(0)?, r.get(1)?)),
       )
       .optional()
       .map_err(|e| format!("读取媒体行失败: {e}"))?;
 
-    let Some((probed, locked)) = row else {
+    let Some((_old_name, video_path)) = row else {
       rejected += 1;
       continue;
     };
-    if probed == 0 || locked != 0 {
+
+    let old_path = Path::new(path.as_str());
+    if !old_path.is_file() {
       rejected += 1;
       continue;
     }
 
+    let (final_path, final_name, video_rename) =
+      match super::media_meta::path_with_rewritten_capture_prefix(old_path, secs) {
+        Some(new_path) if new_path != old_path => {
+          if new_path.exists() {
+            rejected += 1;
+            continue;
+          }
+          let new_name = new_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+          if new_name.is_empty() {
+            rejected += 1;
+            continue;
+          }
+
+          // Live：同 stem 的 mov 一并改前缀，避免配对断裂
+          let video_rename = video_path.as_ref().and_then(|vp| {
+            let old_mov = Path::new(vp.as_str());
+            let old_stem = old_path.file_stem()?.to_str()?;
+            let mov_stem = old_mov.file_stem()?.to_str()?;
+            if old_stem != mov_stem {
+              return None;
+            }
+            let new_mov = super::media_meta::path_with_rewritten_capture_prefix(old_mov, secs)?;
+            if new_mov == old_mov {
+              return None;
+            }
+            if new_mov.exists() {
+              return None;
+            }
+            Some((vp.clone(), new_mov.to_string_lossy().to_string()))
+          });
+
+          if video_path.is_some() && video_rename.is_none() {
+            // 有配对 mov 但无法安全改名时整项拒绝，避免只改 still
+            let old_stem = old_path.file_stem().and_then(|s| s.to_str());
+            let mov_stem = video_path
+              .as_ref()
+              .and_then(|vp| Path::new(vp.as_str()).file_stem().and_then(|s| s.to_str()));
+            if old_stem.is_some() && old_stem == mov_stem {
+              rejected += 1;
+              continue;
+            }
+          }
+
+          if let Err(e) = std::fs::rename(old_path, &new_path) {
+            log::warn!("album: rename capture prefix {path}: {e}");
+            rejected += 1;
+            continue;
+          }
+          if let Some((ref from_mov, ref to_mov)) = video_rename {
+            if let Err(e) = std::fs::rename(Path::new(from_mov), Path::new(to_mov)) {
+              // still 已改名：尽量回滚 still，避免索引与盘不一致
+              let _ = std::fs::rename(&new_path, old_path);
+              log::warn!("album: rename live mov {from_mov}: {e}");
+              rejected += 1;
+              continue;
+            }
+          }
+
+          (
+            new_path.to_string_lossy().to_string(),
+            new_name,
+            video_rename,
+          )
+        }
+        _ => {
+          let name = old_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+          (path.clone(), name, None)
+        }
+      };
+
     let n = tx
       .execute(
-        "UPDATE media SET capture_at = ?2, capture_at_source = 'user'
-         WHERE path = ?1 AND COALESCE(capture_at_probed, 0) = 1 AND COALESCE(capture_at_locked, 0) = 0",
-        params![path, next],
+        "UPDATE media
+         SET path = ?2,
+             name = ?3,
+             capture_at = ?4,
+             capture_at_source = 'user',
+             capture_at_probed = 1,
+             video_path = COALESCE(?5, video_path)
+         WHERE path = ?1",
+        params![
+          path,
+          final_path,
+          final_name,
+          next,
+          video_rename.as_ref().map(|(_, to)| to.as_str()),
+        ],
       )
       .map_err(|e| format!("写入拍摄时间失败: {e}"))?;
     if n == 0 {
       rejected += 1;
-    } else {
-      updated += 1;
+      continue;
+    }
+
+    if let Some((ref from_mov, ref to_mov)) = video_rename {
+      // 其它行若把该 mov 当 video_path，一并改写
+      let _ = tx.execute(
+        "UPDATE media SET video_path = ?2 WHERE video_path = ?1",
+        params![from_mov, to_mov],
+      );
+    }
+
+    updated += 1;
+    written.push((final_path.clone(), secs));
+    if final_path != *path {
+      renames.push((path.clone(), final_path));
+    }
+    if let Some((from_mov, to_mov)) = video_rename {
+      if from_mov != to_mov {
+        renames.push((from_mov, to_mov));
+      }
     }
   }
 
   tx.commit()
     .map_err(|e| format!("提交拍摄时间写入失败: {e}"))?;
-  Ok((updated, rejected))
+  Ok((updated, rejected, written, renames))
 }
 
 /// 写入宽高（单独视频打开时 ffprobe 真源；可覆盖错误的海报尺寸）
@@ -1188,5 +1307,27 @@ mod tests {
       .expect("count");
     assert_eq!(n, 0);
     let _ = std::fs::remove_dir_all(&album_dir);
+  }
+
+  #[test]
+  fn parse_capture_timestamp_naive_uses_local_wall_clock() {
+    use chrono::TimeZone;
+
+    let raw = "2020-05-01T15:30:45";
+    let naive = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S").expect("naive");
+    let expected = chrono::Local
+      .from_local_datetime(&naive)
+      .single()
+      .expect("local")
+      .timestamp();
+    assert_eq!(parse_capture_timestamp(raw), Some(expected));
+    assert_eq!(
+      parse_capture_timestamp("2020-05-01T15:30:45Z"),
+      Some(
+        chrono::DateTime::parse_from_rfc3339("2020-05-01T15:30:45Z")
+          .expect("rfc")
+          .timestamp()
+      )
+    );
   }
 }

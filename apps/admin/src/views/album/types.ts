@@ -26,7 +26,6 @@ export interface AlbumThumbReadyPayload {
   captureAt?: string;
   captureAtSource?: string;
   captureAtProbed?: boolean;
-  captureAtLocked?: boolean;
   camera?: string;
   width?: number;
   height?: number;
@@ -57,8 +56,6 @@ export interface MediaFile {
   captureAtSource?: CaptureAtSource | string;
   /** 已跑过拍摄时间探测 */
   captureAtProbed?: boolean;
-  /** origin/EXIF/文件名能提供时间 → 禁止手改勾选 */
-  captureAtLocked?: boolean;
   /** 相对相册根目录（`.` 为根） */
   relDir?: string;
   /** 拍摄设备（EXIF Make+Model） */
@@ -75,13 +72,6 @@ export interface MediaFile {
   addedAt?: string;
   latitude?: number;
   longitude?: number;
-}
-
-/**
- * 是否允许列表勾选手改拍摄时间：已探测且未因 origin/EXIF/文件名锁定
- */
-export function canManualSetCaptureAt(file: MediaFile): boolean {
-  return !!file.captureAtProbed && !file.captureAtLocked;
 }
 
 export interface MediaGroup {

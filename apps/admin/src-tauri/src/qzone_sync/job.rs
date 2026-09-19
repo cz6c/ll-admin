@@ -255,6 +255,13 @@ fn run_pipeline(
     }
   }
 
+  // 下载前对账：虚标 synced（缺盘）回写 cloud_only，重新进入 pending
+  match db::reconcile_synced_missing_local_files(&conn, album_filter.as_deref()) {
+    Ok(n) if n > 0 => log::info!("qzone_sync: reconcile missing local → cloud_only {n}"),
+    Err(e) => log::warn!("qzone_sync: reconcile missing local: {e}"),
+    _ => {}
+  }
+
   let pending = match db::list_pending_downloads(&conn, album_filter.as_deref()) {
     Ok(p) => p,
     Err(e) => {

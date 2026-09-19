@@ -16,6 +16,16 @@ if str(PROJECT_ROOT) not in sys.path:
 import authDiagnostic as diag  # noqa: E402
 
 
+def test_format_exception_chain_includes_cause() -> None:
+    root = ConnectionError("ssl eof")
+    wrapped = RuntimeError("Cannot connect to Apple iCloud service")
+    wrapped.__cause__ = root
+    text = diag.format_exception_chain(wrapped) or ""
+    assert "Cannot connect" in text
+    assert "ssl eof" in text
+    assert "ConnectionError" in text
+
+
 def test_mask_apple_id() -> None:
     assert diag.mask_apple_id("1272654068@qq.com") == "12***@qq.com"
 
@@ -37,6 +47,33 @@ def test_infer_webauth_missing_hint() -> None:
     assert "WEBAUTH_MISSING_AFTER_2FA" in hints
     assert "BRIDGE_INACTIVE_AT_VALIDATE" in hints
     assert "KICKOFF_IPD_PUT" in hints
+    # 失败码不是 need_2fa：勿把投递方式未知当成主因
+    assert "DELIVERY_METHOD_UNKNOWN" not in hints
+
+
+def test_infer_delivery_unknown_only_on_need_2fa_challenge() -> None:
+    """登录失败清 api 后 deliveryMethodLive 为 None，不得刷「未识别 2FA 投递方式」。"""
+    no_api_flags = {
+        "hasApi": False,
+        "waiting2fa": False,
+        "deliveryMethodCached": "",
+        "deliveryMethodLive": None,
+    }
+    fail_hints = diag._infer_hints("auth", "auth_failed", no_api_flags)
+    assert "DELIVERY_METHOD_UNKNOWN" not in fail_hints
+
+    challenge_flags = {
+        "hasApi": True,
+        "waiting2fa": True,
+        "deliveryMethodCached": "",
+        "deliveryMethodLive": "unknown",
+        "hasSessionToken": True,
+        "hasWebauthToken": False,
+        "hasScnt": True,
+        "hasSessionId": True,
+    }
+    challenge_hints = diag._infer_hints("auth", "need_2fa", challenge_flags)
+    assert "DELIVERY_METHOD_UNKNOWN" in challenge_hints
 
 
 def test_success_snapshot_overwrites_challenge(tmp_path: Path) -> None:

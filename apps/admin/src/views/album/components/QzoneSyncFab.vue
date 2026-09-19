@@ -1,7 +1,7 @@
 <!--
   QQ 空间同步浮动入口（第二备份源）
-  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部/本相册下载；
-  角标「已下载」+ 勾选后从 QQ 空间移除（本机文件保留）
+  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部下载；
+  本相册下载/上传；角标「已下载」+ 勾选后从 QQ 空间移除（本机文件保留）；左键拖拽框选复用相册宫格
   适用：相册页与 IcloudSyncFab 并列；交互结构参考开源客户端，不嵌入 GPL 源码
   @note 进度区对齐 IcloudSyncStatusCard：顶栏状态卡 + 进度条统计；账号放抽屉 #extra
 -->
@@ -22,6 +22,7 @@ import {
   resumeQzoneSyncJob,
   startQzoneQrLogin,
   startQzoneSyncJob,
+  uploadQzonePhotos,
   type QzoneAlbumSummary,
   type QzoneJobSnapshot,
   type QzonePhotoView,
@@ -29,11 +30,13 @@ import {
 } from "@/api/qzoneSync";
 import QzoneLazyImg from "./QzoneLazyImg.vue";
 import MediaLightboxShell from "./MediaLightboxShell.vue";
+import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
 import { useDraggable, useEventListener } from "@vueuse/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import dayjs from "dayjs";
 
 defineOptions({ name: "AlbumQzoneSyncFab" });
@@ -63,6 +66,8 @@ const photoScrollRef = ref<HTMLElement | null>(null);
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const deletingCloud = ref(false);
+/** 上传到本相册进行中 */
+const uploadingAlbum = ref(false);
 
 const previewOpen = ref(false);
 const previewIndex = ref(0);
@@ -108,7 +113,7 @@ const statusHeadline = computed(() => {
 
 const statusDescription = computed(() => {
   if (job.value.message?.trim()) return job.value.message;
-  if (!busy.value) return "可全部下载，或先选相册下载当前相册；下载中可暂停/取消";
+  if (!busy.value) return "可全部下载；本相册的下载/上传在右侧标题旁";
   return "";
 });
 
@@ -152,8 +157,47 @@ function onCellClick(row: { photo: QzonePhotoView; index: number }) {
   openPreview(row.index);
 }
 
+const photoFrameRef = ref<HTMLElement | null>(null);
+/** 框选开始前的勾选；拖太短或取消时还原 */
+let qzoneSelectSnapshot: Set<string> | null = null;
+
+const {
+  marqueeStyle: qzoneMarqueeStyle,
+  marqueeActive: qzoneMarqueeActive,
+  onPointerDown: onQzoneMarqueePointerDown,
+  onDragStart: onQzoneDragStart
+} = useMarqueeDrag({
+  onBegin() {
+    qzoneSelectSnapshot = new Set(selectedIds.value);
+  },
+  onUpdate(box) {
+    const frame = photoFrameRef.value;
+    if (!frame) return;
+    if (box.width < MIN_MARQUEE_PX && box.height < MIN_MARQUEE_PX) {
+      if (qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);
+      return;
+    }
+    const keys = hitTestMarqueeKeys(frame, box);
+    selectedIds.value = new Set(keys);
+    if (keys.length > 0) selectMode.value = true;
+  },
+  onEnd(committed) {
+    if (!committed && qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);
+    else if (committed && selectedIds.value.size > 0) selectMode.value = true;
+    qzoneSelectSnapshot = null;
+  }
+});
+
+function onPhotoPointerDown(event: PointerEvent) {
+  if (busy.value) return;
+  const scroll = photoScrollRef.value;
+  const frame = photoFrameRef.value;
+  if (!scroll || !frame) return;
+  onQzoneMarqueePointerDown(event, { scrollEl: scroll, frameEl: frame });
+}
+
 /**
- * 从 QQ 空间移除勾选（本机文件保留）；1.5s 冷却确认对齐 iCloud 删云
+ * 从 QQ 空间移除勾选（本机文件保留）；全屏蒙层 + 删完刷新相册列表与当前相册
  */
 async function onDeleteSelectedFromCloud() {
   if (!isTauri() || deletingCloud.value || selectedCount.value === 0) return;
@@ -175,6 +219,7 @@ async function onDeleteSelectedFromCloud() {
   }
 
   deletingCloud.value = true;
+  $feedback.loading("正在从 QQ 空间移除…");
   try {
     const result = await deleteQzonePhotos(
       picked.map(p => ({
@@ -184,6 +229,9 @@ async function onDeleteSelectedFromCloud() {
         albumPriv: album?.albumPriv ?? 1
       }))
     );
+    // 刷新左侧相册计数 + 当前相册相片（loadAlbums 内会 force select 当前册）
+    await loadAlbums();
+    $feedback.closeLoading();
     if (result.failed > 0 && result.deleted === 0) {
       $feedback.message.error(result.message || "移除失败");
     } else if (result.failed > 0) {
@@ -191,11 +239,11 @@ async function onDeleteSelectedFromCloud() {
     } else {
       $feedback.message.success(result.message || `已移除 ${result.deleted} 项`);
     }
-    clearSelection();
-    await selectAlbum(albumId, true);
   } catch (e) {
+    $feedback.closeLoading();
     await handleQzoneApiError(e, "移除失败");
   } finally {
+    $feedback.closeLoading();
     deletingCloud.value = false;
   }
 }
@@ -353,7 +401,8 @@ async function selectAlbum(topicId: string, force = false) {
   if (!topicId) return;
   if (!force && activeAlbumId.value === topicId && photos.value.length) return;
   closePreview();
-  clearSelection();
+  // 不支持跨相册勾选：换册或强制刷新时退出勾选模式
+  exitSelectMode();
   activeAlbumId.value = topicId;
   photosLoading.value = true;
   photos.value = [];
@@ -513,6 +562,58 @@ async function onSyncAlbum() {
   }
 }
 
+/**
+ * 系统文件框选本地图/视频，上传到当前 QQ 相册（本回合仅图片实际上传）
+ */
+async function onUploadToAlbum() {
+  if (!isTauri() || uploadingAlbum.value || busy.value) return;
+  const albumId = activeAlbumId.value;
+  if (!albumId) {
+    $feedback.message.warning("请先选择相册");
+    return;
+  }
+  let selected: string | string[] | null;
+  try {
+    selected = await open({
+      multiple: true,
+      title: `上传到「${activeAlbum.value?.name || "本相册"}」`,
+      filters: [
+        {
+          name: "图片 / 视频",
+          extensions: ["jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "heif", "mp4", "mov", "m4v"]
+        }
+      ]
+    });
+  } catch (e) {
+    $feedback.message.error(e instanceof Error ? e.message : String(e) || "打开文件框失败");
+    return;
+  }
+  if (selected == null) return;
+  const paths = (Array.isArray(selected) ? selected : [selected]).map(String).filter(Boolean);
+  if (!paths.length) return;
+
+  uploadingAlbum.value = true;
+  try {
+    const result = await uploadQzonePhotos(albumId, paths);
+    if (result.uploaded > 0) {
+      $feedback.message.success(result.message);
+      await selectAlbum(albumId, true);
+      // 刷新左侧相册计数
+      try {
+        albums.value = await listQzoneAlbums();
+      } catch {
+        /* ignore */
+      }
+    } else {
+      $feedback.message.error(result.message || "上传失败");
+    }
+  } catch (e) {
+    await handleQzoneApiError(e, "上传失败");
+  } finally {
+    uploadingAlbum.value = false;
+  }
+}
+
 async function onPause() {
   try {
     job.value = await pauseQzoneSyncJob();
@@ -636,7 +737,18 @@ onMounted(async () => {
     await refreshAuth();
     await refreshJob();
     unlisten = await listen<QzoneJobSnapshot>("qzone-sync://progress", ev => {
+      const prev = job.value.status;
       job.value = ev.payload;
+      // 任务结束：刷新当前相册角标（reconcile 后 downloaded 会变）
+      if (
+        drawerOpen.value &&
+        loggedIn.value &&
+        activeAlbumId.value &&
+        (ev.payload.status === "done" || ev.payload.status === "failed" || ev.payload.status === "idle") &&
+        (prev === "cataloging" || prev === "downloading" || prev === "paused")
+      ) {
+        void selectAlbum(activeAlbumId.value, true);
+      }
     });
     unlistenAuthExpired = await listen("qzone-sync://auth-expired", () => {
       void applyAuthExpiredUi(true);
@@ -710,7 +822,6 @@ watch(drawerOpen, open => {
           </div>
           <div class="action-row">
             <a-button type="primary" :disabled="busy" @click="onSyncAll">全部下载</a-button>
-            <a-button :disabled="busy || !activeAlbumId" @click="onSyncAlbum">下载本相册</a-button>
             <a-button v-if="job.status === 'downloading'" danger @click="onPause">暂停</a-button>
             <a-button v-if="job.status === 'paused'" type="primary" @click="onResume">继续</a-button>
             <a-button v-if="busy" danger @click="onCancel">取消任务</a-button>
@@ -736,7 +847,6 @@ watch(drawerOpen, open => {
           <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
           <a-button v-if="!selectMode" size="small" :disabled="!activeAlbumId || !photos.length || busy" @click="selectMode = true"> 勾选 </a-button>
           <template v-else>
-            <a-button size="small" :disabled="selectedCount === 0" @click="clearSelection">清空</a-button>
             <a-button size="small" danger :loading="deletingCloud" :disabled="selectedCount === 0 || busy" @click="onDeleteSelectedFromCloud">
               从 QQ 空间移除{{ selectedCount ? ` (${selectedCount})` : "" }}
             </a-button>
@@ -764,12 +874,38 @@ watch(drawerOpen, open => {
 
         <section class="photo-pane">
           <div class="photo-head">
-            <span>{{ activeAlbum?.name || "请选择相册" }}</span>
-            <span v-if="photos.length" class="sub">{{ photos.length }} 张</span>
+            <div class="photo-head-main">
+              <span class="photo-head-title">{{ activeAlbum?.name || "请选择相册" }}</span>
+              <span v-if="photos.length" class="sub">
+                已加载 {{ photos.length }} 张
+                <template v-if="activeAlbum && activeAlbum.total > 0 && photos.length !== activeAlbum.total">
+                  · 云端申报 {{ activeAlbum.total }}
+                </template>
+              </span>
+            </div>
+            <div class="photo-head-actions">
+              <a-button size="small" type="primary" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onSyncAlbum">
+                下载本相册
+              </a-button>
+              <a-button
+                size="small"
+                :loading="uploadingAlbum"
+                :disabled="busy || !activeAlbumId || uploadingAlbum"
+                @click="onUploadToAlbum"
+              >
+                上传到本相册
+              </a-button>
+            </div>
           </div>
-          <div ref="photoScrollRef" class="photo-scroll">
+          <div
+            ref="photoScrollRef"
+            class="photo-scroll"
+            :class="{ 'is-marquee': qzoneMarqueeActive }"
+            @pointerdown="onPhotoPointerDown"
+            @dragstart="onQzoneDragStart"
+          >
             <a-spin :spinning="photosLoading">
-              <div v-if="photoGroups.length" class="timeline">
+              <div v-if="photoGroups.length" ref="photoFrameRef" class="timeline">
                 <section v-for="g in photoGroups" :key="g.key" class="day-group">
                   <h4 class="day-label">{{ g.label }}</h4>
                   <div class="grid">
@@ -778,6 +914,7 @@ watch(drawerOpen, open => {
                       :key="row.photo.assetId"
                       type="button"
                       class="cell"
+                      :data-marquee-key="row.photo.assetId"
                       :class="{ selected: selectMode && isSelected(row.photo.assetId) }"
                       :title="row.photo.name"
                       @click="onCellClick(row)"
@@ -791,12 +928,13 @@ watch(drawerOpen, open => {
                         :ext="row.photo.name?.split('.').pop()"
                       />
                       <div v-else class="cell-ph" />
-                      <!-- 角标：本机已同步下载（state.db），非实时探测磁盘 -->
+                      <!-- 角标：synced 且盘上文件仍在（拉列表前会 reconcile 缺盘） -->
                       <span v-if="row.photo.downloaded" class="cell-badge">已下载</span>
                       <span v-if="selectMode && isSelected(row.photo.assetId)" class="cell-check" aria-hidden="true">✓</span>
                     </button>
                   </div>
                 </section>
+                <div v-if="qzoneMarqueeStyle" class="sync-marquee" :style="qzoneMarqueeStyle" />
               </div>
               <a-empty v-else-if="!photosLoading && activeAlbumId" description="此相册暂无内容" :image="false" />
             </a-spin>
@@ -1078,16 +1216,34 @@ watch(drawerOpen, open => {
 }
 .photo-head {
   padding: 10px 14px;
-  font-weight: 600;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.photo-head-main {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: baseline;
+  min-width: 0;
+}
+.photo-head-title {
+  font-weight: 600;
+}
+.photo-head .sub {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.photo-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
   flex-shrink: 0;
-  .sub {
-    font-weight: 400;
-    font-size: 12px;
-    color: var(--color-text-tertiary);
-  }
 }
 .photo-scroll {
   flex: 1;
@@ -1096,11 +1252,24 @@ watch(drawerOpen, open => {
   overflow-x: hidden;
   padding: 0 14px 14px;
   overscroll-behavior: contain;
+  user-select: none;
+  &.is-marquee {
+    cursor: crosshair;
+  }
 }
 .timeline {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.sync-marquee {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  pointer-events: none;
 }
 .day-group {
   min-width: 0;

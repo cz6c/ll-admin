@@ -1,10 +1,10 @@
 //! iCloud 同步 SQLite 断点库
-//! 职责：jobs/assets 终态 schema、pending/done 查询与状态更新
-//! 适用：队列 catalog 落库与串行 download 续传
-//! @note schema 只认 `PRAGMA user_version = 6` 终态；已砍 v2–v4 链式迁移与 index_num 残留清理。
-//!       无业务表 → 建终态；user_version∈{0,1} 怪库 → 重建空库；5→6 去掉 cloud_delete_queue；其它非终态 → 报错不清空。
+//! 职责：assets 注册表、pending/done 查询与状态更新
+//! 适用：队列 catalog 落库；下载进度只在本次进程内，重启不续传
+//! @note 不看 `user_version`，也不再建 `jobs` 表。无 `assets` 才建表；已有表直接打开、不改结构。任务状态只在进程内存。
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,66 +12,44 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::catalog_diff::{catalog_fingerprint, CatalogDeltaKind, ExistingAssetBaseline};
 
+use super::job_mem;
 use super::settings::icloud_sync_dir;
 use super::types::{
   AssetPart, AssetRow, AssetStatus, CloudState, IcloudSyncAssetTaskRow, IcloudSyncFailedAssetRow,
   JobRow, JobStatus, JobView, MediaKind, TaskType,
 };
 
-/// 应用期望的 state.db schema 代际（6：移除 cloud_delete_queue；历史删云改一次性消费）
-const SCHEMA_VERSION: i32 = 6;
-
 /// icloud_sync SQLite 路径
 pub fn state_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   Ok(icloud_sync_dir(app)?.join("state.db"))
 }
 
-/// 打开或创建 state.db；仅接受终态 `user_version = SCHEMA_VERSION`
+/// 打开或创建 state.db。已有业务表则不看版本、不改表
 pub fn open_db(db_path: &Path) -> Result<Connection, String> {
   if let Some(parent) = db_path.parent() {
     std::fs::create_dir_all(parent).map_err(|e| format!("创建 SQLite 目录失败: {e}"))?;
   }
   let conn = Connection::open(db_path).map_err(|e| format!("打开 SQLite 失败: {e}"))?;
+  conn
+    .busy_timeout(Duration::from_secs(5))
+    .map_err(|e| format!("设置 SQLite busy_timeout 失败: {e}"))?;
+  let mode: String = conn
+    .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+    .map_err(|e| format!("读取 journal_mode 失败: {e}"))?;
+  if !mode.eq_ignore_ascii_case("wal") {
+    conn
+      .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+      .map_err(|e| format!("设置 SQLite WAL 失败: {e}"))?;
+  }
   ensure_schema(&conn)?;
   Ok(conn)
 }
 
-fn user_version(conn: &Connection) -> Result<i32, String> {
-  conn
-    .query_row("PRAGMA user_version", [], |row| row.get(0))
-    .map_err(|e| format!("读取 user_version 失败: {e}"))
-}
-
-fn set_user_version(conn: &Connection, version: i32) -> Result<(), String> {
-  // PRAGMA 不支持绑定参数
-  conn
-    .execute_batch(&format!("PRAGMA user_version = {version};"))
-    .map_err(|e| format!("写入 user_version={version} 失败: {e}"))
-}
-
-/// 一次性兼容：旧库若仍有 `schema_meta`，把 version 灌入 pragma（仅当 user_version=0）并删表
-fn absorb_legacy_schema_meta(conn: &Connection) -> Result<(), String> {
-  if !table_exists(conn, "schema_meta")? {
-    return Ok(());
+/// 无 assets 则建表；已有表直接用，不读不写 user_version，不碰 jobs
+fn ensure_schema(conn: &Connection) -> Result<(), String> {
+  if !table_exists(conn, "assets")? {
+    create_final_schema(conn)?;
   }
-  let cur = user_version(conn)?;
-  if cur == 0 {
-    let meta_ver: Option<i32> = conn
-      .query_row(
-        "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = 'version'",
-        [],
-        |row| row.get(0),
-      )
-      .optional()
-      .map_err(|e| format!("读取旧 schema_meta.version 失败: {e}"))?;
-    if let Some(v) = meta_ver {
-      set_user_version(conn, v)?;
-      log::info!("icloud_sync state.db: schema_meta.version={v} → user_version");
-    }
-  }
-  conn
-    .execute("DROP TABLE IF EXISTS schema_meta", [])
-    .map_err(|e| format!("删除旧 schema_meta 失败: {e}"))?;
   Ok(())
 }
 
@@ -88,7 +66,7 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool, String> {
   Ok(exists)
 }
 
-/// 终态建表（无 schema_meta；版本只写 pragma）
+/// 空库建表。仅无 assets 时调用；已有库不走这里，避免误删残留表
 fn create_final_schema(conn: &Connection) -> Result<(), String> {
   conn
     .execute_batch(
@@ -97,25 +75,8 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
       DROP TABLE IF EXISTS cloud_delete_queue;
       DROP TABLE IF EXISTS cloud_cursors;
       DROP TABLE IF EXISTS assets;
-      DROP TABLE IF EXISTS jobs;
       DROP TABLE IF EXISTS schema_meta;
       PRAGMA foreign_keys = ON;
-
-      CREATE TABLE jobs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_type TEXT NOT NULL DEFAULT 'sync',
-        view TEXT NOT NULL,
-        output_dir TEXT NOT NULL,
-        apple_id TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        finished_at INTEGER,
-        total_count INTEGER NOT NULL DEFAULT 0,
-        done_count INTEGER NOT NULL DEFAULT 0,
-        failed_count INTEGER NOT NULL DEFAULT 0,
-        pending_count INTEGER NOT NULL DEFAULT 0
-      );
-      CREATE INDEX idx_jobs_apple_status ON jobs(apple_id, status);
 
       CREATE TABLE assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,99 +112,12 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
       "#,
     )
     .map_err(|e| format!("初始化 SQLite schema 失败: {e}"))?;
-  set_user_version(conn, SCHEMA_VERSION)?;
   Ok(())
 }
 
-/// 只认终态 `user_version = SCHEMA_VERSION`；无历史链式迁移
-fn ensure_schema(conn: &Connection) -> Result<(), String> {
-  absorb_legacy_schema_meta(conn)?;
-  let cur = user_version(conn)?;
-  let has_business = table_exists(conn, "assets")? || table_exists(conn, "jobs")?;
-
-  if !has_business {
-    create_final_schema(conn)?;
-    return Ok(());
-  }
-
-  if cur > SCHEMA_VERSION {
-    return Err(format!(
-      "icloud_sync state.db user_version={cur} 新于应用 SCHEMA_VERSION={SCHEMA_VERSION}，请升级客户端"
-    ));
-  }
-
-  if cur == SCHEMA_VERSION {
-    scrub_legacy_cloud_delete_artifacts(conn)?;
-    return Ok(());
-  }
-
-  // 5 → 6：去掉 cloud_delete_queue 与历史删云态（可在线升级，不清空整库）
-  if cur == 5 {
-    migrate_v5_drop_cloud_delete_queue(conn)?;
-    set_user_version(conn, SCHEMA_VERSION)?;
-    return Ok(());
-  }
-
-  // 0/1：古董/不可识别形态 → 重建空库（与旧「version=1 怪形态」一致）
-  if matches!(cur, 0 | 1) {
-    log::warn!(
-      "icloud_sync state.db 不可识别 user_version={cur}，将重建空库"
-    );
-    create_final_schema(conn)?;
-    return Ok(());
-  }
-
-  // 2/3/4 等：已不再提供自动迁移，避免误 wipe；需人工处理或删库重同步
-  Err(format!(
-    "icloud_sync state.db user_version={cur} 低于终态 {SCHEMA_VERSION}，本版本已取消自动升级，已中止且未清空数据库"
-  ))
-}
-
-/**
- * v5→v6：删除 cloud_delete_queue；清历史 CloudDelete job；
- * cloud_delete_queued / failed_delete → synced（有本地路径）或 cloud_only
- */
-fn migrate_v5_drop_cloud_delete_queue(conn: &Connection) -> Result<(), String> {
-  scrub_legacy_cloud_delete_artifacts(conn)?;
-  Ok(())
-}
-
-/**
- * 打开库幂等清理：历史删云 queue / 态 / job（一次性删云后不再使用）
- * @note 亦清旧 `deleted_cloud_pending`
- */
-fn scrub_legacy_cloud_delete_artifacts(conn: &Connection) -> Result<(), String> {
-  conn
-    .execute("DROP TABLE IF EXISTS cloud_delete_queue", [])
-    .map_err(|e| format!("删除 cloud_delete_queue 失败: {e}"))?;
-  conn
-    .execute("DELETE FROM jobs WHERE task_type = 'cloud_delete'", [])
-    .map_err(|e| format!("清理历史 cloud_delete job 失败: {e}"))?;
-  conn
-    .execute(
-      r#"
-      UPDATE assets
-      SET cloud_state = CASE
-        WHEN dest_path IS NOT NULL AND trim(dest_path) != '' THEN 'synced'
-        ELSE 'cloud_only'
-      END
-      WHERE cloud_state IN ('cloud_delete_queued', 'failed_delete')
-      "#,
-      [],
-    )
-    .map_err(|e| format!("重置历史删云 cloud_state 失败: {e}"))?;
-  conn
-    .execute(
-      "DELETE FROM assets WHERE cloud_state = 'deleted_cloud_pending'",
-      [],
-    )
-    .map_err(|e| format!("清理历史 deleted_cloud_pending 失败: {e}"))?;
-  Ok(())
-}
-
-/// 插入任务行，返回自增 id
+/// 新建进程内任务。`_conn` 保留是为了调用点少改；任务不写 SQLite
 pub fn insert_job(
-  conn: &Connection,
+  _conn: &Connection,
   task_type: TaskType,
   view: JobView,
   output_dir: &str,
@@ -251,73 +125,15 @@ pub fn insert_job(
   status: JobStatus,
   created_at: i64,
 ) -> Result<i64, String> {
-  conn
-    .execute(
-      "INSERT INTO jobs(task_type, view, output_dir, apple_id, status, created_at) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-      params![
-        task_type.as_str(),
-        view.as_str(),
-        output_dir,
-        apple_id,
-        status.as_str(),
-        created_at,
-      ],
-    )
-    .map_err(|e| format!("插入 job 失败: {e}"))?;
-  Ok(conn.last_insert_rowid())
+  job_mem::insert(task_type, view, output_dir, apple_id, status, created_at)
 }
 
-/// 当前账号未完成任务（至多一条）
+/// 当前账号未完成任务（仅本次进程）
 pub fn find_incomplete_task_for_apple(
-  conn: &Connection,
+  _conn: &Connection,
   apple_id: &str,
 ) -> Result<Option<JobRow>, String> {
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT id, COALESCE(task_type, 'sync'), view, output_dir, apple_id, status,
-             created_at, finished_at,
-             COALESCE(total_count, 0), COALESCE(done_count, 0),
-             COALESCE(failed_count, 0), COALESCE(pending_count, 0)
-      FROM jobs
-      WHERE apple_id = ?1
-        AND status IN ('cataloging', 'pending', 'running', 'paused_session', 'paused_user')
-      ORDER BY id DESC
-      LIMIT 1
-      "#,
-    )
-    .map_err(|e| format!("准备未完成任务查询失败: {e}"))?;
-  let row = stmt
-    .query_row(params![apple_id], map_job_row)
-    .optional()
-    .map_err(|e| format!("查询未完成任务失败: {e}"))?;
-  Ok(row)
-}
-
-fn map_job_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobRow> {
-  let view_s: String = row.get(2)?;
-  let status_s: String = row.get(5)?;
-  let task_type_s: String = row.get(1)?;
-  Ok(JobRow {
-    id: row.get(0)?,
-    task_type: TaskType::parse(&task_type_s).unwrap_or(TaskType::Sync),
-    view: JobView::parse(&view_s).ok_or_else(|| {
-      rusqlite::Error::InvalidColumnType(2, "view".into(), rusqlite::types::Type::Text)
-    })?,
-    output_dir: row.get(3)?,
-    apple_id: row.get(4)?,
-    status: JobStatus::parse(&status_s).ok_or_else(|| {
-      rusqlite::Error::InvalidColumnType(5, "status".into(), rusqlite::types::Type::Text)
-    })?,
-    // schema v5 无 jobs.mode；API 占位恒为 full
-    mode: "full".into(),
-    created_at: row.get(6)?,
-    finished_at: row.get(7)?,
-    total_count: row.get::<_, i32>(8)? as u32,
-    done_count: row.get::<_, i32>(9)? as u32,
-    failed_count: row.get::<_, i32>(10)? as u32,
-    pending_count: row.get::<_, i32>(11)? as u32,
-  })
+  job_mem::find_incomplete_for_apple(apple_id)
 }
 
 /// catalog diff 落库统计
@@ -753,68 +569,29 @@ pub fn upsert_catalog_assets(
   Ok(())
 }
 
-/// catalog 结束：写入 job 快照 total/pending（按逻辑资产，Live still+mov=1）
+/// catalog 结束：把资产计数记到内存任务
 pub fn set_job_catalog_counts(conn: &Connection, job_id: i64) -> Result<(), String> {
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
-  let total = done + failed + pending;
-  conn
-    .execute(
-      r#"
-      UPDATE jobs SET
-        total_count = ?1, pending_count = ?2, done_count = ?3, failed_count = ?4
-      WHERE id = ?5
-      "#,
-      params![
-        i32::try_from(total).unwrap_or(i32::MAX),
-        i32::try_from(pending).unwrap_or(i32::MAX),
-        i32::try_from(done).unwrap_or(i32::MAX),
-        i32::try_from(failed).unwrap_or(i32::MAX),
-        job_id
-      ],
-    )
-    .map_err(|e| format!("写入 job catalog 计数失败: {e}"))?;
-  Ok(())
+  job_mem::set_counts(job_id, done, failed, pending)
 }
 
 /// 任务下载结束：快照计数并释放 download_status
 pub fn finalize_job_download(conn: &Connection, job_id: i64) -> Result<(), String> {
   let (done, failed, pending) = count_assets_by_status(conn, job_id)?;
-  let now = chrono::Utc::now().timestamp();
-  conn
-    .execute(
-      r#"
-      UPDATE jobs SET
-        total_count = ?1, done_count = ?2, failed_count = ?3, pending_count = ?4, finished_at = ?5
-      WHERE id = ?6
-      "#,
-      params![
-        done + failed + pending,
-        done,
-        failed,
-        pending,
-        now,
-        job_id,
-      ],
-    )
-    .map_err(|e| format!("写入 job 快照失败: {e}"))?;
+  job_mem::set_counts(job_id, done, failed, pending)?;
+  job_mem::set_finished_at(job_id, chrono::Utc::now().timestamp())?;
   conn
     .execute(
       "UPDATE assets SET download_status = NULL, active_job_id = NULL WHERE active_job_id = ?1",
       params![job_id],
     )
-    .map_err(|e| format!("释放 job download 态失败: {e}"))?;
-  Ok(())
+    .map(|_| ())
+    .map_err(|e| format!("释放 job download 态失败: {e}"))
 }
 
-/// 更新任务状态
-pub fn update_job_status(conn: &Connection, job_id: i64, status: JobStatus) -> Result<(), String> {
-  conn
-    .execute(
-      "UPDATE jobs SET status = ?1 WHERE id = ?2",
-      params![status.as_str(), job_id],
-    )
-    .map(|_| ())
-    .map_err(|e| format!("更新 job 状态失败: {e}"))
+/// 更新内存任务状态
+pub fn update_job_status(_conn: &Connection, job_id: i64, status: JobStatus) -> Result<(), String> {
+  job_mem::update_status(job_id, status)
 }
 
 /// 标记单资产状态；可选写入最终落盘路径与失败摘要
@@ -870,22 +647,9 @@ pub fn mark_asset_outcome(
     .map_err(|e| format!("更新 asset 状态失败: {e}"))
 }
 
-/// 读取任务
-pub fn get_job(conn: &Connection, job_id: i64) -> Result<Option<JobRow>, String> {
-  conn
-    .query_row(
-      r#"
-      SELECT id, COALESCE(task_type, 'sync'), view, output_dir, apple_id, status,
-             created_at, finished_at,
-             COALESCE(total_count, 0), COALESCE(done_count, 0),
-             COALESCE(failed_count, 0), COALESCE(pending_count, 0)
-      FROM jobs WHERE id = ?1
-      "#,
-      params![job_id],
-      map_job_row,
-    )
-    .optional()
-    .map_err(|e| format!("读取 job 失败: {e}"))
+/// 读取进程内任务
+pub fn get_job(_conn: &Connection, job_id: i64) -> Result<Option<JobRow>, String> {
+  job_mem::get(job_id)
 }
 
 /// 按 asset_id 查本地 dest_path（缩略图协议用：已同步图片直接本地生成缩略图，不走 sidecar）
@@ -978,7 +742,7 @@ pub fn list_failed_assets(
   Ok(rows)
 }
 
-/// 删除同步任务行；释放其 download 绑定，不删 assets 注册表
+/// 释放 download 绑定并丢掉内存任务；不删 assets 注册表
 pub fn discard_sync_job(conn: &Connection, job_id: i64) -> Result<(), String> {
   conn
     .execute(
@@ -986,19 +750,12 @@ pub fn discard_sync_job(conn: &Connection, job_id: i64) -> Result<(), String> {
       params![job_id],
     )
     .map_err(|e| format!("释放 job assets 失败: {e}"))?;
-  conn
-    .execute("DELETE FROM jobs WHERE id = ?1", params![job_id])
-    .map_err(|e| format!("删除 job 失败: {e}"))?;
-  Ok(())
+  job_mem::remove(job_id)
 }
 
-/// 按任务类型取消未完成任务（历史 cloud_delete job 仅删 jobs 行）
+/// 取消未完成任务：清 assets 上的下载绑定，并丢掉内存任务
 pub fn discard_task(conn: &Connection, job: &JobRow) -> Result<(), String> {
-  match job.task_type {
-    TaskType::Sync | TaskType::Catalog => discard_sync_job(conn, job.id),
-    // 一次性删云后不再有 queue；残留 cloud_delete job 直接丢弃
-    TaskType::CloudDelete => discard_sync_job(conn, job.id),
-  }
+  discard_sync_job(conn, job.id)
 }
 
 /// 分页列出任务下全部/指定状态的文件行（按 sort_key 升序）；可选文件名 keyword 子串匹配
@@ -1123,8 +880,9 @@ pub fn count_assets_by_status(
   conn: &Connection,
   job_id: i64,
 ) -> Result<(u32, u32, u32), String> {
+  // finished_at 写入后 assets.download_status 已清空，再查表会把计数打成 0
   if let Some(job) = get_job(conn, job_id)? {
-    if job.status == JobStatus::Done {
+    if job.finished_at.is_some() {
       return Ok((job.done_count, job.failed_count, job.pending_count));
     }
   }
@@ -1737,13 +1495,17 @@ mod tests {
   }
 
   #[test]
-  fn ensure_schema_creates_jobs_and_assets() {
+  fn ensure_schema_creates_assets_without_jobs() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("open");
-    let count: i64 = conn
+    let jobs: i64 = conn
       .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'", [], |r| r.get(0))
       .unwrap();
-    assert_eq!(count, 1);
+    assert_eq!(jobs, 0, "新库不再建 jobs");
+    let assets: i64 = conn
+      .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='assets'", [], |r| r.get(0))
+      .unwrap();
+    assert_eq!(assets, 1);
     let has_cpl: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='cpl_asset_record_name'",
@@ -1760,14 +1522,6 @@ mod tests {
       )
       .unwrap();
     assert_eq!(has_index_num, 0, "终态无 index_num");
-    let has_mode: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='mode'",
-        [],
-        |r| r.get(0),
-      )
-      .expect("mode col");
-    assert_eq!(has_mode, 0, "终态无 jobs.mode");
     let has_cursors: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cloud_cursors'",
@@ -1776,10 +1530,6 @@ mod tests {
       )
       .expect("cursors");
     assert_eq!(has_cursors, 0, "终态无 cloud_cursors");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("user_version");
-    assert_eq!(version, SCHEMA_VERSION);
     let has_meta: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
@@ -1791,9 +1541,9 @@ mod tests {
     let _ = std::fs::remove_file(path);
   }
 
-  /// 终态库若仍带旧 schema_meta：吸收删表后继续可用
+  /// 终态库上的残留表不再自动删除
   #[test]
-  fn ensure_schema_absorbs_schema_meta_on_v5() {
+  fn ensure_schema_leaves_leftover_schema_meta() {
     let path = temp_db_path();
     let conn = open_db(&path).expect("create");
     drop(conn);
@@ -1806,14 +1556,9 @@ mod tests {
         "#,
       )
       .expect("add leftover meta");
-    // user_version 已是 5，吸收只 DROP meta
     drop(conn);
 
     let conn = open_db(&path).expect("reopen");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
     let has_meta: i64 = conn
       .query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_meta'",
@@ -1821,13 +1566,13 @@ mod tests {
         |r| r.get(0),
       )
       .expect("meta");
-    assert_eq!(has_meta, 0);
+    assert_eq!(has_meta, 1, "打开终态库不得再删残留表");
     let _ = std::fs::remove_file(path);
   }
 
-  /// 低于终态且非 0/1：报错不清空（已取消自动升级）
+  /// 已有表时忽略 user_version，不重建
   #[test]
-  fn ensure_schema_rejects_stale_v4_without_wipe() {
+  fn ensure_schema_keeps_existing_tables_regardless_of_version() {
     let path = temp_db_path();
     let conn = Connection::open(&path).expect("raw");
     conn
@@ -1855,26 +1600,22 @@ mod tests {
       .expect("seed v4");
     drop(conn);
 
-    let err = open_db(&path).expect_err("must reject");
-    assert!(
-      err.contains("取消自动升级") || err.contains("低于终态"),
-      "unexpected err: {err}"
-    );
-    let conn = Connection::open(&path).expect("raw again");
+    let conn = open_db(&path).expect("open existing");
     let n: i64 = conn
       .query_row("SELECT COUNT(*) FROM assets", [], |r| r.get(0))
       .expect("count");
-    assert_eq!(n, 1, "拒绝升级时不得 wipe");
+    assert_eq!(n, 1, "已有表不得因版本号被重建");
     let _ = std::fs::remove_file(path);
   }
 
   #[test]
-  fn ensure_schema_rebuilds_legacy_job_id_shape() {
+  fn ensure_schema_keeps_legacy_shape_without_wipe() {
     let path = temp_db_path();
     let conn = Connection::open(&path).expect("raw open");
     conn
       .execute_batch(
         r#"
+        PRAGMA user_version = 1;
         CREATE TABLE schema_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
         INSERT INTO schema_meta(key, value) VALUES('version', '1');
         CREATE TABLE jobs (
@@ -1889,32 +1630,18 @@ mod tests {
           media_kind TEXT NOT NULL, index_num INTEGER NOT NULL, part TEXT NOT NULL,
           status TEXT NOT NULL
         );
+        INSERT INTO assets(job_id, asset_id, sort_key, original_filename, media_kind, index_num, part, status)
+          VALUES(1, 'KEEP', '2024', 'k.jpg', 'photo', 1, 'full', 'pending');
         "#,
       )
       .expect("legacy seed");
     drop(conn);
 
-    let conn = open_db(&path).expect("open rebuilds");
-    let version: i32 = conn
-      .query_row("PRAGMA user_version", [], |r| r.get(0))
-      .expect("ver");
-    assert_eq!(version, SCHEMA_VERSION);
-    let has_apple: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='apple_id'",
-        [],
-        |r| r.get(0),
-      )
-      .unwrap();
-    assert_eq!(has_apple, 1);
-    let has_job_id: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name='job_id'",
-        [],
-        |r| r.get(0),
-      )
-      .unwrap();
-    assert_eq!(has_job_id, 0);
+    let conn = open_db(&path).expect("open existing");
+    let n: i64 = conn
+      .query_row("SELECT COUNT(*) FROM assets WHERE asset_id = 'KEEP'", [], |r| r.get(0))
+      .expect("count");
+    assert_eq!(n, 1, "已有表不得因版本号被重建");
     let _ = std::fs::remove_file(path);
   }
 

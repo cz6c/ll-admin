@@ -72,12 +72,9 @@ pub struct MediaFile {
   pub capture_at: Option<String>,
   /// 拍摄时间来源：`origin` / `exif` / `filename` / `user`；未写入前为空
   pub capture_at_source: Option<String>,
-  /// 是否已跑过拍摄时间探测（未探测禁止手改勾选）
+  /// 是否已跑过拍摄时间探测
   #[serde(default)]
   pub capture_at_probed: bool,
-  /// origin/EXIF/文件名能提供拍摄时间时为 true（禁止手改）
-  #[serde(default)]
-  pub capture_at_locked: bool,
   /// 相对相册根的目录（`.` 为根）；供列表目录筛选
   #[serde(default = "default_rel_dir")]
   pub rel_dir: String,
@@ -156,7 +153,6 @@ pub struct AlbumThumbReadyPayload {
   pub capture_at: Option<String>,
   pub capture_at_source: Option<String>,
   pub capture_at_probed: Option<bool>,
-  pub capture_at_locked: Option<bool>,
   pub camera: Option<String>,
   pub width: Option<u32>,
   pub height: Option<u32>,
@@ -164,22 +160,47 @@ pub struct AlbumThumbReadyPayload {
   pub playback_path: Option<String>,
 }
 
-/// 批量改拍摄时间：全部设为同一时间（仅未锁定且已探测行）
+/// 批量修改拍摄时间：单条 path → 目标时间
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AlbumSetCaptureAtRequest {
-  pub paths: Vec<String>,
+pub struct AlbumSetCaptureAtItem {
+  pub path: String,
   /// 目标时间（可解析串，如 `2008-01-01T00:00:00`）
   pub capture_at: String,
 }
 
-/// 批量改拍摄时间结果
+/// 批量修改拍摄时间：可覆盖已有值；可选写 JPEG EXIF；同步风格文件名改前缀
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumSetCaptureAtRequest {
+  pub items: Vec<AlbumSetCaptureAtItem>,
+  /// 是否同步写入原文件 EXIF（当前仅 JPEG）
+  #[serde(default)]
+  pub write_exif: bool,
+}
+
+/// 批量修改拍摄时间结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumSetCaptureAtResult {
   pub updated: u32,
-  /// 未探测 / 已锁定 / 路径不存在
+  /// 路径不存在 / 时间非法 / 改名冲突
   pub rejected: u32,
+  /// 成功写入 EXIF 的文件数（writeExif=false 时为 0）
+  pub exif_written: u32,
+  /// EXIF 写入失败或格式不支持
+  pub exif_failed: u32,
+  /// 因改文件名前缀而变更的路径（前端需换 key）
+  #[serde(default)]
+  pub renames: Vec<AlbumPathRename>,
+}
+
+/// 修改拍摄时间导致的路径变更
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumPathRename {
+  pub from: String,
+  pub to: String,
 }
 
 /// `album_ensure_playback` 返回：可播放路径 + 可选 ffprobe 分辨率（单独视频落库用）

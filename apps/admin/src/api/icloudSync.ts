@@ -248,8 +248,8 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_MISSING]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_VERSION_MISMATCH]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.AUTH_FAILED]: "登录失败，请检查 Apple ID 与密码",
-  [ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR]:
-    "无法连接 Apple iCloud，请检查网络；若选择「国际」区域，通常需要可访问 icloud.com 的代理",
+  // 默认兼写两区；有 icloudDomain 时由 networkErrorMessage 覆盖
+  [ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR]: "无法连接 Apple iCloud，请检查网络",
   [ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED]: "登录状态已失效，请重新登录后继续下载",
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_LOCKED]: "账号可能被临时锁定，请前往 Apple 官方页面（iforgot.apple.com）解锁后再试；请勿在本工具内重复尝试登录",
   [ICLOUD_SYNC_ERROR_CODES.RATE_LIMITED]: "请求过于频繁，请稍后再试；请勿在本工具内重复尝试登录",
@@ -264,11 +264,32 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
 };
 
 /**
+ * 网络错误文案：按当前所选 iCloud 区域给出可操作提示
+ * @param domain `cn` 中国大陆 / `com` 国际；未知时给中性提示
+ */
+export function networkErrorMessage(domain?: "com" | "cn" | string | null): string {
+  const d = String(domain ?? "").trim().toLowerCase();
+  if (d === "cn") {
+    return "无法连接 Apple 登录节点 idmsa.apple.com.cn（中国大陆）。本机到 icloud.com.cn 网页可能仍正常；请换手机热点，或暂时关闭杀毒/公司网的 HTTPS 扫描后重试";
+  }
+  if (d === "com") {
+    return "无法连接 Apple iCloud（国际）。请检查网络；通常需要可访问 icloud.com / idmsa.apple.com 的代理";
+  }
+  return "无法连接 Apple iCloud，请检查网络。中国大陆请确认能访问 idmsa.apple.com.cn；国际区通常需可访问 icloud.com 的代理";
+}
+
+/** formatIcloudSyncError 可选上下文（登录面板传入当前区域） */
+export interface FormatIcloudSyncErrorOptions {
+  /** 当前设置的 iCloud 根域；用于 network_error 分区提示 */
+  icloudDomain?: "com" | "cn" | string | null;
+}
+
+/**
  * 将 invoke 错误或 `code: message` 字符串转为用户可读文案
  * @note sidecar_missing 等不引导安装 Python
  * @note 含 pending challenge / 验证码细节时，避免误用「检查 Apple ID 与密码」
  */
-export function formatIcloudSyncError(err: unknown): string {
+export function formatIcloudSyncError(err: unknown, options?: FormatIcloudSyncErrorOptions): string {
   const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "未知错误");
 
   const lower = raw.toLowerCase();
@@ -288,6 +309,18 @@ export function formatIcloudSyncError(err: unknown): string {
   }
 
   const code = raw.split(":")[0]?.trim() ?? raw;
+  if (code === ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR) {
+    const base = networkErrorMessage(options?.icloudDomain);
+    const tail = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";
+    // 附带 sidecar 原始异常摘要，便于区分超时 / DNS / SSL
+    if (tail) {
+      const short = tail.length > 140 ? `${tail.slice(0, 140)}…` : tail;
+      if (!base.includes(short)) {
+        return `${base}（${short}）`;
+      }
+    }
+    return base;
+  }
   if (ERROR_USER_MESSAGES[code]) {
     const tail = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";
     if (tail && !ERROR_USER_MESSAGES[code].includes(tail)) {
@@ -310,6 +343,9 @@ export function formatAssetTaskError(raw: string | null | undefined): string {
   if (!raw?.trim()) return "—";
   const trimmed = raw.trim();
   const code = trimmed.split(":")[0]?.trim() ?? trimmed;
+  if (code === ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR) {
+    return networkErrorMessage();
+  }
   if (ERROR_USER_MESSAGES[code]) {
     return ERROR_USER_MESSAGES[code];
   }

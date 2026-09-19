@@ -173,7 +173,6 @@ fn scan_all_media(root: &Path) -> Vec<MediaFile> {
       capture_at: None,
       capture_at_source: None,
       capture_at_probed: false,
-      capture_at_locked: false,
       rel_dir: ".".to_string(),
       camera: None,
       width: None,

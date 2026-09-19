@@ -355,13 +355,20 @@ pub fn list_photos(
         out.push(photo);
       }
     }
+    // 本页不足 page_num → 已到末页。勿用 total=0 时的 max(list.len()) 提前停：
+    // 部分相册接口不回 totalInAlbum，旧逻辑会只拉第一页就结束，表现为「云端很多、本地很少、角标却全是已下载」。
+    if list.len() < page_num as usize {
+      break;
+    }
     let total_in_album = data
       .get("totalInAlbum")
+      .or_else(|| data.get("total"))
+      .or_else(|| data.get("photoTotal"))
       .or_else(|| data.get("totalInPage"))
       .and_then(|v| v.as_u64())
       .unwrap_or(0) as u32;
     page_start += page_num;
-    if page_start >= total_in_album.max(list.len() as u32) || list.len() < page_num as usize {
+    if total_in_album > 0 && page_start >= total_in_album {
       break;
     }
     if page_start > 50_000 {
@@ -752,23 +759,212 @@ fn ext_from_url_or_ctype(url: &str, ctype: &str) -> String {
   "bin".into()
 }
 
+/// 相册上传接口（网页端 `cgi_upload_image`；本回合仅图片）
+const UPLOAD_IMAGE: &str = "https://up.qzone.qq.com/cgi-bin/upload/cgi_upload_image";
+
+fn guess_image_mime(path: &std::path::Path) -> Option<&'static str> {
+  let ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("")
+    .to_ascii_lowercase();
+  match ext.as_str() {
+    "jpg" | "jpeg" => Some("image/jpeg"),
+    "png" => Some("image/png"),
+    "gif" => Some("image/gif"),
+    "bmp" => Some("image/bmp"),
+    "webp" => Some("image/webp"),
+    "heic" | "heif" => Some("image/heic"),
+    _ => None,
+  }
+}
+
+fn is_likely_video_path(path: &std::path::Path) -> bool {
+  let ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("")
+    .to_ascii_lowercase();
+  matches!(
+    ext.as_str(),
+    "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "wmv" | "3gp"
+  )
+}
+
+/// 解析上传响应：`frameElement._Callback({...})` / `_Callback({...})` / 纯 JSON
+fn parse_upload_response(body: &str) -> Result<Value, String> {
+  let trimmed = body.trim();
+  if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
+    return Ok(v);
+  }
+  if let Some(start) = trimmed.find("_Callback(") {
+    let after = &trimmed[start + "_Callback(".len()..];
+    let mut depth = 0i32;
+    let mut end = None;
+    for (i, ch) in after.char_indices() {
+      match ch {
+        '{' => depth += 1,
+        '}' => {
+          depth -= 1;
+          if depth == 0 {
+            end = Some(i + 1);
+            break;
+          }
+        }
+        _ => {}
+      }
+    }
+    if let Some(e) = end {
+      return serde_json::from_str(&after[..e]).map_err(|err| format!("解析上传回调失败: {err}"));
+    }
+  }
+  if let Some(start) = trimmed.find('{') {
+    if let Some(end) = trimmed.rfind('}') {
+      if end > start {
+        return serde_json::from_str(&trimmed[start..=end])
+          .map_err(|err| format!("解析上传 JSON 失败: {err}"));
+      }
+    }
+  }
+  Err(format!(
+    "无法解析上传响应: {}",
+    trimmed.chars().take(200).collect::<String>()
+  ))
+}
+
+/**
+ * 上传本地图片到指定相册（form + base64 `cgi_upload_image`）
+ * @note 对齐公开网页端/社区工具用法；视频本回合不支持；不用 multipart 以免新增依赖
+ * @param album_id 目标相册 topicId
+ */
+pub fn upload_image_to_album(
+  session: &QzoneSession,
+  album_id: &str,
+  path: &std::path::Path,
+) -> Result<(), String> {
+  let album_id = album_id.trim();
+  if album_id.is_empty() {
+    return Err("album_id 不能为空".into());
+  }
+  if !path.is_file() {
+    return Err(format!("文件不存在: {}", path.display()));
+  }
+  if is_likely_video_path(path) {
+    return Err("暂不支持视频上传，请先选图片".into());
+  }
+  let _mime = guess_image_mime(path).ok_or_else(|| {
+    format!(
+      "不支持的图片格式: {}",
+      path.extension().and_then(|e| e.to_str()).unwrap_or("?")
+    )
+  })?;
+  let file_name = path
+    .file_name()
+    .and_then(|s| s.to_str())
+    .unwrap_or("upload.jpg")
+    .to_string();
+  let bytes = std::fs::read(path).map_err(|e| format!("读文件失败: {e}"))?;
+  if bytes.is_empty() {
+    return Err("文件为空".into());
+  }
+  // 单张软上限，避免一次塞爆内存/接口
+  if bytes.len() > 20 * 1024 * 1024 {
+    return Err("单张图片超过 20MB".into());
+  }
+
+  let client = Client::builder()
+    .timeout(std::time::Duration::from_secs(120))
+    .http1_only()
+    .build()
+    .map_err(|e| format!("创建上传客户端失败: {e}"))?;
+  let g_tk = calc_g_tk(&session.p_skey);
+  let url = format!("{UPLOAD_IMAGE}?g_tk={g_tk}");
+  let uin = session.uin.trim();
+  let b64 = B64.encode(&bytes);
+  let form = [
+    ("filename", file_name.as_str()),
+    ("uin", uin),
+    ("skey", session.skey.as_str()),
+    ("p_skey", session.p_skey.as_str()),
+    ("zzpaneluin", uin),
+    ("p_uin", uin),
+    ("o_uin", uin),
+    ("qzonetoken", ""),
+    ("zzpanelkey", ""),
+    ("uploadtype", "1"),
+    ("albumtype", "7"),
+    ("exttype", "0"),
+    ("refer", "qzone"),
+    ("output_type", "json"),
+    ("charset", "utf-8"),
+    ("output_charset", "utf-8"),
+    ("upload_hd", "1"),
+    ("hd_width", "2048"),
+    ("hd_height", "10000"),
+    ("hd_quality", "96"),
+    ("albumid", album_id),
+    ("base64", "1"),
+    ("picfile", b64.as_str()),
+  ];
+
+  let resp = client
+    .post(&url)
+    .header(USER_AGENT, UA)
+    .header(
+      REFERER,
+      format!("https://user.qzone.qq.com/{uin}/"),
+    )
+    .header(COOKIE, &session.cookie_header)
+    .header("Origin", "https://user.qzone.qq.com")
+    .form(&form)
+    .send()
+    .map_err(|e| format_reqwest_err("上传请求失败", &e))?;
+  if !resp.status().is_success() {
+    return Err(map_http_status_err("上传", resp.status()));
+  }
+  let body = resp
+    .text()
+    .map_err(|e| format_reqwest_err("读上传响应失败", &e))?;
+  let root = parse_upload_response(&body)?;
+  // 社区响应：顶层 ret=0 且含 data；也兼容 code=0
+  let ret = root
+    .get("ret")
+    .or_else(|| root.get("code"))
+    .and_then(|v| v.as_i64())
+    .unwrap_or(-1);
+  if ret != 0 {
+    let msg = root
+      .get("message")
+      .or_else(|| root.get("msg"))
+      .and_then(|v| v.as_str())
+      .unwrap_or("上传失败");
+    if looks_like_auth_failure(ret, msg) {
+      return Err(format!("{AUTH_EXPIRED_PREFIX}code={ret}: {msg}"));
+    }
+    return Err(format!("上传失败 ret={ret}: {msg}"));
+  }
+  Ok(())
+}
+
 /**
  * 从 QQ 空间删除本人相册中的照片/视频（本机文件不动）
  * @param priv_code 相册 priv/rights；≤0 时按 1
  * @param pairs (lloc, sloc)；sloc 空则用 lloc
- * @note 对齐公开网页端 `cgi_delpic_multi_v2` + form `codelist`
+ * @note 对齐 qzone_api：`cgi_delpic_multi_v2` 虽名含 multi，公开用法为**单张一次请求**；
+ *       多张逗号拼接常只删第一张却仍 code=0，故此处逐张 POST。
+ * @returns (成功数, 失败数, 成功 lloc 列表, 最后一次失败信息)
  */
 pub fn delete_photos(
   session: &QzoneSession,
   album_id: &str,
   priv_code: i32,
   pairs: &[(String, String)],
-) -> Result<(), String> {
+) -> Result<(u32, u32, Vec<String>, String), String> {
   if album_id.trim().is_empty() {
     return Err("album_id 不能为空".into());
   }
   if pairs.is_empty() {
-    return Ok(());
+    return Ok((0, 0, Vec::new(), String::new()));
   }
   let priv_n = if priv_code <= 0 { 1 } else { priv_code };
   let client = build_client(session)?;
@@ -778,20 +974,19 @@ pub fn delete_photos(
     .parse()
     .map_err(|_| format!("uin 非法: {}", session.uin))?;
 
-  // 分批：单请求过多易失败；每批最多 20
-  for chunk in pairs.chunks(20) {
-    let codelist = chunk
-      .iter()
-      .map(|(lloc, sloc)| {
-        let s = if sloc.trim().is_empty() {
-          lloc.as_str()
-        } else {
-          sloc.as_str()
-        };
-        format!("{lloc}|53|0|0||{s}|{priv_n}|0")
-      })
-      .collect::<Vec<_>>()
-      .join(",");
+  let mut deleted = 0u32;
+  let mut failed = 0u32;
+  let mut ok_ids: Vec<String> = Vec::new();
+  let mut last_err = String::new();
+
+  for (lloc, sloc) in pairs {
+    let s = if sloc.trim().is_empty() {
+      lloc.as_str()
+    } else {
+      sloc.as_str()
+    };
+    // 单张 codelist（与 qzone_api.build_delete_photo_params 一致）
+    let codelist = format!("{lloc}|53|0|0||{s}|{priv_n}|0");
     let url = format!("{DELETE_PHOTO}?g_tk={g_tk}");
     let form = [
       ("qzreferrer", format!("https://user.qzone.qq.com/{uin}")),
@@ -810,22 +1005,48 @@ pub fn delete_photos(
       ("outCharset", "utf-8".into()),
       ("format", "json".into()),
     ];
-    let resp = client
-      .post(&url)
-      .form(&form)
-      .send()
-      .map_err(|e| format_reqwest_err("删图请求失败", &e))?;
-    let status = resp.status();
-    if !status.is_success() {
-      return Err(map_http_status_err("删图", status));
+    match client.post(&url).form(&form).send() {
+      Ok(resp) => {
+        let status = resp.status();
+        if !status.is_success() {
+          failed += 1;
+          last_err = map_http_status_err("删图", status);
+          continue;
+        }
+        match resp.text() {
+          Ok(body) => match parse_delete_response(&body).and_then(|root| {
+            api_code_ok(&root)?;
+            Ok(())
+          }) {
+            Ok(()) => {
+              deleted += 1;
+              ok_ids.push(lloc.clone());
+            }
+            Err(e) => {
+              if is_auth_expired_error(&e) {
+                return Err(e);
+              }
+              failed += 1;
+              last_err = e;
+            }
+          },
+          Err(e) => {
+            failed += 1;
+            last_err = format_reqwest_err("读删图响应失败", &e);
+          }
+        }
+      }
+      Err(e) => {
+        let msg = format_reqwest_err("删图请求失败", &e);
+        if is_auth_expired_error(&msg) {
+          return Err(msg);
+        }
+        failed += 1;
+        last_err = msg;
+      }
     }
-    let body = resp
-      .text()
-      .map_err(|e| format_reqwest_err("读删图响应失败", &e))?;
-    let root = parse_delete_response(&body)?;
-    api_code_ok(&root)?;
   }
-  Ok(())
+  Ok((deleted, failed, ok_ids, last_err))
 }
 
 /// 删图响应可能是纯 JSON 或带 callback 的包装

@@ -190,11 +190,24 @@ def parse_required_domain(exc: BaseException) -> str | None:
     从 PyiCloudConnectionException 解析 Apple 要求的根域。
 
     @note 典型消息：Apple insists on using iCloud.com.cn for your request.
+    @note 禁止仅因 URL 含 icloud.com.cn 就判区域错误（连接失败文案也会带该域名）。
     """
     msg = str(exc).lower()
-    if "icloud.com.cn" in msg:
+    insists_cn = (
+        "insists on using icloud.com.cn" in msg
+        or ("icloud.com.cn" in msg and "domain parameter" in msg)
+        or ("icloud.com.cn" in msg and "please use" in msg)
+    )
+    if insists_cn:
         return "cn"
-    if "domain" in msg and " cn" in f" {msg}":
+    insists_com = (
+        "insists on using icloud.com" in msg
+        and "icloud.com.cn" not in msg
+        and ("domain parameter" in msg or "please use" in msg)
+    )
+    if insists_com:
+        return "com"
+    if "domain" in msg and " cn" in f" {msg}" and "parameter" in msg:
         return "cn"
     return None
 

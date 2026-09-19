@@ -1,9 +1,9 @@
 # QQ 空间同步 — 第二备份源（MVP）
 
-> **产品目的：** 与 iCloud 并列，把 **本人** QQ 空间相册原图/视频 **单向同步到本地**，供本地相册扫描浏览。  
+> **产品目的：** 与 iCloud 并列，把 **本人** QQ 空间相册与本地互通：云端原图/视频可下载到本地；也可将本机图片上传到指定相册。  
 > **页面：** `index.vue` + `QzoneSyncFab.vue`  
 > **实现：** `src-tauri/src/qzone_sync/*` · `api/qzoneSync.ts`  
-> **不涉及：** 好友相册、动态、上传；**不嵌入** GPL 第三方客户端源码。  
+> **不涉及：** 好友相册、动态；**不嵌入** GPL 第三方客户端源码。  
 > **删云：** 支持从 QQ 空间移除勾选项；**本机已下载文件与 media.db 保留**；同步 state 行硬删。  
 > **对齐决策：** 平行 Tauri 模块 + **扫码登录** + 独立 FAB；浏览交互参考开源客户端左右布局  
 
@@ -37,10 +37,10 @@
 
 | 原则 | 含义 |
 |------|------|
-| 单向 | 只「云 → 本地」 |
+| 双向（本相册） | 下载：云 → 本地；上传：本机选文件 → 当前相册（当前仅图片，`cgi_upload_image`） |
 | 与 iCloud 平行 | 独立 settings / session / state.db / 任务；互不合并 |
-| 本地优先 | 已存在非空文件则跳过并标 synced；仍补 mtime / 缺省 EXIF 时间 |
-| 合规 | 仅下载有权访问的本人相册；会话只存本机 |
+| 本地优先 | 已存在非空文件则跳过并标 synced；仍补 mtime / 缺省 EXIF 时间；**缺盘则 reconcile 回 cloud_only** |
+| 合规 | 仅操作有权访问的本人相册；会话只存本机 |
 | 时间元数据 | 对齐 QzonePhoto 优先级：`exif.originalTime` → `modifytime` → `rawshoottime`/`shoottime` → `uploadTime`；**无「现在」兜底**。落盘后写文件 mtime；JPEG 仅在缺 `DateTimeOriginal` 时补写。命名 `{yyyyMMdd}_{HHmmss}_{id16}.ext`（本地时区），账号隔离靠目录 `<uin>/`。说明/Comment 暂不做。相册判重指纹为 `blake3-no-meta-v1`（JPEG/PNG 去 EXIF/说明类元数据后再哈希），故补写前后可同组 |
 
 ---
@@ -61,8 +61,14 @@
 | 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`downloaded`；右侧按日时间轴；角标「已下载」） |
 | 缩略图/灯箱 | 图：`QzoneLazyImg`→`BaseImage`+`qzoneimg`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
 | 全部下载 | `qzone_sync_start_job`（`albumId=null`） |
-| 本相册下载 | `qzone_sync_start_job`（传入 `albumId`） |
+| 本相册下载 | 右侧标题旁「下载本相册」→ `qzone_sync_start_job`（传入 `albumId`） |
+| 上传到本相册 | 右侧标题旁「上传到本相册」→ 系统文件框 → `qzone_sync_upload_photos`（`cgi_upload_image`；当前仅图片） |
 | 从 QQ 空间移除 | 勾选 → 确认（1.5s 冷却）→ `qzone_sync_delete_photos`；**只删云端**，本机文件与 media.db 保留；sync state 行硬删 |
+
+> **删图：** `cgi_delpic_multi_v2` 对齐 qzone_api——**每张单独 POST**（多张拼 `codelist` 常只删第一张仍返回成功）。
+
+> **已下载角标：** 以 state.db `synced`+`dest_path` 为准；拉列表与下载前会 **reconcile**（盘上文件缺失则回写 `cloud_only`）。  
+> **分页：** 以「本页条数 < pageNum」为主停页；`totalInAlbum` 缺失/为 0 时不得只拉第一页。
 
 抽屉约 960px；顶栏状态卡对齐 iCloud（标题/主操作/进度统计）；账号在抽屉右上角；「刷新目录」重拉相册列表与当前相册内容。下载中可暂停 / 继续 / 取消。
 
@@ -78,6 +84,8 @@
 | `qzone_sync_logout` | 清会话 |
 | `qzone_sync_list_albums` | 相册列表 |
 | `qzone_sync_list_photos` | 相片浏览列表（`downloaded` 来自 state.db synced） |
+| `qzone_sync_upload_photos` | 本机路径列表上传到指定相册（图片） |
+| `qzone_sync_delete_photos` | 从 QQ 空间移除所选（本机保留） |
 | `qzone_sync_delete_photos` | 从 QQ 空间移除；本机保留；硬删 sync 行 |
 | `qzone_sync_fetch_media` | Cookie 代理媒体 |
 | `qzone_sync_prepare_preview` | 视频：floatview→MP4→落盘；返回本地路径 |

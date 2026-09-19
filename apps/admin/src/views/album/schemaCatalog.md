@@ -40,7 +40,7 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `playback_path` | H.264 播放代理（单独视频或 Live mov） |
 | `capture_at` / `camera` | 拍摄时间 / 机型（仅补空：本表已有 → origin → EXIF → 文件名前缀；用户可覆盖写 `capture_at`） |
 | `capture_at_source` | `origin` / `exif` / `filename` / `user` |
-| `capture_at_probed` / `capture_at_locked` | 已探测；origin/EXIF/文件名能提供时间则锁定（禁手改） |
+| `capture_at_probed` | 已探测拍摄时间 |
 | `origin` / `origin_asset_id` / `origin_account` / `origin_album` | 同步下载入库时复制的云侧身份；catalog 刷新后仍留在本表 |
 | `added_at` / `latitude` / `longitude` | 下载时从云侧 catalog 带入（仅补空） |
 | `width` / `height` | 图=解码；单独视频=打开时 ffprobe |

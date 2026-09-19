@@ -42,7 +42,6 @@ fn emit_thumb_ready(
   capture_at: Option<String>,
   capture_at_source: Option<String>,
   capture_at_probed: Option<bool>,
-  capture_at_locked: Option<bool>,
   camera: Option<String>,
   width: Option<u32>,
   height: Option<u32>,
@@ -57,7 +56,6 @@ fn emit_thumb_ready(
       capture_at,
       capture_at_source,
       capture_at_probed,
-      capture_at_locked,
       camera,
       width,
       height,
@@ -71,7 +69,7 @@ const META_PARALLEL: usize = 4;
 /// Live 预热转码并行度：每路 HEVC→H.264 吃满多核+大内存；>2 易拖垮整机
 const LIVE_PROXY_PARALLEL: usize = 2;
 
-/// 缩略图已就绪后：EXIF/sync 仅补空字段，并总是落探测/锁定标记
+/// 缩略图已就绪后：EXIF/sync 仅补空字段，并总是落探测标记
 fn persist_meta_for_paths(
   app: &AppHandle,
   conn: &rusqlite::Connection,
@@ -116,7 +114,6 @@ fn persist_meta_for_paths(
       fill.capture_at,
       fill.capture_at_source,
       Some(true),
-      Some(fill.capture_at_locked),
       fill.camera,
       None,
       None,
@@ -171,7 +168,6 @@ fn backfill_missing_image_dimensions(
     emit_thumb_ready(
       app,
       &path,
-      None,
       None,
       None,
       None,
@@ -297,7 +293,6 @@ fn prewarm_live_playback(
     emit_thumb_ready(
       app,
       still_path,
-      None,
       None,
       None,
       None,
@@ -607,7 +602,6 @@ pub fn discover_groups(
     let mut capture_at = None;
     let mut capture_at_source = None;
     let mut capture_at_probed = false;
-    let mut capture_at_locked = false;
     let mut camera = None;
     let mut width = None;
     let mut height = None;
@@ -645,7 +639,6 @@ pub fn discover_groups(
           .filter(|s| !s.trim().is_empty())
           .cloned();
         capture_at_probed = row.capture_at_probed;
-        capture_at_locked = row.capture_at_locked;
         camera = row
           .camera
           .as_ref()
@@ -701,7 +694,6 @@ pub fn discover_groups(
       capture_at,
       capture_at_source,
       capture_at_probed,
-      capture_at_locked,
       rel_dir,
       camera,
       width,
@@ -900,7 +892,6 @@ pub fn run_thumbnail_pipeline(
           None,
           None,
           None,
-          None,
           width,
           height,
           None,
@@ -908,7 +899,7 @@ pub fn run_thumbnail_pipeline(
       } else {
         fail_buf.push(path.clone());
         emit_thumb_ready(
-          &app, &path, None, None, None, None, None, None, None, None, None, None,
+          &app, &path, None, None, None, None, None, None, None, None, None,
         );
       }
 
@@ -992,7 +983,6 @@ mod tests {
       capture_at: None,
       capture_at_source: None,
       capture_at_probed: false,
-      capture_at_locked: false,
       rel_dir: ".".to_string(),
       camera: None,
       width: None,
@@ -1022,7 +1012,6 @@ mod tests {
       capture_at: None,
       capture_at_source: None,
       capture_at_probed: false,
-      capture_at_locked: false,
       rel_dir: ".".to_string(),
       camera: None,
       width: None,

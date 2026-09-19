@@ -23,7 +23,7 @@ views/<domain>/<page>/
 
 1. 确认只改**指定列表入口**的弹窗；共享 Form 被多页引用 → 先 anchors 共享三选一。  
 2. 列表页：`open` / `recordId` / `@success` 刷新；Modal 用 antd（CS 顶栏避让见 rule，勿抬 z-index 盖壳）。  
-3. Form：字段与 DTO/`#/api` 一致；提交调 `add*` / `update*`；成功 `$feedback` + emit。  
+3. Form：字段与 DTO/`#/api` 一致；提交与提示在 Form 内完成，结果用事件交给列表刷新（见 `vue-admin.mdc`「组件设计」）。  
 4. 只读/禁用态与权限：按钮 `authCode` 在列表 ToolButtons，不在 Form 里伪造超权。  
 5. 危险操作：优先 Popconfirm / feedback 约定，勿滥用无上下文大 Modal。
 

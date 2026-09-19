@@ -27,6 +27,32 @@ pub(crate) use naming::is_sync_asset_filename;
 use db::{open_app_db, open_db, state_db_path};
 
 /**
+ * 本地改名后同步 `assets.dest_path`（best-effort）
+ */
+pub fn remap_dest_paths(app: &AppHandle, renames: &[(String, String)]) {
+  if renames.is_empty() {
+    return;
+  }
+  let Ok(path) = state_db_path(app) else {
+    return;
+  };
+  if !path.is_file() {
+    return;
+  }
+  let Ok(conn) = open_db(&path) else {
+    return;
+  };
+  for (from, to) in renames {
+    if let Err(e) = conn.execute(
+      "UPDATE assets SET dest_path = ?2 WHERE dest_path = ?1",
+      rusqlite::params![from, to],
+    ) {
+      log::warn!("qzone_sync: remap dest_path {from} → {to}: {e}");
+    }
+  }
+}
+
+/**
  * 授权失效时清 session、取消任务，并通知前端回到扫码态
  * @returns 原错误串（便于 invoke / toast）
  */
@@ -225,6 +251,8 @@ pub async fn qzone_sync_list_photos(
     with_qzone_session(&app, |sess| {
       let mut views = client::list_photo_views(sess, &album_id)?;
       if let Ok(conn) = open_app_db(&app) {
+        // 角标前先对账：库里 synced 但盘上没文件 → 回写未下载，避免虚标
+        let _ = db::reconcile_synced_missing_local_files(&conn, Some(&album_id));
         if let Ok(synced) = db::synced_asset_ids(&conn, Some(&album_id)) {
           for v in &mut views {
             v.downloaded = synced.contains(&v.asset_id);
@@ -290,15 +318,17 @@ pub async fn qzone_sync_delete_photos(
     with_qzone_session(&app, |sess| {
       for ((album_id, priv_code), pairs) in &by_album {
         match client::delete_photos(sess, album_id, *priv_code, pairs) {
-          Ok(()) => {
-            deleted += pairs.len() as u32;
-            ok_ids.extend(pairs.iter().map(|(id, _)| id.clone()));
+          Ok((d, f, ids, err)) => {
+            deleted += d;
+            failed += f;
+            ok_ids.extend(ids);
+            if !err.is_empty() {
+              last_err = err;
+            }
           }
           Err(e) => {
-            failed += pairs.len() as u32;
-            last_err = e.clone();
-            // 单相册失败不阻断其它相册
-            log::warn!("qzone_sync: delete album {album_id}: {e}");
+            // 鉴权失效等硬错误：整批中止
+            return Err(e);
           }
         }
       }
@@ -322,6 +352,74 @@ pub async fn qzone_sync_delete_photos(
       deleted,
       failed,
       message,
+    })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
+}
+
+/**
+ * 本机选中的文件上传到指定 QQ 相册（当前仅图片；视频计入 failed）
+ * @note 与下载任务互斥：下载进行中禁止上传
+ */
+#[tauri::command]
+pub async fn qzone_sync_upload_photos(
+  app: AppHandle,
+  album_id: String,
+  paths: Vec<String>,
+) -> Result<types::QzoneUploadPhotosResult, String> {
+  let album_id = album_id.trim().to_string();
+  if album_id.is_empty() {
+    return Err("album_id 不能为空".into());
+  }
+  if paths.is_empty() {
+    return Ok(types::QzoneUploadPhotosResult {
+      uploaded: 0,
+      failed: 0,
+      message: "未选择文件".into(),
+    });
+  }
+  if paths.len() > 50 {
+    return Err("单次最多上传 50 个文件".into());
+  }
+  if job::current_snapshot().status == "cataloging"
+    || job::current_snapshot().status == "downloading"
+    || job::current_snapshot().status == "paused"
+  {
+    return Err("下载任务进行中，请稍后再上传".into());
+  }
+
+  tokio::task::spawn_blocking(move || {
+    with_qzone_session(&app, |sess| {
+      let mut uploaded = 0u32;
+      let mut failed = 0u32;
+      let mut last_err = String::new();
+      for p in &paths {
+        let path = std::path::Path::new(p);
+        match client::upload_image_to_album(sess, &album_id, path) {
+          Ok(()) => uploaded += 1,
+          Err(e) => {
+            if client::is_auth_expired_error(&e) {
+              return Err(on_auth_expired(&app, e));
+            }
+            failed += 1;
+            last_err = e;
+            log::warn!("qzone_sync: upload {}: {last_err}", path.display());
+          }
+        }
+      }
+      let message = if failed == 0 {
+        format!("已上传 {uploaded} 张到相册")
+      } else if uploaded == 0 {
+        format!("上传失败：{last_err}")
+      } else {
+        format!("已上传 {uploaded} 张，失败 {failed}：{last_err}")
+      };
+      Ok(types::QzoneUploadPhotosResult {
+        uploaded,
+        failed,
+        message,
+      })
     })
   })
   .await

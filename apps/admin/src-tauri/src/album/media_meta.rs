@@ -11,7 +11,7 @@ use std::path::Path;
 use chrono::{Local, NaiveDateTime, TimeZone};
 use exif::{In, Reader, Tag};
 
-/// 单次解析结果；调用方按「仅补空」写 capture/camera，并总是写探测/锁定
+/// 单次解析结果；调用方按「仅补空」写 capture/camera，并总是写 probed
 #[derive(Debug, Clone, Default)]
 pub struct MediaMetaFill {
   /// 建议写入的拍摄时间
@@ -19,8 +19,6 @@ pub struct MediaMetaFill {
   /// `origin` / `exif` / `filename`
   pub capture_at_source: Option<String>,
   pub camera: Option<String>,
-  /// 能提供拍摄时间 → 禁止用户手改
-  pub capture_at_locked: bool,
 }
 
 /**
@@ -48,7 +46,6 @@ pub fn resolve_capture_meta(
     };
 
   MediaMetaFill {
-    capture_at_locked: capture_at.is_some(),
     capture_at,
     capture_at_source,
     camera: exif.camera,
@@ -68,9 +65,65 @@ fn normalize_origin_capture(raw: &str) -> String {
   s.to_string()
 }
 
+fn is_hex_token(s: &str, len: usize) -> bool {
+  s.len() == len
+    && s.bytes().all(|b| {
+      b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b)
+    })
+}
+
+fn is_digit_token(s: &str, len: Option<usize>) -> bool {
+  !s.is_empty()
+    && len.map(|n| s.len() == n).unwrap_or(true)
+    && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// 从同步风格 stem 取出稳定 id16（新 `ymd_hms_id16` / 旧 `secs_id16` / `secs_mid8_id16`）
+fn sync_stem_id16(stem: &str) -> Option<&str> {
+  let parts: Vec<&str> = stem.split('_').collect();
+  match parts.as_slice() {
+    [ymd, hms, id16]
+      if is_digit_token(ymd, Some(8)) && is_digit_token(hms, Some(6)) && is_hex_token(id16, 16) =>
+    {
+      Some(*id16)
+    }
+    [secs, id16] if is_digit_token(secs, None) && is_hex_token(id16, 16) => Some(*id16),
+    [secs, mid8, id16]
+      if is_digit_token(secs, None) && is_hex_token(mid8, 8) && is_hex_token(id16, 16) =>
+    {
+      Some(*id16)
+    }
+    _ => None,
+  }
+}
+
+/// 本地时区把 Unix 秒格式化为同步文件名前缀 `yyyyMMdd_HHmmss`
+pub fn format_capture_filename_prefix(unix_secs: i64) -> String {
+  let secs = unix_secs.max(0);
+  Local
+    .timestamp_opt(secs, 0)
+    .single()
+    .unwrap_or_else(|| Local.timestamp_opt(0, 0).single().expect("unix epoch"))
+    .format("%Y%m%d_%H%M%S")
+    .to_string()
+}
+
+/**
+ * 同步风格文件名按新拍摄时间改前缀；保留 id16 与扩展名
+ * @returns 新绝对路径；非同步风格或无法解析时 None（仅改库、不改名）
+ */
+pub fn path_with_rewritten_capture_prefix(path: &Path, unix_secs: i64) -> Option<std::path::PathBuf> {
+  let stem = path.file_stem()?.to_str()?;
+  let ext = path.extension()?.to_str()?;
+  let id16 = sync_stem_id16(stem)?;
+  let prefix = format_capture_filename_prefix(unix_secs);
+  let new_name = format!("{prefix}_{id16}.{ext}");
+  Some(path.with_file_name(new_name))
+}
+
 /**
  * 从同步落盘文件名解析拍摄时间（`yyyyMMdd_HHmmss_{id16}`）
- * @note 等于 epoch 占位前缀时视为无效
+ * @note 等于 epoch 占位前缀时视为无效；旧 unix 前缀不在此解析
  */
 pub fn parse_capture_at_from_sync_filename(path_or_name: &str) -> Option<String> {
   let base = Path::new(path_or_name)
@@ -81,25 +134,11 @@ pub fn parse_capture_at_from_sync_filename(path_or_name: &str) -> Option<String>
   let [ymd, hms, id16] = parts.as_slice() else {
     return None;
   };
-  if ymd.len() != 8 || !ymd.bytes().all(|b| b.is_ascii_digit()) {
-    return None;
-  }
-  if hms.len() != 6 || !hms.bytes().all(|b| b.is_ascii_digit()) {
-    return None;
-  }
-  if id16.len() != 16
-    || !id16.bytes().all(|b| {
-      b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b)
-    })
-  {
+  if !is_digit_token(ymd, Some(8)) || !is_digit_token(hms, Some(6)) || !is_hex_token(id16, 16) {
     return None;
   }
   let prefix = format!("{ymd}_{hms}");
-  let epoch_prefix = Local
-    .timestamp_opt(0, 0)
-    .single()
-    .map(|dt| dt.format("%Y%m%d_%H%M%S").to_string())
-    .unwrap_or_else(|| "19700101_000000".into());
+  let epoch_prefix = format_capture_filename_prefix(0);
   if prefix == epoch_prefix {
     return None;
   }
@@ -204,13 +243,18 @@ mod tests {
 
   #[test]
   fn reject_epoch_placeholder_filename() {
-    let prefix = Local
-      .timestamp_opt(0, 0)
-      .single()
-      .unwrap()
-      .format("%Y%m%d_%H%M%S");
+    let prefix = format_capture_filename_prefix(0);
     let name = format!("{prefix}_0123456789abcdef.jpg");
     assert_eq!(parse_capture_at_from_sync_filename(&name), None);
+  }
+
+  #[test]
+  fn rewrite_sync_filename_prefix_keeps_id16() {
+    let old = Path::new(r"D:\a\20240115_123045_0123456789abcdef.jpg");
+    let next = path_with_rewritten_capture_prefix(old, 1_705_321_845).unwrap();
+    let name = next.file_name().unwrap().to_str().unwrap();
+    assert!(name.ends_with("_0123456789abcdef.jpg"));
+    assert_eq!(name.len(), "20240115_123045_0123456789abcdef.jpg".len());
   }
 
   #[test]

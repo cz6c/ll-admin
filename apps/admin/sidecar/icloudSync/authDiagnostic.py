@@ -68,6 +68,25 @@ def load_auth_diagnostic_from_disk(session_dir: str) -> dict[str, Any] | None:
         return None
 
 
+def format_exception_chain(exc: BaseException | None, *, limit: int = 500) -> str | None:
+    """
+    展开 exception + __cause__/__context__，避免 pyicloud 包装成
+    「Cannot connect to Apple iCloud service」后丢掉 SSL/DNS 真因。
+    """
+    if exc is None:
+        return None
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        text = str(current).strip() or type(current).__name__
+        parts.append(f"{type(current).__name__}: {text}")
+        current = current.__cause__ or current.__context__
+    joined = " | ".join(parts)
+    return joined[:limit] if joined else None
+
+
 def mask_apple_id(apple_id: str) -> str:
     """Apple ID 脱敏展示。"""
     trimmed = apple_id.strip()
@@ -153,7 +172,13 @@ def _infer_hints(
         hints.append("MISSING_SCNT_OR_SESSION_ID")
     if stage == "auth_2fa" and flags.get("bridgeSupported") and not flags.get("bridgeActive"):
         hints.append("BRIDGE_INACTIVE_AT_VALIDATE")
-    if not flags.get("deliveryMethodCached") and flags.get("deliveryMethodLive") in ("", "unknown", None):
+    # 仅 challenge 态提示投递方式；登录失败清 api 后 deliveryMethodLive 恒为 None，勿当成主因
+    if (
+        code == "need_2fa"
+        and flags.get("hasApi")
+        and not flags.get("deliveryMethodCached")
+        and flags.get("deliveryMethodLive") in ("", "unknown", None)
+    ):
         hints.append("DELIVERY_METHOD_UNKNOWN")
     if stage == "auth_2fa" and not flags.get("waiting2fa") and exc is None:
         hints.append("NO_PENDING_2FA")
@@ -277,7 +302,7 @@ def build_auth_diagnostic(
         "hints": hints,
         "userActions": user_actions,
         "exceptionType": type(exc).__name__ if exc else None,
-        "exceptionDetail": str(exc)[:400] if exc else None,
+        "exceptionDetail": format_exception_chain(exc),
     }
 
     _LAST_AUTH_DIAGNOSTIC = report

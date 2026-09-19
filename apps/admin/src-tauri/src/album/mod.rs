@@ -6,6 +6,7 @@ mod content_hash;
 mod media_meta;
 pub(crate) mod db;
 mod duplicates;
+mod exif_write;
 pub(crate) mod ffmpeg;
 mod fs_delete;
 mod heic_decode;
@@ -368,29 +369,72 @@ pub async fn album_delete_local(
   Ok(deleted)
 }
 
-/// 列表批量改拍摄时间：仅写 media.db（source=user）；拒绝未探测/已锁定行
+/// 批量修改拍摄时间：可覆盖已有值；同步风格文件名改前缀；可选写 JPEG EXIF
 #[tauri::command]
 pub async fn album_set_capture_at(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   request: types::AlbumSetCaptureAtRequest,
 ) -> Result<types::AlbumSetCaptureAtResult, String> {
-  let (updated, rejected) = tokio::task::spawn_blocking(move || {
+  let write_exif = request.write_exif;
+  let items: Vec<(String, String)> = request
+    .items
+    .into_iter()
+    .map(|it| (it.path, it.capture_at))
+    .collect();
+
+  let result = tokio::task::spawn_blocking(move || {
     let album_data_dir = album_dir(&app)?;
     let conn = db::open_db(&album_data_dir)?;
-    let (updated, rejected) =
-      db::set_capture_at_user_batch(&conn, &request.paths, &request.capture_at)?;
-    Ok::<(u32, u32), String>((updated, rejected))
+    let (updated, rejected, written, renames) = db::set_capture_at_user_batch(&conn, &items)?;
+
+    // 同步 state.db 的 dest_path 随本地改名（避免已下载角标误判丢失）
+    if !renames.is_empty() {
+      remap_sync_dest_paths(&app, &renames);
+    }
+
+    let mut exif_written = 0u32;
+    let mut exif_failed = 0u32;
+    if write_exif {
+      for (path, secs) in &written {
+        match exif_write::write_capture_at_exif(std::path::Path::new(path), *secs) {
+          Ok(()) => exif_written += 1,
+          Err(e) => {
+            log::warn!("album: write exif {path}: {e}");
+            exif_failed += 1;
+          }
+        }
+      }
+    }
+
+    let renames = renames
+      .into_iter()
+      .map(|(from, to)| types::AlbumPathRename { from, to })
+      .collect();
+
+    Ok::<types::AlbumSetCaptureAtResult, String>(types::AlbumSetCaptureAtResult {
+      updated,
+      rejected,
+      exif_written,
+      exif_failed,
+      renames,
+    })
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))??;
 
-  if updated > 0 {
+  if result.updated > 0 {
     if let Ok(guard) = state.lock() {
       guard.dirty.store(true, Ordering::SeqCst);
     }
   }
-  Ok(types::AlbumSetCaptureAtResult { updated, rejected })
+  Ok(result)
+}
+
+/// best-effort：按旧绝对路径改写 iCloud / QQ 空间 sync `assets.dest_path`
+fn remap_sync_dest_paths(app: &AppHandle, renames: &[(String, String)]) {
+  crate::icloud_sync::remap_dest_paths(app, renames);
+  crate::qzone_sync::remap_dest_paths(app, renames);
 }
 
 /// 扫描相册根全量媒体重复组（组内落库优先正本；不含删盘）

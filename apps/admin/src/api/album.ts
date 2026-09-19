@@ -40,21 +40,36 @@ export async function deleteAlbumLocal(paths: string[]): Promise<number> {
   return invoke<number>("album_delete_local", { paths });
 }
 
-/** 批量改拍摄时间请求（仅 media.db，source=user；一律设为同一时间） */
-export interface AlbumSetCaptureAtRequest {
-  paths: string[];
+/** 批量修改拍摄时间：可覆盖已有值；可选写 JPEG EXIF；可能改同步风格文件名前缀 */
+export interface AlbumSetCaptureAtItem {
+  path: string;
   captureAt: string;
+}
+
+export interface AlbumSetCaptureAtRequest {
+  items: AlbumSetCaptureAtItem[];
+  /** 是否写回 JPEG EXIF；默认 false */
+  writeExif?: boolean;
+}
+
+export interface AlbumPathRename {
+  from: string;
+  to: string;
 }
 
 export interface AlbumSetCaptureAtResult {
   updated: number;
   rejected: number;
+  exifWritten: number;
+  exifFailed: number;
+  /** 因改文件名前缀导致的 path 变更 */
+  renames?: AlbumPathRename[];
 }
 
 /**
- * 列表批量覆盖拍摄时间（拒绝未探测 / sync·EXIF 锁定行）
+ * 批量修改拍摄时间（覆盖写；同步风格文件名改前缀；EXIF 仅勾选时写）
  */
-export async function setAlbumCaptureAt(request: AlbumSetCaptureAtRequest): Promise<AlbumSetCaptureAtResult> {
+export function setAlbumCaptureAt(request: AlbumSetCaptureAtRequest): Promise<AlbumSetCaptureAtResult> {
   return invoke<AlbumSetCaptureAtResult>("album_set_capture_at", { request });
 }
 

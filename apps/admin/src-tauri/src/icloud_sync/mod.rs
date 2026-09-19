@@ -10,6 +10,7 @@ mod catalog_diff;
 pub mod cloud_assets;
 pub mod cloud_delete;
 mod db;
+mod job_mem;
 mod keyring_store;
 pub(crate) mod media_protocol;
 pub(crate) mod naming;
@@ -33,6 +34,32 @@ use settings::{
   clear_session_for_apple_id, load_settings, normalize_icloud_domain, resolve_output_dir,
   save_settings, session_has_files, session_has_files_for_apple_id,
 };
+
+/**
+ * 本地改名后同步 `assets.dest_path`（best-effort，失败不影响相册主流程）
+ */
+pub fn remap_dest_paths(app: &AppHandle, renames: &[(String, String)]) {
+  if renames.is_empty() {
+    return;
+  }
+  let Ok(path) = db::state_db_path(app) else {
+    return;
+  };
+  if !path.is_file() {
+    return;
+  }
+  let Ok(conn) = db::open_db(&path) else {
+    return;
+  };
+  for (from, to) in renames {
+    if let Err(e) = conn.execute(
+      "UPDATE assets SET dest_path = ?2 WHERE dest_path = ?1",
+      rusqlite::params![from, to],
+    ) {
+      log::warn!("icloud_sync: remap dest_path {from} → {to}: {e}");
+    }
+  }
+}
 
 /**
  * 同步落盘目录写死：`{albumRoot}/iCloudSync`

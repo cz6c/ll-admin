@@ -3,8 +3,8 @@
  * 职责：统一 message / confirm / 带输入确认 / 全屏 loading，对业务保持稳定 API
  * 适用：路由守卫、CRUD、Settings 等调用点，避免页内直接依赖 antd API 细节
  */
-import { h, shallowRef } from "vue";
-import { Input, message, Modal } from "ant-design-vue";
+import { h, render, shallowRef } from "vue";
+import { Input, message, Modal, Spin } from "ant-design-vue";
 import type { MessageArgsProps } from "ant-design-vue/es/message";
 
 type MessageType = "success" | "info" | "warning" | "error";
@@ -23,6 +23,8 @@ export type FeedbackConfirmOptions = {
 };
 
 let loadingClose: (() => void) | null = null;
+/** 全屏 loading 挂载点；close 时 render(null) + 卸 DOM */
+let loadingHost: HTMLDivElement | null = null;
 
 function handleMessage(type: MessageType) {
   return function (content: MessageArgsProps["content"], duration?: number) {
@@ -115,14 +117,62 @@ export default {
       });
     });
   },
-  /** 打开全屏遮罩；文案仅作 tip（Ant message.loading） */
+  /**
+   * 全屏蒙层 loading：挡住指针，调用方不必再额外 disabled
+   * @param content tip 文案
+   */
   loading(content: any) {
     loadingClose?.();
-    loadingClose = message.loading(String(content ?? "加载中..."), 0);
+    const tip = String(content ?? "加载中...");
+    const host = document.createElement("div");
+    host.setAttribute("data-feedback-global-loading", "");
+    document.body.appendChild(host);
+    loadingHost = host;
+    render(
+      h(
+        "div",
+        {
+          class: "feedback-global-loading-mask",
+          style: {
+            position: "fixed",
+            inset: "0",
+            zIndex: "11000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0, 0, 0, 0.45)",
+            pointerEvents: "auto"
+          },
+          onClick: (e: Event) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        },
+        [
+          h(
+            "div",
+            {
+              style: {
+                padding: "24px 32px",
+                borderRadius: "8px",
+                background: "var(--color-bg-container, #fff)"
+              }
+            },
+            [h(Spin, { size: "large", tip, spinning: true })]
+          )
+        ]
+      ),
+      host
+    );
+    loadingClose = () => {
+      render(null, host);
+      host.remove();
+      if (loadingHost === host) loadingHost = null;
+      loadingClose = null;
+    };
   },
   closeLoading() {
     loadingClose?.();
-    loadingClose = null;
   },
   message: {
     success: handleMessage("success"),

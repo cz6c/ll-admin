@@ -38,10 +38,26 @@ pub fn is_video_ext(ext: &str) -> bool {
   )
 }
 
-/// 全尺寸解码（HEIC 走 FFmpeg）
+/// WebView 可原生显示的栅格扩展名：解码全失败时可把原路径当 `thumb_path`
+/// @note HEIC/TIFF/AVIF/SVG 不在此列——浏览器或协议侧无法直接当宫格图
+pub fn can_use_origin_as_thumb(ext: &str) -> bool {
+  matches!(
+    ext,
+    "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp"
+  )
+}
+
+/// 全尺寸解码：`image` → 非 HEIF 再试 ffmpeg → HEIF 走专用路径
 fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<image::DynamicImage> {
-  if let Ok(img) = image::open(file_path) {
-    return Some(img);
+  match image::open(file_path) {
+    Ok(img) => return Some(img),
+    Err(e) => {
+      log::debug!(
+        "album: image crate 打开失败，尝试回退 ({}, {})",
+        file_path.display(),
+        e
+      );
+    }
   }
 
   let ext = file_path
@@ -49,11 +65,21 @@ fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<imag
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase())
     .unwrap_or_default();
-  if !is_heif_ext(&ext) {
-    return None;
+  if is_heif_ext(&ext) {
+    return heic_decode::decode_heif_file(file_path, ffmpeg_bin);
   }
 
-  heic_decode::decode_heif_file(file_path, ffmpeg_bin)
+  if let Some(ffmpeg) = ffmpeg_bin {
+    if let Some(img) = ffmpeg::decode_raster_via_ffmpeg(ffmpeg, file_path) {
+      return Some(img);
+    }
+    log::warn!(
+      "album: ffmpeg 栅格解码失败 ({})",
+      file_path.display()
+    );
+  }
+
+  None
 }
 
 /// 缓存文件名哈希：stem + modified + size（缩略图 target）
@@ -233,11 +259,18 @@ pub fn generate_thumbnail(
     None
   };
 
+  // 解码链：缓存命中 → WebP → 浏览器可显格式回退原路径（避免 fail_count 永久占位）
   let thumb_path = if thumb_ready {
     Some(cache_file.to_string_lossy().into_owned())
   } else if let Some(ref decoded) = img {
     let thumb = decoded.thumbnail(target, target);
     save_thumb_webp(&thumb, &cache_file)
+  } else if can_use_origin_as_thumb(&ext) && file_path.is_file() {
+    log::info!(
+      "album: 缩略图解码失败，回退原图路径 ({})",
+      file_path.display()
+    );
+    Some(path.to_string())
   } else {
     None
   };
@@ -346,5 +379,35 @@ mod tests {
       preview_cache_file(dir, path, 100),
       preview_cache_file(dir, path, 101)
     );
+  }
+
+  #[test]
+  fn can_use_origin_as_thumb_covers_browser_rasters() {
+    assert!(can_use_origin_as_thumb("jpg"));
+    assert!(can_use_origin_as_thumb("jpeg"));
+    assert!(can_use_origin_as_thumb("png"));
+    assert!(!can_use_origin_as_thumb("heic"));
+    assert!(!can_use_origin_as_thumb("mp4"));
+  }
+
+  /// image+ffmpeg 都解不开时，浏览器可显格式应回退原路径，避免永久 JPG 占位
+  #[test]
+  fn generate_thumbnail_falls_back_to_origin_for_corrupt_jpg() {
+    let base = std::env::temp_dir().join(format!(
+      "album_thumb_origin_fb_{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&base);
+    let jpg = base.join("corrupt.jpg");
+    std::fs::write(&jpg, b"not-a-real-jpeg").expect("write corrupt jpg");
+    let cache = base.join("cache");
+    let _ = std::fs::create_dir_all(&cache);
+    let path = jpg.to_string_lossy().into_owned();
+    let outcome = generate_thumbnail(&path, &cache, 158, None);
+    assert_eq!(outcome.thumb_path.as_deref(), Some(path.as_str()));
+    let _ = std::fs::remove_dir_all(&base);
   }
 }

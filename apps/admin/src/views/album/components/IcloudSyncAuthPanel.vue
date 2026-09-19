@@ -69,8 +69,16 @@ const accountSwitchPending = computed(() => {
 function applyAuthFailure(result: IcloudSyncLoginResult) {
   const code = result.errorCode?.trim() || "auth_failed";
   const detail = result.detail?.trim() ?? "";
-  const action = result.diagnostic?.userActions?.[0]?.trim();
-  const message = action || formatIcloudSyncError(detail ? `${code}: ${detail}` : code);
+  // 诊断落盘后 exceptionDetail 更完整；短 message 可能被截断
+  const diagDetail = result.diagnostic?.exceptionDetail?.trim() || result.diagnostic?.exceptionType?.trim() || "";
+  const rawForFormat = detail
+    ? `${code}: ${detail}`
+    : diagDetail
+      ? `${code}: ${diagDetail}`
+      : code;
+  const message = formatIcloudSyncError(rawForFormat, {
+    icloudDomain: icloudDomain.value
+  });
   $feedback.message.error(message);
 
   // 无 pending / session 失效：回到登录表单，避免用户对着失效 challenge 连点提交
@@ -165,7 +173,7 @@ async function loadState() {
       password.value = "";
     }
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
   } finally {
     loading.value = false;
   }
@@ -205,7 +213,7 @@ async function onLogin() {
     await syncKeyringAfterSuccess();
     emit("loggedIn", { accountChanged });
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
   } finally {
     loggingIn.value = false;
   }
@@ -237,7 +245,7 @@ async function onSubmit2fa() {
     await syncKeyringAfterSuccess();
     emit("loggedIn", { accountChanged: pendingAccountChanged.value });
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
   } finally {
     submitting2fa.value = false;
   }
@@ -257,7 +265,7 @@ async function onResend2fa() {
     twoFaCode.value = "";
     $feedback.message.success("已重新发送验证码，请查收手机短信或设备弹窗");
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
   } finally {
     resending2fa.value = false;
   }

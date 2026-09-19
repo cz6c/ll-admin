@@ -259,6 +259,33 @@ pub fn decode_heif_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::Dyna
   img
 }
 
+/// `image` crate 解不开的栅格图（畸形/非标 JPG 等）经 ffmpeg 转一帧 JPEG 再解码
+/// @note 与 HEIC 路径共用 `-frames:v 1`；失败由调用方决定是否回退原图路径
+pub fn decode_raster_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::DynamicImage> {
+  let tmp = temp_jpeg_path();
+  let mut cmd = Command::new(ffmpeg);
+  cmd.args([
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-threads",
+    "2",
+    "-y",
+    "-i",
+  ]);
+  cmd.arg(input);
+  cmd.args(["-frames:v", "1", "-q:v", "3"]);
+  cmd.arg(&tmp);
+  if !run_ffmpeg(cmd) {
+    let _ = std::fs::remove_file(&tmp);
+    return None;
+  }
+  let img = image::open(&tmp).ok();
+  let _ = std::fs::remove_file(&tmp);
+  img
+}
+
 /// HEIC/HEIF → JPEG 全尺寸落盘（不 `-map`，Apple HEIC 多路 512 瓦片需 demuxer 自拼完整画布）
 pub fn convert_heif_to_jpeg(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
   let mut cmd = Command::new(ffmpeg);

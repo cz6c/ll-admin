@@ -1,7 +1,7 @@
 <!--
-  相册主页 — 扁平时间线宫格
-  职责：扫描根目录、根下全部媒体；目录筛选；左侧年份轴与右侧照片墙联动；勾选后修改拍摄时间；统计；宫格虚拟滚动
-  主流程：discover → 宫格展示 → 缩略图增量；勾选模式点格切换，左键拖拽即框选；右侧滚动高亮左侧年/月，点击或上下键跳到对应年
+  相册主页 — 按日分组照片墙
+  职责：扫描根目录；目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年；勾选改拍摄时间
+  主流程：discover 全库 → 宫格只挂最新年 → 边缘滚动扩展邻年；勾选点格/框选；点击年份只挂该年
 -->
 <script setup lang="ts">
 import IconifyIcon from "@/components/IconifyIcon/index.vue";
@@ -14,14 +14,26 @@ import { listen } from "@tauri-apps/api/event";
 import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import AlbumYearAxis from "./components/AlbumYearAxis.vue";
-import { buildAlbumYearAxis, findAxisAt, stepAlbumYear } from "./albumYearAxis";
+import {
+  buildAlbumYearAxis,
+  filterFilesByYearKeys,
+  neighborYearKey,
+  pickLatestYearKey,
+  stepAlbumYear
+} from "./albumYearAxis";
+import {
+  buildAlbumDayLayout,
+  DAY_HEADER_HEIGHT,
+  findDaySectionAt,
+  sliceVisibleDayLayout
+} from "./albumDayLayout";
 import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import QzoneSyncFab from "./components/QzoneSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
-import { useAlbumGridSelect, type AlbumGridGeometry } from "./useAlbumGridSelect";
+import { useAlbumGridSelect } from "./useAlbumGridSelect";
 import {
   ALBUM_SCAN_PROGRESS_EVENT,
   ALBUM_THUMB_GENERATE_SIZE,
@@ -41,6 +53,8 @@ const inTauri = isTauri();
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
 const { gridGap: GAP, gridPadding: GRID_PADDING, bufferRows: BUFFER_ROWS } = ALBUM_LAYOUT;
+/** 滚到顶/底约两行内触发邻年挂载 */
+const YEAR_EDGE_PX = 120;
 const loading = ref(false);
 const error = ref("");
 const scanProgress = ref<AlbumScanProgressPayload>({ phase: "discover", done: 0, total: 0 });
@@ -49,6 +63,17 @@ const duplicateModalOpen = ref(false);
 /** 目录筛选（空=全部；含子孙） */
 const dirFilter = ref<string | null>(null);
 const captureRewriteOpen = ref(false);
+/**
+ * 右侧已挂载的年份（升序）
+ * discover 仍全库；宫格只渲染这些年。首屏只有最新一年
+ */
+const loadedYearKeys = ref<string[]>([]);
+/** 扫完/筛完/点最新年时钉在底部；往上扩年时关掉，避免把视口拽走 */
+let preferBottom = true;
+/** 邻年挂载中，避免滚动边缘连触发 */
+let yearLoadLocked = false;
+/** 程序化滚底后短暂忽略边缘扩年，避免首屏钉底立刻挂上下一年 */
+let suppressEdgeUntil = 0;
 
 /** path → groups 内 MediaFile 对象，缩略图就绪事件 O(1) 写回 */
 const pathIndex = computed(() => {
@@ -314,7 +339,7 @@ async function doScan(force: boolean) {
       force
     });
     groups.value = result;
-    scrollAlbumToBottom();
+    resetYearWindowToLatest();
   } catch (e: unknown) {
     error.value = typeof e === "string" ? e : "扫描失败";
   } finally {
@@ -354,7 +379,7 @@ async function onDeleteLocal(file: MediaFile) {
   }));
 }
 
-// ===== 虚拟滚动：仅渲染可视区 + 上下缓冲的卡片，大相册不爆 DOM =====
+// ===== 按日分组虚拟滚动：只挂已加载年份；边缘再扩邻年 =====
 const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
 const { y: scrollTop } = useScroll(scrollEl, { throttle: 60 });
@@ -365,13 +390,19 @@ const gridLayout = computed(() => computeAlbumGridLayout(gridAvailWidth.value));
 const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
 const rowHeight = computed(() => gridLayout.value.rowHeight);
-const gridGeometry = computed<AlbumGridGeometry>(() => ({
-  cols: cols.value,
-  thumbSize: thumbSize.value,
-  rowHeight: rowHeight.value,
-  gap: GAP
-}));
-const allFiles = computed<MediaFile[]>(() => filteredFiles.value);
+
+/** 全库筛选结果（目录）；左侧轴与统计用这份，不随年份窗口变 */
+const catalogFiles = computed<MediaFile[]>(() => filteredFiles.value);
+const yearAxis = computed(() => buildAlbumYearAxis(catalogFiles.value));
+
+/** 右侧当前挂载年份内的媒体 */
+const displayFiles = computed(() => filterFilesByYearKeys(catalogFiles.value, loadedYearKeys.value));
+
+const dayLayout = computed(() =>
+  buildAlbumDayLayout(displayFiles.value, cols.value, thumbSize.value, GAP)
+);
+const totalHeight = computed(() => dayLayout.value.totalHeight);
+const thumbPlacements = computed(() => dayLayout.value.placements);
 
 const {
   selectMode,
@@ -384,7 +415,7 @@ const {
   togglePath,
   onPointerDown: onGridPointerDown,
   onDragStart: onGridDragStart
-} = useAlbumGridSelect(allFiles, gridGeometry);
+} = useAlbumGridSelect(displayFiles, thumbPlacements);
 
 /** 宫格勾选 → 修改拍摄时间弹窗候选 */
 const rewriteCandidateFiles = computed(() =>
@@ -403,77 +434,31 @@ function onAlbumPointerDown(event: PointerEvent) {
 function onThumbToggle(file: MediaFile) {
   togglePath(file.path);
 }
-const totalRows = computed(() => Math.ceil(allFiles.value.length / cols.value));
-const totalHeight = computed(() => totalRows.value * rowHeight.value);
 
-const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - BUFFER_ROWS));
-const endRow = computed(() => Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportHeight.value) / rowHeight.value) + BUFFER_ROWS));
-const startIdx = computed(() => startRow.value * cols.value);
-const endIdx = computed(() => endRow.value * cols.value);
-const visibleFiles = computed<MediaFile[]>(() => allFiles.value.slice(startIdx.value, endIdx.value));
+const bufferPx = computed(() => Math.max(YEAR_EDGE_PX, BUFFER_ROWS * rowHeight.value));
+const visibleSlice = computed(() =>
+  sliceVisibleDayLayout(dayLayout.value, scrollTop.value, viewportHeight.value, bufferPx.value)
+);
+const visibleSections = computed(() => visibleSlice.value.sections);
+const visiblePlacements = computed(() => visibleSlice.value.placements);
 
-/** 左侧轴：只含当前筛选结果里有照片的年/月 */
-const yearAxis = computed(() => buildAlbumYearAxis(allFiles.value));
-
-/** 高亮用可视区第一张，不含上下缓冲行 */
-const activeAxis = computed(() => {
-  const files = allFiles.value;
-  if (files.length === 0 || rowHeight.value <= 0 || cols.value <= 0) return null;
-  const row = Math.min(totalRows.value - 1, Math.max(0, Math.floor(scrollTop.value / rowHeight.value)));
-  const index = Math.min(files.length - 1, row * cols.value);
-  return findAxisAt(yearAxis.value, index);
-});
-
-const activeYearKey = computed(() => activeAxis.value?.yearKey ?? "");
-const activeMonthKey = computed(() => activeAxis.value?.monthKey ?? "");
-
-/** 按行高跳到某张的所在行；虚拟列表没有全年 DOM，不能用锚点元素 */
-function scrollToFileIndex(index: number) {
-  const el = scrollEl.value;
-  if (!el || cols.value <= 0 || rowHeight.value <= 0) return;
-  const top = Math.floor(Math.max(0, index) / cols.value) * rowHeight.value;
-  el.scrollTo({ top, behavior: "smooth" });
-}
+/** 高亮：可视区顶部落在哪一天所属年 */
+const activeYearKey = computed(() => findDaySectionAt(dayLayout.value, scrollTop.value)?.yearKey ?? "");
 
 /**
- * 上下键只切年份
- * 目录树、弹层里的方向键留给控件自己
+ * 重置为只挂最新一年并滚到底
+ * 扫描完成、目录筛选变化时调用
  */
-function shouldIgnoreYearKey(event: KeyboardEvent): boolean {
-  if (event.altKey || event.ctrlKey || event.metaKey) return true;
-  if (captureRewriteOpen.value || viewerState.value || duplicateModalOpen.value) return true;
-  const el = event.target;
-  if (!(el instanceof HTMLElement)) return false;
-  return !!el.closest("input, textarea, select, [contenteditable='true'], .ant-select, .ant-picker, .ant-modal, .ant-drawer, .ant-dropdown");
+function resetYearWindowToLatest() {
+  const latest = pickLatestYearKey(yearAxis.value);
+  loadedYearKeys.value = latest ? [latest] : [];
+  preferBottom = true;
+  scrollAlbumToBottom();
 }
 
-function onAlbumYearKey(event: KeyboardEvent) {
-  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-  if (shouldIgnoreYearKey(event) || yearAxis.value.length === 0) return;
-  const delta = event.key === "ArrowUp" ? -1 : 1;
-  const next = stepAlbumYear(yearAxis.value, activeYearKey.value, delta);
-  if (!next) return;
-  event.preventDefault();
-  scrollToFileIndex(next.startIndex);
-}
-
-function cardStyle(idx: number): Record<string, string> {
-  const col = idx % cols.value;
-  const row = Math.floor(idx / cols.value);
-  const cell = thumbSize.value + GAP;
-  return {
-    left: `${col * cell}px`,
-    top: `${row * rowHeight.value}px`,
-    width: `${thumbSize.value}px`,
-    height: `${thumbSize.value}px`
-  };
-}
-
-/**
- * 滚到最新一端
- * @note 扫描完成、目录筛选后调用
- */
+/** 滚到最新一端 */
 function scrollAlbumToBottom() {
+  suppressEdgeUntil = Date.now() + 500;
   const apply = () => {
     const el = scrollEl.value;
     if (!el) return;
@@ -490,17 +475,132 @@ function scrollAlbumToBottom() {
   });
 }
 
+function scrollAlbumToTop() {
+  suppressEdgeUntil = Date.now() + 500;
+  const el = scrollEl.value;
+  if (!el) return;
+  el.scrollTop = 0;
+  scrollTop.value = 0;
+}
+
+/**
+ * 点击 / 键盘切到某年：只挂该年
+ * 最新一年钉底，其它年从该年第一天顶起
+ */
+function focusYear(yearKey: string) {
+  if (!yearKey || !yearAxis.value.some(year => year.key === yearKey)) return;
+  const latest = pickLatestYearKey(yearAxis.value);
+  loadedYearKeys.value = [yearKey];
+  preferBottom = yearKey === latest;
+  nextTick(() => {
+    if (preferBottom) scrollAlbumToBottom();
+    else scrollAlbumToTop();
+  });
+}
+
+/** 往上：在已挂载窗口顶部插入更早一年，并补偿 scrollTop */
+async function loadPrevYear() {
+  if (yearLoadLocked) return;
+  const first = loadedYearKeys.value[0];
+  if (!first) return;
+  const prev = neighborYearKey(yearAxis.value, first, -1);
+  if (!prev || loadedYearKeys.value.includes(prev)) return;
+  yearLoadLocked = true;
+  preferBottom = false;
+  const beforeHeight = dayLayout.value.totalHeight;
+  loadedYearKeys.value = [prev, ...loadedYearKeys.value];
+  await nextTick();
+  const added = dayLayout.value.totalHeight - beforeHeight;
+  const el = scrollEl.value;
+  if (el && added > 0) {
+    el.scrollTop += added;
+    scrollTop.value = el.scrollTop;
+  }
+  yearLoadLocked = false;
+}
+
+/** 往下：在窗口底部接上更晚一年（或未知） */
+async function loadNextYear() {
+  if (yearLoadLocked) return;
+  const last = loadedYearKeys.value[loadedYearKeys.value.length - 1];
+  if (!last) return;
+  const next = neighborYearKey(yearAxis.value, last, 1);
+  if (!next || loadedYearKeys.value.includes(next)) return;
+  yearLoadLocked = true;
+  preferBottom = false;
+  loadedYearKeys.value = [...loadedYearKeys.value, next];
+  await nextTick();
+  yearLoadLocked = false;
+}
+
+/**
+ * 上下键只切年份（改挂载窗口）
+ * 目录树、弹层里的方向键留给控件自己
+ */
+function shouldIgnoreYearKey(event: KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) return true;
+  if (captureRewriteOpen.value || viewerState.value || duplicateModalOpen.value) return true;
+  const el = event.target;
+  if (!(el instanceof HTMLElement)) return false;
+  return !!el.closest("input, textarea, select, [contenteditable='true'], .ant-select, .ant-picker, .ant-modal, .ant-drawer, .ant-dropdown");
+}
+
+function onAlbumYearKey(event: KeyboardEvent) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  if (shouldIgnoreYearKey(event) || yearAxis.value.length === 0) return;
+  const delta = event.key === "ArrowUp" ? -1 : 1;
+  const next = stepAlbumYear(yearAxis.value, activeYearKey.value || loadedYearKeys.value[0] || "", delta);
+  if (!next) return;
+  event.preventDefault();
+  focusYear(next.key);
+}
+
+function placementStyle(item: { left: number; top: number; width: number; height: number }): Record<string, string> {
+  return {
+    left: `${item.left}px`,
+    top: `${item.top}px`,
+    width: `${item.width}px`,
+    height: `${item.height}px`
+  };
+}
+
+function dayHeaderStyle(headerTop: number): Record<string, string> {
+  return {
+    top: `${headerTop}px`,
+    height: `${DAY_HEADER_HEIGHT}px`
+  };
+}
+
 watch(dirFilter, () => {
+  resetYearWindowToLatest();
+});
+
+/** 目录或元数据变化导致年份表变了时，丢掉已不存在的挂载年 */
+watch(yearAxis, years => {
+  if (years.length === 0) {
+    loadedYearKeys.value = [];
+    return;
+  }
+  const alive = new Set(years.map(year => year.key));
+  const kept = loadedYearKeys.value.filter(key => alive.has(key));
+  if (kept.length === 0) resetYearWindowToLatest();
+  else if (kept.length !== loadedYearKeys.value.length) loadedYearKeys.value = kept;
+});
+
+/** 首帧高度为 0 时钉底；扩年时 preferBottom=false 不抢视口 */
+watch([totalHeight, viewportHeight], () => {
+  if (!preferBottom || totalHeight.value <= 0) return;
   scrollAlbumToBottom();
 });
-/** 宫格高度变化时若已在底部附近则继续钉底，避免首帧高度为 0 */
-watch([totalHeight, viewportHeight], () => {
+
+/** 滚到顶/底挂邻年 */
+watch(scrollTop, () => {
   const el = scrollEl.value;
-  if (!el || totalHeight.value <= 0) return;
-  const max = Math.max(0, el.scrollHeight - el.clientHeight);
-  if (max - el.scrollTop <= rowHeight.value * 2) {
-    scrollAlbumToBottom();
-  }
+  if (!el || yearLoadLocked || displayFiles.value.length === 0) return;
+  if (Date.now() < suppressEdgeUntil) return;
+  if (scrollTop.value <= YEAR_EDGE_PX) void loadPrevYear();
+  const distanceBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+  if (distanceBottom <= YEAR_EDGE_PX) void loadNextYear();
 });
 
 let unlistenScanProgress: (() => void) | undefined;
@@ -577,7 +677,7 @@ onBeforeUnmount(() => {
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
             <template v-if="!selectMode">
-              <a-button size="small" :disabled="allFiles.length === 0" @click="enterSelectMode">勾选</a-button>
+              <a-button size="small" :disabled="catalogFiles.length === 0" @click="enterSelectMode">勾选</a-button>
             </template>
             <template v-else>
               <a-button type="primary" size="small" :disabled="selectedPaths.length === 0" @click="captureRewriteOpen = true">
@@ -613,33 +713,40 @@ onBeforeUnmount(() => {
             v-if="yearAxis.length > 0"
             :years="yearAxis"
             :active-year-key="activeYearKey"
-            :active-month-key="activeMonthKey"
-            @select="scrollToFileIndex"
+            @select="focusYear"
           />
           <div class="album-grid-wrap">
-          <div
-            ref="scrollEl"
-            class="album-scroll"
-            :class="{ 'is-marquee': marqueeActive }"
-            @pointerdown="onAlbumPointerDown"
-            @dragstart="onGridDragStart"
-          >
-            <a-empty v-if="allFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
-            <div v-else ref="canvasEl" class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
-              <AlbumThumbCard
-                v-for="(file, i) in visibleFiles"
-                :key="file.path"
-                :file="file"
-                :select-mode="selectMode"
-                :selected="isSelected(file.path)"
-                :style="cardStyle(startIdx + i)"
-                @open="openViewer"
-                @toggle="onThumbToggle"
-                @delete="onDeleteLocal"
-              />
-              <div v-if="marqueeStyle" class="album-marquee" :style="marqueeStyle" />
+            <div
+              ref="scrollEl"
+              class="album-scroll"
+              :class="{ 'is-marquee': marqueeActive }"
+              @pointerdown="onAlbumPointerDown"
+              @dragstart="onGridDragStart"
+            >
+              <a-empty v-if="catalogFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
+              <div v-else ref="canvasEl" class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
+                <div
+                  v-for="section in visibleSections"
+                  :key="`day-${section.key}`"
+                  class="day-header"
+                  :style="dayHeaderStyle(section.headerTop)"
+                >
+                  {{ section.label }}
+                </div>
+                <AlbumThumbCard
+                  v-for="item in visiblePlacements"
+                  :key="item.file.path"
+                  :file="item.file"
+                  :select-mode="selectMode"
+                  :selected="isSelected(item.file.path)"
+                  :style="placementStyle(item)"
+                  @open="openViewer"
+                  @toggle="onThumbToggle"
+                  @delete="onDeleteLocal"
+                />
+                <div v-if="marqueeStyle" class="album-marquee" :style="marqueeStyle" />
+              </div>
             </div>
-          </div>
           </div>
         </div>
       </main>
@@ -796,6 +903,22 @@ onBeforeUnmount(() => {
 .thumb-canvas {
   position: relative;
   width: 100%;
+}
+
+.day-header {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--bg-color) 92%, transparent);
+  pointer-events: none;
+  user-select: none;
 }
 
 .album-marquee {

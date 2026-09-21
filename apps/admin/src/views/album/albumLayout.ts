@@ -1,8 +1,9 @@
 /**
  * 相册宫格布局常量与 fluid 尺寸计算
  * 职责：宫格 gap/padding、按右侧照片墙宽度均分列宽（左侧年份轴不计入这份宽度）
- * 适用：album/index.vue 虚拟滚动宫格 UI；缩略图生成分辨率见 types.ts ALBUM_THUMB_GENERATE_SIZE
+ * 适用：album/index.vue 按日分组虚拟滚动；缩略图生成分辨率见 types.ts ALBUM_THUMB_GENERATE_SIZE
  * @note CS 最小内宽 1228（见 `CS_WINDOW_MIN_INNER_WIDTH` / tauri minWidth），不做更窄断点
+ * @note 日标题高度见 albumDayLayout.DAY_HEADER_HEIGHT，不计入本文件 rowHeight
  */
 
 /** 宫格布局单次计算结果 */

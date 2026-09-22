@@ -165,12 +165,16 @@ const cloudGridFrameRef = ref<HTMLElement | null>(null);
 let cloudSelectSnapshot: { keys: string[]; rows: Map<string, CloudListDisplayRow> } | null = null;
 
 /**
- * 框选替换勾选，只收当前已加载且可删云的格
- * @note 与相册宫格一样是替换而不是追加；没画进框的已选项会清掉
+ * 框选累加：本轮命中并入拖前快照；只收当前已加载且可删云的格
  */
-function replaceCloudMarquee(keys: string[]) {
-  const want = new Set(keys);
+function applyCloudMarquee(keys: string[]) {
   const nextMap = new Map<string, CloudListDisplayRow>();
+  if (cloudSelectSnapshot) {
+    for (const [key, row] of cloudSelectSnapshot.rows) {
+      nextMap.set(key, row);
+    }
+  }
+  const want = new Set(keys);
   for (const row of cloudRows.value) {
     if (!want.has(row.rowKey) || !canSelectCloudRow(row)) continue;
     nextMap.set(row.rowKey, row);
@@ -205,7 +209,7 @@ const {
       restoreCloudSelectSnapshot();
       return;
     }
-    replaceCloudMarquee(hitTestMarqueeKeys(frame, box));
+    applyCloudMarquee(hitTestMarqueeKeys(frame, box));
   },
   onEnd(committed) {
     if (!committed) restoreCloudSelectSnapshot();

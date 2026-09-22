@@ -1,8 +1,8 @@
 /**
  * 相册宫格勾选
- * 职责：工具栏勾选模式（点格切换，对齐 iCloud / QQ 同步宫格）+ 鼠标左键拖拽框选
+ * 职责：工具栏勾选模式（点格切换，对齐 iCloud / QQ 同步宫格）+ 鼠标左键拖拽框选（累加）
  * 适用：album/index.vue 按日分组虚拟滚动宫格
- * @note 拖拽手势在 useMarqueeDrag；命中用缩略图绝对矩形，不命中日标题
+ * @note 拖拽手势在 useMarqueeDrag；命中用缩略图绝对矩形，不命中日标题；框选并入拖前已选，不替换
  */
 import type { Ref } from "vue";
 import type { AlbumThumbPlacement } from "./albumDayLayout";
@@ -73,12 +73,18 @@ export function useAlbumGridSelect(files: Ref<MediaFile[]>, placements: Ref<Albu
   /** 按下前的勾选；拖太短或取消时还原 */
   let snapshot: Set<string> | null = null;
 
+  /**
+   * 框选累加：本轮命中并入拖前快照；框内移出的项若原先未选则去掉，快照里已有的保留
+   */
   function applyMarquee(box: AlbumMarqueeBox) {
     if (box.width < MIN_MARQUEE_PX && box.height < MIN_MARQUEE_PX) {
       if (snapshot) selectedPaths.value = new Set(snapshot);
       return;
     }
-    const next = new Set(hitTestThumbPlacements(placements.value, box));
+    const next = new Set(snapshot ?? []);
+    for (const path of hitTestThumbPlacements(placements.value, box)) {
+      next.add(path);
+    }
     selectedPaths.value = next;
     if (next.size > 0) selectMode.value = true;
   }

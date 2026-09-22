@@ -177,9 +177,13 @@ const {
       if (qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);
       return;
     }
-    const keys = hitTestMarqueeKeys(frame, box);
-    selectedIds.value = new Set(keys);
-    if (keys.length > 0) selectMode.value = true;
+    // 累加：本轮命中并入拖前快照，不清除框外已选项
+    const next = new Set(qzoneSelectSnapshot ?? []);
+    for (const key of hitTestMarqueeKeys(frame, box)) {
+      next.add(key);
+    }
+    selectedIds.value = next;
+    if (next.size > 0) selectMode.value = true;
   },
   onEnd(committed) {
     if (!committed && qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);

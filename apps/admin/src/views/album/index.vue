@@ -765,7 +765,11 @@ onBeforeUnmount(() => {
 
     <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
 
-    <CaptureAtRewriteModal v-model:open="captureRewriteOpen" :files="rewriteCandidateFiles" />
+    <CaptureAtRewriteModal
+      v-model:open="captureRewriteOpen"
+      :files="rewriteCandidateFiles"
+      @saved="exitSelectMode"
+    />
   </div>
 </template>
 

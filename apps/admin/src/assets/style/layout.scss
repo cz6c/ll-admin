@@ -14,7 +14,7 @@
 
     .drawer-bg {
       /* 半透明遮罩 + 轻 blur；比纯黑实底更像浮层材质 */
-      background: rgba(0, 0, 0, 0.28);
+      background: var(--color-bg-mask);
       backdrop-filter: blur(8px) saturate(120%);
       -webkit-backdrop-filter: blur(8px) saturate(120%);
       opacity: 1;

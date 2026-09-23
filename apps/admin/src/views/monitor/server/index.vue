@@ -19,7 +19,7 @@
             <a-progress
               type="circle"
               :percent="+server.cpu.usage"
-              :stroke-color="server.cpu.usage > 85 ? '#ff4d4f' : 100 - server.cpu.usage > 70 ? '#faad14' : '#52c41a'"
+              :stroke-color="usageStrokeColor(+server.cpu.usage)"
             />
             CPU-{{ server.cpu.cpuNum }}核
           </div>
@@ -30,7 +30,7 @@
             <a-progress
               type="circle"
               :percent="+server.mem.usage"
-              :stroke-color="server.mem.usage > 85 ? '#ff4d4f' : server.mem.usage > 70 ? '#faad14' : '#52c41a'"
+              :stroke-color="usageStrokeColor(+server.mem.usage)"
             />
             {{ server.mem.used }}/{{ server.mem.total }}GB
           </div>
@@ -41,7 +41,7 @@
             <a-progress
               type="circle"
               :percent="+server.sysFiles.usage"
-              :stroke-color="server.sysFiles.usage > 85 ? '#ff4d4f' : server.sysFiles.usage > 70 ? '#faad14' : '#52c41a'"
+              :stroke-color="usageStrokeColor(+server.sysFiles.usage)"
             />
             {{ server.sysFiles.used }}/{{ server.sysFiles.total }}GB
           </div>
@@ -79,6 +79,14 @@ import { getCache } from "@/api/monitor/cache";
 import Print from "@/utils/print";
 import $feedback from "@/utils/feedback";
 import { useEcharts } from "@/hooks/useEcharts";
+import { COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING } from "@/utils/theme";
+
+/** 使用率 → 进度条描边色（高危红 / 预警黄 / 正常绿） */
+function usageStrokeColor(usage: number) {
+  if (usage > 85) return COLOR_ERROR;
+  if (usage > 70) return COLOR_WARNING;
+  return COLOR_SUCCESS;
+}
 
 const server = ref({});
 

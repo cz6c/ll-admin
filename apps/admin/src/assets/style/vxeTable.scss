@@ -18,9 +18,9 @@
       margin: 0;
       font-size: 0 !important;
       line-height: 1;
-      border: 1px solid var(--border-color, #d9d9d9);
+      border: 1px solid var(--border-color);
       border-radius: 4px;
-      background: #fff;
+      background: var(--color-bg-container);
       transition:
         border-color 0.2s,
         background-color 0.2s;
@@ -61,7 +61,7 @@
       left: 21.5%;
       width: 5.714286px;
       height: 9.142857px;
-      border: 2px solid #fff;
+      border: 2px solid var(--color-text-light-solid);
       border-top: 0;
       border-left: 0;
       transform: rotate(45deg) scale(1) translate(-50%, -50%);
@@ -75,7 +75,7 @@
       width: 8px;
       height: 2px;
       border: 0;
-      background: #fff;
+      background: var(--color-text-light-solid);
       transform: translate(-50%, -50%) scale(1);
     }
 
@@ -83,18 +83,18 @@
       cursor: not-allowed;
 
       .vxe-checkbox--icon.cz-vxe-checkbox-icon {
-        background: var(--fill-color, rgba(0, 0, 0, 0.04));
-        border-color: var(--border-color, #d9d9d9);
+        background: var(--fill-color);
+        border-color: var(--border-color);
       }
 
       &.is--checked .vxe-checkbox--icon.cz-vxe-checkbox-icon,
       &.is--indeterminate .vxe-checkbox--icon.cz-vxe-checkbox-icon {
-        background: var(--color-primary-bg, rgba(22, 136, 255, 0.1));
-        border-color: var(--color-primary-bg, rgba(22, 136, 255, 0.1));
+        background: var(--color-primary-bg);
+        border-color: var(--color-primary-bg);
 
         &::after {
-          border-color: var(--color-text-disabled, rgba(0, 0, 0, 0.25));
-          background: var(--color-text-disabled, rgba(0, 0, 0, 0.25));
+          border-color: var(--color-text-disabled);
+          background: var(--color-text-disabled);
         }
       }
 

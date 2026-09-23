@@ -911,7 +911,7 @@ watch(drawerOpen, open => {
   height: 180px;
   display: block;
   border-radius: 8px;
-  background: #fff;
+  background: var(--color-bg-spotlight-light);
 }
 .qr-placeholder {
   width: 180px;
@@ -933,11 +933,11 @@ watch(drawerOpen, open => {
     color: var(--color-primary);
   }
   &.success {
-    color: #52c41e;
+    color: var(--color-success);
   }
   &.error,
   &.expired {
-    color: #ff4d4f;
+    color: var(--color-error);
   }
 }
 
@@ -1053,10 +1053,10 @@ watch(drawerOpen, open => {
   border-radius: 8px;
   cursor: pointer;
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-overlay-hover);
   }
   &.active {
-    background: rgba(22, 119, 255, 0.18);
+    background: var(--color-primary-bg);
   }
 }
 .cover {
@@ -1065,7 +1065,7 @@ watch(drawerOpen, open => {
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
-  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
+  background: var(--bg-color-secondary);
   img {
     width: 100%;
     height: 100%;
@@ -1188,7 +1188,7 @@ watch(drawerOpen, open => {
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
+  background: var(--bg-color-secondary);
   &.selected {
     border-color: var(--color-primary);
   }
@@ -1202,7 +1202,7 @@ watch(drawerOpen, open => {
 .cell-ph {
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  background: linear-gradient(90deg, var(--color-fill-tertiary), var(--color-fill-secondary), var(--color-fill-tertiary));
   background-size: 200% 100%;
 }
 .cell-badge {
@@ -1211,8 +1211,8 @@ watch(drawerOpen, open => {
   left: 4px;
   padding: 0 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: var(--color-bg-mask-strong);
+  color: var(--color-text-light-solid);
   font-size: 11px;
   line-height: 1.6;
   pointer-events: none;
@@ -1225,7 +1225,7 @@ watch(drawerOpen, open => {
   height: 20px;
   border-radius: 4px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-light-solid);
   font-size: 12px;
   line-height: 20px;
   text-align: center;
@@ -1239,8 +1239,8 @@ watch(drawerOpen, open => {
   line-height: 1;
   padding: 3px 5px;
   border-radius: 4px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
+  color: var(--color-text-light-solid);
+  background: var(--color-bg-mask-strong);
 }
 .preview-empty {
   color: var(--color-text-tertiary);

@@ -49,7 +49,7 @@ getBreadcrumb();
   margin-left: 8px;
 
   .no-redirect {
-    color: #999999;
+    color: var(--color-text-tertiary);
     cursor: text;
   }
 }

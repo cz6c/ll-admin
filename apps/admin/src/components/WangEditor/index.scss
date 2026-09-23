@@ -1,10 +1,10 @@
 /* 富文本：跟随 ant FormItem 校验失败态 */
 .ant-form-item-has-error {
   .editor-box {
-    border-color: #ff4d4f;
+    border-color: var(--color-error);
 
     .editor-toolbar {
-      border-bottom-color: #ff4d4f;
+      border-bottom-color: var(--color-error);
     }
   }
 }

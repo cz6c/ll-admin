@@ -243,8 +243,8 @@ function closeDialog() {
     content: "+";
     position: absolute;
     inset: 0;
-    color: #eee;
-    background: rgba(0, 0, 0, 0.5);
+    color: var(--color-text-light-solid);
+    background: var(--color-bg-mask);
     font-size: 24px;
     line-height: 120px;
     text-align: center;
@@ -260,7 +260,7 @@ function closeDialog() {
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  box-shadow: 0 0 4px #ccc;
+  box-shadow: 0 0 4px var(--border-color);
   overflow: hidden;
 }
 </style>

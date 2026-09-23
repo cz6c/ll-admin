@@ -89,7 +89,7 @@ function onDelete() {
   height: 20px;
   border-radius: 4px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-light-solid);
   font-size: 12px;
   line-height: 20px;
   text-align: center;

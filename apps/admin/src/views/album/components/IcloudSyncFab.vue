@@ -35,6 +35,7 @@ import { useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { COLOR_NEUTRAL } from "@/utils/theme";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
@@ -713,7 +714,7 @@ onBeforeUnmount(() => {
                   :kind="row.mediaKind === 'video' ? 'video' : row.mediaKind === 'live' ? 'livephoto' : 'image'"
                   :ext="row.displayFilename?.split('.').pop()"
                 />
-                <span class="cell-state" :style="{ background: row.displayStateColor || '#999' }">{{ row.displayStateLabel }}</span>
+                <span class="cell-state" :style="{ background: row.displayStateColor || COLOR_NEUTRAL }">{{ row.displayStateLabel }}</span>
                 <span v-if="selectMode && isCloudRowSelected(row)" class="cell-check" aria-hidden="true">✓</span>
               </div>
               <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
@@ -746,7 +747,7 @@ onBeforeUnmount(() => {
   height: 58px;
   padding: 0;
   cursor: inherit;
-  background: var(--color-bg-container, #141414);
+  background: var(--color-bg-container);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -755,7 +756,7 @@ onBeforeUnmount(() => {
   &:hover,
   &:active {
     transform: scale(1.08);
-    background: var(--color-bg-container, #141414);
+    background: var(--color-bg-container);
     border-color: var(--color-primary);
     color: var(--color-primary);
   }
@@ -767,13 +768,13 @@ onBeforeUnmount(() => {
   color: var(--color-primary);
 }
 .fab-success {
-  color: #52c41e;
+  color: var(--color-success);
 }
 .fab-warning {
-  color: #faad14;
+  color: var(--color-warning);
 }
 .fab-error {
-  color: #ff4d4f;
+  color: var(--color-error);
 }
 .breathing {
   animation: fab-breathe 2.2s ease-in-out infinite;
@@ -811,8 +812,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   padding: 14px 16px;
   border-radius: 10px;
-  background: var(--color-fill-quaternary, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--color-border-secondary, rgba(255, 255, 255, 0.12));
+  background: var(--color-fill-quaternary);
+  border: 1px solid var(--color-border-secondary);
 }
 .cloud-toolbar {
   flex-shrink: 0;
@@ -849,7 +850,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--color-bg-mask);
   pointer-events: none;
 }
 .cloud-grid-scroll {
@@ -885,7 +886,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 2px solid transparent;
   cursor: zoom-in;
-  background: var(--color-fill-quaternary, rgba(255, 255, 255, 0.08));
+  background: var(--color-fill-quaternary);
   &.select-mode {
     cursor: pointer;
   }
@@ -900,7 +901,7 @@ onBeforeUnmount(() => {
   max-width: calc(100% - 28px);
   padding: 1px 6px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--color-text-light-solid);
   font-size: 11px;
   line-height: 1.4;
   overflow: hidden;
@@ -914,8 +915,8 @@ onBeforeUnmount(() => {
   left: 4px;
   padding: 0 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: var(--color-bg-mask-strong);
+  color: var(--color-text-light-solid);
   font-size: 11px;
   pointer-events: none;
 }
@@ -927,7 +928,7 @@ onBeforeUnmount(() => {
   height: 20px;
   border-radius: 4px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-light-solid);
   font-size: 12px;
   line-height: 20px;
   text-align: center;

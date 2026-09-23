@@ -154,7 +154,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
   .upload {
     :deep(.ant-upload),
     :deep(.ant-upload-select) {
-      border-color: #ff4d4f !important;
+      border-color: var(--color-error) !important;
 
       &:hover {
         border-color: var(--color-primary) !important;
@@ -166,12 +166,12 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
 :deep(.disabled) {
   .ant-upload,
   .ant-upload-select {
-    border-color: #d9d9d9 !important;
-    background: #f5f5f5;
+    border-color: var(--border-color) !important;
+    background: var(--fill-color);
     cursor: not-allowed !important;
 
     &:hover {
-      border-color: #d9d9d9 !important;
+      border-color: var(--border-color) !important;
     }
   }
 }
@@ -190,7 +190,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
       justify-content: center;
       align-items: center;
       overflow: hidden;
-      border: 1px dashed #d9d9d9;
+      border: 1px dashed var(--border-color);
       border-radius: v-bind(borderRadius);
       width: v-bind(width);
       height: v-bind(height);
@@ -231,7 +231,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgb(0 0 0 / 60%);
+    background: var(--color-bg-mask-strong);
     opacity: 0;
     transition: opacity 0.2s;
     cursor: pointer;
@@ -241,7 +241,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
       justify-content: center;
       align-items: center;
       padding: 0 6%;
-      color: aliceblue;
+      color: var(--color-text-light-solid);
       flex-direction: column;
 
       .action-icon {
@@ -260,7 +260,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
 
   .upload-plus {
     font-size: 24px;
-    color: #999;
+    color: var(--color-text-tertiary);
   }
 
   .upload-tip {

@@ -19,6 +19,7 @@ defineOptions({ name: "LivePhotoBadge", inheritAttrs: false });
 <template>
   <span class="live-photo-badge" :class="`is-${size}`" title="Live Photos" v-bind="$attrs">
     <svg class="live-photo-badge-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <!-- 照片上的实心白描边：须保持 #fff，暗黑 token 会在深色缩略图上对比不足 -->
       <circle cx="8" cy="8" r="6.25" fill="none" stroke="#fff" stroke-width="1.35" />
       <circle cx="8" cy="8" r="3.75" fill="none" stroke="#fff" stroke-width="1.15" opacity="0.88" />
       <circle cx="8" cy="8" r="1.35" fill="#fff" />
@@ -34,8 +35,8 @@ defineOptions({ name: "LivePhotoBadge", inheritAttrs: false });
   justify-content: center;
   flex-shrink: 0;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.68);
-  color: #fff;
+  background: var(--color-bg-mask-strong);
+  color: var(--color-text-light-solid);
   line-height: 1;
   pointer-events: none;
   user-select: none;

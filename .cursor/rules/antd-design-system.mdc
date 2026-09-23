@@ -59,10 +59,12 @@ alwaysApply: false
 ### 色彩
 
 - **克制**：色服务于信息传递、操作引导、反馈；业务页勿大面积装饰色。
-- **品牌色**：唯一来源 `theme.scss` → `--color-primary` + `a-config-provider` token（当前与产品主色对齐）；禁止组件内再写死另一套 Hex。
-- **功能色**：成功 / 警告 / 错误 / 信息用 antd 语义（`success` / `warning` / `error` / `processing` 等）或组件默认，勿自造「差不多绿/红」。
-- **中性色**：正文、次要文案、边框、分割、布局底用 antd / `--bg-color` / `--border-color` / `--fill-color`；勿页内散落 `#333` `#666` `#f5f5f5` 新魔法值（存量 `reset.scss` 除外，改时收敛到 token）。
-- **图表**：ECharts 等可视化可参考 AntV / antd 数据色板，仍优先与主色、功能色体系协调。
+- **品牌色**：唯一来源 `theme.scss` / `utils/theme.ts` → `--color-primary` + `a-config-provider` token；禁止组件内再写死另一套 Hex。
+- **功能色**：成功 / 警告 / 错误 / 信息用 `--color-success|warning|error|info`（或 JS 侧 `COLOR_SUCCESS` 等）；antd 组件用 `type`/`status` 语义，勿自造「差不多绿/红」。
+- **中性色**：正文、次要文案、边框、分割、布局底用 `--color-text*` / `--bg-color` / `--fill-color` / `--border-color`；悬停/填充用 `--color-fill*` / `--color-overlay-*`。
+- **桥接**：业务 SCSS 优先自有 `--color-*`；需要与 antd 文档对齐时可写 `--ant-color-*`（已在 `theme.scss` 与自有 token 同值绑定）。禁止依赖 cssinjs 哈希类名上的私有色。
+- **例外**：ECharts 数据色板、扫码白底、照片上的实心白图标等可保留字面色，并在旁注释 why。
+- **图表**：ECharts 等可视化优先 `COLOR_*` 常量或主题 token；演示页可参考 AntV 色板。
 
 ### 字体
 
@@ -85,8 +87,9 @@ alwaysApply: false
 
 ### 暗黑模式
 
-- **暂不作为一等能力**：未立项前不新增完整 `.dark` 主题覆盖。
-- 若启用：必须走 `ConfigProvider` 算法 / CSS 变量与 antd token，并同步 VXE / 壳层；禁止只改几处背景的半套暗黑。
+- **@apps/admin 全局强制暗黑**（无开关）：根 `ConfigProvider` 使用 `theme.darkAlgorithm`，字色/容器 token 与 `theme.scss` `:root` 一致；VXE / 布局壳走同一套 CSS 变量。
+- 禁止再做页面级「半套暗黑岛」或嵌套第二套暗黑 ConfigProvider（相册壳已并入全局）。
+- 禁止只改几处背景、字色仍用浅色黑字 token。
 
 ---
 

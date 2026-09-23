@@ -124,7 +124,7 @@ onBeforeUnmount(() => {
   position: relative;
   border-radius: 6px;
   overflow: hidden;
-  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
+  background: var(--bg-color-secondary);
   border: 1px solid var(--border-color);
   flex-shrink: 0;
 }

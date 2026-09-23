@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { handleThemeStyle, toggleClass } from "@/utils/theme";
+import { COLOR_PRIMARY, handleThemeStyle, toggleClass } from "@/utils/theme";
 import { WebStorage } from "@/utils/storage";
 
 const layoutSetting = new WebStorage("localStorage").getItem("layout-setting") || {};
@@ -7,7 +7,7 @@ const layoutSetting = new WebStorage("localStorage").getItem("layout-setting") |
 export const useSettingsStore = defineStore("settings", {
   state: () => ({
     // 默认主色与 uni --wot-primary-6 一致；本机若已存 layout-setting.theme 仍以缓存为准
-    theme: layoutSetting.theme === undefined ? "#1688ff" : layoutSetting.theme,
+    theme: layoutSetting.theme === undefined ? COLOR_PRIMARY : layoutSetting.theme,
     greyVal: layoutSetting.greyVal === undefined ? false : layoutSetting.greyVal, // 灰色模式
     weakVal: layoutSetting.weakVal === undefined ? false : layoutSetting.weakVal, // 色弱模式
     tagsView: layoutSetting.tagsView === undefined ? true : layoutSetting.tagsView, // 是否显示 tagsView

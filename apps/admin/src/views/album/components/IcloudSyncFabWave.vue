@@ -6,6 +6,20 @@
 <script setup lang="ts">
 import type { ECharts, EChartsOption } from "echarts";
 import { usePreferredReducedMotion } from "@vueuse/core";
+import {
+  COLOR_BG_LAYOUT,
+  COLOR_ERROR,
+  COLOR_ERROR_HOVER,
+  COLOR_FILL_TERTIARY,
+  COLOR_NEUTRAL,
+  COLOR_NEUTRAL_BG,
+  COLOR_NEUTRAL_BORDER,
+  COLOR_PRIMARY,
+  COLOR_SUCCESS,
+  COLOR_SUCCESS_HOVER,
+  COLOR_WARNING,
+  COLOR_WARNING_HOVER
+} from "@/utils/theme";
 
 defineOptions({ name: "IcloudSyncFabWave" });
 
@@ -31,19 +45,19 @@ let chart: ECharts | null = null;
 
 const reducedMotion = usePreferredReducedMotion();
 
-/** 液体与波浪配色 */
+/** 液体与波浪配色（ECharts 需 hex，走 theme.ts） */
 const palette = computed(() => {
   switch (props.tone) {
     case "success":
-      return { colors: ["#52c41e", "#95de64"], border: "#52c41e" };
+      return { colors: [COLOR_SUCCESS, COLOR_SUCCESS_HOVER], border: COLOR_SUCCESS };
     case "warning":
-      return { colors: ["#faad14", "#ffd666"], border: "#faad14" };
+      return { colors: [COLOR_WARNING, COLOR_WARNING_HOVER], border: COLOR_WARNING };
     case "error":
-      return { colors: ["#ff4d4f", "#ffa39e"], border: "#ff4d4f" };
+      return { colors: [COLOR_ERROR, COLOR_ERROR_HOVER], border: COLOR_ERROR };
     case "default":
-      return { colors: ["#bfbfbf", "#d9d9d9"], border: "#8c8c8c" };
+      return { colors: [COLOR_NEUTRAL_BG, COLOR_NEUTRAL_BORDER], border: COLOR_NEUTRAL };
     default:
-      return { colors: ["#1677ff", "#69b1ff"], border: "#1677ff" };
+      return { colors: [COLOR_PRIMARY, COLOR_PRIMARY], border: COLOR_PRIMARY };
   }
 });
 
@@ -83,7 +97,7 @@ function buildOption(): EChartsOption {
           }
         },
         backgroundStyle: {
-          color: "rgba(255, 255, 255, 0.06)"
+          color: COLOR_FILL_TERTIARY
         },
         itemStyle: {
           opacity: 0.92,
@@ -94,7 +108,7 @@ function buildOption(): EChartsOption {
           formatter: () => percentLabel.value,
           fontSize: labelFontSize.value,
           color: border,
-          insideColor: "#141414"
+          insideColor: COLOR_BG_LAYOUT
         },
         color: colors
       }

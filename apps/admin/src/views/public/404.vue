@@ -29,7 +29,7 @@ defineOptions({
   align-items: center;
   overflow: hidden;
   height: 100%;
-  background-color: #cce3ff;
+  background-color: var(--color-bg-layout);
 
   .pic-404 {
     position: relative;
@@ -150,7 +150,7 @@ defineOptions({
       margin-bottom: 10px;
       font-size: 20px;
       font-weight: bold;
-      color: #222;
+      color: var(--color-text);
       opacity: 0;
       line-height: 24px;
       animation-name: slideUp;
@@ -162,7 +162,7 @@ defineOptions({
     &__info {
       margin-bottom: 30px;
       font-size: 13px;
-      color: grey;
+      color: var(--color-text-secondary);
       opacity: 0;
       line-height: 21px;
       animation-name: slideUp;
@@ -179,7 +179,7 @@ defineOptions({
       font-size: 14px;
       text-align: center;
       text-decoration: none;
-      color: #fff;
+      color: var(--color-text-light-solid);
       background: var(--color-primary);
       opacity: 0;
       line-height: 36px;

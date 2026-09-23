@@ -113,7 +113,7 @@ const upperExt = computed(() => props.ext?.toUpperCase() ?? "");
 }
 
 .thumb-placeholder-icon {
-  color: var(--color-text-quaternary, rgba(0, 0, 0, 0.25));
+  color: var(--color-text-disabled);
 }
 
 .video-play-overlay {
@@ -132,7 +132,8 @@ const upperExt = computed(() => props.ext?.toUpperCase() ?? "");
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.88);
+  /* 缩略图上播放钮须保持浅底，与主题无关 */
+  background: var(--color-bg-spotlight-light);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
 
@@ -143,6 +144,7 @@ const upperExt = computed(() => props.ext?.toUpperCase() ?? "");
 
 .video-play-icon {
   margin-left: 2px;
+  /* 浅底上的深色图标，无对应暗黑字色 token */
   color: rgba(0, 0, 0, 0.72);
 }
 </style>

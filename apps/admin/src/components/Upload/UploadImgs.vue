@@ -156,7 +156,7 @@ const handlePictureCardPreview = (file: UploadFile) => {
 .is-error {
   .upload {
     :deep(.ant-upload-select-picture-card) {
-      border-color: #ff4d4f !important;
+      border-color: var(--color-error) !important;
 
       &:hover {
         border-color: var(--color-primary) !important;
@@ -167,12 +167,12 @@ const handlePictureCardPreview = (file: UploadFile) => {
 
 :deep(.disabled) {
   .ant-upload-select-picture-card {
-    border-color: #d9d9d9;
-    background: #f5f5f5 !important;
+    border-color: var(--border-color);
+    background: var(--fill-color) !important;
     cursor: not-allowed;
 
     &:hover {
-      border-color: #d9d9d9 !important;
+      border-color: var(--border-color) !important;
     }
   }
 }
@@ -221,7 +221,7 @@ const handlePictureCardPreview = (file: UploadFile) => {
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgb(0 0 0 / 60%);
+    background: var(--color-bg-mask-strong);
     opacity: 0;
     transition: opacity 0.2s;
     cursor: pointer;
@@ -231,7 +231,7 @@ const handlePictureCardPreview = (file: UploadFile) => {
       justify-content: center;
       align-items: center;
       padding: 0 6%;
-      color: aliceblue;
+      color: var(--color-text-light-solid);
       flex-direction: column;
 
       .action-icon {
@@ -248,7 +248,7 @@ const handlePictureCardPreview = (file: UploadFile) => {
 
   .upload-plus {
     font-size: 24px;
-    color: #999;
+    color: var(--color-text-tertiary);
   }
 
   .upload-tip {

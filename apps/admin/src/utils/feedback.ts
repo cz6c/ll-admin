@@ -155,7 +155,7 @@ export default {
               style: {
                 padding: "24px 32px",
                 borderRadius: "8px",
-                background: "var(--color-bg-container, #fff)"
+                background: "var(--color-bg-container)"
               }
             },
             [h(Spin, { size: "large", tip, spinning: true })]

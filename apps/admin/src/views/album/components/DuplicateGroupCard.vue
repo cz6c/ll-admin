@@ -239,7 +239,7 @@ function groupHeaderTitle(): string {
   padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: var(--fill-color, rgba(255, 255, 255, 0.06));
+  background: var(--fill-color);
 }
 
 .dup-side {
@@ -272,13 +272,13 @@ function groupHeaderTitle(): string {
 }
 
 .dup-tag-keep {
-  background: rgba(82, 196, 26, 0.12);
-  color: #389e0d;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
 }
 
 .dup-tag-delete {
-  background: rgba(255, 77, 79, 0.12);
-  color: #cf1322;
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
 }
 
 .dup-incomplete-tag {

@@ -16,7 +16,7 @@ defineOptions({ name: "CsToolsBar" });
 const router = useRouter();
 const route = useRoute();
 const appWindow = getCurrentWindow();
-const appTitle = productConfig.title || "Ccode";
+const appTitle = productConfig.title;
 
 const isAlbumActive = computed(() => isAlbumPath(route.path));
 const isSettingsActive = computed(() => isCsSettingsPath(route.path));
@@ -159,9 +159,9 @@ onBeforeUnmount(() => {
   height: var(--cs-tools-bar-height, 34px);
   padding: 0 0 0 10px;
   flex-shrink: 0;
-  background: #1f2329;
-  color: rgba(255, 255, 255, 0.88);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--cs-bar-bg);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--cs-bar-border);
   z-index: 2000;
   user-select: none;
 }
@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: #fff;
+  color: var(--color-text-light-solid);
   line-height: 1.2;
   pointer-events: none;
 }
@@ -219,11 +219,11 @@ onBeforeUnmount(() => {
   font-size: 13px;
   cursor: pointer;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-overlay-hover);
   }
   &.active {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.14);
+    color: var(--color-text-light-solid);
+    background: var(--color-overlay-active);
   }
 }
 .right {
@@ -245,11 +245,11 @@ onBeforeUnmount(() => {
   color: inherit;
   cursor: pointer;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-overlay-hover);
   }
   &.active {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.14);
+    color: var(--color-text-light-solid);
+    background: var(--color-overlay-active);
   }
 }
 .win-controls {
@@ -267,18 +267,18 @@ onBeforeUnmount(() => {
   color: inherit;
   cursor: pointer;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-overlay-hover);
   }
   &:active {
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--color-overlay-active);
   }
 }
 .win-btn--close:hover {
-  background: #e81123;
-  color: #fff;
+  background: var(--cs-win-close);
+  color: var(--color-text-light-solid);
 }
 .win-btn--close:active {
-  background: #c50f1f;
-  color: #fff;
+  background: var(--cs-win-close-hover);
+  color: var(--color-text-light-solid);
 }
 </style>

@@ -2,7 +2,7 @@
   <div class="side-bar">
     <div v-if="sidebarLogo" class="logo-container">
       <div class="logo-link">
-        <img class="sidebar-logo" :src="logo" width="26" height="26" alt="Ccode" />
+        <img class="sidebar-logo" :src="logo" width="26" height="26" :alt="productConfig.title" />
         <span v-if="!collapsed" class="sidebar-title">{{ productConfig.title }}</span>
       </div>
     </div>

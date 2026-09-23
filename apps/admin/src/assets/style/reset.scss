@@ -16,7 +16,7 @@ body {
   font-family: var(--font-family);
   line-height: inherit;
   color: var(--color-text);
-  background-color: #f5f5f5;
+  background-color: var(--fill-color);
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizelegibility;

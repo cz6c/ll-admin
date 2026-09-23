@@ -132,7 +132,7 @@ watch(
                       v-for="(item, key) in pageList"
                       :key="key"
                       :title="item"
-                      class="icon-item p-2 cursor-pointer mr-2 mt-1 flex justify-center items-center border border-solid border-[#e5e7eb]"
+                      class="icon-item p-2 cursor-pointer mr-2 mt-1 flex justify-center items-center border border-solid border-[var(--border-color)]"
                       :style="iconItemStyle(item)"
                       @click="onChangeIcon(item)"
                     >
@@ -143,7 +143,7 @@ watch(
                 </div>
               </a-tab-pane>
             </a-tabs>
-            <div class="w-full h-9 flex items-center overflow-auto border-t border-[#e5e7eb]">
+            <div class="w-full h-9 flex items-center overflow-auto border-t border-[var(--border-color)]">
               <a-pagination
                 class="flex-auto ml-2"
                 size="small"

@@ -155,7 +155,7 @@ function onPreviewVisibleChange(vis: boolean) {
     justify-content: center;
     width: 100%;
     height: 100%;
-    background: var(--fill-color, #f0f2f5);
+    background: var(--fill-color);
 
     img {
       width: 100%;

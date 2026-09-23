@@ -76,7 +76,7 @@ const storeSettings = computed(() => settingsStore);
 
 /** 与 antd.scss .settings-drawer-mask 对齐 */
 const maskStyle = {
-  background: "rgba(0, 0, 0, 0.28)",
+  background: "var(--color-bg-mask)",
   backdropFilter: "blur(4px)",
   WebkitBackdropFilter: "blur(4px)"
 };

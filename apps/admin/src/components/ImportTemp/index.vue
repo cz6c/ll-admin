@@ -125,7 +125,7 @@ async function submitFileForm() {
 <style scoped lang="scss">
 .upload-icon {
   font-size: 40px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 .link {
   color: var(--color-primary);
@@ -133,7 +133,7 @@ async function submitFileForm() {
 .tip {
   margin: 12px 0 16px;
   font-size: 12px;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 .tip-row {
   display: flex;

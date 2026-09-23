@@ -103,7 +103,7 @@ getCookie();
 <template>
   <div class="login">
     <div class="login-fl">
-      <LoginSvgCom style="transform: scale(0.8)" />
+      <LoginSvgCom style="transform: scale(0.6)" />
     </div>
     <div class="login-fr">
       <div class="login-conten">
@@ -157,12 +157,7 @@ getCookie();
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 50%;
     height: 100%;
-  }
-
-  .login-fl {
-    background-color: #f6f7f9;
   }
 
   .login-fr {
@@ -177,7 +172,7 @@ getCookie();
           font-weight: 600;
           line-height: 1.15;
           letter-spacing: -0.02em;
-          color: rgba(0, 0, 0, 0.88);
+          color: var(--color-text);
         }
 
         .description {
@@ -185,7 +180,7 @@ getCookie();
           font-size: 15px;
           font-weight: 400;
           letter-spacing: 0;
-          color: rgba(0, 0, 0, 0.45);
+          color: var(--color-text-placeholder);
           line-height: 1.5;
         }
       }
@@ -233,7 +228,7 @@ getCookie();
       bottom: 8px;
       font-size: 12px;
       font-weight: 400;
-      color: #999999;
+      color: var(--color-text-tertiary);
       line-height: 26px;
     }
   }

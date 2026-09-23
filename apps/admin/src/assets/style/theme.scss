@@ -1,14 +1,31 @@
-/* 与 uni 主色 --wot-primary-6 对齐 */
+/**
+ * @apps/admin 全局颜色 / 字族 / 运动 token（单一事实源）
+ *
+ * 用法优先级：
+ * 1. Ant Design 组件：走 ConfigProvider（App.vue darkAlgorithm + token）
+ * 2. 业务 / 布局 SCSS、Uno：优先 `--color-*` / `--bg-*` / `--fill-*` / `--border-*`
+ * 3. 需与 antd 桥接时：同名 `--ant-color-*`（由本文件写入，勿在业务里再写死 Hex）
+ * 4. ECharts / 扫码白底 / 照片上的实心白图标等场景可保留字面色，并注释 why
+ *
+ * 改主题：只改本文件 SCSS 变量 + `utils/theme.ts` 导出常量，再同步 App ConfigProvider。
+ */
+/* 与 uni 主色 --wot-primary-6 对齐；全局强制暗黑 */
 $--color-primary: #1688ff;
-$--bg-color: #ffffff;
-$--fill-color: #f0f2f5;
-$--border-color: #dcdfe6;
+$--bg-color: #1f1f1f;
+$--fill-color: #141414;
+$--border-color: #434343;
 
-/** 正文色阶：与 Ant Design colorText* 对齐 */
-$--color-text: rgba(0, 0, 0, 0.88);
-$--color-text-secondary: rgba(0, 0, 0, 0.65);
-$--color-text-tertiary: rgba(0, 0, 0, 0.45);
-$--color-text-disabled: rgba(0, 0, 0, 0.25);
+/** 正文色阶：暗黑可读；略高于 antd 默认透明度 */
+$--color-text: rgba(255, 255, 255, 0.92);
+$--color-text-secondary: rgba(255, 255, 255, 0.78);
+$--color-text-tertiary: rgba(255, 255, 255, 0.58);
+$--color-text-disabled: rgba(255, 255, 255, 0.35);
+
+/** 功能色（对齐 Ant Design 5 语义色，暗黑下直接色值） */
+$--color-success: #52c41a;
+$--color-warning: #faad14;
+$--color-error: #ff4d4f;
+$--color-info: #1688ff;
 
 /**
  * 正文字体：Ant Design 5 系统栈 + 中文兜底（PingFang / 微软雅黑）
@@ -22,29 +39,78 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   "Courier New", monospace;
 
 :root {
+  /* —— 品牌 / 中性面 —— */
   --color-primary: #{$--color-primary};
-  --color-primary-bg: rgba(22, 136, 255, 0.1);
+  --color-primary-bg: rgba(22, 136, 255, 0.18);
   --bg-color: #{$--bg-color};
   --fill-color: #{$--fill-color};
   --border-color: #{$--border-color};
-  /* 中性文字（对齐 Ant Design 文本透明度阶梯） */
   --color-text: #{$--color-text};
   --color-text-secondary: #{$--color-text-secondary};
   --color-text-tertiary: #{$--color-text-tertiary};
   --color-text-disabled: #{$--color-text-disabled};
+  --color-text-placeholder: rgba(255, 255, 255, 0.4);
+  /* 实心底上的反白字（主按钮、角标勾） */
+  --color-text-light-solid: #ffffff;
+
+  --color-bg-container: #{$--bg-color};
+  --color-bg-elevated: #{$--bg-color};
+  --color-bg-layout: #{$--fill-color};
+  --bg-color-secondary: rgba(255, 255, 255, 0.1);
+  --color-fill: rgba(255, 255, 255, 0.18);
+  --color-fill-secondary: rgba(255, 255, 255, 0.12);
+  --color-fill-tertiary: rgba(255, 255, 255, 0.08);
+  --color-fill-quaternary: rgba(255, 255, 255, 0.1);
+  --color-border-secondary: rgba(255, 255, 255, 0.16);
+
+  /* —— 功能色 —— */
+  --color-success: #{$--color-success};
+  --color-success-bg: rgba(82, 196, 26, 0.16);
+  --color-success-text: #95de64;
+  --color-warning: #{$--color-warning};
+  --color-warning-bg: rgba(250, 173, 20, 0.16);
+  --color-warning-text: #ffd666;
+  --color-error: #{$--color-error};
+  --color-error-bg: rgba(255, 77, 79, 0.16);
+  --color-error-text: #ff7875;
+  --color-info: #{$--color-info};
+  --color-info-bg: rgba(22, 136, 255, 0.16);
+
+  /* —— 遮罩 / 浮层（灯箱、抽屉蒙层、框选） —— */
+  --color-bg-mask: rgba(0, 0, 0, 0.45);
+  --color-bg-mask-strong: rgba(0, 0, 0, 0.72);
+  --color-bg-spotlight: rgba(0, 0, 0, 0.85);
+  --color-overlay-hover: rgba(255, 255, 255, 0.08);
+  --color-overlay-active: rgba(255, 255, 255, 0.14);
+
+  /* —— CS 顶栏（可跟主题微调，关闭键保留系统红语义） —— */
+  --cs-bar-bg: #1f2329;
+  --cs-bar-border: rgba(255, 255, 255, 0.08);
+  --cs-win-close: #e81123;
+  --cs-win-close-hover: #c50f1f;
+
+  /* 扫码等必须浅底的表面（与主题无关） */
+  --color-bg-spotlight-light: #ffffff;
 
   --font-family: #{$--font-family};
   --font-family-mono: #{$--font-family-mono};
 
-  /* Ant Design 桥接（少量覆盖用；主色以 ConfigProvider token 为准） */
-  --ant-color-primary: #{$--color-primary};
+  /* Ant Design 桥接（业务可写 var(--ant-color-*)，与自有 token 同值） */
+  --ant-color-primary: var(--color-primary);
+  --ant-color-success: var(--color-success);
+  --ant-color-warning: var(--color-warning);
+  --ant-color-error: var(--color-error);
+  --ant-color-info: var(--color-info);
   --ant-color-text: var(--color-text);
   --ant-color-text-secondary: var(--color-text-secondary);
   --ant-color-text-tertiary: var(--color-text-tertiary);
   --ant-color-text-disabled: var(--color-text-disabled);
+  --ant-color-bg-container: var(--color-bg-container);
+  --ant-color-bg-layout: var(--color-bg-layout);
+  --ant-color-border: var(--border-color);
 
   // vxetable：色与字族跟主题 token 走
-  --vxe-ui-font-primary-color: #{$--color-primary};
+  --vxe-ui-font-primary-color: var(--color-primary);
   --vxe-ui-font-family: var(--font-family);
   --vxe-ui-font-color: var(--color-text);
   --vxe-ui-font-lighten-color: var(--color-text-secondary);

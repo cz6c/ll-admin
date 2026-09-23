@@ -876,16 +876,16 @@ onBeforeUnmount(() => {
   height: 58px;
   padding: 0;
   cursor: inherit;
-  background: var(--color-bg-container, #fff);
+  background: var(--color-bg-container, #141414);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   transition: transform 0.2s;
   &:hover,
   &:active {
     transform: scale(1.08);
-    background: var(--color-bg-container, #fff);
+    background: var(--color-bg-container, #141414);
     border-color: var(--color-primary);
     color: var(--color-primary);
   }
@@ -941,8 +941,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   padding: 14px 16px;
   border-radius: 10px;
-  background: var(--color-fill-quaternary, rgba(0, 0, 0, 0.02));
-  border: 1px solid var(--color-border-secondary, rgba(0, 0, 0, 0.06));
+  background: var(--color-fill-quaternary, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--color-border-secondary, rgba(255, 255, 255, 0.12));
 }
 .cloud-toolbar {
   flex-shrink: 0;
@@ -979,7 +979,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 .cloud-grid-scroll {
@@ -1015,7 +1015,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 2px solid transparent;
   cursor: zoom-in;
-  background: var(--color-fill-quaternary, rgba(0, 0, 0, 0.04));
+  background: var(--color-fill-quaternary, rgba(255, 255, 255, 0.08));
   &.select-mode {
     cursor: pointer;
   }

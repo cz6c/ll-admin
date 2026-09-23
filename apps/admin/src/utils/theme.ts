@@ -16,6 +16,15 @@ export const COLOR_TEXT_SECONDARY = "rgba(0, 0, 0, 0.65)";
 export const COLOR_TEXT_TERTIARY = "rgba(0, 0, 0, 0.45)";
 export const COLOR_TEXT_DISABLED = "rgba(0, 0, 0, 0.25)";
 
+/**
+ * 相册暗黑岛字色（须显式覆盖 App 注入的浅色黑字 token，否则嵌套 darkAlgorithm 仍继承黑字）
+ * 次要/三级略高于 antd 默认，避免抽屉内标签与提示看不清
+ */
+export const DARK_COLOR_TEXT = "rgba(255, 255, 255, 0.92)";
+export const DARK_COLOR_TEXT_SECONDARY = "rgba(255, 255, 255, 0.78)";
+export const DARK_COLOR_TEXT_TERTIARY = "rgba(255, 255, 255, 0.58)";
+export const DARK_COLOR_TEXT_DISABLED = "rgba(255, 255, 255, 0.35)";
+
 /** 设置/移除目标元素 class */
 export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement) {
   const targetEl = target || document.body;

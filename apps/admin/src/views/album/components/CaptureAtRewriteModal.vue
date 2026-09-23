@@ -481,7 +481,7 @@ async function onSave() {
 .list-head {
   height: 40px;
   border-bottom: 1px solid var(--border-color);
-  background: var(--fill-color, rgba(0, 0, 0, 0.02));
+  background: var(--fill-color, rgba(255, 255, 255, 0.06));
   font-size: 12px;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -505,7 +505,7 @@ async function onSave() {
   }
 
   &.sortable-chosen {
-    background: var(--fill-color, rgba(0, 0, 0, 0.04));
+    background: var(--fill-color, rgba(255, 255, 255, 0.08));
   }
 }
 
@@ -523,7 +523,7 @@ async function onSave() {
 
   &:hover {
     color: var(--color-text-secondary);
-    background: var(--fill-color, rgba(0, 0, 0, 0.04));
+    background: var(--fill-color, rgba(255, 255, 255, 0.08));
   }
 
   &:active {
@@ -553,7 +553,7 @@ async function onSave() {
 
   &:hover:not(:disabled) {
     color: var(--color-text-secondary);
-    background: var(--fill-color, rgba(0, 0, 0, 0.04));
+    background: var(--fill-color, rgba(255, 255, 255, 0.08));
   }
 
   &:disabled {
@@ -583,7 +583,7 @@ async function onSave() {
   height: 80px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: var(--fill-color, rgba(0, 0, 0, 0.04));
+  background: var(--fill-color, rgba(255, 255, 255, 0.08));
   overflow: hidden;
 }
 

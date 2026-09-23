@@ -4,6 +4,7 @@
   适用：MediaViewer（本地相册）、IcloudSyncFab / QzoneSyncFab（同步抽屉）
   @note 样式以原 MediaViewer 为唯一来源；业务媒体渲染留在各调用方
   @note Teleport body：同步抽屉内预览须盖住 a-drawer（同级 z-index 会被夹住）
+  @note 相册强制暗黑：遮罩/控件按暗色灯箱绘制，不跟随浅色 :root
 -->
 <script setup lang="ts">
 import { useEventListener } from "@vueuse/core";
@@ -121,7 +122,8 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.96);
+  /* 相册强制暗黑：灯箱用深底衬媒体，避免白罩抢对比 */
+  background: rgba(0, 0, 0, 0.92);
 }
 .viewer-close {
   position: absolute;
@@ -130,10 +132,11 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   z-index: 2;
   width: 40px;
   height: 40px;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
   &:hover {
-    background: rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
   }
 }
 .viewer-nav {
@@ -144,10 +147,11 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   z-index: 2;
   width: 48px;
   height: 48px;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
   &:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
   }
   &.is-disabled,
   &:disabled {
@@ -189,14 +193,14 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   right: 0;
   z-index: 2;
   padding: 12px 20px;
-  background: linear-gradient(transparent, rgba(255, 255, 255, 0.92));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
 }
 .info-name {
-  color: var(--color-text);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 13px;
   font-weight: 500;
   max-width: 80vw;
@@ -205,7 +209,7 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   white-space: nowrap;
 }
 .info-meta {
-  color: var(--color-text-secondary);
+  color: rgba(255, 255, 255, 0.65);
   font-size: 12px;
 }
 

@@ -83,6 +83,6 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-color-secondary, rgba(0, 0, 0, 0.04));
+  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
 }
 </style>

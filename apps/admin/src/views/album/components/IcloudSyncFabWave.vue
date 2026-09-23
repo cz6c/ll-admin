@@ -83,7 +83,7 @@ function buildOption(): EChartsOption {
           }
         },
         backgroundStyle: {
-          color: "rgba(0, 0, 0, 0.03)"
+          color: "rgba(255, 255, 255, 0.06)"
         },
         itemStyle: {
           opacity: 0.92,
@@ -94,7 +94,7 @@ function buildOption(): EChartsOption {
           formatter: () => percentLabel.value,
           fontSize: labelFontSize.value,
           color: border,
-          insideColor: "#fff"
+          insideColor: "#141414"
         },
         color: colors
       }

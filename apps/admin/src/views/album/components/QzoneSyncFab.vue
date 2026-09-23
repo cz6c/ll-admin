@@ -999,7 +999,7 @@ watch(drawerOpen, open => {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 .login-block {
   display: flex;
@@ -1168,10 +1168,10 @@ watch(drawerOpen, open => {
   border-radius: 8px;
   cursor: pointer;
   &:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: rgba(255, 255, 255, 0.08);
   }
   &.active {
-    background: rgba(22, 119, 255, 0.08);
+    background: rgba(22, 119, 255, 0.18);
   }
 }
 .cover {
@@ -1180,7 +1180,7 @@ watch(drawerOpen, open => {
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
-  background: #f0f0f0;
+  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
   img {
     width: 100%;
     height: 100%;
@@ -1194,7 +1194,7 @@ watch(drawerOpen, open => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #999;
+  color: var(--color-text-tertiary);
   font-weight: 600;
 }
 .meta {
@@ -1287,7 +1287,7 @@ watch(drawerOpen, open => {
   top: 0;
   z-index: 1;
   padding: 4px 0;
-  background: linear-gradient(to bottom, #fff 70%, rgba(255, 255, 255, 0));
+  background: linear-gradient(to bottom, var(--bg-color) 70%, transparent);
 }
 .grid {
   display: grid;
@@ -1303,7 +1303,7 @@ watch(drawerOpen, open => {
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  background: #f5f5f5;
+  background: var(--bg-color-secondary, rgba(255, 255, 255, 0.08));
   &.selected {
     border-color: var(--color-primary);
   }
@@ -1317,7 +1317,12 @@ watch(drawerOpen, open => {
 .cell-ph {
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, #f0f0f0, #e8e8e8, #f0f0f0);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.06)
+  );
   background-size: 200% 100%;
 }
 .cell-badge {

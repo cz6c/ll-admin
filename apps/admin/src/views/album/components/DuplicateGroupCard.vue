@@ -239,7 +239,7 @@ function groupHeaderTitle(): string {
   padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: var(--fill-color, rgba(0, 0, 0, 0.02));
+  background: var(--fill-color, rgba(255, 255, 255, 0.06));
 }
 
 .dup-side {

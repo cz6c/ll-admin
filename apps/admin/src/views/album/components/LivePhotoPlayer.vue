@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.72);
   border-radius: 4px;
 
   :deep(.ant-alert) {

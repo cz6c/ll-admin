@@ -6,7 +6,6 @@
 
 import type { AppRouteRecordRaw } from "#/utils";
 import { isAlbumPath } from "@/router/album";
-import { isIcloudSyncPath } from "@/router/icloudSync";
 
 /** CS 应用设置路由（独立壳，不进 admin 侧栏） */
 export const csPublicConstantRoutes: AppRouteRecordRaw[] = [
@@ -28,9 +27,9 @@ export function isCsSettingsPath(path: string): boolean {
   return path === "/cs-settings" || path.startsWith("/cs-settings/");
 }
 
-/** CS 本机工具免登录白名单（应用设置 + 相册 + iCloud 同步） */
+/** CS 本机工具免登录白名单（应用设置 + 相册） */
 export function isCsPublicPath(path: string): boolean {
-  return isCsSettingsPath(path) || isAlbumPath(path) || isIcloudSyncPath(path);
+  return isCsSettingsPath(path) || isAlbumPath(path);
 }
 
 /**

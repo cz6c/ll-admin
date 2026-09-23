@@ -182,8 +182,8 @@ function groupHeaderTitle(): string {
   min-width: 0;
   overflow: hidden;
   content-visibility: auto;
-  /* 横滑卡片高度约：头 40 + 边距 + 158 图 + 路径区；估偏小会滚动跳动 */
-  contain-intrinsic-size: auto 320px;
+  /* 横滑卡片高度约：头 40 + 边距 + DUP_THUMB_DISPLAY_SIZE(180) 图 + 路径区；估偏小会滚动跳动 */
+  contain-intrinsic-size: auto 340px;
   contain: layout style paint;
 }
 

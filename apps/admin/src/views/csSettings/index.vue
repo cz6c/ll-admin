@@ -7,20 +7,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getAppSettings, hasAppAiApiKey, saveAppSettings, setAppAiApiKey, type AppSettings } from "@/api/appSettings";
-import {
-  formatIcloudSyncError,
-  getIcloudSyncSettings,
-  ICLOUD_SYNC_CONCURRENCY_TIERS,
-  saveIcloudSyncSettings,
-  type IcloudSyncSettings
-} from "@/api/icloudSync";
-import {
-  getQzoneSyncSettings,
-  saveQzoneSyncSettings,
-  type QzoneSyncSettings
-} from "@/api/qzoneSync";
+import { formatIcloudSyncError } from "@/api/icloudSync";
 import CsSaveBar from "@/components/CsSaveBar/index.vue";
-import { ALBUM_THUMB_GENERATE_SIZE } from "@/views/album/types";
 import { isTauri } from "@/utils/tauri";
 import $feedback from "@/utils/feedback";
 
@@ -45,10 +33,6 @@ const form = reactive<AppSettings>({
 
 // 相册设置 state
 const rootDir = ref("");
-const concurrency = ref(1);
-/** 保留 appleId 等已保存字段，避免覆盖登录面板写入项 */
-let cachedIcloudSettings: IcloudSyncSettings | null = null;
-let cachedQzoneSettings: QzoneSyncSettings | null = null;
 
 async function load() {
   if (!isTauri()) return;
@@ -68,16 +52,6 @@ async function loadAlbumSettings() {
   try {
     const albumSettings = await invoke<{ rootDir: string }>("album_get_settings");
     rootDir.value = albumSettings.rootDir || "";
-
-    if (isTauri()) {
-      const [icloudSettings, qzoneSettings] = await Promise.all([
-        getIcloudSyncSettings(),
-        getQzoneSyncSettings()
-      ]);
-      cachedIcloudSettings = icloudSettings;
-      concurrency.value = icloudSettings.concurrency ?? 1;
-      cachedQzoneSettings = qzoneSettings;
-    }
   } catch (e) {
     console.error("Failed to load album settings:", e);
     if (isTauri()) {
@@ -120,7 +94,7 @@ async function onSave() {
   }
 }
 
-/** 保存相册设置：校验 + 写入 album settings 与 iCloud 并发设置；失败返回 false */
+/** 保存相册设置：校验 + 写入 album root；失败返回 false */
 async function saveAlbumSettings(): Promise<boolean> {
   if (!rootDir.value.trim()) {
     $feedback.message.warning("请先选择相册根目录");
@@ -129,27 +103,9 @@ async function saveAlbumSettings(): Promise<boolean> {
   try {
     await invoke("album_save_settings", {
       settings: {
-        rootDir: rootDir.value.trim(),
-        thumbSize: ALBUM_THUMB_GENERATE_SIZE
+        rootDir: rootDir.value.trim()
       }
     });
-
-    if (isTauri()) {
-      const base = cachedIcloudSettings ?? (await getIcloudSyncSettings());
-      const next: IcloudSyncSettings = {
-        ...base,
-        concurrency: Math.min(3, Math.max(1, concurrency.value || 1))
-      };
-      await saveIcloudSyncSettings(next);
-      cachedIcloudSettings = next;
-
-      const qBase = cachedQzoneSettings ?? (await getQzoneSyncSettings());
-      const qNext: QzoneSyncSettings = {
-        ...qBase
-      };
-      await saveQzoneSyncSettings(qNext);
-      cachedQzoneSettings = qNext;
-    }
     return true;
   } catch (e: unknown) {
     const msg = isTauri() ? formatIcloudSyncError(e) : typeof e === "string" ? e : "保存失败";
@@ -261,17 +217,6 @@ onActivated(load);
             <a-form-item label="落盘目录">
               <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
                 固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
-              </p>
-            </a-form-item>
-
-            <a-form-item label="下载速度">
-              <a-radio-group v-model:value="concurrency" :disabled="loading">
-                <a-radio v-for="tier in ICLOUD_SYNC_CONCURRENCY_TIERS" :key="tier.value" :value="tier.value">
-                  {{ tier.label }}（{{ tier.value }}）
-                </a-radio>
-              </a-radio-group>
-              <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                {{ ICLOUD_SYNC_CONCURRENCY_TIERS.find(t => t.value === concurrency)?.hint ?? "建议标准档" }}
               </p>
             </a-form-item>
 

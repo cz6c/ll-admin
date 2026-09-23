@@ -1,7 +1,7 @@
 <!--
   缩略图纯视觉层：占位 / 视频遮罩 / 实况角标
   职责：接收 src + kind + ext，渲染统一的缩略图视觉；不含 IO 门控与交互
-  适用：AlbumThumbMedia / IcloudLazyImg / QzoneLazyImg 内部复用
+  适用：AlbumThumbMedia / ProtocolLazyThumb / DuplicateLazyThumb 内部复用
 -->
 <script setup lang="ts">
 import LivePhotoBadge from "./LivePhotoBadge.vue";
@@ -41,41 +41,18 @@ const upperExt = computed(() => props.ext?.toUpperCase() ?? "");
 <template>
   <div class="thumb-visual" :class="`is-${size}`">
     <LivePhotoBadge v-if="showLiveBadge" class="thumb-badge" size="sm" />
-    <BaseImage
-      v-if="src"
-      class="thumb-img"
-      :src="src"
-      fit="cover"
-      width="100%"
-      height="100%"
-      :lazy="lazy"
-    />
+    <BaseImage v-if="src" class="thumb-img" :src="src" fit="cover" width="100%" height="100%" :lazy="lazy" />
     <div v-else-if="kind === 'image' || kind === 'livephoto'" class="thumb-placeholder">
-      <IconifyIcon
-        icon="ant-design:file-image-outlined"
-        :width="placeholderIconSize"
-        :height="placeholderIconSize"
-        class="thumb-placeholder-icon"
-      />
+      <IconifyIcon icon="ant-design:file-image-outlined" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
       <span v-if="size === 'md'" class="thumb-ext">{{ upperExt }}</span>
     </div>
     <div v-else class="thumb-placeholder">
-      <IconifyIcon
-        icon="ant-design:play-circle-filled"
-        :width="placeholderIconSize"
-        :height="placeholderIconSize"
-        class="thumb-placeholder-icon"
-      />
+      <IconifyIcon icon="ant-design:play-circle-filled" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
       <span v-if="size === 'md'" class="thumb-ext">{{ upperExt }}</span>
     </div>
     <div v-if="kind === 'video' && src" class="video-play-overlay">
       <span class="video-play-btn">
-        <IconifyIcon
-          icon="ant-design:caret-right-filled"
-          :width="playIconSize"
-          :height="playIconSize"
-          class="video-play-icon"
-        />
+        <IconifyIcon icon="ant-design:caret-right-filled" :width="playIconSize" :height="playIconSize" class="video-play-icon" />
       </span>
     </div>
   </div>

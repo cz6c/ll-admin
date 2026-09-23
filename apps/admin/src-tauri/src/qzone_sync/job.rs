@@ -92,7 +92,6 @@ pub fn pause_job() -> Result<QzoneJobSnapshot, String> {
   runtime().pause.store(true, Ordering::SeqCst);
   let mut snap = current_snapshot();
   snap.status = QzoneJobStatus::Paused.as_str().into();
-  snap.phase = "paused".into();
   if let Ok(mut g) = runtime().snapshot.lock() {
     *g = snap.clone();
   }
@@ -106,7 +105,6 @@ pub fn resume_job(app: AppHandle) -> Result<QzoneJobSnapshot, String> {
   runtime().pause.store(false, Ordering::SeqCst);
   let mut snap = current_snapshot();
   snap.status = QzoneJobStatus::Downloading.as_str().into();
-  snap.phase = "downloading".into();
   set_snapshot(snap.clone(), &app);
   Ok(snap)
 }
@@ -116,7 +114,6 @@ pub fn cancel_job(app: AppHandle) -> Result<QzoneJobSnapshot, String> {
   runtime().pause.store(false, Ordering::SeqCst);
   let mut snap = current_snapshot();
   snap.status = QzoneJobStatus::Idle.as_str().into();
-  snap.phase = "cancelled".into();
   snap.message = "已取消".into();
   set_snapshot(snap.clone(), &app);
   Ok(snap)
@@ -145,7 +142,6 @@ fn run_pipeline(
     set_snapshot(
       QzoneJobSnapshot {
         status: QzoneJobStatus::Failed.as_str().into(),
-        phase: "failed".into(),
         message: msg,
         ..current_snapshot()
       },
@@ -161,7 +157,6 @@ fn run_pipeline(
   set_snapshot(
     QzoneJobSnapshot {
       status: QzoneJobStatus::Cataloging.as_str().into(),
-      phase: "cataloging".into(),
       message: format!("正在拉取{scope_msg}…"),
       ..Default::default()
     },
@@ -206,7 +201,6 @@ fn run_pipeline(
     set_snapshot(
       QzoneJobSnapshot {
         status: QzoneJobStatus::Cataloging.as_str().into(),
-        phase: "cataloging".into(),
         done: i as u32,
         total: albums.len() as u32,
         message: format!("枚举相册：{}", album.name),
@@ -274,7 +268,6 @@ fn run_pipeline(
   set_snapshot(
     QzoneJobSnapshot {
       status: QzoneJobStatus::Downloading.as_str().into(),
-      phase: "downloading".into(),
       done: 0,
       total,
       message: format!("catalog {cataloged}，待下载 {total}"),
@@ -308,7 +301,6 @@ fn run_pipeline(
           set_snapshot(
             QzoneJobSnapshot {
               status: QzoneJobStatus::Downloading.as_str().into(),
-              phase: "downloading".into(),
               done: (idx as u32) + 1,
               total,
               message: format!("视频解析失败 {asset_id}"),
@@ -357,7 +349,6 @@ fn run_pipeline(
           set_snapshot(
             QzoneJobSnapshot {
               status: QzoneJobStatus::Downloading.as_str().into(),
-              phase: "downloading".into(),
               done: (idx as u32) + 1,
               total,
               message: format!("跳过已存在 {filename}"),
@@ -408,7 +399,6 @@ fn run_pipeline(
     set_snapshot(
       QzoneJobSnapshot {
         status: QzoneJobStatus::Downloading.as_str().into(),
-        phase: "downloading".into(),
         done: (idx as u32) + 1,
         total,
         message: format!("下载 {filename}"),
@@ -427,7 +417,6 @@ fn run_pipeline(
   set_snapshot(
     QzoneJobSnapshot {
       status: QzoneJobStatus::Done.as_str().into(),
-      phase: "done".into(),
       done: total,
       total,
       message: format!("完成：新增 {updated}，跳过 {skipped}，失败 {failed}"),

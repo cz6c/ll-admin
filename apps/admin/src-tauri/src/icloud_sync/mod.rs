@@ -51,14 +51,7 @@ pub fn remap_dest_paths(app: &AppHandle, renames: &[(String, String)]) {
   let Ok(conn) = db::open_db(&path) else {
     return;
   };
-  for (from, to) in renames {
-    if let Err(e) = conn.execute(
-      "UPDATE assets SET dest_path = ?2 WHERE dest_path = ?1",
-      rusqlite::params![from, to],
-    ) {
-      log::warn!("icloud_sync: remap dest_path {from} → {to}: {e}");
-    }
-  }
+  crate::sync_common::remap_assets_dest_paths(&conn, renames, "icloud_sync");
 }
 
 /**

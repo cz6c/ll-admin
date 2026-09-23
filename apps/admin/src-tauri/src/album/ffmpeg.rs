@@ -260,8 +260,13 @@ pub fn decode_heif_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::Dyna
 }
 
 /// `image` crate 解不开的栅格图（畸形/非标 JPG 等）经 ffmpeg 转一帧 JPEG 再解码
-/// @note 与 HEIC 路径共用 `-frames:v 1`；失败由调用方决定是否回退原图路径
-pub fn decode_raster_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::DynamicImage> {
+/// @param max_side `Some(n)` 时边解边缩到最长边 ≤ n（超大图缩略图避免全尺寸进内存）
+/// @note 与 HEIC 全尺寸 preview 路径分离；失败由调用方决定是否回退原图路径
+pub fn decode_raster_via_ffmpeg(
+  ffmpeg: &Path,
+  input: &Path,
+  max_side: Option<u32>,
+) -> Option<image::DynamicImage> {
   let tmp = temp_jpeg_path();
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
@@ -275,6 +280,13 @@ pub fn decode_raster_via_ffmpeg(ffmpeg: &Path, input: &Path) -> Option<image::Dy
     "-i",
   ]);
   cmd.arg(input);
+  if let Some(side) = max_side.filter(|&s| s > 0) {
+    // force_original_aspect_ratio=decrease：不放大，只把过长边压到 side
+    cmd.args([
+      "-vf",
+      &format!("scale={side}:{side}:force_original_aspect_ratio=decrease"),
+    ]);
+  }
   cmd.args(["-frames:v", "1", "-q:v", "3"]);
   cmd.arg(&tmp);
   if !run_ffmpeg(cmd) {
@@ -434,6 +446,34 @@ mod tests {
   fn prefer_playback_proxy_mov_only() {
     assert!(prefer_playback_proxy("mov"));
     assert!(!prefer_playback_proxy("mp4"));
+  }
+
+  /// 有捆绑 ffmpeg 时：带 max_side 的栅格解码须缩到边长上限内
+  #[test]
+  fn decode_raster_via_ffmpeg_respects_max_side() {
+    let ffmpeg = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("resources")
+      .join("ffmpeg.exe");
+    if !ffmpeg.is_file() {
+      return;
+    }
+    let base = std::env::temp_dir().join(format!(
+      "album_ffmpeg_scale_{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&base);
+    let src = base.join("wide.png");
+    // 800×400：无 scale 时远大于 64
+    image::RgbImage::new(800, 400)
+      .save(&src)
+      .expect("write png");
+    let img = decode_raster_via_ffmpeg(&ffmpeg, &src, Some(64)).expect("ffmpeg scale decode");
+    assert!(img.width() <= 64);
+    assert!(img.height() <= 64);
+    let _ = std::fs::remove_dir_all(&base);
   }
 }
 

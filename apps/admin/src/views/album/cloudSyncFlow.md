@@ -6,7 +6,7 @@
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
-> **对齐：** 2026-09-16（删云改为一次性消费：按钮 loading + toast，不入 jobs / 无全屏浮层）
+> **对齐：** 2026-09-23（任务在 `job_mem` 进程内存，无 `jobs` 表；抽屉无云态 Tab，固定拉全量；删云一次性 + `$feedback.loading` 蒙层）
 
 姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [表目录](./schemaCatalog.md)
 
@@ -30,14 +30,14 @@ flowchart LR
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
-| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（Tab：全部/待同步/已同步/同步失败）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；**一次性 await + toast**（不占进度卡） |
-| 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；终态 schema 无 `index_num` |
+| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（**无云态 Tab**，固定 `cloudState=all` 分页）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；**一次性 await + `$feedback.loading` + toast**（不占进度卡 / 不入 job） |
+| 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
-| 互斥 | 同步 / 刷新目录占 jobs；删云**不入 jobs**，执行中用内存旗标与 sync/catalog 互斥（共用 sidecar） |
+| 互斥 | 同步 / 刷新目录占 **`job_mem`**；删云**不入 job**，执行中用内存旗标与 sync/catalog 互斥（共用 sidecar） |
 | 取消不抹统计 | 取消同步任务后，抽屉 cloud summary（如「待同步」计数）**保留**，不随 discard 清零 |
-| UI 不堵主线程 | sidecar / SQLite / auth 相关 Tauri command 用 `#[tauri::command(async)]`；`icloudimg` 已后台拉图。登录与缩略图仍争 **sidecar 单飞锁**（排队变慢，不应再整窗「未响应」） |
+| UI 不堵主线程 | sidecar / SQLite / auth 相关 command 用 `async fn` + `spawn_blocking`；`icloudimg` 已后台拉图。登录与缩略图仍争 **sidecar 单飞锁** |
 
 ---
 
@@ -108,7 +108,7 @@ flowchart LR
 |----|----------|----------|
 | 1 | Modal 确认（Live 默认成对 still+mov） | 冷却 1.5s |
 | 2 | 读库 CPL + **本地 `dest_path` 必须 is_file** | 缺文件则 reject（需先同步或刷新 reconcile） |
-| 3 | 命令内分批调 sidecar（**不入 jobs / queue**） | 按钮 loading；与 sync 互斥 |
+| 3 | 命令内分批调 sidecar（**不入 job_mem / queue**） | `$feedback.loading` 蒙层；与 sync 互斥 |
 | 4 | 成功 → **DELETE assets 行**（本地 media/文件不动） | toast → 刷新列表 |
 | — | catalog 刷新覆盖：库中不见的行 **硬删除** | — |
 
@@ -127,10 +127,10 @@ flowchart LR
 3. 开始同步前若无 `cloud_only` 可入队 → 拒绝并提示先刷新；catalog 后孤儿 `cloud_only` 靠下次「开始同步」入队。
 4. 下载循环只用 `auth_probe`，**禁止**带密码 `auth`。
 5. **active job** 内 `done + pending + failed = total`（**UI / job 快照按逻辑资产**，Live still+mov=1；下载 queue 仍按 part 行）；sync job 结束 `finalize_job_download` 写快照并释放 `download_status`。
-6. Live = still + mov 两行（终态无 `index_num`）；**UI 一律按一张计**（列表隐藏 mov、Tab 角标 / 进度 / 删云 toast 同口径）。
+6. Live = still + mov 两行（无 `index_num`）；**UI 一律按一张计**（列表隐藏 mov、summary / 进度 / 删云 toast 同口径）。
 7. CDN **410/404 ≠ session** → 单文件 lookup 重试。
 8. **`assets` 跨 job 唯一** `(apple_id, asset_id, part)`。
-9. 用户删云：**一次性** sidecar 删除；成功 → **硬删 assets 行**（本地 media/文件不动）；**不**写 queue / 不入 jobs。
+9. 用户删云：**一次性** sidecar 删除；成功 → **硬删 assets 行**（本地 media/文件不动）；**不**写 queue / 不入 `job_mem`。
 10. **绝不静默自动删云端**（Modal + 1.5s）。
 11. **本地文件缺失**：不在列表展示单独态；catalog 时 **`reconcile_synced_missing_local_files_in_catalog`**（仅扫本次 catalog 仍存在的 `synced` 行）写回 `cloud_only`（清 `dest_path`）。全库版 `reconcile_synced_missing_local_files` 保留供单测/诊断。
 12. sync/catalog 用 `try_claim_job`；删云用内存旗标；`require_no_incomplete_task` 拦截并行。
@@ -141,27 +141,28 @@ flowchart LR
 16. 删云成功 **DELETE assets 行**（同步表只反映云端）；本地 media/文件不动。
 17. catalog 刷新覆盖：不见于 catalog 的行硬删除。
 17. **catalog diff 前** 调用 `prepare_catalog_keys_temp`；`mark_catalog_deletions` / `enqueue_outstanding_for_full_sync` / in-catalog reconcile **依赖该临时表**，禁止逐行 N 次 SQL 旧路径。
-18. **`assets` 产品元数据**（schema v4）：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。下载入库时复制到 album `media`（origin 字段）；之后两库解耦。
-19. **schema 终态（user_version=6）**：无 `cloud_delete_queue`、无 `assets.index_num`、`jobs.mode`、`cloud_cursors`；5→6 在线 DROP queue 并 scrub 历史删云态；已取消 v2–v4 自动迁移。历史 `deleted_cloud_pending` / `cloud_delete_queued` / `failed_delete` 打开库时 scrub。
+18. **`assets` 产品元数据**：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。下载入库时复制到 album `media`（origin 字段）；之后两库解耦。
+19. **持久库仅 `assets`**：无 `jobs` 表、无 `cloud_delete_queue`、无 `assets.index_num`、无 `cloud_cursors`；**不**维护 `user_version` 迁移。任务在 `job_mem`；删云一次性硬删行。
 
 ---
 
 ## 速查
 
-### 任务类型 `jobs.task_type`
+### 任务类型 `job_mem.task_type`
 
 | type | 含义 |
 |------|------|
 | `sync` | 开始同步（入队下载） |
 | `catalog` | 仅刷新 iCloud 目录 |
-| `cloud_delete` | **历史残留**；打开库 scrub 删除，不再新建 |
 
-### 任务状态 `jobs.status`
+> 删云**不**创建 job；`cloud_delete` 仅为历史枚举残留，前端/进度卡不再分支展示。
+
+### 任务状态 `job_mem.status`
 
 | status | 含义 | 用户动作 |
 |--------|------|----------|
 | `cataloging` | 枚举图库 | 等待（不可 pause/取消） |
-| `pending` | 已建库，即将下/删 | — |
+| `pending` | 已建库，即将下载 | — |
 | `running` | 批量下载中 | 暂停 / 取消 |
 | `paused_user` | 手动暂停 | 继续 / 取消 |
 | `paused_session` | 登录失效 | 重登 → 继续 / 取消 |
@@ -175,13 +176,13 @@ flowchart LR
 | `cloud_only` | 待同步 | catalog 有、未下载（含原 `modified_cloud`） |
 | `synced` | 已同步 | 已下载且 catalog 未报改/删 |
 
-> 旧态 `cloud_delete_queued` / `failed_delete` / `deleted_cloud_pending` 已废弃：打开库 scrub；删云成功或 catalog 不见直接 **DELETE** 行。
+> 旧态 `cloud_delete_queued` / `failed_delete` / `deleted_cloud_pending` 已废弃；删云成功或 catalog 不见直接 **DELETE** 行。
 
-**派生（不写库，仅列表展示 / 筛选）**
+**派生（不写库；列表无 Tab，仅格子态 / summary）**
 
 | 态 | UI 文案 | 条件 |
 |----|---------|------|
-| `download_failed` | 同步失败 | 活跃 **sync** job 内 `download_status=failed`；任务结束后 finalize 清空，Tab 自动隐藏 |
+| `download_failed` | 同步失败 | 活跃 **sync** job 内 `download_status=failed`；任务结束后 finalize 清空 |
 
 ### 命令
 
@@ -192,16 +193,16 @@ flowchart LR
 | `icloud_sync_active_task` | 当前账号未完成任务状态（sync / catalog） |
 | `icloud_sync_resume_job` / `pause_job` | 续传 / 暂停 |
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
-| `icloud_sync_logout` | 清 sidecar + session（**不**动 job 行） |
-| `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选） |
-| `icloud_sync_get_cloud_state_summary` | Tab 角标计数（逻辑资产；Live=1） |
+| `icloud_sync_logout` | 清 sidecar + session（**不**清内存 job；换号 discard） |
+| `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选；UI 固定 `all`） |
+| `icloud_sync_get_cloud_state_summary` | summary 计数（逻辑资产；Live=1） |
 | `icloud_sync_delete_assets` / `delete_all_synced` | 一次性删云（本机保留） |
 
 ### 事件
 
 | 事件 | 用途 |
 |------|------|
-| `icloud-sync://progress` | FAB 水球 / StatusCard 进度条（同步与删云共用） |
+| `icloud-sync://progress` | FAB 水球 / StatusCard 进度条（仅 sync/catalog） |
 | `icloud-sync://job-status` | 状态卡 / 后台通知 |
 | `icloud-sync://cloud-state-changed` | 抽屉云列表 / summary 刷新 |
 
@@ -283,7 +284,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | `IcloudSyncStatusCard` | 状态标题、**单一**进度条（sync/catalog）、主/次按钮 |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
-| `icloudSyncCloudList.ts` | 状态文案 / Tab 配置 / Live 行合并 / `download_failed` 展示覆盖 |
+| `icloudSyncCloudList.ts` | 状态文案 / Live 行合并 / `download_failed` 展示覆盖 |
 
 ---
 

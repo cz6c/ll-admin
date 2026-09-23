@@ -7,15 +7,24 @@ export const ALBUM_SCAN_PROGRESS_EVENT = "album://scan-progress";
 export const ALBUM_THUMB_READY_EVENT = "album://thumb-ready";
 
 /**
- * 磁盘缩略图生成分辨率（px，正方形边长）
- * 与 Rust `album/types.rs` 的 `default_thumb_size` 保持一致；仅用于扫描/生成，与宫格 UI 显示尺寸无关
+ * 磁盘缩略图生成参数（传给 Rust；实际 WebP 边长 = max(size×2, 256) = **316**）
+ * 与 Rust `album/types.rs` 的 `ALBUM_THUMB_GENERATE_SIZE` 对齐；非用户设置
+ * @note 宫格 UI 约 180～210 CSS px（`albumLayout.targetThumb`）；316 覆盖主流 DPR≤1.5；改则须 bump `ALBUM_CACHE_VERSION`
  */
 export const ALBUM_THUMB_GENERATE_SIZE = 158;
+
+/**
+ * 重复清理弹窗内缩略图展示边长（CSS px）
+ * @note 与生成参数无关；对齐主墙 `targetThumb`，勿改成 `ALBUM_THUMB_GENERATE_SIZE`
+ */
+export const DUP_THUMB_DISPLAY_SIZE = 180;
 
 export interface AlbumScanProgressPayload {
   phase: "discover" | "thumbnails" | string;
   done: number;
   total: number;
+  /** 缩略图阶段收尾时带上：预览生成失败数；有值且 >0 时 toast 一次 */
+  failed?: number;
 }
 
 export interface AlbumThumbReadyPayload {

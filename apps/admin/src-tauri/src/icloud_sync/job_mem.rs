@@ -48,7 +48,6 @@ pub fn insert(
     output_dir: output_dir.to_string(),
     apple_id: apple_id.to_string(),
     status,
-    mode: "full".into(),
     created_at,
     finished_at: None,
     total_count: 0,

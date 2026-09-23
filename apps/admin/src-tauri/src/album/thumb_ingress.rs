@@ -89,7 +89,6 @@ pub fn enqueue_thumbs_from_sync(app: &AppHandle, items: Vec<SyncedMediaIngress>)
   let Ok(album_data_dir) = album_dir(app) else {
     return;
   };
-  let thumb_size = settings.thumb_size;
   let root_path = Path::new(&root);
 
   let mut accepted: Vec<SyncedMediaIngress> = Vec::with_capacity(items.len());
@@ -130,7 +129,7 @@ pub fn enqueue_thumbs_from_sync(app: &AppHandle, items: Vec<SyncedMediaIngress>)
     Arc::clone(&guard.thumb_pending)
   };
 
-  ensure_thumb_worker(app, &state, pending, root, album_data_dir, thumb_size);
+  ensure_thumb_worker(app, &state, pending, root, album_data_dir);
 }
 
 /// 若管线空闲则启动 drain worker；已在跑则只依赖 pending 追加
@@ -140,7 +139,6 @@ fn ensure_thumb_worker(
   thumb_pending: Arc<ThumbPending>,
   root: String,
   album_data_dir: PathBuf,
-  thumb_size: u32,
 ) {
   let (pipeline_epoch, my_epoch, cancel) = {
     let Ok(mut guard) = state.lock() else {
@@ -166,7 +164,6 @@ fn ensure_thumb_worker(
       app_bg,
       root,
       album_data_dir,
-      thumb_size,
       ffmpeg_bin,
       Vec::new(),
       cancel,

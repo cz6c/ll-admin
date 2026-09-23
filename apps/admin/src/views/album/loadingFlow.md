@@ -126,7 +126,7 @@ flowchart LR
 
 1. 两阶段：discover 阻塞返回；②③④绝不挡首屏。  
 2. IPC **不传 base64**，只传路径 + `convertFileSrc`。  
-3. 增量：`path + size + modified`；`fail_count ≥ 3` 跳过。  
+3. 增量：`path + size + modified`；`fail_count ≥ 2` 跳过。  
 4. 新扫描换 **cancel + epoch**；过期 pipeline 禁止写库 / emit。  
 5. 取消 ≠ 失败；仅真实失败才 `fail_count++`。  
 6. **dirty 在 cancel/wait 前清零**；discover 失败回滚 dirty。  
@@ -158,7 +158,7 @@ flowchart LR
 
 | 命令 | 作用 |
 |------|------|
-| `album_scan(root, thumbSize, force?)` | dirty/force → discover 或 load_groups；按需起 pipeline |
+| `album_scan(root, force?)` | dirty/force → discover 或 load_groups；按需起 pipeline（出图尺寸用编译期常量） |
 | 同步入队 `enqueue_thumbs_from_sync` | iCloud/QQ 落盘后追加共享 pending；**已有管线只追加**，空闲才开 worker |
 | `album_cancel_scan` | 取消 pipeline（离页）；force 全扫由内部 cancel |
 | `album_get/save_settings` | `rootDir`；改 root 会强制下次全扫 |
@@ -199,7 +199,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 
 ### pipeline（目标）
 
-1. 跳过 `fail_count ≥ 3`。  
+1. 跳过 `fail_count ≥ 2`。  
 2. 收集缺 thumb / HEIC 缺 preview；**无缺口且 meta/尺寸/Live 代理均齐 → 整段早退**。  
 3. 并行②展示；视频抽帧**不写**海报尺寸。  
 4. ③ 限并发（约 4）仅补时间/机型；图尺寸批量 `image_dimensions`。  

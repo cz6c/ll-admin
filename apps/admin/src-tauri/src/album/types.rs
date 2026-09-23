@@ -8,26 +8,23 @@ use serde::{Deserialize, Serialize};
 /// - v5: cache_key 仅 stem + modified + size；目录版本单独负责批量作废
 pub const ALBUM_CACHE_VERSION: u32 = 5;
 
+/// 缩略图生成参数（传给 `generate_thumbnail` 的 size；实际 WebP 边长 = max(size×2, 256) = 316）
+/// 与前端 `ALBUM_THUMB_GENERATE_SIZE` 对齐；非用户设置——改则须 bump `ALBUM_CACHE_VERSION`
+pub const ALBUM_THUMB_GENERATE_SIZE: u32 = 158;
+
 /// 相册设置（持久化到 `<appData>/album/settings.json`）
+/// @note 旧 JSON 若含 `thumbSize` 会被忽略（已改为编译期常量）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumSettings {
   /// 相册根目录绝对路径
   pub root_dir: String,
-  /// 缩略图尺寸（像素），固定 158
-  #[serde(default = "default_thumb_size")]
-  pub thumb_size: u32,
-}
-
-fn default_thumb_size() -> u32 {
-  158
 }
 
 impl Default for AlbumSettings {
   fn default() -> Self {
     Self {
       root_dir: String::new(),
-      thumb_size: default_thumb_size(),
     }
   }
 }
@@ -136,10 +133,13 @@ pub struct MediaGroup {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumScanProgressPayload {
-  /// `discover`：遍历文件；`thumbnails`：生成缩略图
+  /// `discover`：遍历文件；`thumbnails`：生成缩略图；`live-proxy`：实况预热
   pub phase: String,
   pub done: u32,
   pub total: u32,
+  /// 本阶段预览生成失败数（仅 thumbnails 收尾时带；前端最多 toast 一次）
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub failed: Option<u32>,
 }
 
 /// 单张缩略图就绪事件（`album://thumb-ready`）

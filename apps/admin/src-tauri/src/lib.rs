@@ -6,6 +6,7 @@ mod album;
 mod app_settings;
 mod icloud_sync;
 mod qzone_sync;
+mod sync_common;
 
 use std::sync::Mutex;
 
@@ -92,9 +93,6 @@ pub fn run() {
       icloud_sync::cloud_assets::icloud_sync_get_cloud_state_summary,
       icloud_sync::cloud_delete::icloud_sync_delete_assets,
       icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
-      qzone_sync::qzone_sync_get_settings,
-      qzone_sync::qzone_sync_save_settings,
-      qzone_sync::qzone_sync_default_output_dir,
       qzone_sync::qzone_sync_auth_state,
       qzone_sync::qzone_sync_qr_start,
       qzone_sync::qzone_sync_qr_poll,

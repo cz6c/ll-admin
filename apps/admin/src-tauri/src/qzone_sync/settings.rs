@@ -1,18 +1,12 @@
-//! QQ 空间同步非敏感配置
-//! 职责：`<appData>/qzone-sync/settings.json`；默认输出 `{albumRoot}/QzoneSync`
+//! QQ 空间同步路径
+//! 职责：`<appData>/qzone-sync`；默认输出 `{albumRoot}/QzoneSync`
+//! @note 无用户可配 settings（曾有 concurrency，下载未读已删）
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
-
-use super::types::QzoneSyncSettings;
-
-/// 规整并发：1–3
-pub fn normalize_concurrency(raw: u32) -> u32 {
-  raw.clamp(1, 3)
-}
 
 /// `<appData>/qzone-sync`
 pub fn qzone_sync_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -25,28 +19,6 @@ pub fn qzone_sync_dir(app: &AppHandle) -> Result<PathBuf, String> {
   Ok(dir)
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-  Ok(qzone_sync_dir(app)?.join("settings.json"))
-}
-
-pub fn load_settings(app: &AppHandle) -> Result<QzoneSyncSettings, String> {
-  let path = settings_path(app)?;
-  if !path.exists() {
-    return Ok(QzoneSyncSettings::default());
-  }
-  let raw = fs::read_to_string(&path).map_err(|e| format!("读取 QQ 空间同步设置失败: {e}"))?;
-  serde_json::from_str(&raw).map_err(|e| format!("解析 QQ 空间同步设置失败: {e}"))
-}
-
-pub fn save_settings(app: &AppHandle, settings: &QzoneSyncSettings) -> Result<(), String> {
-  let path = settings_path(app)?;
-  let mut normalized = settings.clone();
-  normalized.concurrency = normalize_concurrency(settings.concurrency);
-  let raw = serde_json::to_string_pretty(&normalized)
-    .map_err(|e| format!("序列化 QQ 空间同步设置失败: {e}"))?;
-  fs::write(&path, raw).map_err(|e| format!("写入 QQ 空间同步设置失败: {e}"))
-}
-
 /// 落盘目录写死：`{albumRoot}/QzoneSync`；相册根未配置时返回 None
 pub fn resolve_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
   let root_dir = load_album_root_dir(app)?;
@@ -56,6 +28,7 @@ pub fn resolve_output_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
   Ok(Some(Path::new(root_dir.trim()).join("QzoneSync")))
 }
 
+/// 读取相册根目录
 pub fn load_album_root_dir(app: &AppHandle) -> Result<String, String> {
   let base = app
     .path()

@@ -42,7 +42,7 @@ flowchart LR
 5. 每条验证码：单路径校验 + **至多 1 次** trust。  
 6. `account_locked` / `rate_limited` → 硬停，交给用户。  
 7. **auth 失败 / 无效 probe 须清盘**，避免伪 session 触发 `already_logged_in` 或 UI 假登录。  
-8. **Tauri auth / sidecar / 钥匙串命令须 `#[tauri::command(async)]`**（或 `async fn`）：同步 command 跑 UI 主线程，Apple/网络一堵窗口会「未响应」。
+8. **Tauri auth / sidecar / 钥匙串命令须 `pub async fn` + `spawn_blocking`**：同步 command 跑 UI 主线程，Apple/网络一堵窗口会「未响应」。
 
 **单次登录 Apple API 预算：** SRP×1 · 推送×1 · 提交码×1 · trust×≤1。显式重发另计。不应出现自动二次 bridge / 失败即再推 / 同步带密码。
 

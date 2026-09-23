@@ -28,12 +28,11 @@ import {
   type QzonePhotoView,
   type QzoneQrStatus
 } from "@/api/qzoneSync";
-import QzoneLazyImg from "./QzoneLazyImg.vue";
-import MediaLightboxShell from "./MediaLightboxShell.vue";
+import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
+import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
-import { useDraggable, useEventListener } from "@vueuse/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -79,7 +78,6 @@ let previewEpoch = 0;
 
 const job = ref<QzoneJobSnapshot>({
   status: "idle",
-  phase: "idle",
   done: 0,
   total: 0,
   message: "",
@@ -642,100 +640,12 @@ async function onCancel() {
   }
 }
 
-/** FAB 拖动：默认左下，避开 iCloud 右下球与 CS 顶栏 */
-const FAB_POS_KEY = "album.qzoneSyncFab.pos";
-const FAB_SIZE = 58;
-const EDGE = 8;
-
-function csBarH() {
-  if (typeof document === "undefined") return 0;
-  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 0;
-}
-
-function clampPos(x: number, y: number) {
-  const minY = csBarH() + EDGE;
-  const maxX = Math.max(EDGE, window.innerWidth - FAB_SIZE - EDGE);
-  const maxY = Math.max(minY, window.innerHeight - FAB_SIZE - EDGE);
-  return {
-    x: Math.min(Math.max(EDGE, x), maxX),
-    y: Math.min(Math.max(minY, y), maxY)
-  };
-}
-
-function defaultPos() {
-  return clampPos(24, window.innerHeight - FAB_SIZE - 24);
-}
-
-function readPos() {
-  try {
-    const raw = localStorage.getItem(FAB_POS_KEY);
-    if (!raw) return defaultPos();
-    const p = JSON.parse(raw) as { x?: number; y?: number };
-    if (typeof p.x !== "number" || typeof p.y !== "number") return defaultPos();
-    return clampPos(p.x, p.y);
-  } catch {
-    return defaultPos();
-  }
-}
-
-const fabRef = ref<HTMLElement | null>(null);
-let dragOrigin = { x: 0, y: 0 };
-let dragMoved = false;
-/** 位移超过此阈值才算拖拽；过小会导致微抖吞掉点击 */
-const FAB_DRAG_CLICK_THRESHOLD_PX = 12;
-
-const {
-  x: fabX,
-  y: fabY,
-  style: fabStyle,
-  isDragging
-} = useDraggable(fabRef, {
-  initialValue: typeof window !== "undefined" ? readPos() : { x: 24, y: 200 },
-  // 不 preventDefault：避免部分环境下 pointerdown 后合成 click 丢失
-  preventDefault: false,
-  onStart(pos) {
-    dragMoved = false;
-    dragOrigin = { x: pos.x, y: pos.y };
-  },
-  onMove(pos) {
-    const next = clampPos(pos.x, pos.y);
-    if (next.x !== pos.x || next.y !== pos.y) {
-      fabX.value = next.x;
-      fabY.value = next.y;
-    }
-    if (Math.abs(pos.x - dragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX || Math.abs(pos.y - dragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX) {
-      dragMoved = true;
-    }
-  },
-  onEnd() {
-    const next = clampPos(fabX.value, fabY.value);
-    fabX.value = next.x;
-    fabY.value = next.y;
-    try {
-      localStorage.setItem(FAB_POS_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
-    // 不依赖 click：微抖/preventDefault 时 click 常不触发；未拖拽则在抬起时打开
-    if (!dragMoved) {
-      drawerOpen.value = true;
-    }
-  }
-});
-
-useEventListener(window, "resize", () => {
-  const next = clampPos(fabX.value, fabY.value);
-  fabX.value = next.x;
-  fabY.value = next.y;
-});
+/** FAB 拖动与 Drawer / 灯箱壳见 SyncFabShell；此处仅业务监听 */
 
 let unlisten: UnlistenFn | undefined;
 let unlistenAuthExpired: UnlistenFn | undefined;
 
 onMounted(async () => {
-  const next = readPos();
-  fabX.value = next.x;
-  fabY.value = next.y;
   if (!isTauri()) return;
   try {
     await refreshAuth();
@@ -784,22 +694,30 @@ watch(drawerOpen, open => {
 </script>
 
 <template>
-  <div ref="fabRef" class="fab-root" :class="{ 'is-dragging': isDragging }" :style="fabStyle">
-    <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步">
-      <IconifyIcon icon="ri:qq-fill" width="28" height="28" />
-    </a-button>
-  </div>
-
-  <a-drawer
-    v-model:open="drawerOpen"
-    title="QQ 空间同步"
-    placement="right"
-    :width="1024"
-    class="qzone-sync-drawer"
-    :keyboard="!previewOpen"
-    :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
+  <SyncFabShell
+    v-model:drawer-open="drawerOpen"
+    storage-key="album.qzoneSyncFab.pos"
+    default-edge="left"
+    drawer-title="QQ 空间同步"
+    drawer-class="qzone-sync-drawer"
+    :lightbox-open="previewOpen"
+    :lightbox-title="previewTitle"
+    :lightbox-meta="previewMeta"
+    :lightbox-loading="previewLoading"
+    lightbox-loading-tip="正在准备视频…"
+    :lightbox-can-prev="previewIndex > 0"
+    :lightbox-can-next="previewIndex < photos.length - 1"
+    @lightbox-close="closePreview"
+    @lightbox-prev="previewNav(-1)"
+    @lightbox-next="previewNav(1)"
   >
-    <template #extra>
+    <template #fab>
+      <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步">
+        <IconifyIcon icon="ri:qq-fill" width="28" height="28" />
+      </a-button>
+    </template>
+
+    <template #drawer-extra>
       <a-space v-if="loggedIn" :size="4" align="center">
         <div class="drawer-extra-tag">QQ {{ uin || "—" }}</div>
         <a-button type="link" size="small" danger @click="onLogout">退出</a-button>
@@ -864,7 +782,7 @@ watch(drawerOpen, open => {
           <a-spin :spinning="albumsLoading">
             <div v-for="a in albums" :key="a.topicId" class="album-item" :class="{ active: a.topicId === activeAlbumId }" @click="selectAlbum(a.topicId)">
               <div class="cover">
-                <QzoneLazyImg v-if="a.coverUrl" :remote-url="a.coverUrl" :scroll-root="albumPaneRef" kind="thumb" />
+                <ProtocolLazyThumb v-if="a.coverUrl" protocol="qzoneimg" :remote-url="a.coverUrl" :scroll-root="albumPaneRef" qzone-kind="thumb" />
                 <div v-else class="cover-ph">{{ a.name.slice(0, 1) }}</div>
               </div>
               <div class="meta">
@@ -882,21 +800,12 @@ watch(drawerOpen, open => {
               <span class="photo-head-title">{{ activeAlbum?.name || "请选择相册" }}</span>
               <span v-if="photos.length" class="sub">
                 已加载 {{ photos.length }} 张
-                <template v-if="activeAlbum && activeAlbum.total > 0 && photos.length !== activeAlbum.total">
-                  · 云端申报 {{ activeAlbum.total }}
-                </template>
+                <template v-if="activeAlbum && activeAlbum.total > 0 && photos.length !== activeAlbum.total"> · 云端申报 {{ activeAlbum.total }} </template>
               </span>
             </div>
             <div class="photo-head-actions">
-              <a-button size="small" type="primary" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onSyncAlbum">
-                下载本相册
-              </a-button>
-              <a-button
-                size="small"
-                :loading="uploadingAlbum"
-                :disabled="busy || !activeAlbumId || uploadingAlbum"
-                @click="onUploadToAlbum"
-              >
+              <a-button size="small" type="primary" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onSyncAlbum"> 下载本相册 </a-button>
+              <a-button size="small" :loading="uploadingAlbum" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onUploadToAlbum">
                 上传到本相册
               </a-button>
             </div>
@@ -923,12 +832,13 @@ watch(drawerOpen, open => {
                       :title="row.photo.name"
                       @click="onCellClick(row)"
                     >
-                      <QzoneLazyImg
+                      <ProtocolLazyThumb
                         v-if="row.photo.thumbUrl"
+                        protocol="qzoneimg"
                         :remote-url="row.photo.thumbUrl"
                         :scroll-root="photoScrollRef"
-                        kind="thumb"
-                        :media-kind="row.photo.mediaKind === 'video' ? 'video' : 'image'"
+                        qzone-kind="thumb"
+                        :kind="row.photo.mediaKind === 'video' ? 'video' : 'image'"
                         :ext="row.photo.name?.split('.').pop()"
                       />
                       <div v-else class="cell-ph" />
@@ -946,51 +856,26 @@ watch(drawerOpen, open => {
         </section>
       </div>
     </div>
-  </a-drawer>
 
-  <MediaLightboxShell
-    :open="previewOpen"
-    :title="previewTitle"
-    :meta="previewMeta"
-    :loading="previewLoading"
-    loading-tip="正在准备视频…"
-    :can-prev="previewIndex > 0"
-    :can-next="previewIndex < photos.length - 1"
-    @close="closePreview"
-    @prev="previewNav(-1)"
-    @next="previewNav(1)"
-  >
-    <video v-if="previewIsVideo && previewVideoSrc" class="viewer-media" controls autoplay playsinline :src="previewVideoSrc" />
-    <BaseImage
-      v-else-if="!previewIsVideo && previewImageSrc"
-      class="viewer-media viewer-img"
-      :src="previewImageSrc"
-      fit="contain"
-      width="100%"
-      max-height="100%"
-      :lazy="false"
-    />
-    <div v-else-if="!previewLoading" class="preview-empty">
-      {{ previewIsVideo ? "视频准备中或无法播放" : "暂无预览" }}
-    </div>
-  </MediaLightboxShell>
+    <template #lightbox>
+      <video v-if="previewIsVideo && previewVideoSrc" class="viewer-media" controls autoplay playsinline :src="previewVideoSrc" />
+      <BaseImage
+        v-else-if="!previewIsVideo && previewImageSrc"
+        class="viewer-media viewer-img"
+        :src="previewImageSrc"
+        fit="contain"
+        width="100%"
+        max-height="100%"
+        :lazy="false"
+      />
+      <div v-else-if="!previewLoading" class="preview-empty">
+        {{ previewIsVideo ? "视频准备中或无法播放" : "暂无预览" }}
+      </div>
+    </template>
+  </SyncFabShell>
 </template>
 
 <style scoped lang="scss">
-.fab-root {
-  position: fixed;
-  z-index: 1000;
-  touch-action: none;
-  user-select: none;
-  cursor: grab;
-  &.is-dragging {
-    cursor: grabbing;
-    .fab-btn {
-      transform: none;
-      transition: none;
-    }
-  }
-}
 .fab-btn {
   width: 58px;
   height: 58px;
@@ -1317,12 +1202,7 @@ watch(drawerOpen, open => {
 .cell-ph {
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.06),
-    rgba(255, 255, 255, 0.12),
-    rgba(255, 255, 255, 0.06)
-  );
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
   background-size: 200% 100%;
 }
 .cell-badge {

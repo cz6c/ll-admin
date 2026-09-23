@@ -8,8 +8,8 @@
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
-import IcloudLazyImg from "./IcloudLazyImg.vue";
-import MediaLightboxShell from "./MediaLightboxShell.vue";
+import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
+import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import {
   formatIcloudSyncError,
@@ -31,7 +31,7 @@ import {
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
-import { useDraggable, useEventListener, useThrottleFn } from "@vueuse/core";
+import { useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -133,9 +133,7 @@ function isCloudRowSelected(row: CloudListDisplayRow): boolean {
 
 function toggleCloudRowSelect(row: CloudListDisplayRow) {
   if (!canSelectCloudRow(row)) return;
-  const nextKeys = isCloudRowSelected(row)
-    ? cloudSelectedKeys.value.filter(k => k !== row.rowKey)
-    : [...cloudSelectedKeys.value, row.rowKey];
+  const nextKeys = isCloudRowSelected(row) ? cloudSelectedKeys.value.filter(k => k !== row.rowKey) : [...cloudSelectedKeys.value, row.rowKey];
   const nextKeySet = new Set(nextKeys);
   const nextMap = new Map(cloudSelectedRowsByKey.value);
   for (const key of [...nextMap.keys()]) {
@@ -312,9 +310,7 @@ const deleteAllSyncedDisabled = computed(() => {
 });
 
 /** 勾选入口：有已下载项且无任务占用 */
-const canEnterSelectMode = computed(
-  () => canManageCloudSpace.value && (cloudSummary.value?.synced ?? 0) > 0
-);
+const canEnterSelectMode = computed(() => canManageCloudSpace.value && (cloudSummary.value?.synced ?? 0) > 0);
 
 /**
  * 展示 catalog 时间键（Library=拍摄时间；Recents=加入时间）
@@ -594,101 +590,6 @@ const iconName = computed(() => {
 /** 下载中显示进度环，其余状态显示图标 */
 const showProgress = computed(() => fabState.value.percent > 0 && fabState.value.percent < 100);
 
-/** FAB 可拖到边角，避免挡住列表勾选/改拍摄时间等操作；位置落本地 */
-const FAB_POS_STORAGE_KEY = "album.icloudSyncFab.pos";
-const FAB_SIZE_PX = 58;
-const FAB_EDGE_MARGIN_PX = 8;
-const FAB_DRAG_CLICK_THRESHOLD_PX = 12;
-
-const fabRootRef = ref<HTMLElement | null>(null);
-/** 本轮拖动位移超阈值时不当作点击；打开抽屉改在 pointerup（避免 click 被吞） */
-let fabDragOrigin = { x: 0, y: 0 };
-let fabDragMoved = false;
-
-function defaultFabPos(): { x: number; y: number } {
-  if (typeof window === "undefined") return { x: 24, y: 24 };
-  return {
-    x: Math.max(FAB_EDGE_MARGIN_PX, window.innerWidth - FAB_SIZE_PX - 24),
-    y: Math.max(FAB_EDGE_MARGIN_PX, window.innerHeight - FAB_SIZE_PX - 24)
-  };
-}
-
-/** CS 顶栏高度（Web 为 0）；拖动上界须避开 CsToolsBar */
-function csShellBarHeightPx(): number {
-  if (typeof document === "undefined") return 0;
-  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 0;
-}
-
-function clampFabPos(x: number, y: number): { x: number; y: number } {
-  if (typeof window === "undefined") return { x, y };
-  const minY = csShellBarHeightPx() + FAB_EDGE_MARGIN_PX;
-  const maxX = Math.max(FAB_EDGE_MARGIN_PX, window.innerWidth - FAB_SIZE_PX - FAB_EDGE_MARGIN_PX);
-  const maxY = Math.max(minY, window.innerHeight - FAB_SIZE_PX - FAB_EDGE_MARGIN_PX);
-  return {
-    x: Math.min(Math.max(FAB_EDGE_MARGIN_PX, x), maxX),
-    y: Math.min(Math.max(minY, y), maxY)
-  };
-}
-
-function readStoredFabPos(): { x: number; y: number } {
-  try {
-    const raw = localStorage.getItem(FAB_POS_STORAGE_KEY);
-    if (!raw) return defaultFabPos();
-    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
-    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return defaultFabPos();
-    return clampFabPos(parsed.x, parsed.y);
-  } catch {
-    return defaultFabPos();
-  }
-}
-
-function persistFabPos(x: number, y: number) {
-  try {
-    localStorage.setItem(FAB_POS_STORAGE_KEY, JSON.stringify({ x, y }));
-  } catch {
-    /* 隐私模式 / 配额满时忽略 */
-  }
-}
-
-const {
-  x: fabX,
-  y: fabY,
-  style: fabDragStyle,
-  isDragging: fabDragging
-} = useDraggable(fabRootRef, {
-  initialValue: typeof window !== "undefined" ? readStoredFabPos() : { x: 24, y: 24 },
-  preventDefault: false,
-  onStart(pos) {
-    fabDragMoved = false;
-    fabDragOrigin = { x: pos.x, y: pos.y };
-  },
-  onMove(pos) {
-    const next = clampFabPos(pos.x, pos.y);
-    if (next.x !== pos.x || next.y !== pos.y) {
-      fabX.value = next.x;
-      fabY.value = next.y;
-    }
-    if (Math.abs(pos.x - fabDragOrigin.x) > FAB_DRAG_CLICK_THRESHOLD_PX || Math.abs(pos.y - fabDragOrigin.y) > FAB_DRAG_CLICK_THRESHOLD_PX) {
-      fabDragMoved = true;
-    }
-  },
-  onEnd(pos) {
-    const next = clampFabPos(pos.x, pos.y);
-    fabX.value = next.x;
-    fabY.value = next.y;
-    persistFabPos(next.x, next.y);
-    if (!fabDragMoved) {
-      drawerOpen.value = true;
-    }
-  }
-});
-
-useEventListener(window, "resize", () => {
-  const next = clampFabPos(fabX.value, fabY.value);
-  fabX.value = next.x;
-  fabY.value = next.y;
-});
-
 async function onLogout() {
   loggingOut.value = true;
   try {
@@ -701,9 +602,6 @@ async function onLogout() {
 }
 
 onMounted(() => {
-  const next = readStoredFabPos();
-  fabX.value = next.x;
-  fabY.value = next.y;
   if (isTauri()) void hydrateFromStorage();
 });
 
@@ -714,23 +612,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="fabRootRef" class="fab-root" :class="{ 'is-dragging': fabDragging }" :style="fabDragStyle">
-    <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
-      <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
-      <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
-    </a-button>
-  </div>
-
-  <a-drawer
-    v-model:open="drawerOpen"
-    title="iCloud 下载"
-    placement="right"
-    :width="1024"
-    class="icloud-sync-drawer"
-    :keyboard="!previewOpen"
-    :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
+  <SyncFabShell
+    v-model:drawer-open="drawerOpen"
+    storage-key="album.icloudSyncFab.pos"
+    default-edge="right"
+    drawer-title="iCloud 下载"
+    drawer-class="icloud-sync-drawer"
+    :lightbox-open="previewOpen"
+    :lightbox-title="previewTitle"
+    :lightbox-meta="previewMeta"
+    :lightbox-can-prev="previewIndex > 0"
+    :lightbox-can-next="previewIndex >= 0 && previewIndex < cloudRows.length - 1"
+    @lightbox-close="closeCloudPreview"
+    @lightbox-prev="navCloudPreview(-1)"
+    @lightbox-next="navCloudPreview(1)"
   >
-    <template #extra>
+    <template #fab>
+      <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
+        <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
+        <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
+      </a-button>
+    </template>
+
+    <template #drawer-extra>
       <a-space v-if="isLoggedIn" :size="4" align="center">
         <div class="drawer-extra-tag">{{ maskedCurrentAppleId }}</div>
         <a-button type="link" size="small" danger :loading="loggingOut" @click="onLogout">退出</a-button>
@@ -758,9 +662,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="toolbar-right">
               <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">
-                  刷新状态
-                </a-button>
+                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
               </a-tooltip>
               <template v-if="!selectMode">
                 <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
@@ -772,17 +674,12 @@ onBeforeUnmount(() => {
                   </a-button>
                 </a-tooltip>
               </template>
-                <template v-else>
-                  <a-button
-                    danger
-                    :loading="deletingCloud"
-                    :disabled="selectedCloudCount === 0 || !canManageCloudSpace"
-                    @click="confirmDeleteCloud()"
-                  >
-                    从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}
-                  </a-button>
-                  <a-button @click="exitSelectMode">取消勾选</a-button>
-                </template>
+              <template v-else>
+                <a-button danger :loading="deletingCloud" :disabled="selectedCloudCount === 0 || !canManageCloudSpace" @click="confirmDeleteCloud()">
+                  从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}
+                </a-button>
+                <a-button @click="exitSelectMode">取消勾选</a-button>
+              </template>
             </div>
           </div>
         </div>
@@ -808,7 +705,8 @@ onBeforeUnmount(() => {
                 :title="`${row.displayFilename}\n${formatSortKeyTime(row.captureAt ?? row.sortKey)} · ${row.displayStateLabel}`"
                 @click="onCloudCellClick(row)"
               >
-                <IcloudLazyImg
+                <ProtocolLazyThumb
+                  protocol="icloudimg"
                   :asset-id="row.assetId"
                   :local-path="cloudRowLocalImagePath(row)"
                   :scroll-root="cloudGridScrollRef"
@@ -834,43 +732,15 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
-  </a-drawer>
 
-  <MediaLightboxShell
-    :open="previewOpen"
-    :title="previewTitle"
-    :meta="previewMeta"
-    :can-prev="previewIndex > 0"
-    :can-next="previewIndex >= 0 && previewIndex < cloudRows.length - 1"
-    @close="closeCloudPreview"
-    @prev="navCloudPreview(-1)"
-    @next="navCloudPreview(1)"
-  >
-    <BaseImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
-    <a-empty v-else description="无法加载预览" :image="false" />
-  </MediaLightboxShell>
+    <template #lightbox>
+      <BaseImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
+      <a-empty v-else description="无法加载预览" :image="false" />
+    </template>
+  </SyncFabShell>
 </template>
 
 <style scoped lang="scss">
-.fab-root {
-  position: fixed;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  pointer-events: auto;
-  touch-action: none;
-  user-select: none;
-  cursor: grab;
-  &.is-dragging {
-    cursor: grabbing;
-    .fab-btn {
-      transition: none;
-      transform: none;
-    }
-  }
-}
 .fab-btn {
   width: 58px;
   height: 58px;
@@ -1080,13 +950,5 @@ onBeforeUnmount(() => {
 .cloud-grid-count {
   font-size: 12px;
   color: var(--color-text-tertiary);
-}
-</style>
-
-<style lang="scss">
-/* 抽屉 body 撑满视口，表格区 flex 滚动 */
-.icloud-sync-drawer.ant-drawer .ant-drawer-body {
-  display: flex;
-  flex-direction: column;
 }
 </style>

@@ -8,27 +8,11 @@
 
  */
 
-
-
-import type {
-
-  IcloudSyncCloudStateFilter,
-
-  IcloudSyncCloudStateSummary,
-
-  IcloudSyncDeleteAssetItem,
-
-  IcloudSyncSyncAssetRow
-
-} from "@/api/icloudSync";
-
-
+import type { IcloudSyncDeleteAssetItem, IcloudSyncSyncAssetRow } from "@/api/icloudSync";
 
 /** 抽屉列表行（rowKey 已归一） */
 
 export type IcloudSyncCloudListRow = IcloudSyncSyncAssetRow & { rowKey: string };
-
-
 
 /**
 
@@ -39,7 +23,6 @@ export type IcloudSyncCloudListRow = IcloudSyncSyncAssetRow & { rowKey: string }
  */
 
 export function cloudListDisplayFilename(row: IcloudSyncSyncAssetRow): string {
-
   const still = row.originalFilename.trim();
 
   const mov = row.liveMovFilename?.trim();
@@ -47,23 +30,17 @@ export function cloudListDisplayFilename(row: IcloudSyncSyncAssetRow): string {
   if (mov && mov !== still) return `${still}, ${mov}`;
 
   if (row.mediaKind === "live" || row.part === "still") {
-
     const derived = still.replace(/\.[^.]+$/, "") + ".MOV";
 
     if (derived !== still) return `${still}, ${derived}`;
-
   }
 
   return still;
-
 }
-
-
 
 /** still+mov 任一侧 failed 即下载失败；任一侧 pending 视为未完成（cloud_state 仍主导） */
 
 function pairDownloadStatus(still?: string | null, mov?: string | null): string | null {
-
   const list = [still, mov].filter((s): s is string => Boolean(s));
 
   if (list.some(s => s === "failed")) return "failed";
@@ -71,18 +48,11 @@ function pairDownloadStatus(still?: string | null, mov?: string | null): string 
   if (list.some(s => s === "pending")) return "pending";
 
   return null;
-
 }
-
-
 
 function isLiveRow(row: IcloudSyncSyncAssetRow): boolean {
-
   return row.mediaKind === "live" || row.part === "still" || row.part === "mov";
-
 }
-
-
 
 /**
 
@@ -93,41 +63,27 @@ function isLiveRow(row: IcloudSyncSyncAssetRow): boolean {
  */
 
 export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudSyncSyncAssetRow[] {
-
   const stillByAsset = new Map<string, IcloudSyncSyncAssetRow>();
 
   const movByAsset = new Map<string, IcloudSyncSyncAssetRow>();
 
   const others: IcloudSyncSyncAssetRow[] = [];
 
-
-
   for (const row of items) {
-
     if (row.part === "still") {
-
       stillByAsset.set(row.assetId, row);
-
     } else if (row.part === "mov") {
-
       movByAsset.set(row.assetId, row);
-
     } else {
-
       others.push(row);
-
     }
-
   }
-
-
 
   const merged: IcloudSyncSyncAssetRow[] = [...others];
 
   const liveIds = new Set([...stillByAsset.keys(), ...movByAsset.keys()]);
 
   for (const assetId of liveIds) {
-
     const still = stillByAsset.get(assetId);
 
     const mov = movByAsset.get(assetId);
@@ -135,7 +91,6 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
     const base = still ?? mov!;
 
     merged.push({
-
       ...base,
 
       liveMovFilename: still?.liveMovFilename ?? mov?.originalFilename ?? base.liveMovFilename,
@@ -144,15 +99,10 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
 
       // 兜底：分页偶发仍+mov 同页时，任一侧本地文件在盘上即「本地仍在」
       localFilePresent: Boolean(still?.localFilePresent || mov?.localFilePresent || base.localFilePresent)
-
     });
-
   }
 
-
-
   return merged.sort((a, b) => {
-
     const ka = a.sortKey ?? "";
 
     const kb = b.sortKey ?? "";
@@ -160,12 +110,8 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
     if (ka !== kb) return ka.localeCompare(kb);
 
     return a.assetId.localeCompare(b.assetId);
-
   });
-
 }
-
-
 
 /**
 
@@ -174,18 +120,12 @@ export function mergeLiveSyncAssetRows(items: IcloudSyncSyncAssetRow[]): IcloudS
  */
 
 export function prepareCloudListRows(items: IcloudSyncSyncAssetRow[]): IcloudSyncCloudListRow[] {
-
   return mergeLiveSyncAssetRows(items).map(row => ({
-
     ...row,
 
     rowKey: row.assetId
-
   }));
-
 }
-
-
 
 /**
 
@@ -196,7 +136,6 @@ export function prepareCloudListRows(items: IcloudSyncSyncAssetRow[]): IcloudSyn
  */
 
 export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
-
   const activeDl = pairDownloadStatus(row.downloadStatus, row.liveMovDownloadStatus);
 
   if (activeDl === "failed") return "download_failed";
@@ -206,10 +145,7 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
   if (row.cloudState === "modified_cloud") return "cloud_only";
 
   return row.cloudState;
-
 }
-
-
 
 const CLOUD_STATE_LABELS: Record<string, string> = {
   cloud_only: "待下载",
@@ -223,49 +159,6 @@ export function cloudStateLabel(state: string): string {
   return CLOUD_STATE_LABELS[state] ?? state;
 }
 
-/** iCloud 列表状态 Tab 单项；value 对应后端 filter */
-export interface CloudListStateFilterOption {
-  value: IcloudSyncCloudStateFilter;
-  countKey?: keyof IcloudSyncCloudStateSummary;
-  /** Tab 短文案；省略时与表格状态列 cloudStateLabel 一致 */
-  tabLabel?: string;
-  /** Tab 角标用红色（失败类） */
-  dangerCount?: boolean;
-}
-
-/**
- * iCloud 列表可筛选状态（顺序即历史全量 Tab；分栏请用下方 PULL/FREE 子集）
- * @note modified_cloud 已收敛进 cloud_only；download_failed 为活跃 sync job 派生态
- */
-export const CLOUD_LIST_STATE_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", countKey: "total", tabLabel: "全部" },
-  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待下载" },
-  { value: "download_failed", countKey: "downloadFailed", tabLabel: "下载失败", dangerCount: true },
-  { value: "synced", countKey: "synced", tabLabel: "已下载" }
-];
-
-/**
- * 「下载到本地」列表 Tab：全部 / 待下载 / 已下载 / 下载失败
- * @note 抽屉仅保留此子集；删云走工具栏勾选已下载项
- */
-export const CLOUD_LIST_PULL_FILTER_OPTIONS: CloudListStateFilterOption[] = [
-  { value: "all", countKey: "total", tabLabel: "全部" },
-  { value: "cloud_only", countKey: "cloudOnly", tabLabel: "待下载" },
-  { value: "synced", countKey: "synced", tabLabel: "已下载" },
-  { value: "download_failed", countKey: "downloadFailed", tabLabel: "下载失败", dangerCount: true }
-];
-
-/** 状态筛选完整文案；all 为筛选用，其余与表格状态列 Tag 一致 */
-export function cloudListStateFilterLabel(filter: IcloudSyncCloudStateFilter): string {
-  if (filter === "all") return "全部状态";
-  return cloudStateLabel(filter);
-}
-
-/** Tab 按钮文案（可短于表格列完整 Tag） */
-export function cloudFilterTabLabel(option: CloudListStateFilterOption): string {
-  return option.tabLabel ?? cloudListStateFilterLabel(option.value);
-}
-
 /** iCloud 资产状态 Tag 颜色（Ant Design Vue） */
 export function cloudStateColor(state: string): string {
   const normalized = state === "modified_cloud" ? "cloud_only" : state;
@@ -275,8 +168,6 @@ export function cloudStateColor(state: string): string {
   return "default";
 }
 
-
-
 /**
 
  * 删云 / 撤删云入参：Live 固定传 still，后端 expand 成对 mov
@@ -284,18 +175,12 @@ export function cloudStateColor(state: string): string {
  */
 
 export function cloudListRowsToAssetItems(rows: IcloudSyncSyncAssetRow[]): IcloudSyncDeleteAssetItem[] {
-
   return rows.map(row => ({
-
     assetId: row.assetId,
 
     part: isLiveRow(row) && row.part !== "mov" ? "still" : row.part
-
   }));
-
 }
-
-
 
 /**
 
@@ -304,14 +189,7 @@ export function cloudListRowsToAssetItems(rows: IcloudSyncSyncAssetRow[]): Iclou
  */
 
 export function adjustCloudListTotal(rawTotal: number, rawItems: IcloudSyncSyncAssetRow[]): number {
-
-  const hiddenMov = rawItems.filter(
-
-    row => row.part === "mov" && rawItems.some(r => r.assetId === row.assetId && r.part === "still")
-
-  ).length;
+  const hiddenMov = rawItems.filter(row => row.part === "mov" && rawItems.some(r => r.assetId === row.assetId && r.part === "still")).length;
 
   return Math.max(0, rawTotal - hiddenMov);
-
 }
-

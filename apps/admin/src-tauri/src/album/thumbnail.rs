@@ -38,17 +38,90 @@ pub fn is_video_ext(ext: &str) -> bool {
   )
 }
 
-/// WebView 可原生显示的栅格扩展名：解码全失败时可把原路径当 `thumb_path`
-/// @note HEIC/TIFF/AVIF/SVG 不在此列——浏览器或协议侧无法直接当宫格图
+/// WebView 可原生显示的栅格扩展名：解码全失败时可把原路径当 `thumb_path`（须再过体积/像素门禁）
+/// @note HEIC/TIFF/AVIF/SVG/GIF 不在此列——GIF 动图多格同播会拖垮 WebView
 pub fn can_use_origin_as_thumb(ext: &str) -> bool {
   matches!(
     ext,
-    "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp"
+    "jpg" | "jpeg" | "png" | "webp" | "bmp"
   )
 }
 
-/// 全尺寸解码：`image` → 非 HEIF 再试 ffmpeg → HEIF 走专用路径
-fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<image::DynamicImage> {
+/// 原图当缩略图：文件体积上限（与 discover 小图优化一致）
+pub const ORIGIN_AS_THUMB_MAX_BYTES: u64 = 100 * 1024;
+/// 原图当缩略图：像素上限（约 2MP）；超限即使体积小也不回退，避免 WebView 解码灾难
+pub const ORIGIN_AS_THUMB_MAX_PIXELS: u64 = 2_000_000;
+/// 超过此像素数禁止先全尺寸进内存：改走 ffmpeg scale-on-decode（约 8MP）
+pub const FULL_DECODE_MAX_PIXELS: u64 = 8_000_000;
+
+/**
+ * 是否允许把原文件路径写入 `thumb_path`（给 WebView 直接加载）
+ * @note 大图解码失败时绝不能回退原路径——宫格会解码整图导致卡死
+ */
+pub fn may_reuse_origin_as_thumb(ext: &str, file_path: &Path) -> bool {
+  if !can_use_origin_as_thumb(ext) || !file_path.is_file() {
+    return false;
+  }
+  let Ok(meta) = std::fs::metadata(file_path) else {
+    return false;
+  };
+  if meta.len() > ORIGIN_AS_THUMB_MAX_BYTES {
+    return false;
+  }
+  if let Ok((w, h)) = image::image_dimensions(file_path) {
+    let pixels = u64::from(w).saturating_mul(u64::from(h));
+    if pixels > ORIGIN_AS_THUMB_MAX_PIXELS {
+      return false;
+    }
+  }
+  true
+}
+
+/// 像素量是否超过全尺寸解码安全阈值（须改 ffmpeg 边解边缩）
+pub fn needs_scaled_raster_decode(width: u32, height: u32) -> bool {
+  u64::from(width).saturating_mul(u64::from(height)) > FULL_DECODE_MAX_PIXELS
+}
+
+/// 栅格解码供网格缩略图：超阈值优先 ffmpeg scale；普通图 `image` → ffmpeg scale 回退
+/// @note HEIF 仍走专用全尺寸路径（lightbox preview 需要）；`thumb_max_side` 仅作用于非 HEIF
+fn open_raster_image(
+  file_path: &Path,
+  ffmpeg_bin: Option<&Path>,
+  thumb_max_side: u32,
+) -> Option<image::DynamicImage> {
+  let ext = file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase())
+    .unwrap_or_default();
+  if is_heif_ext(&ext) {
+    return heic_decode::decode_heif_file(file_path, ffmpeg_bin);
+  }
+
+  let prefer_scale = image::image_dimensions(file_path)
+    .ok()
+    .map(|(w, h)| needs_scaled_raster_decode(w, h))
+    .unwrap_or(false);
+
+  if prefer_scale {
+    if let Some(ffmpeg) = ffmpeg_bin {
+      if let Some(img) =
+        ffmpeg::decode_raster_via_ffmpeg(ffmpeg, file_path, Some(thumb_max_side))
+      {
+        return Some(img);
+      }
+      log::warn!(
+        "album: 超大图 ffmpeg scale 失败，尝试全尺寸兜底 ({})",
+        file_path.display()
+      );
+    } else {
+      log::warn!(
+        "album: 超大图需 scale 解码但无 ffmpeg，尝试全尺寸 ({})",
+        file_path.display()
+      );
+    }
+  }
+
   match image::open(file_path) {
     Ok(img) => return Some(img),
     Err(e) => {
@@ -60,17 +133,11 @@ fn open_raster_image(file_path: &Path, ffmpeg_bin: Option<&Path>) -> Option<imag
     }
   }
 
-  let ext = file_path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase())
-    .unwrap_or_default();
-  if is_heif_ext(&ext) {
-    return heic_decode::decode_heif_file(file_path, ffmpeg_bin);
-  }
-
   if let Some(ffmpeg) = ffmpeg_bin {
-    if let Some(img) = ffmpeg::decode_raster_via_ffmpeg(ffmpeg, file_path) {
+    // 缩略图回退一律带 scale：畸形/非标大图避免二次全尺寸 OOM
+    if let Some(img) =
+      ffmpeg::decode_raster_via_ffmpeg(ffmpeg, file_path, Some(thumb_max_side))
+    {
       return Some(img);
     }
     log::warn!(
@@ -168,6 +235,7 @@ pub fn generate_thumbnail(
     .unwrap_or(0);
 
   let target = (size * 2).max(256);
+  // target≈316（size=158）：对齐宫格 ~180～210 × DPR≤1.5；改 size/公式须 bump ALBUM_CACHE_VERSION
   let cache_file = thumb_cache_file(cache_dir, path, modified, target);
   let preview_file = preview_cache_file(cache_dir, path, modified);
 
@@ -239,7 +307,7 @@ pub fn generate_thumbnail(
         }
       }
     } else {
-      open_raster_image(file_path, ffmpeg_bin)
+      open_raster_image(file_path, ffmpeg_bin, target)
     }
   } else {
     None
@@ -250,7 +318,8 @@ pub fn generate_thumbnail(
       Some(preview_file.to_string_lossy().into_owned())
     } else if let Some(ref full) = img {
       save_preview_jpeg(full, &preview_file)
-    } else if let Some(full) = open_raster_image(file_path, ffmpeg_bin) {
+    } else if let Some(full) = open_raster_image(file_path, ffmpeg_bin, target) {
+      // HEIF 在 open_raster_image 内仍走全尺寸 heic 路径；target 仅对非 HEIF 生效
       save_preview_jpeg(&full, &preview_file)
     } else {
       None
@@ -259,32 +328,43 @@ pub fn generate_thumbnail(
     None
   };
 
-  // 解码链：缓存命中 → WebP → 浏览器可显格式回退原路径（避免 fail_count 永久占位）
+  // 解码链：缓存命中 → WebP → 仅小图可回退原路径（禁止大图/GIF 回退，否则宫格卡死）
   let thumb_path = if thumb_ready {
     Some(cache_file.to_string_lossy().into_owned())
   } else if let Some(ref decoded) = img {
     let thumb = decoded.thumbnail(target, target);
     save_thumb_webp(&thumb, &cache_file)
-  } else if can_use_origin_as_thumb(&ext) && file_path.is_file() {
+  } else if may_reuse_origin_as_thumb(&ext, file_path) {
     log::info!(
-      "album: 缩略图解码失败，回退原图路径 ({})",
+      "album: 缩略图解码失败，回退小图原路径 ({})",
       file_path.display()
     );
     Some(path.to_string())
   } else {
+    if can_use_origin_as_thumb(&ext) && file_path.is_file() {
+      log::warn!(
+        "album: 缩略图解码失败且原图过大/不适合作缩略图，留空占位 ({})",
+        file_path.display()
+      );
+    }
     None
   };
 
-  // 宽高：优先整图解码结果；视频封面帧尺寸不作正式分辨率（打开时 ffprobe）
+  // 宽高：超大图可能经 scale 解码，元数据必须用文件头，不能写缩略图像素
+  // 视频封面帧尺寸不作正式分辨率（打开时 ffprobe）
   let (width, height) = if is_video_ext(&ext) {
     (None, None)
-  } else if let Some(ref decoded) = img {
-    (Some(decoded.width()), Some(decoded.height()))
   } else {
-    image::image_dimensions(file_path)
-      .ok()
-      .map(|(w, h)| (Some(w), Some(h)))
-      .unwrap_or((None, None))
+    let header = image::image_dimensions(file_path).ok();
+    if let Some((w, h)) = header.filter(|(w, h)| needs_scaled_raster_decode(*w, *h)) {
+      (Some(w), Some(h))
+    } else if let Some(ref decoded) = img {
+      (Some(decoded.width()), Some(decoded.height()))
+    } else {
+      header
+        .map(|(w, h)| (Some(w), Some(h)))
+        .unwrap_or((None, None))
+    }
   };
 
   ThumbnailOutcome {
@@ -358,7 +438,7 @@ pub fn generate_thumbnails_batch_with_progress(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::path::Path;
+  use std::path::{Path, PathBuf};
 
   #[test]
   fn cache_key_stable_for_same_source() {
@@ -386,8 +466,18 @@ mod tests {
     assert!(can_use_origin_as_thumb("jpg"));
     assert!(can_use_origin_as_thumb("jpeg"));
     assert!(can_use_origin_as_thumb("png"));
+    assert!(can_use_origin_as_thumb("webp"));
+    assert!(!can_use_origin_as_thumb("gif"));
     assert!(!can_use_origin_as_thumb("heic"));
     assert!(!can_use_origin_as_thumb("mp4"));
+  }
+
+  #[test]
+  fn needs_scaled_raster_decode_trips_above_8mp() {
+    assert!(!needs_scaled_raster_decode(4000, 2000)); // 8MP 边界内
+    assert!(!needs_scaled_raster_decode(1, 1));
+    assert!(needs_scaled_raster_decode(4001, 2000)); // >8MP
+    assert!(needs_scaled_raster_decode(10923, 16384)); // 实锤卡顿样本量级
   }
 
   /// image+ffmpeg 都解不开时，浏览器可显格式应回退原路径，避免永久 JPG 占位
@@ -406,8 +496,40 @@ mod tests {
     let cache = base.join("cache");
     let _ = std::fs::create_dir_all(&cache);
     let path = jpg.to_string_lossy().into_owned();
-    let outcome = generate_thumbnail(&path, &cache, 158, None);
+    let outcome = generate_thumbnail(&path, &cache, crate::album::types::ALBUM_THUMB_GENERATE_SIZE, None);
     assert_eq!(outcome.thumb_path.as_deref(), Some(path.as_str()));
     let _ = std::fs::remove_dir_all(&base);
+  }
+
+  /// 本机有样本与捆绑 ffmpeg 时：>8MP JPG 须出 WebP，且 thumb 不是原路径
+  #[test]
+  fn generate_thumbnail_scales_huge_jpg_sample_if_present() {
+    let src = Path::new(r"E:\testFiles\daniel-gomez-9QHmQTsSpIo-unsplash.jpg");
+    if !src.is_file() {
+      return;
+    }
+    let ffmpeg = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("resources")
+      .join("ffmpeg.exe");
+    if !ffmpeg.is_file() {
+      return;
+    }
+    let cache = std::env::temp_dir().join(format!(
+      "album_thumb_huge_{}",
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&cache);
+    let path = src.to_string_lossy().into_owned();
+    let outcome = generate_thumbnail(&path, &cache, crate::album::types::ALBUM_THUMB_GENERATE_SIZE, Some(ffmpeg.as_path()));
+    let thumb = outcome.thumb_path.expect("huge jpg should get webp thumb");
+    assert_ne!(thumb, path);
+    assert!(thumb.ends_with(".webp"));
+    assert!(Path::new(&thumb).is_file());
+    assert_eq!(outcome.width, Some(10923));
+    assert_eq!(outcome.height, Some(16384));
+    let _ = std::fs::remove_dir_all(&cache);
   }
 }

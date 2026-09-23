@@ -94,9 +94,6 @@ function _useIcloudSyncJob() {
 
   let catalogTimer: ReturnType<typeof setInterval> | undefined;
   let listenersBound = false;
-  let unlistenProgress: (() => void) | undefined;
-  let unlistenJobStatus: (() => void) | undefined;
-  let unlistenCloudState: (() => void) | undefined;
   /** FAB 抽屉订阅 cloud-state-changed 时递增，供外部 watch 刷新列表 */
   const cloudStateTick = ref(0);
   /** 下载 progress 事件计数；抽屉云列表节流刷新 download_status */
@@ -112,15 +109,10 @@ function _useIcloudSyncJob() {
   });
 
   const isSyncTask = computed(() => taskType.value === "sync" || taskType.value === null);
-  const isCloudDeleteTask = computed(() => taskType.value === "cloudDelete");
   const isCatalogTask = computed(() => taskType.value === "catalog");
 
-  /**
-   * 将 Rust/事件里的 taskType 归一为前端枚举
-   * @note DB 存 cloud_delete；serde 事件为 cloudDelete — 两种都认，避免进度卡误判成下载
-   */
+  /** 将 Rust/事件里的 taskType 归一为前端枚举（删云不入 job） */
   function normalizeTaskType(raw: unknown): IcloudSyncTaskType | null {
-    if (raw === "cloudDelete" || raw === "cloud_delete") return "cloudDelete";
     if (raw === "sync" || raw === "catalog") return raw;
     return null;
   }
@@ -139,7 +131,7 @@ function _useIcloudSyncJob() {
   /** 仅 worker 已在 running 时可暂停；starting 准备阶段尚无 job，不可暂停 */
   const canPause = computed(() => {
     if (pausing.value || jobStatus.value !== "running") return false;
-    return isSyncTask.value || isCloudDeleteTask.value;
+    return isSyncTask.value;
   });
   const isDone = computed(() => jobStatus.value === "done");
   const isFailed = computed(() => jobStatus.value === "failed");
@@ -206,16 +198,13 @@ function _useIcloudSyncJob() {
   const statusHeadline = computed(() => {
     if (jobAccountMismatch.value) return "任务与当前账号不一致";
     if (showSessionExpiredAlert.value) {
-      if (isCloudDeleteTask.value) return "移除已暂停（登录失效）";
       return "下载已暂停（登录失效）";
     }
     if (isDone.value) {
-      if (isCloudDeleteTask.value) return "移除已完成";
       if (isCatalogTask.value) return "iCloud 目录已刷新";
       return "下载已完成";
     }
     if (isFailed.value) {
-      if (isCloudDeleteTask.value) return "移除失败";
       if (isCatalogTask.value) return "刷新 iCloud 目录失败";
       return "下载失败";
     }
@@ -224,20 +213,16 @@ function _useIcloudSyncJob() {
       return "正在扫描 iCloud 图库…";
     }
     if (isPausedUser.value) {
-      if (isCloudDeleteTask.value) return "移除已暂停";
       return "下载已暂停";
     }
     if (jobStatus.value === "running") {
-      if (isCloudDeleteTask.value) return "正在从 iCloud 移除…";
       return "正在下载";
     }
     // starting 早于 jobStatus 落盘：避免标题短暂落到 jobStatusLabel 的「—」
     if (starting.value) {
-      if (isCloudDeleteTask.value) return "正在准备移除…";
       return "正在准备下载…";
     }
     if (resuming.value) {
-      if (isCloudDeleteTask.value) return "正在继续移除…";
       return "正在继续下载…";
     }
     if (showEmptyGuide.value && !isLoggedIn.value) return "登录后即可下载";
@@ -251,7 +236,6 @@ function _useIcloudSyncJob() {
       return `本地任务属于 ${maskAppleId(jobAppleId.value)}，当前登录 ${maskedCurrentAppleId.value}。请取消任务或开始新下载。`;
     }
     if (showSessionExpiredAlert.value) {
-      if (isCloudDeleteTask.value) return "登录状态已失效，请重新登录后继续从 iCloud 移除。";
       return "登录状态已失效，已完成文件的进度已保留。请先重新登录后再继续下载。";
     }
     if (isFailed.value && jobErrorMessage.value) {
@@ -265,9 +249,6 @@ function _useIcloudSyncJob() {
     if (isCataloging.value) {
       return `正在扫描 iCloud 图库；已扫描 ${catalogElapsedText.value}。`;
     }
-    if (isDone.value && isCloudDeleteTask.value) {
-      return "iCloud 副本已移除，本地文件保留。";
-    }
     if (isDone.value && isSyncTask.value && outputDir.value) {
       return "照片已在本地。有新增时再点「下载到本地」；也可勾选已下载项从 iCloud 移除。";
     }
@@ -278,8 +259,7 @@ function _useIcloudSyncJob() {
       return "";
     }
     if (jobStatus.value === "running" && progress.value.filename) {
-      const prefix = isCloudDeleteTask.value ? "当前移除" : "当前";
-      return `${prefix}：${progress.value.filename}${etaText.value && isSyncTask.value ? ` · 预计剩余 ${etaText.value}` : ""}`;
+      return `当前：${progress.value.filename}${etaText.value && isSyncTask.value ? ` · 预计剩余 ${etaText.value}` : ""}`;
     }
     if (jobStatus.value === "running" && progress.value.total > 0) {
       const p = progress.value;
@@ -298,8 +278,7 @@ function _useIcloudSyncJob() {
       return { icon: "cloud" as const, color: "processing" as const, label, percent: 0, breathing: true };
     }
     if (isRunning.value) {
-      const label = isCloudDeleteTask.value ? `${progressPercent.value}%` : `${progressPercent.value}%`;
-      return { icon: "cloud" as const, color: "processing" as const, label, percent: progressPercent.value, breathing: false };
+      return { icon: "cloud" as const, color: "processing" as const, label: `${progressPercent.value}%`, percent: progressPercent.value, breathing: false };
     }
     if (isPaused.value) {
       return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: progressPercent.value, breathing: false };
@@ -312,9 +291,6 @@ function _useIcloudSyncJob() {
         percent: 0,
         breathing: false
       };
-    }
-    if (isDone.value && isCloudDeleteTask.value) {
-      return { icon: "check" as const, color: "success" as const, label: "已移除", percent: 100, breathing: false };
     }
     if (isDone.value) {
       return { icon: "check" as const, color: "success" as const, label: `${progress.value.done} 张`, percent: 100, breathing: false };
@@ -624,12 +600,10 @@ function _useIcloudSyncJob() {
   }
 
   function confirmCancelJob() {
-    const title = isCloudDeleteTask.value ? "取消移除任务？" : isCatalogTask.value ? "取消刷新 iCloud 目录？" : "取消下载任务？";
-    const content = isCloudDeleteTask.value
-      ? "将撤销尚未完成的 iCloud 移除队列；已移除的项不会恢复。"
-      : isCatalogTask.value
-        ? "将停止当前 iCloud 目录刷新；已有 cloud_state 统计会保留。"
-        : "将丢弃当前任务的下载进度（已下载到本地的文件会保留）。之后可重新「下载到本地」。";
+    const title = isCatalogTask.value ? "取消刷新 iCloud 目录？" : "取消下载任务？";
+    const content = isCatalogTask.value
+      ? "将停止当前 iCloud 目录刷新；已有 cloud_state 统计会保留。"
+      : "将丢弃当前任务的下载进度（已下载到本地的文件会保留）。之后可重新「下载到本地」。";
     void $feedback
       .confirm(content, {
         title,
@@ -719,7 +693,7 @@ function _useIcloudSyncJob() {
       };
     }
     if (canPause.value) {
-      const pauseLabel = isCloudDeleteTask.value ? "暂停移除" : "暂停下载";
+      const pauseLabel = "暂停下载";
       return {
         label: pauseLabel,
         kind: "danger",
@@ -729,7 +703,7 @@ function _useIcloudSyncJob() {
       };
     }
     if (isPaused.value && activeJobId.value != null) {
-      const resumeLabel = isCloudDeleteTask.value ? "继续移除" : isCatalogTask.value ? "继续" : "继续下载";
+      const resumeLabel = isCatalogTask.value ? "继续" : "继续下载";
       return {
         label: resumeLabel,
         kind: "primary",
@@ -787,7 +761,8 @@ function _useIcloudSyncJob() {
     if (listenersBound || !isTauri()) return;
     listenersBound = true;
 
-    unlistenProgress = await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
+    // 进程级长连接：相册壳生命周期内不卸载
+    await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
       if (event.payload) {
         progress.value = event.payload;
         downloadProgressTick.value += 1;
@@ -797,13 +772,13 @@ function _useIcloudSyncJob() {
       }
     });
 
-    unlistenJobStatus = await listen<IcloudSyncJobStatusResult>(ICLOUD_SYNC_JOB_STATUS_EVENT, event => {
+    await listen<IcloudSyncJobStatusResult>(ICLOUD_SYNC_JOB_STATUS_EVENT, event => {
       if (event.payload) {
         applyJobStatus(event.payload);
       }
     });
 
-    unlistenCloudState = await listen(ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT, () => {
+    await listen(ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT, () => {
       cloudStateTick.value += 1;
     });
   }
@@ -867,7 +842,6 @@ function _useIcloudSyncJob() {
     showEmptyGuide,
     showProgressBar,
     isSyncTask,
-    isCloudDeleteTask,
     isCatalogTask,
     progressPercent,
     catalogElapsedText,

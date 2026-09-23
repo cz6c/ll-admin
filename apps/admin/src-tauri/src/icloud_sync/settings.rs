@@ -1,6 +1,6 @@
 //! iCloud 同步非敏感配置读写
 //! 职责：`<appData>/icloud-sync/settings.json` 的 load/save 与默认输出目录推导
-//! 适用：设置页与队列读配置
+//! 适用：登录面板与队列读配置；下载并发为编译期常量 `DOWNLOAD_CONCURRENCY`
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,11 +9,6 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
 use super::types::IcloudSyncSettings;
-
-/// 规整并发下载数：P1 允许 1–3
-pub fn normalize_concurrency(raw: u32) -> u32 {
-  raw.clamp(1, 3)
-}
 
 /// 规整 iCloud 根域：仅允许 `com` / `cn`
 pub fn normalize_icloud_domain(raw: &str) -> String {
@@ -111,7 +106,6 @@ pub fn load_settings(app: &AppHandle) -> Result<IcloudSyncSettings, String> {
 pub fn save_settings(app: &AppHandle, settings: &IcloudSyncSettings) -> Result<(), String> {
   let path = settings_path(app)?;
   let mut normalized = settings.clone();
-  normalized.concurrency = normalize_concurrency(settings.concurrency);
   normalized.icloud_domain = normalize_icloud_domain(&settings.icloud_domain);
   let raw =
     serde_json::to_string_pretty(&normalized).map_err(|e| format!("序列化 iCloud 下载设置失败: {e}"))?;
@@ -159,12 +153,5 @@ mod tests {
     assert_eq!(normalize_icloud_domain("CN"), "cn");
     assert_eq!(normalize_icloud_domain("com"), "com");
     assert_eq!(normalize_icloud_domain("other"), "com");
-  }
-
-  #[test]
-  fn normalize_concurrency_clamps_1_to_3() {
-    assert_eq!(normalize_concurrency(0), 1);
-    assert_eq!(normalize_concurrency(2), 2);
-    assert_eq!(normalize_concurrency(9), 3);
   }
 }

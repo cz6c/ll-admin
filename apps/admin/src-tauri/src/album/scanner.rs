@@ -24,12 +24,23 @@ pub const ALBUM_SCAN_PROGRESS_EVENT: &str = "album://scan-progress";
 pub const ALBUM_THUMB_READY_EVENT: &str = "album://thumb-ready";
 
 fn emit_scan_progress(app: &AppHandle, phase: &str, done: u32, total: u32) {
+  emit_scan_progress_ex(app, phase, done, total, None);
+}
+
+fn emit_scan_progress_ex(
+  app: &AppHandle,
+  phase: &str,
+  done: u32,
+  total: u32,
+  failed: Option<u32>,
+) {
   let _ = app.emit(
     ALBUM_SCAN_PROGRESS_EVENT,
     AlbumScanProgressPayload {
       phase: phase.to_string(),
       done,
       total,
+      failed,
     },
   );
 }
@@ -547,6 +558,10 @@ pub fn discover_groups(
   }
 
   let conn = db::open_db(album_dir)?;
+  // 清掉历史「大图/GIF 原路径当 thumb」脏数据，避免宫格 WebView 解码整图卡死
+  let _ = db::scrub_unsafe_origin_thumbs(&conn);
+  // scale-on-decode 上线后：超大图若已打满 fail 阈值会永久跳过，清计数允许再入队
+  let _ = db::reset_exhausted_oversized_thumb_failures(&conn);
   let indexed = db::load_indexed_paths(&conn, root)?;
   let cache_dir = cache_dir_for(album_dir);
 
@@ -653,13 +668,10 @@ pub fn discover_groups(
       playback_path = thumbnail::probe_playback_cache(&cache_dir, &file_path);
     }
 
-    // 小图优化：< 100KB 且浏览器可原生显示的栅格图片，直接用原图当缩略图
-    // 跳过 webp 编码开销；HEIC 浏览器不支持必须转码；视频无法当缩略图必须抽帧
-    const SMALL_FILE_BYTES: u64 = 100 * 1024;
+    // 小图优化：< 100KB 且像素不高、浏览器可显的栅格，直接用原图当缩略图
+    // 跳过 webp 编码开销；HEIC/GIF/大像素禁止（WebView 会卡死）
     if thumb_path.is_none()
-      && size < SMALL_FILE_BYTES
-      && is_image(&ext)
-      && !matches!(ext.as_str(), "heic" | "heif")
+      && thumbnail::may_reuse_origin_as_thumb(&ext, path)
     {
       thumb_path = Some(file_path.clone());
     }
@@ -785,7 +797,6 @@ pub fn run_thumbnail_pipeline(
   app: AppHandle,
   root: String,
   album_dir: PathBuf,
-  thumb_size: u32,
   ffmpeg_bin: Option<PathBuf>,
   groups: Vec<MediaGroup>,
   cancel: ScanCancelToken,
@@ -822,6 +833,8 @@ pub fn run_thumbnail_pipeline(
   }
 
   let mut emitted_progress_total = false;
+  let mut thumbs_attempted: u32 = 0;
+  let mut thumbs_failed: u32 = 0;
 
   loop {
     if !still_current() || cancel.is_cancelled() {
@@ -832,10 +845,16 @@ pub fn run_thumbnail_pipeline(
       break;
     }
 
-    let thumb_total = u32::try_from(pending.len()).unwrap_or(u32::MAX);
+    let batch_len = u32::try_from(pending.len()).unwrap_or(u32::MAX);
+    thumbs_attempted = thumbs_attempted.saturating_add(batch_len);
+    let thumb_total = thumbs_attempted;
     if still_current() && !emitted_progress_total {
       emit_scan_progress(&app, "thumbnails", 0, thumb_total);
       emitted_progress_total = true;
+    } else if still_current() {
+      // 同步入队追加后刷新 total，便于进度条与收尾 failed 对齐
+      let done = thumbs_attempted.saturating_sub(batch_len);
+      emit_scan_progress(&app, "thumbnails", done, thumb_total);
     }
 
     let done_counter = AtomicU32::new(0);
@@ -850,7 +869,7 @@ pub fn run_thumbnail_pipeline(
     let outcomes = thumbnail::generate_thumbnails_batch_with_progress(
       &pending,
       &cache_dir,
-      thumb_size,
+      super::types::ALBUM_THUMB_GENERATE_SIZE,
       ffmpeg_bin.as_deref(),
       on_progress,
       &done_counter,
@@ -898,6 +917,7 @@ pub fn run_thumbnail_pipeline(
         );
       } else {
         fail_buf.push(path.clone());
+        thumbs_failed = thumbs_failed.saturating_add(1);
         emit_thumb_ready(
           &app, &path, None, None, None, None, None, None, None, None, None,
         );
@@ -944,6 +964,17 @@ pub fn run_thumbnail_pipeline(
       }
     }
     // 本批结束后若同步又追加了 pending → 继续 drain，不新开管线
+  }
+
+  // 缩略图阶段收尾：带 failed，前端最多 toast 一次（大图禁止回退后会走占位）
+  if still_current() && thumbs_attempted > 0 {
+    emit_scan_progress_ex(
+      &app,
+      "thumbnails",
+      thumbs_attempted,
+      thumbs_attempted,
+      Some(thumbs_failed),
+    );
   }
 
   if still_current() {

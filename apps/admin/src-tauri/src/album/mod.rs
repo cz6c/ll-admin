@@ -115,7 +115,6 @@ pub async fn album_scan(
   app: AppHandle,
   state: State<'_, Mutex<AlbumState>>,
   root: String,
-  thumb_size: u32,
   force: Option<bool>,
 ) -> Result<Vec<MediaGroup>, String> {
   let album_data_dir = album_dir(&app)?;
@@ -258,7 +257,6 @@ pub async fn album_scan(
         app_bg,
         root_for_bg,
         album_dir_for_bg,
-        thumb_size,
         ffmpeg_bin,
         groups_bg,
         cancel,

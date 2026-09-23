@@ -5,11 +5,12 @@
 //! 为何限流：WebView 会对列表一次性发起数十请求；无门闸时全部挂起排队，单张小图也会卡十几秒。
 
 use std::fs;
-use std::sync::{Condvar, Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::OnceLock;
 
 use tauri::http::{header, Request, StatusCode};
 use tauri::{AppHandle, UriSchemeContext, UriSchemeResponder, Wry};
+
+use crate::sync_common::FetchGate;
 
 use super::client;
 use super::session;
@@ -22,43 +23,17 @@ const THUMB_MAX: usize = 2 * 1024 * 1024;
 /// 预览体积上限
 const PREVIEW_MAX: usize = 8 * 1024 * 1024;
 
-struct FetchGate {
-  inflight: Mutex<u32>,
-  cv: Condvar,
-}
-
 fn fetch_gate() -> &'static FetchGate {
   static GATE: OnceLock<FetchGate> = OnceLock::new();
-  GATE.get_or_init(|| FetchGate {
-    inflight: Mutex::new(0),
-    cv: Condvar::new(),
-  })
+  GATE.get_or_init(|| FetchGate::new(MAX_INFLIGHT))
 }
 
 fn acquire_fetch_slot() {
-  let g = fetch_gate();
-  let mut n = g.inflight.lock().unwrap_or_else(|e| e.into_inner());
-  loop {
-    if *n < MAX_INFLIGHT {
-      *n += 1;
-      return;
-    }
-    let (guard, _) = g
-      .cv
-      .wait_timeout(n, Duration::from_secs(60))
-      .unwrap_or_else(|e| e.into_inner());
-    n = guard;
-  }
+  fetch_gate().acquire();
 }
 
 fn release_fetch_slot() {
-  let g = fetch_gate();
-  if let Ok(mut n) = g.inflight.lock() {
-    if *n > 0 {
-      *n -= 1;
-    }
-    g.cv.notify_one();
-  }
+  fetch_gate().release();
 }
 
 /**

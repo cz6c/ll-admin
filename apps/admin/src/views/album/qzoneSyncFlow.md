@@ -38,7 +38,7 @@
 | 原则 | 含义 |
 |------|------|
 | 双向（本相册） | 下载：云 → 本地；上传：本机选文件 → 当前相册（当前仅图片，`cgi_upload_image`） |
-| 与 iCloud 平行 | 独立 settings / session / state.db / 任务；互不合并 |
+| 与 iCloud 平行 | 独立 session / state.db / 任务；落盘写死 `{albumRoot}/QzoneSync`；互不合并 |
 | 本地优先 | 已存在非空文件则跳过并标 synced；仍补 mtime / 缺省 EXIF 时间；**缺盘则 reconcile 回 cloud_only** |
 | 合规 | 仅操作有权访问的本人相册；会话只存本机 |
 | 时间元数据 | 对齐 QzonePhoto 优先级：`exif.originalTime` → `modifytime` → `rawshoottime`/`shoottime` → `uploadTime`；**无「现在」兜底**。落盘后写文件 mtime；JPEG 仅在缺 `DateTimeOriginal` 时补写。命名 `{yyyyMMdd}_{HHmmss}_{id16}.ext`（本地时区），账号隔离靠目录 `<uin>/`。说明/Comment 暂不做。相册判重指纹为 `blake3-no-meta-v1`（JPEG/PNG 去 EXIF/说明类元数据后再哈希），故补写前后可同组 |
@@ -59,7 +59,7 @@
 |------|-------------|
 | 相册列表 | `qzone_sync_list_albums` |
 | 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`downloaded`；右侧按日时间轴；角标「已下载」） |
-| 缩略图/灯箱 | 图：`QzoneLazyImg`→`BaseImage`+`qzoneimg`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
+| 缩略图/灯箱 | 图：`ProtocolLazyThumb`（`qzoneimg`）→`ThumbVisual`/`BaseImage`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
 | 全部下载 | `qzone_sync_start_job`（`albumId=null`） |
 | 本相册下载 | 右侧标题旁「下载本相册」→ `qzone_sync_start_job`（传入 `albumId`） |
 | 上传到本相册 | 右侧标题旁「上传到本相册」→ 系统文件框 → `qzone_sync_upload_photos`（`cgi_upload_image`；当前仅图片） |
@@ -92,7 +92,6 @@
 | `qzone_sync_start_job` | catalog + 下载（可选相册） |
 | `qzone_sync_pause_job` / `resume` / `cancel` | 任务控制 |
 | `qzone_sync_job_status` | 快照 |
-| `qzone_sync_get/save_settings` | 落盘目录等 |
 | `qzone_sync_pending_count` | 待下载计数 |
 
 事件：`qzone-sync://progress` → `QzoneJobSnapshot`；`qzone-sync://auth-expired` → 回扫码态

@@ -13,7 +13,7 @@ use super::types::{MediaFile, MediaGroup, MediaKind};
 const DB_FILE: &str = "media.db";
 
 /// 缩略图连续失败次数达到此阈值后跳过重试，避免对坏文件反复解码
-pub const FAIL_THRESHOLD: u32 = 3;
+pub const FAIL_THRESHOLD: u32 = 2;
 
 /// 打开相册库。已有 `media` 表则只设连接参数，不再改表
 /// @note 结构变更不写在这里：单独 SQL 手工执行后删除脚本，避免每次 open 抢写锁
@@ -1101,6 +1101,55 @@ pub fn mark_thumb_failed(conn: &Connection, path: &str) -> Result<(), String> {
     )
     .map_err(|e| format!("更新失败计数失败: {e}"))?;
   Ok(())
+}
+
+/// 原图当缩略图的像素上限（与 `thumbnail::ORIGIN_AS_THUMB_MAX_PIXELS` 对齐）
+const ORIGIN_THUMB_MAX_PIXELS_SQL: i64 = 2_000_000;
+/// 原图当缩略图的体积上限
+const ORIGIN_THUMB_MAX_BYTES_SQL: i64 = 100 * 1024;
+
+/**
+ * 清除不安全的「原路径当 thumb_path」脏数据
+ * 条件：thumb_path 与 path 同路径，且（体积过大 / GIF / 像素过高）
+ * @returns 清除行数；随后扫描会重新入队出图
+ */
+pub fn scrub_unsafe_origin_thumbs(conn: &Connection) -> Result<u32, String> {
+  // SQLite 路径比较：统一小写 + 反斜杠转正斜杠
+  let n = conn
+    .execute(
+      "UPDATE media SET thumb_path = NULL, fail_count = 0
+       WHERE thumb_path IS NOT NULL
+         AND trim(thumb_path) != ''
+         AND lower(replace(thumb_path, '\\', '/')) = lower(replace(path, '\\', '/'))
+         AND (
+           size > ?1
+           OR lower(ext) = 'gif'
+           OR (
+             width IS NOT NULL AND height IS NOT NULL
+             AND (CAST(width AS INTEGER) * CAST(height AS INTEGER)) > ?2
+           )
+         )",
+      params![ORIGIN_THUMB_MAX_BYTES_SQL, ORIGIN_THUMB_MAX_PIXELS_SQL],
+    )
+    .map_err(|e| format!("清除不安全原图缩略图失败: {e}"))?;
+  Ok(u32::try_from(n).unwrap_or(u32::MAX))
+}
+
+/// 超大图全尺寸解码易失败；scale-on-decode 上线后清掉「缺图且已达失败阈值」的计数，允许再试
+/// @note 仅针对像素 > `FULL_DECODE_MAX_PIXELS`（与 thumbnail 常量对齐），真坏文件仍可再次打满阈值
+pub fn reset_exhausted_oversized_thumb_failures(conn: &Connection) -> Result<u32, String> {
+  const OVERSIZED_PIXELS: i64 = 8_000_000;
+  let n = conn
+    .execute(
+      "UPDATE media SET fail_count = 0
+       WHERE (thumb_path IS NULL OR trim(thumb_path) = '')
+         AND fail_count >= ?1
+         AND width IS NOT NULL AND height IS NOT NULL
+         AND (CAST(width AS INTEGER) * CAST(height AS INTEGER)) > ?2",
+      params![FAIL_THRESHOLD as i64, OVERSIZED_PIXELS],
+    )
+    .map_err(|e| format!("重置超大图缩略图失败计数失败: {e}"))?;
+  Ok(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// 清空 thumb/preview/playback 缓存路径（`ALBUM_CACHE_VERSION` bump 迁移时调用）

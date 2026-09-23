@@ -4,7 +4,6 @@ import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
 import { csPublicConstantRoutes } from "@/router/csPublic";
 import { albumConstantRoutes } from "@/router/album";
-import { icloudSyncConstantRoutes } from "@/router/icloudSync";
 import { staticRoutes } from "@/router/staticRoutes";
 import { isTauri } from "@/utils/tauri";
 
@@ -80,8 +79,6 @@ const routesList: AppRouteRecordRaw[] = [
   ...(isTauri() ? csPublicConstantRoutes : []),
   // CS 本地相册（含 iCloud 同步）：静态路由、免登录；入口在 CsToolsBar
   ...(isTauri() ? albumConstantRoutes : []),
-  // CS iCloud 同步旧路径重定向
-  ...(isTauri() ? icloudSyncConstantRoutes : []),
   // 菜单外静态页（个人中心等）：登录即可访问，不进侧栏、不进 sys_menu
   ...staticRoutes,
   {

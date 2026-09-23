@@ -1,15 +1,15 @@
 <!--
   重复清理缩略图：进入视口后再请求生成，避免列表一次性解码/转码
   横滑后 IO root 优先用同组横向容器，并限流并发生成
+  视觉层委托 ThumbVisual；本组件只保留 IO / 队列 / 尺寸壳
 -->
 <script setup lang="ts">
 import { convertFileSrc } from "@tauri-apps/api/core";
-import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { resolveDuplicateThumb } from "@/api/album";
 import { DUP_GROUP_HSCROLL_KEY, DUP_LIST_SCROLL_KEY } from "../duplicateListScroll";
 import { enqueueDuplicateThumb } from "../duplicateThumbQueue";
-import { ALBUM_THUMB_GENERATE_SIZE } from "../types";
-import LivePhotoBadge from "./LivePhotoBadge.vue";
+import { DUP_THUMB_DISPLAY_SIZE } from "../types";
+import ThumbVisual from "./ThumbVisual.vue";
 import type { DuplicateFileSide } from "../types";
 
 const props = defineProps<{
@@ -19,7 +19,7 @@ const props = defineProps<{
 
 defineOptions({ name: "DuplicateLazyThumb" });
 
-const thumbSizePx = `${ALBUM_THUMB_GENERATE_SIZE}px`;
+const thumbSizePx = `${DUP_THUMB_DISPLAY_SIZE}px`;
 
 const rootRef = ref<HTMLElement | null>(null);
 const listScrollRoot = inject(DUP_LIST_SCROLL_KEY, ref<HTMLElement | null>(null));
@@ -32,11 +32,7 @@ let requested = false;
 
 function canUseOriginalPath(): boolean {
   const ext = props.side.ext.toLowerCase();
-  return (
-    !!props.side.path?.trim() &&
-    !["heic", "heif"].includes(ext) &&
-    !["mp4", "mov", "m4v"].includes(ext)
-  );
+  return !!props.side.path?.trim() && !["heic", "heif"].includes(ext) && !["mp4", "mov", "m4v"].includes(ext);
 }
 
 function applyCachedThumb() {
@@ -118,20 +114,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootRef" class="dup-thumb-wrap" :style="{ width: thumbSizePx, height: thumbSizePx }">
-    <LivePhotoBadge v-if="isLive" class="dup-live-badge" size="sm" />
     <a-spin v-if="loading" size="small" class="dup-thumb-spin" />
-    <BaseImage
-      v-else-if="displaySrc"
-      class="dup-thumb"
-      :src="displaySrc"
-      fit="cover"
-      :width="ALBUM_THUMB_GENERATE_SIZE"
-      :height="ALBUM_THUMB_GENERATE_SIZE"
-      :lazy="true"
-    />
-    <div v-else class="dup-thumb-placeholder">
-      <IconifyIcon icon="ant-design:file-image-outlined" width="28" height="28" />
-    </div>
+    <ThumbVisual v-else :src="displaySrc ?? undefined" :show-live-badge="!!isLive" :ext="side.ext" kind="image" size="md" :lazy="true" />
   </div>
 </template>
 
@@ -145,39 +129,11 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.dup-live-badge {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 1;
-}
-
 .dup-thumb-spin {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.dup-thumb {
-  width: 100%;
-  height: 100%;
-  display: block;
-
-  :deep(.base-image) {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-}
-
-.dup-thumb-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-tertiary);
 }
 </style>

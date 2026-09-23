@@ -1,5 +1,5 @@
 //! QQ 空间照片同步（第二备份源）
-//! 职责：扫码登录、catalog、下载落盘、设置；与 icloud_sync 平行
+//! 职责：扫码登录、catalog、下载落盘；与 icloud_sync 平行
 //! 适用：admin CS；仅本人相册原图/视频
 //! 合规：自研网页端接口调用；不嵌入 GPL 第三方客户端源码
 
@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
 
-use types::{QzoneAuthState, QzoneJobSnapshot, QzoneSyncSettings};
+use types::{QzoneAuthState, QzoneJobSnapshot};
 
 /// 供 album 扫描识别本源落盘命名
 pub(crate) use naming::is_sync_asset_filename;
@@ -42,14 +42,7 @@ pub fn remap_dest_paths(app: &AppHandle, renames: &[(String, String)]) {
   let Ok(conn) = open_db(&path) else {
     return;
   };
-  for (from, to) in renames {
-    if let Err(e) = conn.execute(
-      "UPDATE assets SET dest_path = ?2 WHERE dest_path = ?1",
-      rusqlite::params![from, to],
-    ) {
-      log::warn!("qzone_sync: remap dest_path {from} → {to}: {e}");
-    }
-  }
+  crate::sync_common::remap_assets_dest_paths(&conn, renames, "qzone_sync");
 }
 
 /**
@@ -96,38 +89,6 @@ impl QzoneSyncState {
       qr: Arc::new(qr_login::QrLoginGate::new()),
     }
   }
-}
-
-#[tauri::command]
-pub async fn qzone_sync_get_settings(app: AppHandle) -> Result<QzoneSyncSettings, String> {
-  tokio::task::spawn_blocking(move || settings::load_settings(&app))
-    .await
-    .map_err(|e| format!("任务失败: {e}"))?
-}
-
-#[tauri::command]
-pub async fn qzone_sync_save_settings(
-  app: AppHandle,
-  settings: QzoneSyncSettings,
-) -> Result<QzoneSyncSettings, String> {
-  tokio::task::spawn_blocking(move || {
-    settings::save_settings(&app, &settings)?;
-    settings::load_settings(&app)
-  })
-  .await
-  .map_err(|e| format!("任务失败: {e}"))?
-}
-
-#[tauri::command]
-pub async fn qzone_sync_default_output_dir(app: AppHandle) -> Result<Option<String>, String> {
-  tokio::task::spawn_blocking(move || {
-    Ok(
-      settings::resolve_output_dir(&app)?
-        .map(|p| p.to_string_lossy().to_string()),
-    )
-  })
-  .await
-  .map_err(|e| format!("任务失败: {e}"))?
 }
 
 #[tauri::command]

@@ -4,17 +4,14 @@
 
 use serde::{Deserialize, Serialize};
 
-fn default_concurrency() -> u32 {
-  1
-}
+/// 下载批大小（sidecar 并发）；非用户设置——稳妥优先，省掉设置页档位
+pub const DOWNLOAD_CONCURRENCY: u32 = 1;
 
 /// 非敏感配置（Apple ID 密码不在此结构，见 keyring_store）
+/// @note 旧 JSON 若含 `concurrency` 会被忽略
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct IcloudSyncSettings {
-  /// 并发下载数；P1 允许 1–3，由设置页配置
-  #[serde(default = "default_concurrency")]
-  pub concurrency: u32,
   /// 上次登录 Apple ID（日志脱敏由调用方负责）
   #[serde(default)]
   pub apple_id: String,
@@ -33,7 +30,6 @@ fn default_icloud_domain() -> String {
 impl Default for IcloudSyncSettings {
   fn default() -> Self {
     Self {
-      concurrency: default_concurrency(),
       apple_id: String::new(),
       icloud_domain: default_icloud_domain(),
       remember_password: false,
@@ -269,8 +265,6 @@ pub struct JobRow {
   pub output_dir: String,
   pub apple_id: String,
   pub status: JobStatus,
-  /// API 占位，恒为 full
-  pub mode: String,
   pub created_at: i64,
   pub finished_at: Option<i64>,
   pub total_count: u32,

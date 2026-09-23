@@ -1,13 +1,9 @@
 /**
  * QQ 空间同步 API（Tauri invoke）
- * 职责：第二备份源登录 / 浏览 / 设置 / 同步任务；与 icloudSync 平行
- * 适用：相册页 QzoneSyncFab、CS 设置
+ * 职责：第二备份源登录 / 浏览 / 同步任务；与 icloudSync 平行
+ * 适用：相册页 QzoneSyncFab
  */
 import { invoke } from "@tauri-apps/api/core";
-
-export interface QzoneSyncSettings {
-  concurrency: number;
-}
 
 export interface QzoneAuthState {
   loggedIn: boolean;
@@ -67,21 +63,12 @@ export interface QzoneMediaBlob {
 
 export interface QzoneJobSnapshot {
   status: string;
-  phase: string;
   done: number;
   total: number;
   message: string;
   updated: number;
   skipped: number;
   failed: number;
-}
-
-export async function getQzoneSyncSettings(): Promise<QzoneSyncSettings> {
-  return invoke<QzoneSyncSettings>("qzone_sync_get_settings");
-}
-
-export async function saveQzoneSyncSettings(settings: QzoneSyncSettings): Promise<QzoneSyncSettings> {
-  return invoke<QzoneSyncSettings>("qzone_sync_save_settings", { settings });
 }
 
 export async function getQzoneAuthState(): Promise<QzoneAuthState> {

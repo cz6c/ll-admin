@@ -29,7 +29,7 @@ use super::db::{
 };
 use super::naming::sync_asset_filename;
 use super::settings::{
-  load_settings, normalize_concurrency, resolve_output_dir,
+  load_settings, resolve_output_dir,
 };
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
 use super::task::{ensure_discardable, require_no_incomplete_task};
@@ -868,8 +868,7 @@ fn run_download_loop(app: AppHandle, job_id: i64, client: Arc<SidecarClient>) {
     ensure_job_matches_current_account(&app, &conn, job_id)?;
     set_job_status(&app, &conn, job_id, JobStatus::Running)?;
 
-    let settings = load_settings(&app)?;
-    let concurrency = normalize_concurrency(settings.concurrency);
+    let concurrency = super::types::DOWNLOAD_CONCURRENCY;
     let apple_id = job.apple_id.clone();
     let total = {
       let (d, f, p) = count_assets_by_status(&conn, job_id)?;

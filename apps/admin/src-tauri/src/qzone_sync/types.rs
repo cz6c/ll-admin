@@ -3,27 +3,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// `<appData>/qzone-sync/settings.json`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QzoneSyncSettings {
-  /// 并发下载 1–3
-  #[serde(default = "default_concurrency")]
-  pub concurrency: u32,
-}
-
-fn default_concurrency() -> u32 {
-  2
-}
-
-impl Default for QzoneSyncSettings {
-  fn default() -> Self {
-    Self {
-      concurrency: default_concurrency(),
-    }
-  }
-}
-
 /// 登录后持久化的最小 cookie 集（仅本机）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,7 +141,6 @@ impl QzoneJobStatus {
 #[serde(rename_all = "camelCase")]
 pub struct QzoneJobSnapshot {
   pub status: String,
-  pub phase: String,
   pub done: u32,
   pub total: u32,
   pub message: String,
@@ -175,7 +153,6 @@ impl Default for QzoneJobSnapshot {
   fn default() -> Self {
     Self {
       status: QzoneJobStatus::Idle.as_str().into(),
-      phase: "idle".into(),
       done: 0,
       total: 0,
       message: String::new(),

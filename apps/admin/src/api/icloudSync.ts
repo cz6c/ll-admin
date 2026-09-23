@@ -5,6 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { getAlbumRootDir } from "@/api/album";
 import { adjustCloudListTotal, prepareCloudListRows } from "@/utils/icloudSyncCloudList";
 
 /** 同步任务视图：Library 与 Recents 互斥 */
@@ -13,13 +14,11 @@ export type IcloudSyncJobView = "library" | "recents";
 /** 任务生命周期状态（与 Rust JobStatus 对齐） */
 export type IcloudSyncJobStatus = "cataloging" | "pending" | "running" | "paused_session" | "paused_user" | "done" | "failed";
 
-/** 全局任务类型（与 Rust TaskType 对齐） */
-export type IcloudSyncTaskType = "sync" | "cloudDelete" | "catalog";
+/** 全局任务类型（与 Rust / job_mem 对齐；删云不入 job） */
+export type IcloudSyncTaskType = "sync" | "catalog";
 
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
-  /** 并发下载数；P1 允许 1–3，由设置页配置 */
-  concurrency: number;
   appleId: string;
   /** iCloud 根域：`com` 国际 / `cn` 中国大陆 */
   icloudDomain: "com" | "cn";
@@ -102,29 +101,6 @@ export interface IcloudSyncProgressPayload {
   filename: string;
 }
 
-/** 失败资产摘要（同步页表格） */
-export interface IcloudSyncFailedAssetRow {
-  part: string;
-  originalFilename: string;
-  lastError: string;
-  attemptCount: number;
-}
-
-/** 单文件任务行（全量任务表格） */
-export interface IcloudSyncAssetTaskRow {
-  part: string;
-  originalFilename: string;
-  /** pending | done | failed */
-  status: "pending" | "done" | "failed" | string;
-  lastError?: string | null;
-  attemptCount: number;
-}
-
-export interface IcloudSyncListAssetTasksResult {
-  items: IcloudSyncAssetTaskRow[];
-  total: number;
-}
-
 /** 抽屉云注册表行 */
 export interface IcloudSyncSyncAssetRow {
   assetId: string;
@@ -163,9 +139,9 @@ export interface IcloudSyncLoadAssetsResult {
   total: number;
 }
 
-/** cloud_state Tab 角标（逻辑资产；Live still+mov=1） */
+/** cloud_state 汇总（逻辑资产；Live still+mov=1；抽屉无 Tab） */
 export interface IcloudSyncCloudStateSummary {
-  /** 「全部」角标：逻辑资产总数 */
+  /** 逻辑资产总数 */
   total: number;
   cloudOnly: number;
   synced: number;
@@ -175,23 +151,7 @@ export interface IcloudSyncCloudStateSummary {
   lastCatalogAt?: number | null;
 }
 
-export type IcloudSyncCloudStateFilter =
-  | "all"
-  | "cloud_only"
-  | "synced"
-  | "download_failed";
-
-/** 任务文件状态筛选 */
-export type IcloudSyncAssetTaskFilter = "all" | "pending" | "done" | "failed";
-
-/** 并发档位（设置页展示为慢/标准/快） */
-export const ICLOUD_SYNC_CONCURRENCY_TIERS = [
-  { label: "慢", value: 1, hint: "最稳妥，适合首次下载或大图库" },
-  { label: "标准", value: 2, hint: "推荐；速度与稳定性平衡" },
-  { label: "快", value: 3, hint: "最快，可能触发 Apple 限流" }
-] as const;
-
-export type IcloudSyncConcurrencyTier = (typeof ICLOUD_SYNC_CONCURRENCY_TIERS)[number]["value"];
+export type IcloudSyncCloudStateFilter = "all" | "cloud_only" | "synced" | "download_failed";
 
 export const ICLOUD_SYNC_PROGRESS_EVENT = "icloud-sync://progress";
 
@@ -268,7 +228,9 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
  * @param domain `cn` 中国大陆 / `com` 国际；未知时给中性提示
  */
 export function networkErrorMessage(domain?: "com" | "cn" | string | null): string {
-  const d = String(domain ?? "").trim().toLowerCase();
+  const d = String(domain ?? "")
+    .trim()
+    .toLowerCase();
   if (d === "cn") {
     return "无法连接 Apple 登录节点 idmsa.apple.com.cn（中国大陆）。本机到 icloud.com.cn 网页可能仍正常；请换手机热点，或暂时关闭杀毒/公司网的 HTTPS 扫描后重试";
   }
@@ -296,10 +258,7 @@ export function formatIcloudSyncError(err: unknown, options?: FormatIcloudSyncEr
   if (lower.includes("without pending challenge") || lower.includes("无 pending challenge")) {
     return "二次验证已失效，请退出后重新登录一次（勿连点）";
   }
-  if (
-    lower.includes("验证码") &&
-    (lower.includes("无效") || lower.includes("错误") || lower.includes("过期") || lower.includes("最新"))
-  ) {
+  if (lower.includes("验证码") && (lower.includes("无效") || lower.includes("错误") || lower.includes("过期") || lower.includes("最新"))) {
     // sidecar 已给出中文验码文案时直接展示，勿再套「检查密码」
     const colon = raw.indexOf(":");
     if (colon >= 0) {
@@ -364,7 +323,7 @@ export function formatAssetTaskError(raw: string | null | undefined): string {
 
 /** 开始同步前校验：相册根目录、登录态 */
 export async function validateIcloudSyncReady(): Promise<{ ok: true } | { ok: false; message: string }> {
-  const [albumRoot, auth] = await Promise.all([getAlbumRootForDefault(), getIcloudSyncAuthState()]);
+  const [albumRoot, auth] = await Promise.all([getAlbumRootDir(), getIcloudSyncAuthState()]);
   if (!albumRoot.trim()) {
     return { ok: false, message: "请先在应用设置中配置相册根目录" };
   }
@@ -444,12 +403,6 @@ export function icloudProxiedThumbSrc(assetId: string): string {
   return `http://icloudimg.localhost/?id=${encodeURIComponent(id)}&k=thumb`;
 }
 
-/** 启动 sidecar 并返回 agent 版本（冒烟 / 诊断） */
-export function pingIcloudSync() {
-  return invoke<{ protocol: number; agent: string }>("icloud_sync_ping");
-}
-
-/** 新建同步任务：catalog → diff → 入队 → 下载（固定 full 模式） */
 /** 开始同步：将已刷新的 cloud_only 入队并下载（不 catalog；无待下载项会报错） */
 export function startIcloudSyncJob(view: IcloudSyncJobView = "library") {
   return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view });
@@ -470,26 +423,7 @@ export function getIcloudSyncJobStatus(jobId: number) {
   return invoke<IcloudSyncJobStatusResult>("icloud_sync_job_status", { jobId });
 }
 
-/** 列出失败资产摘要，供同步页失败表格 */
-export function listIcloudSyncFailedAssets(jobId: number, limit = 50) {
-  return invoke<IcloudSyncFailedAssetRow[]>("icloud_sync_list_failed_assets", { jobId, limit });
-}
-
-/** 分页列出任务下全部文件行 */
-export function listIcloudSyncAssetTasks(
-  jobId: number,
-  options: { offset?: number; limit?: number; status?: IcloudSyncAssetTaskFilter; keyword?: string } = {}
-) {
-  return invoke<IcloudSyncListAssetTasksResult>("icloud_sync_list_asset_tasks", {
-    jobId,
-    offset: options.offset ?? 0,
-    limit: options.limit ?? 50,
-    status: options.status ?? "all",
-    keyword: options.keyword?.trim() || null
-  });
-}
-
-/** 丢弃未完成任务（同步 / 删云 / 刷新 catalog） */
+/** 丢弃未完成任务（同步 / 刷新 catalog） */
 export function discardIcloudSyncJob(jobId: number) {
   return invoke<void>("icloud_sync_discard_job", { jobId });
 }
@@ -569,22 +503,4 @@ export function deleteIcloudSyncAssets(items: IcloudSyncDeleteAssetItem[], reaso
 /** 已下载全部从 iCloud 移除（跨页；仍校验本地文件；一次性） */
 export function deleteAllSyncedIcloudAssets(reason = "user_all_synced") {
   return invoke<IcloudSyncDeleteAssetsResult>("icloud_sync_delete_all_synced", { reason });
-}
-
-/** 删除本地媒体：原文件进系统回收站，缩略图等缓存永久删除（不触碰 iCloud sync） */
-export function deleteAlbumLocal(paths: string[]) {
-  return invoke<number>("album_delete_local", { paths });
-}
-
-/**
- * 读取相册根目录，用于推导默认落盘路径 `{albumRoot}/iCloudSync`
- * @returns 相册根目录；未配置时为空字符串
- */
-export async function getAlbumRootForDefault(): Promise<string> {
-  try {
-    const settings = await invoke<{ rootDir: string }>("album_get_settings");
-    return settings.rootDir?.trim() ?? "";
-  } catch {
-    return "";
-  }
 }

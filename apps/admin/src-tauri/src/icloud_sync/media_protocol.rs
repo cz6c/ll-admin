@@ -8,7 +8,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde_json::json;
@@ -16,6 +16,7 @@ use tauri::http::{header, Request, StatusCode};
 use tauri::{AppHandle, Manager, UriSchemeContext, UriSchemeResponder, Wry};
 
 use crate::album::{db as album_db, settings as album_settings};
+use crate::sync_common::FetchGate;
 
 use super::db::{get_asset_dest_path, open_db, state_db_path};
 use super::queue::SidecarClientHandle;
@@ -27,43 +28,17 @@ const MAX_INFLIGHT: u32 = 2;
 /// thumb 体积上限（与 sidecar PREVIEW_PROBE_MAX_BYTES.thumb 对齐）
 const THUMB_MAX: u64 = 2 * 1024 * 1024;
 
-struct FetchGate {
-  inflight: Mutex<u32>,
-  cv: Condvar,
-}
-
 fn fetch_gate() -> &'static FetchGate {
   static GATE: OnceLock<FetchGate> = OnceLock::new();
-  GATE.get_or_init(|| FetchGate {
-    inflight: Mutex::new(0),
-    cv: Condvar::new(),
-  })
+  GATE.get_or_init(|| FetchGate::new(MAX_INFLIGHT))
 }
 
 fn acquire_fetch_slot() {
-  let g = fetch_gate();
-  let mut n = g.inflight.lock().unwrap_or_else(|e| e.into_inner());
-  loop {
-    if *n < MAX_INFLIGHT {
-      *n += 1;
-      return;
-    }
-    let (guard, _) = g
-      .cv
-      .wait_timeout(n, Duration::from_secs(60))
-      .unwrap_or_else(|e| e.into_inner());
-    n = guard;
-  }
+  fetch_gate().acquire();
 }
 
 fn release_fetch_slot() {
-  let g = fetch_gate();
-  if let Ok(mut n) = g.inflight.lock() {
-    if *n > 0 {
-      *n -= 1;
-    }
-    g.cv.notify_one();
-  }
+  fetch_gate().release();
 }
 
 /**

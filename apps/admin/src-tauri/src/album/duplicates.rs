@@ -14,7 +14,7 @@ use walkdir::WalkDir;
 use super::scanner::{pair_live_photos, SKIP_DIRS};
 use super::types::{
   DuplicateFileSide, DuplicateGroup, DuplicateLegacyItem, DuplicateMatchConfidence, MediaFile,
-  MediaKind, ALBUM_CACHE_VERSION,
+  MediaKind, ALBUM_CACHE_VERSION, ALBUM_THUMB_GENERATE_SIZE,
 };
 use super::{db, ffmpeg, settings, thumbnail};
 
@@ -447,7 +447,12 @@ pub fn resolve_display_thumb_on_demand(app: &AppHandle, path: &str) -> Option<St
     .join("thumbs")
     .join(format!("v{ALBUM_CACHE_VERSION}"));
   let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(app);
-  let outcome = thumbnail::generate_thumbnail(path, &cache_dir, 158, ffmpeg_bin.as_deref());
+  let outcome = thumbnail::generate_thumbnail(
+    path,
+    &cache_dir,
+    ALBUM_THUMB_GENERATE_SIZE,
+    ffmpeg_bin.as_deref(),
+  );
   if outcome.thumb_path.is_some() || outcome.preview_path.is_some() {
     let _ = db::update_cache_paths_batch(
       &conn,

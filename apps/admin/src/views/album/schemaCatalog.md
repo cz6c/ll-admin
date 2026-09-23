@@ -2,7 +2,7 @@
 
 > **职责：** 陈列 `media.db` / `state.db` 各表作用（给人与可视化工具对照用）。  
 > **不合并：** 两库职责分离，见下文边界。  
-> **对齐：** 2026-09-15  
+> **对齐：** 2026-09-23  
 > 流程：[本地扫描](./loadingFlow.md) · [云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
 
 SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
@@ -14,9 +14,11 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | 库 | 路径 | 管什么 |
 |----|------|--------|
 | **media.db** | `<appData>/album/media.db` | 本地相册根上的文件索引、缩略图/代理缓存路径、展示用 meta |
-| **state.db** | `<appData>/icloud-sync/state.db` | iCloud 账号下的资产注册、同步/删云任务与队列 |
+| **state.db** | `<appData>/icloud-sync/state.db` | iCloud 账号下的资产注册（catalog 真相）与下载态 |
 
 跨库关联（非 FK）：下载入库时把云侧身份写入 `media.origin*`；之后 **media 与 sync 解耦**（不再为 capture 反查 `dest_path`）。`media.path` 与 `assets.dest_path` 仅在「仍已同步且未硬删」时可能重合。
+
+**任务不在 SQLite：** 同步 / catalog 任务头存在进程内存（`icloud_sync/job_mem.rs`）；进程退出后任务消失，不能从 DB 续传。**已删除 `jobs` 表**，新库也不再建。
 
 ---
 
@@ -45,7 +47,7 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `added_at` / `latitude` / `longitude` | 下载时从云侧 catalog 带入（仅补空） |
 | `width` / `height` | 图=解码；单独视频=打开时 ffprobe |
 | `content_hash` / `hash_algo` | 重复清理用 BLAKE3 |
-| `fail_count` | 缩略图连续失败；≥3 跳过 |
+| `fail_count` | 缩略图连续失败；≥2 跳过 |
 | `scanned_at` | 最近索引时间 |
 
 清库：可删整个 `media.db` 后 force 重扫（不碰 `state.db`）。
@@ -54,26 +56,13 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 
 ## state.db（iCloud 同步）
 
-实现：`src-tauri/src/icloud_sync/db.rs`（`PRAGMA user_version = 5`）
+实现：`src-tauri/src/icloud_sync/db.rs`
 
-### 版本（非表）
+### Schema 策略
 
-**作用：** schema 代际存在文件头 `PRAGMA user_version`（不再使用 `schema_meta` 表）。  
-打开时：旧库若仍有 `schema_meta` 则一次性灌入 pragma（仅当 `user_version=0`）并 `DROP`。  
-**只认终态 `user_version = 5`**（已砍 v2–v4 自动迁移与 `index_num` 残留清理）。  
-wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧形态；其它低版本报错不清空。
-
-### `jobs`
-
-**作用：** 同步相关任务头。同一 Apple ID 同时至多一条未完成任务（sync / catalog / 删云等互斥）。
-
-| 列（摘要） | 含义 |
-|------------|------|
-| `task_type` | 如 `sync` / catalog / 删云类 |
-| `view` / `output_dir` / `apple_id` | 任务视图、本地下载目录、账号 |
-| `status` | 进行中 / 完成 / 取消等 |
-| `total_count` 等 | 进度计数（UI 状态卡） |
-| `created_at` / `finished_at` | 起止时间 |
+- **不读不写** `PRAGMA user_version`；**不建** `jobs` 表。
+- 打开时：无 `assets` 才建表；已有表直接用、**不改结构**。
+- 任务状态：仅 `job_mem`（进程内 `HashMap`）；`assets.active_job_id` 可指向本次进程的内存 job id。
 
 ### `assets`
 
@@ -85,8 +74,8 @@ wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧�
 | `media_kind` / `live_pair_id` | 类型与 Live 配对 |
 | `original_filename` / `sort_key` | 展示与排序 |
 | `dest_path` | 已下载本地绝对路径；删云/catalog 硬删行时一并消失（本地 media/文件不动） |
-| `cloud_state` | `cloud_only` / `synced`（旧 `cloud_delete_queued` / `failed_delete` / `deleted_cloud_pending` 打开库 scrub） |
-| `download_status` / `active_job_id` | 当前下载态与所属 job |
+| `cloud_state` | `cloud_only` / `synced` |
+| `download_status` / `active_job_id` | 当前下载态与所属**内存** job |
 | `cpl_asset_*` | CloudKit 记录名 / change tag |
 | `capture_at` / `added_at` | 云侧拍摄/加入时间 |
 | `latitude` / `longitude` | 可选 GPS |
@@ -96,10 +85,26 @@ wipe：仅无业务表建终态，或 `user_version∈{0,1}` 的不可识别旧�
 
 | 表 | 作用 |
 |----|------|
-| `catalog_keys_temp` | 本次 catalog 仍存在的 `(asset_id, part)` 集合；diff / reconcile / 删云标记用，避免 N 次逐行 SQL |
+| `catalog_keys_temp` | 本次 catalog 仍存在的 `(asset_id, part)` 集合；diff / reconcile 用，避免 N 次逐行 SQL |
 | `catalog_touch_temp` | catalog 落库时「本批触及」键集合，用于批量更新 `last_catalog_at` 等 |
 
 会话结束即失效；不必备份。
+
+---
+
+## 任务（非表 · `job_mem`）
+
+实现：`src-tauri/src/icloud_sync/job_mem.rs`
+
+| 字段（逻辑） | 含义 |
+|--------------|------|
+| `task_type` | `sync` / `catalog`（删云**不入** job，见 cloudSyncFlow） |
+| `view` / `output_dir` / `apple_id` | 任务视图、本地下载目录、账号 |
+| `status` | cataloging / pending / running / paused_* / done / failed |
+| `total_count` 等 | 进度计数（UI 状态卡） |
+| `created_at` / `finished_at` | 起止时间 |
+
+同一 Apple ID 同时至多一条未完成内存任务；删云用独立内存旗标与 sync/catalog 互斥。
 
 ---
 
@@ -110,8 +115,9 @@ media.db
 └── media                 本地文件索引 + 展示缓存 + meta
 
 state.db
-├── （文件头）user_version  schema 代际（现 = 6）
-├── jobs                  同步 / 刷新目录任务头
-├── assets                iCloud 资产注册 + 下载态
-└── (temp) catalog_*      catalog 批处理辅助
+└── assets                iCloud 资产注册 + 下载态
+    └── (temp) catalog_*  catalog 批处理辅助
+
+进程内存 job_mem
+└── JobRow                同步 / 刷新目录任务头（不落盘）
 ```

@@ -2,6 +2,12 @@ import { VxeTooltip } from "vxe-pc-ui";
 import { VxeUI, VxeGrid } from "vxe-table";
 
 /**
+ * 与 @apps/admin 全局强制暗黑对齐。
+ * 未 setTheme 时默认 light：表头/表体/分页仍是白底，而 :root 已写浅色字 → 对比崩坏。
+ */
+VxeUI.setTheme("dark");
+
+/**
  * 树表展开/收起图标：对齐 ant-design up/down-circle-outlined
  * VXE 仅接受 class 名挂在 <i> 上，具体图形见 assets/style/vxeTable.scss
  *

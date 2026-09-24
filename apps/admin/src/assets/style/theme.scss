@@ -109,13 +109,11 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   --ant-color-bg-layout: var(--color-bg-layout);
   --ant-color-border: var(--border-color);
 
-  // vxetable：色与字族跟主题 token 走
-  --vxe-ui-font-primary-color: var(--color-primary);
+  /*
+   * VXE 色板不在此写死：须等 VxeUI.setTheme("dark") + vxeThemeBridge.scss
+   * （:root 提前写浅色字会叠在默认 light 白底上导致表头不可读）
+   */
   --vxe-ui-font-family: var(--font-family);
-  --vxe-ui-font-color: var(--color-text);
-  --vxe-ui-font-lighten-color: var(--color-text-secondary);
-  --vxe-ui-font-disabled-color: var(--color-text-disabled);
-  --vxe-ui-table-header-font-weight: 500;
   --vxe-ui-border-radius: var(--ant-border-radius, 8px);
   --vxe-ui-table-border-radius: var(--vxe-ui-border-radius);
 

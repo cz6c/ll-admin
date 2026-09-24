@@ -1,0 +1,51 @@
+/**
+ * VXE 暗黑主题桥接（须在 vxe-table / vxe-pc-ui cssvar 之后加载）
+ * 把库内 [data-vxe-ui-theme=dark] 色板对齐到 theme.scss 全局 token，便于后续改主题。
+ * 启用：VxeUI.setTheme("dark")（见 components/vxeTable.ts）
+ */
+[data-vxe-ui-theme="dark"] {
+  color-scheme: dark;
+
+  --vxe-ui-font-family: var(--font-family);
+  --vxe-ui-font-color: var(--color-text);
+  --vxe-ui-font-lighten-color: var(--color-text-secondary);
+  --vxe-ui-font-disabled-color: var(--color-text-disabled);
+  --vxe-ui-font-primary-color: var(--color-primary);
+
+  --vxe-ui-status-success-color: var(--color-success);
+  --vxe-ui-status-warning-color: var(--color-warning);
+  --vxe-ui-status-danger-color: var(--color-error);
+  --vxe-ui-status-error-color: var(--color-error);
+  --vxe-ui-status-info-color: var(--color-text-tertiary);
+
+  --vxe-ui-layout-background-color: var(--color-bg-container);
+  --vxe-ui-base-popup-border-color: var(--border-color);
+  --vxe-ui-base-hover-background-color: var(--color-overlay-hover);
+  --vxe-ui-base-active-background-color: var(--color-overlay-active);
+
+  --vxe-ui-input-border-color: var(--border-color);
+  --vxe-ui-input-placeholder-color: var(--color-text-placeholder);
+  --vxe-ui-input-disabled-background-color: var(--fill-color);
+
+  --vxe-ui-loading-background-color: var(--color-bg-mask);
+
+  --vxe-ui-table-header-background-color: var(--fill-color);
+  --vxe-ui-table-column-to-row-background-color: var(--fill-color);
+  --vxe-ui-table-border-color: var(--border-color);
+  --vxe-ui-table-row-hover-background-color: var(--color-overlay-hover);
+  --vxe-ui-table-row-striped-background-color: var(--color-fill-tertiary);
+  --vxe-ui-table-row-hover-striped-background-color: var(--color-overlay-hover);
+  --vxe-ui-table-row-current-background-color: var(--color-primary-bg);
+  --vxe-ui-table-row-hover-current-background-color: var(--color-primary-bg);
+  --vxe-ui-table-column-hover-background-color: var(--color-overlay-hover);
+  --vxe-ui-table-column-current-background-color: var(--color-primary-bg);
+  --vxe-ui-table-column-hover-current-background-color: var(--color-primary-bg);
+  --vxe-ui-table-row-checkbox-checked-background-color: var(--color-primary-bg);
+  --vxe-ui-table-row-hover-checkbox-checked-background-color: var(--color-primary-bg);
+  --vxe-ui-table-row-radio-checked-background-color: var(--color-primary-bg);
+  --vxe-ui-table-row-hover-radio-checked-background-color: var(--color-primary-bg);
+
+  --vxe-ui-table-header-font-weight: 500;
+  --vxe-ui-border-radius: var(--ant-border-radius, 8px);
+  --vxe-ui-table-border-radius: var(--vxe-ui-border-radius);
+}

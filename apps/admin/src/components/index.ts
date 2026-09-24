@@ -8,6 +8,8 @@ import "vxe-table/styles/cssvar.scss";
 import "vxe-table/lib/style.css";
 import "vxe-pc-ui/styles/cssvar.scss";
 import "vxe-pc-ui/lib/style.css";
+/** 须在 VXE cssvar 之后：暗黑色板桥接到全局 token */
+import "@/assets/style/vxeThemeBridge.scss";
 // vue-tippy
 import VueTippy from "vue-tippy";
 import "tippy.js/dist/tippy.css";

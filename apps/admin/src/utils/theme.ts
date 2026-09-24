@@ -67,7 +67,7 @@ export function handleThemeStyle(theme: string) {
   document.documentElement.style.setProperty("--ant-color-primary", theme);
   document.documentElement.style.setProperty("--color-info", theme);
   document.documentElement.style.setProperty("--ant-color-info", theme);
-  // VXE 主色与品牌色对齐
+  // VXE 主色：暗黑主题下由 vxeThemeBridge 读 --color-primary；此处同步运行时改主色
   document.documentElement.style.setProperty("--vxe-ui-font-primary-color", theme);
 }
 

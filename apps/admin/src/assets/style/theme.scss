@@ -1,31 +1,31 @@
 /**
  * @apps/admin 全局颜色 / 字族 / 运动 token（单一事实源）
  *
- * 用法优先级：
- * 1. Ant Design 组件：走 ConfigProvider（App.vue darkAlgorithm + token）
- * 2. 业务 / 布局 SCSS、Uno：优先 `--color-*` / `--bg-*` / `--fill-*` / `--border-*`
- * 3. 需与 antd 桥接时：同名 `--ant-color-*`（由本文件写入，勿在业务里再写死 Hex）
- * 4. ECharts / 扫码白底 / 照片上的实心白图标等场景可保留字面色，并注释 why
+ * 对齐 Ant Design 5 `darkAlgorithm` 中性派生（seed: colorBgBase=#000, colorTextBase=#fff）：
+ * 字色 alpha 0.85/0.65/0.45/0.25；面色 #000 / #141414 / #1f1f1f；边框 #424242 / #303030。
+ * 功能色取 dark map（非浅色盘原色）；主色 seed 仍为 #1688ff，运行时由 darkAlgorithm 派生后写入 CSS。
  *
- * 改主题：只改本文件 SCSS 变量 + `utils/theme.ts` 导出常量，再同步 App ConfigProvider。
+ * 用法：antd 组件走 ConfigProvider；业务 SCSS/Uno 用 `--color-*`；改主题只动本文件 + `utils/theme.ts`。
  */
-/* 与 uni 主色 --wot-primary-6 对齐；全局强制暗黑 */
-$--color-primary: #1688ff;
-$--bg-color: #1f1f1f;
-$--fill-color: #141414;
-$--border-color: #434343;
+/* 主色 seed（与 uni --wot-primary-6 对齐；暗黑 map 由算法派生） */
+$--color-primary-seed: #1688ff;
+/* darkAlgorithm map（seed=#1688ff 时）——静态默认，运行时 handleThemeStyle 会覆盖 */
+$--color-primary: #1677dc;
+$--bg-color: #141414; /* colorBgContainer */
+$--fill-color: #000000; /* colorBgLayout */
+$--border-color: #424242; /* colorBorder */
 
-/** 正文色阶：暗黑可读；略高于 antd 默认透明度 */
-$--color-text: rgba(255, 255, 255, 0.92);
-$--color-text-secondary: rgba(255, 255, 255, 0.78);
-$--color-text-tertiary: rgba(255, 255, 255, 0.58);
-$--color-text-disabled: rgba(255, 255, 255, 0.35);
+/** 正文色阶：darkAlgorithm 白字 alpha */
+$--color-text: rgba(255, 255, 255, 0.85);
+$--color-text-secondary: rgba(255, 255, 255, 0.65);
+$--color-text-tertiary: rgba(255, 255, 255, 0.45);
+$--color-text-disabled: rgba(255, 255, 255, 0.25);
 
-/** 功能色（对齐 Ant Design 5 语义色，暗黑下直接色值） */
-$--color-success: #52c41a;
-$--color-warning: #faad14;
-$--color-error: #ff4d4f;
-$--color-info: #1688ff;
+/** 功能色：darkAlgorithm map（非浅色 #52c41a 等） */
+$--color-success: #49aa19;
+$--color-warning: #d89614;
+$--color-error: #dc4446;
+$--color-info: #1677dc;
 
 /**
  * 正文字体：Ant Design 5 系统栈 + 中文兜底（PingFang / 微软雅黑）
@@ -39,9 +39,9 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   "Courier New", monospace;
 
 :root {
-  /* —— 品牌 / 中性面 —— */
+  /* —— 品牌 / 中性面（antd dark map） —— */
   --color-primary: #{$--color-primary};
-  --color-primary-bg: rgba(22, 136, 255, 0.18);
+  --color-primary-bg: #111c2c;
   --bg-color: #{$--bg-color};
   --fill-color: #{$--fill-color};
   --border-color: #{$--border-color};
@@ -49,41 +49,40 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   --color-text-secondary: #{$--color-text-secondary};
   --color-text-tertiary: #{$--color-text-tertiary};
   --color-text-disabled: #{$--color-text-disabled};
-  --color-text-placeholder: rgba(255, 255, 255, 0.4);
-  /* 实心底上的反白字（主按钮、角标勾） */
+  --color-text-placeholder: #{$--color-text-disabled};
   --color-text-light-solid: #ffffff;
 
-  --color-bg-container: #{$--bg-color};
-  --color-bg-elevated: #{$--bg-color};
-  --color-bg-layout: #{$--fill-color};
-  --bg-color-secondary: rgba(255, 255, 255, 0.1);
+  --color-bg-container: #141414;
+  --color-bg-elevated: #1f1f1f;
+  --color-bg-layout: #000000;
+  --bg-color-secondary: rgba(255, 255, 255, 0.08);
   --color-fill: rgba(255, 255, 255, 0.18);
   --color-fill-secondary: rgba(255, 255, 255, 0.12);
   --color-fill-tertiary: rgba(255, 255, 255, 0.08);
-  --color-fill-quaternary: rgba(255, 255, 255, 0.1);
-  --color-border-secondary: rgba(255, 255, 255, 0.16);
+  --color-fill-quaternary: rgba(255, 255, 255, 0.04);
+  --color-border-secondary: #303030;
 
-  /* —— 功能色 —— */
+  /* —— 功能色（dark map） —— */
   --color-success: #{$--color-success};
-  --color-success-bg: rgba(82, 196, 26, 0.16);
-  --color-success-text: #95de64;
+  --color-success-bg: #162312;
+  --color-success-text: #6abe39;
   --color-warning: #{$--color-warning};
-  --color-warning-bg: rgba(250, 173, 20, 0.16);
-  --color-warning-text: #ffd666;
+  --color-warning-bg: #2b2111;
+  --color-warning-text: #e8b339;
   --color-error: #{$--color-error};
-  --color-error-bg: rgba(255, 77, 79, 0.16);
-  --color-error-text: #ff7875;
+  --color-error-bg: #2c1618;
+  --color-error-text: #e86e6b;
   --color-info: #{$--color-info};
-  --color-info-bg: rgba(22, 136, 255, 0.16);
+  --color-info-bg: #111c2c;
 
-  /* —— 遮罩 / 浮层（灯箱、抽屉蒙层、框选） —— */
+  /* —— 遮罩 / 浮层 —— */
   --color-bg-mask: rgba(0, 0, 0, 0.45);
   --color-bg-mask-strong: rgba(0, 0, 0, 0.72);
-  --color-bg-spotlight: rgba(0, 0, 0, 0.85);
+  --color-bg-spotlight: #424242;
   --color-overlay-hover: rgba(255, 255, 255, 0.08);
-  --color-overlay-active: rgba(255, 255, 255, 0.14);
+  --color-overlay-active: rgba(255, 255, 255, 0.12);
 
-  /* —— CS 顶栏（可跟主题微调，关闭键保留系统红语义） —— */
+  /* —— CS 顶栏 —— */
   --cs-bar-bg: #1f2329;
   --cs-bar-border: rgba(255, 255, 255, 0.08);
   --cs-win-close: #e81123;
@@ -95,7 +94,7 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   --font-family: #{$--font-family};
   --font-family-mono: #{$--font-family-mono};
 
-  /* Ant Design 桥接（业务可写 var(--ant-color-*)，与自有 token 同值） */
+  /* Ant Design 桥接 */
   --ant-color-primary: var(--color-primary);
   --ant-color-success: var(--color-success);
   --ant-color-warning: var(--color-warning);
@@ -109,35 +108,22 @@ $--font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Lib
   --ant-color-bg-layout: var(--color-bg-layout);
   --ant-color-border: var(--border-color);
 
-  /*
-   * VXE 色板不在此写死：须等 VxeUI.setTheme("dark") + vxeThemeBridge.scss
-   * （:root 提前写浅色字会叠在默认 light 白底上导致表头不可读）
-   */
   --vxe-ui-font-family: var(--font-family);
   --vxe-ui-border-radius: var(--ant-border-radius, 8px);
   --vxe-ui-table-border-radius: var(--vxe-ui-border-radius);
 
-  /*
-   * Motion tokens（Apple / Emil）：
-   * --ease-out 强调出手即反馈；press 短、panel 中、fade 用于轻切页
-   */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --dur-press: 140ms;
   --dur-fade: 180ms;
   --dur-panel: 220ms;
 
-  /*
-   * 布局铬条高度：页面用 100vh 扣减时必须计入 CS 顶栏，否则内容区溢出
-   * Web 无顶栏 → --cs-shell-bar-height: 0；Tauri 由 html.cs-shell 设为 34px
-   */
   --layout-navbar-height: 50px;
   --layout-tags-height: 38px;
-  --layout-page-margin-y: 24px; /* .app-page 上下 margin 12+12 */
+  --layout-page-margin-y: 24px;
   --cs-tools-bar-height: 34px;
   --cs-shell-bar-height: 0px;
 }
 
-/* Tauri 壳：顶栏占位，供 layout / app-page 的 vh 计算统一扣减 */
 html.cs-shell {
   --cs-shell-bar-height: var(--cs-tools-bar-height);
   overflow: hidden;
@@ -147,9 +133,6 @@ html.cs-shell {
     overflow: hidden;
   }
 
-  /*
-   * #app 默认 min-width:1228px（Web 预览）；CS 客户区下限由 ensureCsWindowMinInnerSize 保证。
-   */
   #app {
     min-width: 0;
   }

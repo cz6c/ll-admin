@@ -1,48 +1,51 @@
 /**
  * 主题与 html class 工具
- * 职责：切换灰色/色弱 class；写入自有 CSS 变量与 Ant Design token 桥接变量；
- * 导出与 theme.scss 一致的色常量供 JS（ConfigProvider / ECharts / stroke）使用
- * @note @apps/admin 全局强制暗黑；改色只改本文件 + theme.scss
+ * 职责：导出与 Ant Design `darkAlgorithm` 一致的色常量；切换主色时用算法刷新 CSS 变量
+ * @note 中性色/功能色取 dark map；ConfigProvider 只传 seed（见 App.vue），勿再手调偏亮 alpha
  */
+
+import { theme as antdTheme } from "ant-design-vue";
 
 /**
  * 与 theme.scss --font-family 保持一致（ConfigProvider token 需 JS 字符串）
- * Ant Design 5 系统栈 + 中文兜底
  */
 export const FONT_FAMILY =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
 
-/** 默认品牌主色（与 theme.scss $--color-primary、uni --wot-primary-6 对齐） */
+/** 品牌主色 seed（settings / ConfigProvider）；暗黑界面实际用色为算法派生 map */
 export const COLOR_PRIMARY = "#1688ff";
 
-/** 与 theme.scss --color-text* 一致（全局暗黑 ConfigProvider token） */
-export const COLOR_TEXT = "rgba(255, 255, 255, 0.92)";
-export const COLOR_TEXT_SECONDARY = "rgba(255, 255, 255, 0.78)";
-export const COLOR_TEXT_TERTIARY = "rgba(255, 255, 255, 0.58)";
-export const COLOR_TEXT_DISABLED = "rgba(255, 255, 255, 0.35)";
-export const COLOR_TEXT_PLACEHOLDER = "rgba(255, 255, 255, 0.4)";
+/** darkAlgorithm 中性字色（seed textBase=#fff） */
+export const COLOR_TEXT = "rgba(255, 255, 255, 0.85)";
+export const COLOR_TEXT_SECONDARY = "rgba(255, 255, 255, 0.65)";
+export const COLOR_TEXT_TERTIARY = "rgba(255, 255, 255, 0.45)";
+export const COLOR_TEXT_DISABLED = "rgba(255, 255, 255, 0.25)";
+export const COLOR_TEXT_PLACEHOLDER = COLOR_TEXT_DISABLED;
 export const COLOR_TEXT_LIGHT_SOLID = "#ffffff";
 
-/** 暗黑容器底（与 theme.scss --bg-color / --fill-color 对齐） */
-export const COLOR_BG_CONTAINER = "#1f1f1f";
-export const COLOR_BG_LAYOUT = "#141414";
+/** darkAlgorithm 面色 */
+export const COLOR_BG_CONTAINER = "#141414";
+export const COLOR_BG_LAYOUT = "#000000";
 export const COLOR_BG_ELEVATED = "#1f1f1f";
+export const COLOR_BORDER = "#424242";
 
-/** 功能色（JS 侧：进度条 / 波形图等无法写 CSS var 的场景） */
-export const COLOR_SUCCESS = "#52c41a";
-export const COLOR_SUCCESS_HOVER = "#95de64";
-export const COLOR_WARNING = "#faad14";
-export const COLOR_WARNING_HOVER = "#ffd666";
-export const COLOR_ERROR = "#ff4d4f";
-export const COLOR_ERROR_HOVER = "#ff7875";
-export const COLOR_INFO = COLOR_PRIMARY;
+/**
+ * 功能色：darkAlgorithm map（seed=#1688ff 时的静态默认）
+ * HOVER 取 *TextHover（偏亮），供 ECharts 渐变第二色，勿用算法里偏暗的 *Hover
+ */
+export const COLOR_SUCCESS = "#49aa19";
+export const COLOR_SUCCESS_HOVER = "#6abe39";
+export const COLOR_WARNING = "#d89614";
+export const COLOR_WARNING_HOVER = "#e8b339";
+export const COLOR_ERROR = "#dc4446";
+export const COLOR_ERROR_HOVER = "#e86e6b";
+export const COLOR_INFO = "#1677dc";
 export const COLOR_NEUTRAL = "#8c8c8c";
 export const COLOR_NEUTRAL_BG = "#bfbfbf";
 export const COLOR_NEUTRAL_BORDER = "#d9d9d9";
 
-/** 暗黑填充阶（ECharts 等需具体字符串时用） */
 export const COLOR_FILL_TERTIARY = "rgba(255, 255, 255, 0.08)";
-export const COLOR_FILL_QUATERNARY = "rgba(255, 255, 255, 0.1)";
+export const COLOR_FILL_QUATERNARY = "rgba(255, 255, 255, 0.04)";
 
 /** 设置/移除目标元素 class */
 export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement) {
@@ -53,19 +56,42 @@ export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement
 }
 
 /**
- * 处理主题色：自有变量供 Uno/布局；--ant-color-primary 供少量覆盖；
- * ConfigProvider 的 token 由 App.vue 响应式注入
- * @note 暗黑下 primary-bg 用主色半透明，不用冲淡到近白
+ * 用 darkAlgorithm 把 seed 主色展开为 map，写入 CSS 变量（与 antd 组件同盘）
+ * @param primarySeed 品牌主色 seed（settings.theme）
  */
-export function handleThemeStyle(theme: string) {
-  document.documentElement.style.setProperty("--color-primary", theme);
-  const rgb = hexToRgb(theme);
-  document.documentElement.style.setProperty("--color-primary-bg", `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.18)`);
-  document.documentElement.style.setProperty("--ant-color-primary", theme);
-  document.documentElement.style.setProperty("--color-info", theme);
-  document.documentElement.style.setProperty("--ant-color-info", theme);
-  // VXE 主色：暗黑主题下由 vxeThemeBridge 读 --color-primary；此处同步运行时改主色
-  document.documentElement.style.setProperty("--vxe-ui-font-primary-color", theme);
+export function handleThemeStyle(primarySeed: string) {
+  const seed = primarySeed?.trim() || COLOR_PRIMARY;
+  const map = antdTheme.darkAlgorithm({
+    ...antdTheme.defaultSeed,
+    colorPrimary: seed,
+    colorInfo: seed
+  });
+
+  const root = document.documentElement;
+  const set = (name: string, value: string | undefined) => {
+    if (value) root.style.setProperty(name, value);
+  };
+
+  set("--color-primary", map.colorPrimary);
+  set("--color-primary-bg", map.colorPrimaryBg);
+  set("--color-info", map.colorInfo);
+  set("--color-info-bg", map.colorPrimaryBg);
+  set("--color-success", map.colorSuccess);
+  set("--color-success-bg", map.colorSuccessBg);
+  set("--color-success-text", map.colorSuccessTextHover);
+  set("--color-warning", map.colorWarning);
+  set("--color-warning-bg", map.colorWarningBg);
+  set("--color-warning-text", map.colorWarningTextHover);
+  set("--color-error", map.colorError);
+  set("--color-error-bg", map.colorErrorBg);
+  set("--color-error-text", map.colorErrorTextHover);
+
+  set("--ant-color-primary", map.colorPrimary);
+  set("--ant-color-info", map.colorInfo);
+  set("--ant-color-success", map.colorSuccess);
+  set("--ant-color-warning", map.colorWarning);
+  set("--ant-color-error", map.colorError);
+  set("--vxe-ui-font-primary-color", map.colorPrimary);
 }
 
 export function hexToRgb(str: string) {

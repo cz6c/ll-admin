@@ -87,10 +87,10 @@ alwaysApply: false
 
 ### 暗黑模式
 
-- **@apps/admin 全局强制暗黑**（无开关）：根 `ConfigProvider` 使用 `theme.darkAlgorithm`，字色/容器 token 与 `theme.scss` `:root` 一致；布局壳走同一套 CSS 变量。
+- **@apps/admin 全局强制暗黑**（无开关）：根 `ConfigProvider` 使用 `theme.darkAlgorithm`，**只传 seed**（`colorPrimary` / `fontFamily` 等）；中性字色/面色/边框交给算法派生，自有 `--color-*` 与 dark map 对齐（见 `theme.scss`）。
 - **VXE**：启动时 `VxeUI.setTheme("dark")`，色板经 `vxeThemeBridge.scss` 桥到 `--color-*`；禁止只改字体变量却不切 VXE theme（会白底浅字）。
 - 禁止再做页面级「半套暗黑岛」或嵌套第二套暗黑 ConfigProvider（相册壳已并入全局）。
-- 禁止只改几处背景、字色仍用浅色黑字 token。
+- 禁止手调偏亮字色 alpha 覆盖算法中性盘（对比度问题应改 seed 或换算法，不另起一套灰阶）。
 
 ---
 

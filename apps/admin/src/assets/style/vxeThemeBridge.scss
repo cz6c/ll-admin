@@ -25,12 +25,13 @@
 
   --vxe-ui-input-border-color: var(--border-color);
   --vxe-ui-input-placeholder-color: var(--color-text-placeholder);
-  --vxe-ui-input-disabled-background-color: var(--fill-color);
+  --vxe-ui-input-disabled-background-color: var(--color-bg-container);
 
   --vxe-ui-loading-background-color: var(--color-bg-mask);
 
-  --vxe-ui-table-header-background-color: var(--fill-color);
-  --vxe-ui-table-column-to-row-background-color: var(--fill-color);
+  /* 表头用 elevated，避免与 layout(#000) 糊成一片 */
+  --vxe-ui-table-header-background-color: var(--color-bg-elevated);
+  --vxe-ui-table-column-to-row-background-color: var(--color-bg-elevated);
   --vxe-ui-table-border-color: var(--border-color);
   --vxe-ui-table-row-hover-background-color: var(--color-overlay-hover);
   --vxe-ui-table-row-striped-background-color: var(--color-fill-tertiary);

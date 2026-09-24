@@ -19,18 +19,7 @@ import CsToolsBar from "@/components/CsToolsBar/index.vue";
 import { useIcloudSyncBackgroundNotify } from "@/composables/useIcloudSyncBackgroundAlert";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
-import {
-  FONT_FAMILY,
-  COLOR_PRIMARY,
-  COLOR_TEXT,
-  COLOR_TEXT_SECONDARY,
-  COLOR_TEXT_TERTIARY,
-  COLOR_TEXT_DISABLED,
-  COLOR_TEXT_PLACEHOLDER,
-  COLOR_BG_CONTAINER,
-  COLOR_BG_LAYOUT,
-  COLOR_BG_ELEVATED
-} from "@/utils/theme";
+import { FONT_FAMILY, COLOR_PRIMARY, handleThemeStyle } from "@/utils/theme";
 
 dayjs.locale("zh-cn");
 
@@ -44,24 +33,20 @@ const settingsStore = useSettingsStore();
 
 useIcloudSyncBackgroundNotify();
 
+/** 启动即按 seed 同步 dark map → CSS，避免仅改设置时才写入 */
+handleThemeStyle(settingsStore.theme || COLOR_PRIMARY);
+
 /**
- * 全局强制暗黑：darkAlgorithm + 显式浅色字 / 深色容器 token
- * （与 theme.scss :root 一致；色值只从 @/utils/theme 引入）
+ * 全局强制暗黑：只传 seed，中性/功能 map 交给 darkAlgorithm 派生
+ * （CSS 桥接默认见 theme.scss；改主色时 handleThemeStyle 同步 map）
  */
 const antdTheme = computed(() => ({
   algorithm: theme.darkAlgorithm,
   token: {
     colorPrimary: settingsStore.theme || COLOR_PRIMARY,
+    colorInfo: settingsStore.theme || COLOR_PRIMARY,
     borderRadius: 8,
-    fontFamily: FONT_FAMILY,
-    colorText: COLOR_TEXT,
-    colorTextSecondary: COLOR_TEXT_SECONDARY,
-    colorTextTertiary: COLOR_TEXT_TERTIARY,
-    colorTextDisabled: COLOR_TEXT_DISABLED,
-    colorTextPlaceholder: COLOR_TEXT_PLACEHOLDER,
-    colorBgContainer: COLOR_BG_CONTAINER,
-    colorBgElevated: COLOR_BG_ELEVATED,
-    colorBgLayout: COLOR_BG_LAYOUT
+    fontFamily: FONT_FAMILY
   }
 }));
 

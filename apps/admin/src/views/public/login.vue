@@ -103,7 +103,7 @@ getCookie();
 <template>
   <div class="login">
     <div class="login-fl">
-      <LoginSvgCom style="transform: scale(0.6)" />
+      <LoginSvgCom style="transform: scale(0.68)" />
     </div>
     <div class="login-fr">
       <div class="login-conten">
@@ -160,7 +160,12 @@ getCookie();
     height: 100%;
   }
 
+  .login-fl {
+    flex: 1.5;
+  }
+
   .login-fr {
+    flex: 1;
     position: relative;
 
     .login-conten {

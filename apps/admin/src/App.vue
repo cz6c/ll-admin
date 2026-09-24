@@ -84,8 +84,7 @@ function resolveAppNavigate(raw: string): string {
  * （全屏遮罩类偏移见 antd.scss）
  */
 function syncCsOverlayOffset() {
-  const barH =
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 34;
+  const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cs-shell-bar-height")) || 34;
   message.config({ top: barH + 8 });
   notification.config({ top: barH + 24 });
 }

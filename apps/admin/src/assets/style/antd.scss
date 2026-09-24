@@ -92,6 +92,12 @@ html.cs-shell {
   #nprogress .bar {
     top: var(--cs-shell-bar-height) !important;
   }
+
+  /* VXE 表格工具栏「放大」：fixed 全屏，须下移避开 CsToolsBar */
+  .vxe-grid.is--maximize {
+    top: var(--cs-shell-bar-height) !important;
+    height: calc(100% - var(--cs-shell-bar-height)) !important;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

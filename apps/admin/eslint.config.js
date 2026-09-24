@@ -128,11 +128,20 @@ export default defineConfig([
           jsx: true
         },
         extraFileExtensions: [".vue"],
-        parser: tseslint.parser,
+        /**
+         * script lang=tsx 的列表页（dict-tag JSX）须显式挂 tsx parser，
+         * 否则 vue-eslint-parser 按 ts 解析会在 `<dict-tag` 上报 `'>' expected`
+         */
+        parser: {
+          js: "espree",
+          jsx: "espree",
+          ts: tseslint.parser,
+          tsx: tseslint.parser
+        },
         sourceType: "module",
-        // monorepo 下同时存在 admin/common 的 tsconfig，必须钉死根目录，否则 vue 解析报 tsconfigRootDir
-        projectService: true,
+        // monorepo 下同时存在 admin/common 的 tsconfig，必须钉死根目录
         tsconfigRootDir: import.meta.dirname
+        // 不用 projectService：.vue 在 TS project 里不当作 tsx，会把 script lang=tsx 的 JSX 解析报 `'>' expected`
       }
     },
     plugins: {

@@ -179,12 +179,7 @@ export function qzoneProxiedSrc(remoteUrl: string, kind: "thumb" | "preview" = "
  * 视频/大文件预览：Rust 落盘后返回绝对路径，前端再 convertFileSrc
  * 视频须传 albumId+assetId，后端走 floatview 取 MP4（列表 URL 常为封面/m3u8）
  */
-export async function prepareQzonePreview(args: {
-  url: string;
-  albumId?: string;
-  assetId?: string;
-  mediaKind?: string;
-}): Promise<string> {
+export async function prepareQzonePreview(args: { url: string; albumId?: string; assetId?: string; mediaKind?: string }): Promise<string> {
   return invoke<string>("qzone_sync_prepare_preview", {
     url: args.url,
     albumId: args.albumId ?? null,

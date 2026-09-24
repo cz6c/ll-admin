@@ -41,12 +41,7 @@ const getBtnVisible = (btn: BtnOptionsProps) => {
     <a-popover v-if="moreBtnsCom.length > 0" trigger="hover" placement="leftTop">
       <template #content>
         <a-space direction="vertical" :size="4" class="more-btns">
-          <ToolButton
-            v-for="(btn, index) in moreBtnsCom"
-            :key="index"
-            :options="{ ...btn, props: { ...btn.props, size, type: 'text' } }"
-            :data="data"
-          />
+          <ToolButton v-for="(btn, index) in moreBtnsCom" :key="index" :options="{ ...btn, props: { ...btn.props, size, type: 'text' } }" :data="data" />
         </a-space>
       </template>
       <a-button :size="size">

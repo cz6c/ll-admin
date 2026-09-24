@@ -61,13 +61,7 @@ function dayMark(file: MediaFile): DayMark {
  * 按日分段并铺绝对坐标
  * @param files 当前已挂载年份内的媒体（升序）
  */
-export function buildAlbumDayLayout(
-  files: MediaFile[],
-  cols: number,
-  thumbSize: number,
-  gap: number,
-  headerHeight = DAY_HEADER_HEIGHT
-): AlbumDayLayout {
+export function buildAlbumDayLayout(files: MediaFile[], cols: number, thumbSize: number, gap: number, headerHeight = DAY_HEADER_HEIGHT): AlbumDayLayout {
   if (files.length === 0 || cols <= 0 || thumbSize <= 0) {
     return { sections: [], placements: [], totalHeight: 0 };
   }
@@ -161,10 +155,7 @@ export function sliceVisibleDayLayout(
 }
 
 /** 框选：只命中缩略图矩形，不命中日标题与未排满空位 */
-export function hitTestThumbPlacements(
-  placements: AlbumThumbPlacement[],
-  box: { left: number; top: number; width: number; height: number }
-): string[] {
+export function hitTestThumbPlacements(placements: AlbumThumbPlacement[], box: { left: number; top: number; width: number; height: number }): string[] {
   const boxRight = box.left + box.width;
   const boxBottom = box.top + box.height;
   const hits: string[] = [];

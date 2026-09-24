@@ -10,11 +10,7 @@
  */
 
 import { message } from "ant-design-vue";
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification
-} from "@tauri-apps/plugin-notification";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 export type CsNotifyChannel = "os" | "msg" | "inline";
 
@@ -95,11 +91,7 @@ function showCsMessage(kind: CsNotifyKind, payload: CsNotifyPayload) {
  * 按统一规则投递用户提示（成功 / 失败 / 信息共用）
  * @returns 实际使用的通道；inline 表示未弹全局提示，由关注页自行展示
  */
-export async function deliverCsNotify(
-  ctx: CsNotifyContext,
-  payload: CsNotifyPayload,
-  kind: CsNotifyKind = "info"
-): Promise<CsNotifyChannel> {
+export async function deliverCsNotify(ctx: CsNotifyContext, payload: CsNotifyPayload, kind: CsNotifyKind = "info"): Promise<CsNotifyChannel> {
   const channel = resolveCsNotifyChannel(ctx);
   if (channel === "inline") return channel;
   if (channel === "os") {

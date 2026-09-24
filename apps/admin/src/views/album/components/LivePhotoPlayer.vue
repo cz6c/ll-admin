@@ -39,8 +39,7 @@ const ensureSourcePath = computed(() => {
   if (preferredPlaybackSrc.value) return undefined;
   return props.videoPath?.trim() || undefined;
 });
-const { playbackSrc: ensuredSrc, loading: playbackLoading, error: playbackError } =
-  useAlbumPlaybackSrc(ensureSourcePath);
+const { playbackSrc: ensuredSrc, loading: playbackLoading, error: playbackError } = useAlbumPlaybackSrc(ensureSourcePath);
 
 /** HEIC/HEIF 在 WebView 中无法作为 img src 直接渲染 */
 function isHeifPath(path: string): boolean {
@@ -97,14 +96,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="live-photo-player">
-    <div
-      class="live-photo-frame"
-      @pointerenter="startPlay"
-      @pointerleave="stopPlay"
-      @pointerdown="startPlay"
-      @pointerup="stopPlay"
-      @pointercancel="stopPlay"
-    >
+    <div class="live-photo-frame" @pointerenter="startPlay" @pointerleave="stopPlay" @pointerdown="startPlay" @pointerup="stopPlay" @pointercancel="stopPlay">
       <img :src="photoSrc" class="live-photo-still" :class="{ 'is-hidden': playing }" alt="" />
       <div v-if="playbackLoading" class="live-photo-status">
         <a-spin tip="正在准备播放…" />

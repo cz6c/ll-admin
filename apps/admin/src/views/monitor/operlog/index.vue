@@ -235,9 +235,7 @@ const rowButtons: BtnOptionsProps[] = [
         <a-row>
           <a-col :span="12">
             <a-form-item label="操作模块：">{{ detailRow.title }}</a-form-item>
-            <a-form-item label="登录信息："
-              >{{ detailRow.operName }} / {{ detailRow.operIp }} / {{ detailRow.operLocation }}</a-form-item
-            >
+            <a-form-item label="登录信息：">{{ detailRow.operName }} / {{ detailRow.operIp }} / {{ detailRow.operLocation }}</a-form-item>
           </a-col>
           <a-col :span="12">
             <a-form-item label="请求地址：">{{ detailRow.operUrl }}</a-form-item>
@@ -265,9 +263,7 @@ const rowButtons: BtnOptionsProps[] = [
             <a-form-item label="操作时间：">{{ formatToDatetime(detailRow.operTime) }}</a-form-item>
           </a-col>
           <a-col :span="24">
-            <a-form-item v-if="detailRow.status === 1 || detailRow.status === '1'" label="异常信息：">{{
-              detailRow.errorMsg
-            }}</a-form-item>
+            <a-form-item v-if="detailRow.status === 1 || detailRow.status === '1'" label="异常信息：">{{ detailRow.errorMsg }}</a-form-item>
           </a-col>
         </a-row>
       </a-form>

@@ -111,21 +111,8 @@ const gridOptions = reactive<VxeGridProps<MenuTableRow>>({
           return (
             <div class="menu-name-cell">
               {isChild ? (
-                <svg
-                  class="menu-tree-icon"
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M4 2v8a2 2 0 0 0 2 2h6"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                <svg class="menu-tree-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+                  <path d="M4 2v8a2 2 0 0 0 2 2h6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ) : null}
               <span>{row.menuName}</span>

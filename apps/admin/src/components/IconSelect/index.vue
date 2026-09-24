@@ -33,14 +33,10 @@ const tabsList = [
 ];
 
 const filteredList = computed(() =>
-  copyIconList.filter(
-    i => i.endsWith(`-${currentActiveType.value}`) && i.toLowerCase().includes(filterValue.value.toLowerCase())
-  )
+  copyIconList.filter(i => i.endsWith(`-${currentActiveType.value}`) && i.toLowerCase().includes(filterValue.value.toLowerCase()))
 );
 
-const pageList = computed(() =>
-  filteredList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
-);
+const pageList = computed(() => filteredList.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value));
 
 const iconItemStyle = computed((): ParameterCSSProperties => {
   return item => {

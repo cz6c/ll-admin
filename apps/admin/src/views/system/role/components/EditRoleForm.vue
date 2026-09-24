@@ -230,10 +230,10 @@ getInfo();
       </a-form-item>
       <a-form-item label="菜单权限">
         <div>
-         <a-space class="h-[32px]">
-          <a-checkbox :checked="menuExpand" @change="e => handleCheckedTreeExpand(e.target.checked)">展开/折叠</a-checkbox>
-          <a-checkbox v-model:checked="menuNodeAll" @change="e => handleCheckedTreeNodeAll(e.target.checked)">全选/全不选</a-checkbox>
-         </a-space>
+          <a-space class="h-[32px]">
+            <a-checkbox :checked="menuExpand" @change="e => handleCheckedTreeExpand(e.target.checked)">展开/折叠</a-checkbox>
+            <a-checkbox v-model:checked="menuNodeAll" @change="e => handleCheckedTreeNodeAll(e.target.checked)">全选/全不选</a-checkbox>
+          </a-space>
           <div class="menu-perm-table mt-2">
             <vxe-grid ref="menuGridRef" v-bind="menuGridOptions as VxeGridBindOptions">
               <template #menu_slot="{ row }">

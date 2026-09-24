@@ -4,15 +4,7 @@
     主流程：点头像开 Modal → 选图本地预览裁剪 → 提交 uploadImg + uploadAvatar
   -->
   <div class="user-info-head" @click="editCropper()">
-    <BaseImage
-      v-if="options.img"
-      :src="options.img"
-      fit="cover"
-      width="120px"
-      height="120px"
-      border-radius="50%"
-      :lazy="true"
-    />
+    <BaseImage v-if="options.img" :src="options.img" fit="cover" width="120px" height="120px" border-radius="50%" :lazy="true" />
     <span v-else>点击上传头像</span>
     <a-modal v-model:open="open" :title="title" width="800px" :footer="null" destroy-on-close @cancel="closeDialog">
       <a-row>

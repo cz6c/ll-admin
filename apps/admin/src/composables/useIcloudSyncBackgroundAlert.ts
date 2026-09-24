@@ -44,10 +44,7 @@ function readStoredJobId(): number | null {
   }
 }
 
-function notifyCopy(
-  status: IcloudSyncJobStatus,
-  detail: IcloudSyncJobStatusResult
-): { payload: CsNotifyPayload; kind: CsNotifyKind } {
+function notifyCopy(status: IcloudSyncJobStatus, detail: IcloudSyncJobStatusResult): { payload: CsNotifyPayload; kind: CsNotifyKind } {
   if (status === "done") {
     return {
       kind: "success",
@@ -108,11 +105,7 @@ export function useIcloudSyncBackgroundNotify() {
     const focused = await getCurrentWindow().isFocused();
     const currentPath = router.currentRoute.value.path;
     const { payload, kind } = notifyCopy(status.status, status);
-    await deliverCsNotify(
-      { windowFocused: focused, currentPath, attentionPath: ATTENTION_PATH },
-      payload,
-      kind
-    );
+    await deliverCsNotify({ windowFocused: focused, currentPath, attentionPath: ATTENTION_PATH }, payload, kind);
     lastNotifyKey = notifyKey;
 
     if (status.status === "done") {

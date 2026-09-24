@@ -24,13 +24,7 @@
   </template>
   <!-- 树选择器 -->
   <template v-else-if="column.type === 'tree-select'">
-    <a-tree-select
-      v-bind="fieldBind"
-      v-model:value="modelValue[column.prop]"
-      :tree-data="column.props?.treeData"
-      allow-clear
-      tree-default-expand-all
-    />
+    <a-tree-select v-bind="fieldBind" v-model:value="modelValue[column.prop]" :tree-data="column.props?.treeData" allow-clear tree-default-expand-all />
   </template>
   <!-- 级联选择器 -->
   <template v-else-if="column.type === 'cascader'">

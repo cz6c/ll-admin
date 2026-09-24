@@ -60,10 +60,7 @@ export function toggleClass(flag: boolean, clsName: string, target?: HTMLElement
 export function handleThemeStyle(theme: string) {
   document.documentElement.style.setProperty("--color-primary", theme);
   const rgb = hexToRgb(theme);
-  document.documentElement.style.setProperty(
-    "--color-primary-bg",
-    `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.18)`
-  );
+  document.documentElement.style.setProperty("--color-primary-bg", `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.18)`);
   document.documentElement.style.setProperty("--ant-color-primary", theme);
   document.documentElement.style.setProperty("--color-info", theme);
   document.documentElement.style.setProperty("--ant-color-info", theme);

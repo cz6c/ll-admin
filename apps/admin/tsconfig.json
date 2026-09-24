@@ -37,6 +37,7 @@
     "src/**/*.vue",
     "types/**/*.d.ts",
     "types/**/*.ts",
+    "build/**/*.ts",
     "vite.config.ts"
   ],
   "exclude": [

@@ -16,33 +16,21 @@
         <a-col v-if="server.cpu" :span="8">
           <div class="flex-col-center">
             CPU使用率
-            <a-progress
-              type="circle"
-              :percent="+server.cpu.usage"
-              :stroke-color="usageStrokeColor(+server.cpu.usage)"
-            />
+            <a-progress type="circle" :percent="+server.cpu.usage" :stroke-color="usageStrokeColor(+server.cpu.usage)" />
             CPU-{{ server.cpu.cpuNum }}核
           </div>
         </a-col>
         <a-col v-if="server.mem" :span="8">
           <div class="flex-col-center">
             内存使用率
-            <a-progress
-              type="circle"
-              :percent="+server.mem.usage"
-              :stroke-color="usageStrokeColor(+server.mem.usage)"
-            />
+            <a-progress type="circle" :percent="+server.mem.usage" :stroke-color="usageStrokeColor(+server.mem.usage)" />
             {{ server.mem.used }}/{{ server.mem.total }}GB
           </div>
         </a-col>
         <a-col v-if="server.sysFiles" :span="8">
           <div class="flex-col-center">
             磁盘使用率
-            <a-progress
-              type="circle"
-              :percent="+server.sysFiles.usage"
-              :stroke-color="usageStrokeColor(+server.sysFiles.usage)"
-            />
+            <a-progress type="circle" :percent="+server.sysFiles.usage" :stroke-color="usageStrokeColor(+server.sysFiles.usage)" />
             {{ server.sysFiles.used }}/{{ server.sysFiles.total }}GB
           </div>
         </a-col>
@@ -82,7 +70,7 @@ import { useEcharts } from "@/hooks/useEcharts";
 import { COLOR_ERROR, COLOR_SUCCESS, COLOR_WARNING } from "@/utils/theme";
 
 /** 使用率 → 进度条描边色（高危红 / 预警黄 / 正常绿） */
-function usageStrokeColor(usage: number) {
+function usageStrokeColor(usage) {
   if (usage > 85) return COLOR_ERROR;
   if (usage > 70) return COLOR_WARNING;
   return COLOR_SUCCESS;

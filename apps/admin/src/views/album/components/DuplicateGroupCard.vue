@@ -104,17 +104,11 @@ const memberCount = computed(() => memberRows.value.length);
 /** 本组最大可勾选数 = n-1（至少留 1） */
 const maxSelectable = computed(() => Math.max(0, memberCount.value - 1));
 
-const selectedInGroup = computed(
-  () => memberRows.value.filter(row => props.selectedPaths.has(row.path)).length
-);
+const selectedInGroup = computed(() => memberRows.value.filter(row => props.selectedPaths.has(row.path)).length);
 
-const groupAllSelected = computed(
-  () => maxSelectable.value > 0 && selectedInGroup.value === maxSelectable.value
-);
+const groupAllSelected = computed(() => maxSelectable.value > 0 && selectedInGroup.value === maxSelectable.value);
 
-const groupIndeterminate = computed(
-  () => selectedInGroup.value > 0 && selectedInGroup.value < maxSelectable.value
-);
+const groupIndeterminate = computed(() => selectedInGroup.value > 0 && selectedInGroup.value < maxSelectable.value);
 
 function groupHeaderTitle(): string {
   return `${sideLabel(props.group.mediaKind)} · ${props.group.contentKey} · ${memberCount.value} 项`;
@@ -158,12 +152,7 @@ function groupHeaderTitle(): string {
           <DuplicateLazyThumb :side="row.side" :is-live="group.mediaKind === 'live'" />
           <div v-if="row.sizeBytes != null" class="dup-size-hint">{{ formatBytes(row.sizeBytes) }}</div>
           <div class="dup-paths">
-            <div
-              v-for="(line, i) in formatPaths(row.side.path, row.side.videoPath)"
-              :key="i"
-              class="dup-path"
-              :title="line.absolute"
-            >
+            <div v-for="(line, i) in formatPaths(row.side.path, row.side.videoPath)" :key="i" class="dup-path" :title="line.absolute">
               {{ line.display }}
             </div>
           </div>

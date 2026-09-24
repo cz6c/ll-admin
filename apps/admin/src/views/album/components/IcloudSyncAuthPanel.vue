@@ -71,11 +71,7 @@ function applyAuthFailure(result: IcloudSyncLoginResult) {
   const detail = result.detail?.trim() ?? "";
   // 诊断落盘后 exceptionDetail 更完整；短 message 可能被截断
   const diagDetail = result.diagnostic?.exceptionDetail?.trim() || result.diagnostic?.exceptionType?.trim() || "";
-  const rawForFormat = detail
-    ? `${code}: ${detail}`
-    : diagDetail
-      ? `${code}: ${diagDetail}`
-      : code;
+  const rawForFormat = detail ? `${code}: ${detail}` : diagDetail ? `${code}: ${diagDetail}` : code;
   const message = formatIcloudSyncError(rawForFormat, {
     icloudDomain: icloudDomain.value
   });
@@ -96,9 +92,7 @@ function applyNeed2faResult(result: IcloudSyncLoginResult) {
   need2fa.value = true;
   twoFaDeliveryMethod.value = result.deliveryMethod?.trim() ?? "";
   // 投递方式推断不可靠（有短信能力仍常标成设备验证），文案用综合引导
-  twoFaDetail.value =
-    result.detail?.trim() ||
-    "请在手机上完成验证（设备弹窗点「允许」，或查收短信），再将 6 位验证码输入下方。需要新码时点「重发验证码」。";
+  twoFaDetail.value = result.detail?.trim() || "请在手机上完成验证（设备弹窗点「允许」，或查收短信），再将 6 位验证码输入下方。需要新码时点「重发验证码」。";
   startCooldownTicker();
 }
 
@@ -124,12 +118,7 @@ function stopCooldownTicker() {
 }
 
 const canResend2fa = computed(
-  () =>
-    need2fa.value &&
-    !loggingIn.value &&
-    !submitting2fa.value &&
-    !resending2fa.value &&
-    nowMs.value >= resendCooldownUntil.value
+  () => need2fa.value && !loggingIn.value && !submitting2fa.value && !resending2fa.value && nowMs.value >= resendCooldownUntil.value
 );
 
 const canSubmitLogin = computed(() => appleId.value.trim().length > 0 && password.value.length > 0 && !loggingIn.value && !need2fa.value);
@@ -336,27 +325,17 @@ onBeforeUnmount(() => {
         <template v-if="need2fa">
           <a-form-item label="验证码" class="form-item-tight">
             <a-alert type="info" show-icon class="mb-8px" :message="twoFaDetail" />
-            <a-input
-              v-model:value="twoFaCode"
-              placeholder="短信或设备上的 6 位数字"
-              inputmode="numeric"
-              :maxlength="6"
-              autocomplete="one-time-code"
-            />
+            <a-input v-model:value="twoFaCode" placeholder="短信或设备上的 6 位数字" inputmode="numeric" :maxlength="6" autocomplete="one-time-code" />
           </a-form-item>
         </template>
       </a-form>
 
       <div class="mt-12px auth-actions">
         <template v-if="need2fa">
-          <a-button type="primary" class="w-full" :loading="submitting2fa" :disabled="!canSubmit2fa" @click="onSubmit2fa">
-            提交验证码
-          </a-button>
+          <a-button type="primary" class="w-full" :loading="submitting2fa" :disabled="!canSubmit2fa" @click="onSubmit2fa"> 提交验证码 </a-button>
           <a-button class="w-full" :loading="resending2fa" :disabled="!canResend2fa" @click="onResend2fa"> 重发验证码 </a-button>
         </template>
-        <a-button v-else type="primary" class="w-full" :loading="loggingIn" :disabled="!canSubmitLogin || loading" @click="onLogin">
-          登录 Apple ID
-        </a-button>
+        <a-button v-else type="primary" class="w-full" :loading="loggingIn" :disabled="!canSubmitLogin || loading" @click="onLogin"> 登录 Apple ID </a-button>
       </div>
     </div>
   </a-spin>

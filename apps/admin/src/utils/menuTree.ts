@@ -30,9 +30,7 @@ export function toMenuTableRows(nodes: MenuTreeVo[] | undefined | null): MenuTab
     .filter(n => n.menuType === "M")
     .map(n => {
       const kids = n.children || [];
-      const perms: MenuPermItem[] = kids
-        .filter(c => c.menuType === "F")
-        .map(c => ({ menuId: c.menuId, menuName: c.menuName, perm: c.perm }));
+      const perms: MenuPermItem[] = kids.filter(c => c.menuType === "F").map(c => ({ menuId: c.menuId, menuName: c.menuName, perm: c.perm }));
       const menuChildren = toMenuTableRows(kids.filter(c => c.menuType === "M"));
       return {
         ...n,

@@ -18,10 +18,7 @@ export function isTauri(): boolean {
  * 按「客户区」逻辑像素设置最小窗口；必要时放大当前窗，避免 Windows 无边框外框 min 导致内区偏小裁切
  * @note tauri.conf 的 minWidth/minHeight 约束的是外框，不能单独依赖
  */
-export async function ensureCsWindowMinInnerSize(
-  width = CS_WINDOW_MIN_INNER_WIDTH,
-  height = CS_WINDOW_MIN_INNER_HEIGHT
-): Promise<void> {
+export async function ensureCsWindowMinInnerSize(width = CS_WINDOW_MIN_INNER_WIDTH, height = CS_WINDOW_MIN_INNER_HEIGHT): Promise<void> {
   if (!isTauri()) return;
   try {
     const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");

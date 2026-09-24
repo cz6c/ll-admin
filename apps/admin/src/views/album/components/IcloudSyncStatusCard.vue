@@ -82,13 +82,7 @@ const showPauseButton = computed(() => canPause.value && cardPrimary.value?.labe
     </div>
 
     <div v-if="cardShowProgress" class="progress-row">
-      <a-progress
-        class="progress-bar"
-        :percent="progressPercent"
-        :status="isFailed ? 'exception' : undefined"
-        size="small"
-        :show-info="false"
-      />
+      <a-progress class="progress-bar" :percent="progressPercent" :status="isFailed ? 'exception' : undefined" size="small" :show-info="false" />
       <span v-if="progress.total > 0" class="progress-percent">{{ progressPercent }}%</span>
       <span class="progress-stats">{{ progressStatsText }}</span>
     </div>

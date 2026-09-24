@@ -139,102 +139,100 @@ onActivated(load);
 <template>
   <div class="h-full overflow-auto bg-[var(--fill-color)]">
     <a-spin :spinning="loading">
-    <div class="box-border flex flex-col gap-16px px-16px pb-72px pt-16px">
-    <a-alert
-      v-if="fromSync"
-      type="info"
-      show-icon
-      class="mb-16px"
-      message="从 iCloud 同步页跳转而来"
-      description="确认相册根目录与落盘路径后保存，将自动返回同步页。"
-    />
-    <div class="flex flex-col gap-16px">
-      <a-card class="section-card card-rounded" :bordered="true">
-        <template #title>
-          <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
-            <span>客户端</span>
-            <span class="text-12px font-400 text-[var(--color-text-tertiary)]">窗口与启动行为</span>
-          </div>
-        </template>
-        <a-form :label-col="{ style: { width: '120px' } }">
-          <a-form-item label="关闭到托盘">
-            <div class="flex flex-wrap items-center gap-16px">
-              <a-switch v-model:checked="form.minimizeToTrayOnClose" />
-              <span class="text-12px leading-normal text-[var(--color-text-tertiary)]"> 开启后点关闭会隐藏到托盘，需托盘菜单「退出」才真正退出 </span>
-            </div>
-          </a-form-item>
-          <a-form-item label="开机自启">
-            <a-switch v-model:checked="form.autostart" />
-          </a-form-item>
-        </a-form>
-      </a-card>
+      <div class="box-border flex flex-col gap-16px px-16px pb-72px pt-16px">
+        <a-alert
+          v-if="fromSync"
+          type="info"
+          show-icon
+          class="mb-16px"
+          message="从 iCloud 同步页跳转而来"
+          description="确认相册根目录与落盘路径后保存，将自动返回同步页。"
+        />
+        <div class="flex flex-col gap-16px">
+          <a-card class="section-card card-rounded" :bordered="true">
+            <template #title>
+              <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
+                <span>客户端</span>
+                <span class="text-12px font-400 text-[var(--color-text-tertiary)]">窗口与启动行为</span>
+              </div>
+            </template>
+            <a-form :label-col="{ style: { width: '120px' } }">
+              <a-form-item label="关闭到托盘">
+                <div class="flex flex-wrap items-center gap-16px">
+                  <a-switch v-model:checked="form.minimizeToTrayOnClose" />
+                  <span class="text-12px leading-normal text-[var(--color-text-tertiary)]"> 开启后点关闭会隐藏到托盘，需托盘菜单「退出」才真正退出 </span>
+                </div>
+              </a-form-item>
+              <a-form-item label="开机自启">
+                <a-switch v-model:checked="form.autostart" />
+              </a-form-item>
+            </a-form>
+          </a-card>
 
-      <a-card class="section-card card-rounded" :bordered="true">
-        <template #title>
-          <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
-            <span>AI 接入</span>
-            <span class="text-12px font-400 text-[var(--color-text-tertiary)]">
-              Key 存系统钥匙串
-            </span>
-          </div>
-        </template>
-        <a-form :label-col="{ style: { width: '120px' } }">
-          <a-form-item label="Base URL">
-            <a-input v-model:value="form.modelBaseUrl" placeholder="https://api.openai.com/v1" />
-          </a-form-item>
-          <a-form-item label="Model">
-            <a-input v-model:value="form.modelName" />
-          </a-form-item>
-          <a-form-item label="API Key">
-            <div class="flex w-full gap-8px">
-              <a-input-password v-model:value="apiKeyInput" :placeholder="hasKey ? '已配置（输入则覆盖）' : '未配置'" />
-              <a-button v-if="hasKey" @click="clearKey">清除</a-button>
-            </div>
-            <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">未配置 Key 时不会调用 AI 模型。</p>
-          </a-form-item>
-        </a-form>
-      </a-card>
+          <a-card class="section-card card-rounded" :bordered="true">
+            <template #title>
+              <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
+                <span>AI 接入</span>
+                <span class="text-12px font-400 text-[var(--color-text-tertiary)]"> Key 存系统钥匙串 </span>
+              </div>
+            </template>
+            <a-form :label-col="{ style: { width: '120px' } }">
+              <a-form-item label="Base URL">
+                <a-input v-model:value="form.modelBaseUrl" placeholder="https://api.openai.com/v1" />
+              </a-form-item>
+              <a-form-item label="Model">
+                <a-input v-model:value="form.modelName" />
+              </a-form-item>
+              <a-form-item label="API Key">
+                <div class="flex w-full gap-8px">
+                  <a-input-password v-model:value="apiKeyInput" :placeholder="hasKey ? '已配置（输入则覆盖）' : '未配置'" />
+                  <a-button v-if="hasKey" @click="clearKey">清除</a-button>
+                </div>
+                <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">未配置 Key 时不会调用 AI 模型。</p>
+              </a-form-item>
+            </a-form>
+          </a-card>
 
-      <a-card class="section-card card-rounded" :bordered="true">
-        <template #title>
-          <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
-            <span>相册</span>
-            <span class="text-12px font-400 text-[var(--color-text-tertiary)]">根目录与备份源落盘路径</span>
-          </div>
-        </template>
-        <a-form :label-col="{ style: { width: '120px' } }">
-          <a-form-item label="相册根目录" required>
-            <div class="flex w-full gap-8px">
-              <a-input v-model:value="rootDir" placeholder="选择或输入相册根目录路径" spellcheck="false" :disabled="loading" />
-              <a-button :disabled="loading" @click="browseRootDir">浏览</a-button>
-            </div>
-            <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">从该目录开始递归扫描，按子目录分组展示媒体文件</p>
-          </a-form-item>
+          <a-card class="section-card card-rounded" :bordered="true">
+            <template #title>
+              <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
+                <span>相册</span>
+                <span class="text-12px font-400 text-[var(--color-text-tertiary)]">根目录与备份源落盘路径</span>
+              </div>
+            </template>
+            <a-form :label-col="{ style: { width: '120px' } }">
+              <a-form-item label="相册根目录" required>
+                <div class="flex w-full gap-8px">
+                  <a-input v-model:value="rootDir" placeholder="选择或输入相册根目录路径" spellcheck="false" :disabled="loading" />
+                  <a-button :disabled="loading" @click="browseRootDir">浏览</a-button>
+                </div>
+                <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">从该目录开始递归扫描，按子目录分组展示媒体文件</p>
+              </a-form-item>
 
-          <template v-if="isTauri()">
-            <a-divider orientation="left">iCloud 同步</a-divider>
+              <template v-if="isTauri()">
+                <a-divider orientation="left">iCloud 同步</a-divider>
 
-            <a-form-item label="落盘目录">
-              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
-              </p>
-            </a-form-item>
+                <a-form-item label="落盘目录">
+                  <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                    固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
+                  </p>
+                </a-form-item>
 
-            <a-divider orientation="left">QQ 空间同步</a-divider>
+                <a-divider orientation="left">QQ 空间同步</a-divider>
 
-            <a-form-item label="落盘目录">
-              <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                固定路径：相册根/QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
-              </p>
-            </a-form-item>
-          </template>
-        </a-form>
-      </a-card>
-    </div>
+                <a-form-item label="落盘目录">
+                  <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                    固定路径：相册根/QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
+                  </p>
+                </a-form-item>
+              </template>
+            </a-form>
+          </a-card>
+        </div>
 
-    <CsSaveBar :saving="saving" @reload="load" @save="onSave" />
-    </div>
-  </a-spin>
+        <CsSaveBar :saving="saving" @reload="load" @save="onSave" />
+      </div>
+    </a-spin>
   </div>
 </template>
 

@@ -5,7 +5,7 @@
  */
 import type { ComputedRef, Ref } from "vue";
 import { albumYearKey, neighborYearKey, pickLatestYearKey, stepAlbumYear, type AlbumAxisYear } from "./albumYearAxis";
-import { findThumbPlacement, type AlbumDayLayout } from "./albumDayLayout";
+import { findThumbPlacement, isThumbPlacementInViewport, type AlbumDayLayout } from "./albumDayLayout";
 import type { MediaFile } from "./types";
 
 /** 滚到顶/底约两行内触发邻年挂载 */
@@ -122,7 +122,8 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
     const file = catalogFiles.value.find(item => item.path === filePath);
     if (!file) return;
     const yearKey = albumYearKey(file);
-    if (!loadedYearKeys.value.includes(yearKey)) {
+    const yearAlreadyLoaded = loadedYearKeys.value.includes(yearKey);
+    if (!yearAlreadyLoaded) {
       preferBottom = false;
       loadedYearKeys.value = [yearKey];
     }
@@ -131,6 +132,10 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
       requestAnimationFrame(() => {
         const placement = findThumbPlacement(dayLayout.value, filePath);
         if (!placement) return;
+        const el = scrollEl.value;
+        const viewH = viewportHeight.value || el?.clientHeight || 0;
+        const st = el?.scrollTop ?? scrollTop.value;
+        if (yearAlreadyLoaded && isThumbPlacementInViewport(placement, st, viewH)) return;
         scrollToThumbPlacement(placement.top, placement.height);
       });
     });

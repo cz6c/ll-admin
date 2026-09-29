@@ -8,6 +8,7 @@
 -->
 <script setup lang="ts">
 import MediaPreviewZoom from "./MediaPreviewZoom.vue";
+import { MEDIA_LIGHTBOX_TOOLBAR_KEY } from "./mediaLightboxContext";
 import { useEventListener } from "@vueuse/core";
 
 const props = withDefaults(
@@ -46,6 +47,10 @@ const emit = defineEmits<{
 
 defineOptions({ name: "MediaLightboxShell" });
 
+/** 顶栏居中工具区；与关闭按钮同高，供 MediaPreviewZoom Teleport 缩放控件 */
+const topToolbarRef = ref<HTMLElement | null>(null);
+provide(MEDIA_LIGHTBOX_TOOLBAR_KEY, topToolbarRef);
+
 function onKeydown(e: KeyboardEvent) {
   if (!props.open) return;
   switch (e.key) {
@@ -71,6 +76,8 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
 <template>
   <Teleport to="body">
     <div v-if="open" class="viewer-overlay" role="dialog" aria-modal="true" :aria-label="title || '预览'" @click="emit('close')">
+      <div ref="topToolbarRef" class="viewer-top-toolbar" @click.stop @dblclick.stop />
+
       <a-button class="viewer-close" shape="circle" type="text" title="关闭 (Esc)" @click.stop="emit('close')">
         <template #icon>
           <CcIconifyIcon icon="ant-design:close-outlined" width="20" height="20" />
@@ -134,6 +141,18 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
   overflow: hidden;
   /* 相册灯箱深底衬媒体，避免浅罩抢对比 */
   background: var(--color-bg-spotlight);
+}
+.viewer-top-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: none;
+
+  :deep(> *) {
+    pointer-events: auto;
+  }
 }
 .viewer-close {
   position: absolute;

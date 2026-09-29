@@ -177,3 +177,14 @@ export function yearStartTop(layout: AlbumDayLayout, yearKey: string): number {
 export function findThumbPlacement(layout: AlbumDayLayout, filePath: string): AlbumThumbPlacement | null {
   return layout.placements.find(item => item.file.path === filePath) ?? null;
 }
+
+/**
+ * 缩略图是否与滚动视口有垂直交集
+ * @note 退出预览时已在可视区内则不必再滚，避免画面无故跳动
+ */
+export function isThumbPlacementInViewport(placement: Pick<AlbumThumbPlacement, "top" | "height">, scrollTop: number, viewportHeight: number): boolean {
+  if (viewportHeight <= 0) return false;
+  const thumbBottom = placement.top + placement.height;
+  const viewBottom = scrollTop + viewportHeight;
+  return thumbBottom > scrollTop && placement.top < viewBottom;
+}

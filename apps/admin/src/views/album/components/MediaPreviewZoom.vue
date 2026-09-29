@@ -1,10 +1,13 @@
 <!--
   灯箱内图片缩放/平移/旋转
-  职责：滚轮缩放、双击放大/还原、拖拽平移、90° 旋转；工具栏操作
+  职责：滚轮缩放、双击放大/还原、拖拽平移、90° 旋转；工具栏 Teleport 至灯箱顶栏
   适用：MediaLightboxShell 包裹静态图；视频/Live 播放态不启用
   @note 平移与旋转/缩放分层：拖拽始终沿屏幕方向，避免 rotate 后拖动手感错位
+  @note 工具栏不在图片上绘制，避免与 Live 长按播放抢操作
+  @note 滚轮/按钮/缩放均以视口正中为锚点，避免随鼠标位置漂移
 -->
 <script setup lang="ts">
+import { MEDIA_LIGHTBOX_TOOLBAR_KEY } from "./mediaLightboxContext";
 import { useEventListener } from "@vueuse/core";
 
 const props = withDefaults(
@@ -29,7 +32,10 @@ const props = withDefaults(
 
 defineOptions({ name: "MediaPreviewZoom" });
 
-const viewportRef = ref<HTMLElement | null>(null);
+/** 挂载到灯箱顶栏，与关闭按钮对齐，避免工具栏叠在 Live 图上 */
+const toolbarTarget = inject(MEDIA_LIGHTBOX_TOOLBAR_KEY, null);
+const toolbarMount = computed(() => toolbarTarget?.value ?? null);
+
 const scale = ref(1);
 const rotation = ref(0);
 const translateX = ref(0);
@@ -44,7 +50,6 @@ let dragPointerId: number | null = null;
 let dragPending = false;
 
 const scaleLabel = computed(() => `${Math.round(scale.value * 100)}%`);
-const isTransformed = computed(() => scale.value > props.minScale + 0.001 || rotation.value % 360 !== 0);
 /** 仅放大后可拖；100% 时避免与 Live 按下播放抢事件 */
 const canPan = computed(() => scale.value > props.minScale + 0.001);
 
@@ -72,9 +77,9 @@ function clampScale(next: number) {
 }
 
 /**
- * 以视口中心为基准缩放；offset 为相对视口中心的指针偏移
+ * 以视口正中为锚点缩放；已有平移时同步校正 translate，保持画面中心稳定
  */
-function applyScale(nextScale: number, offsetX = 0, offsetY = 0, animate = false) {
+function applyScale(nextScale: number, animate = false) {
   const oldScale = scale.value;
   const clamped = clampScale(nextScale);
   if (Math.abs(clamped - oldScale) < 0.001) return;
@@ -87,27 +92,17 @@ function applyScale(nextScale: number, offsetX = 0, offsetY = 0, animate = false
     return;
   }
   const ratio = clamped / oldScale;
-  translateX.value = offsetX - ratio * (offsetX - translateX.value);
-  translateY.value = offsetY - ratio * (offsetY - translateY.value);
+  translateX.value = ratio * translateX.value;
+  translateY.value = ratio * translateY.value;
   scale.value = clamped;
 }
 
-function pointerOffsetInViewport(event: { clientX: number; clientY: number }) {
-  const viewport = viewportRef.value;
-  if (!viewport) return { x: 0, y: 0 };
-  const rect = viewport.getBoundingClientRect();
-  return {
-    x: event.clientX - rect.left - rect.width / 2,
-    y: event.clientY - rect.top - rect.height / 2
-  };
-}
-
 function zoomIn() {
-  applyScale(scale.value + props.step, 0, 0, true);
+  applyScale(scale.value + props.step);
 }
 
 function zoomOut() {
-  applyScale(scale.value - props.step, 0, 0, true);
+  applyScale(scale.value - props.step);
 }
 
 function rotateLeft() {
@@ -120,7 +115,7 @@ function rotateRight() {
   rotation.value += 90;
 }
 
-/** 点击比例：还原缩放/旋转/平移（与双击还原一致） */
+/** 点击比例：还原缩放/旋转/平移 */
 function resetView() {
   transitionEnabled.value = true;
   resetTransform();
@@ -135,20 +130,8 @@ function endDrag() {
 function onWheel(event: WheelEvent) {
   event.preventDefault();
   event.stopPropagation();
-  const { x, y } = pointerOffsetInViewport(event);
   const delta = event.deltaY > 0 ? -props.step : props.step;
-  applyScale(scale.value + delta, x, y, false);
-}
-
-function onDblClick(event: MouseEvent) {
-  event.preventDefault();
-  event.stopPropagation();
-  if (isTransformed.value) {
-    resetView();
-    return;
-  }
-  const { x, y } = pointerOffsetInViewport(event);
-  applyScale(Math.min(props.maxScale, 2.5), x, y, true);
+  applyScale(scale.value + delta);
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -212,43 +195,45 @@ useEventListener(window, "pointercancel", onPointerUp);
 </script>
 
 <template>
-  <div ref="viewportRef" class="media-preview-zoom">
-    <div class="media-preview-zoom__toolbar" @click.stop @dblclick.stop>
-      <a-space :size="4" align="center">
-        <a-button-group size="small">
-          <a-button type="text" title="逆时针旋转" aria-label="逆时针旋转" @click="rotateLeft">
-            <template #icon>
-              <CcIconifyIcon icon="ant-design:rotate-left-outlined" width="16px" height="16px" />
-            </template>
-          </a-button>
-          <a-button type="text" title="顺时针旋转" aria-label="顺时针旋转" @click="rotateRight">
-            <template #icon>
-              <CcIconifyIcon icon="ant-design:rotate-right-outlined" width="16px" height="16px" />
-            </template>
-          </a-button>
-        </a-button-group>
+  <div class="media-preview-zoom">
+    <Teleport v-if="toolbarMount" :to="toolbarMount">
+      <div class="media-preview-zoom__toolbar">
+        <a-space :size="0" align="center">
+          <a-button-group>
+            <a-button type="text" title="逆时针旋转" aria-label="逆时针旋转" @click="rotateLeft">
+              <template #icon>
+                <CcIconifyIcon icon="ant-design:rotate-left-outlined" width="20" height="20" />
+              </template>
+            </a-button>
+            <a-button type="text" title="顺时针旋转" aria-label="顺时针旋转" @click="rotateRight">
+              <template #icon>
+                <CcIconifyIcon icon="ant-design:rotate-right-outlined" width="20" height="20" />
+              </template>
+            </a-button>
+          </a-button-group>
 
-        <a-button-group size="small">
-          <a-button type="text" title="缩小" aria-label="缩小" @click="zoomOut">
-            <template #icon>
-              <CcIconifyIcon icon="ant-design:zoom-out-outlined" width="16px" height="16px" />
-            </template>
-          </a-button>
           <a-button type="text" class="scale-label" title="点击还原" aria-label="还原缩放与旋转" @click="resetView">{{ scaleLabel }}</a-button>
-          <a-button type="text" title="放大" aria-label="放大" @click="zoomIn">
-            <template #icon>
-              <CcIconifyIcon icon="ant-design:zoom-in-outlined" width="16px" height="16px" />
-            </template>
-          </a-button>
-        </a-button-group>
-      </a-space>
-    </div>
+
+          <a-button-group>
+            <a-button type="text" title="缩小" aria-label="缩小" @click="zoomOut">
+              <template #icon>
+                <CcIconifyIcon icon="ant-design:zoom-out-outlined" width="20" height="20" />
+              </template>
+            </a-button>
+            <a-button type="text" title="放大" aria-label="放大" @click="zoomIn">
+              <template #icon>
+                <CcIconifyIcon icon="ant-design:zoom-in-outlined" width="20" height="20" />
+              </template>
+            </a-button>
+          </a-button-group>
+        </a-space>
+      </div>
+    </Teleport>
 
     <div
       class="media-preview-zoom__stage"
       :class="{ 'is-grabbing': dragging, 'is-pannable': canPan }"
       @wheel="onWheel"
-      @dblclick="onDblClick"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -275,12 +260,6 @@ useEventListener(window, "pointercancel", onPointerUp);
 }
 
 .media-preview-zoom__toolbar {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  z-index: 3;
-  transform: translateX(-50%);
-  max-width: calc(100% - 24px);
   padding: 2px 4px;
   border-radius: 8px;
   background: var(--color-overlay-hover);
@@ -295,8 +274,7 @@ useEventListener(window, "pointercancel", onPointerUp);
   }
 
   .scale-label {
-    min-width: 52px;
-    font-size: 12px;
+    font-size: 14px;
     font-variant-numeric: tabular-nums;
   }
 }

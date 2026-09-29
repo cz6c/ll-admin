@@ -18,6 +18,8 @@ export function scrollRevealInRoot(scrollRoot: HTMLElement | null | undefined, t
   const { block = "center", behavior = "auto" } = options;
   const rootRect = scrollRoot.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
+  // 已在可视区内则不滚，避免退出预览时画面无故跳动（nearest 模式 delta 本即为 0）
+  if (targetRect.bottom > rootRect.top && targetRect.top < rootRect.bottom) return;
   const viewH = scrollRoot.clientHeight;
   let delta = 0;
   if (block === "center") {

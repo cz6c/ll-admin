@@ -31,6 +31,7 @@ import {
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
+import { scrollRevealInRoot } from "../scrollRevealInRoot";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -458,11 +459,21 @@ async function openPreview(index: number) {
   }
 }
 
+function scrollQzoneCellIntoView(assetId: string) {
+  nextTick(() => {
+    const root = photoScrollRef.value;
+    const cell = root?.querySelector<HTMLElement>(`.cell[data-asset-id="${CSS.escape(assetId)}"]`);
+    scrollRevealInRoot(root, cell, { block: "center" });
+  });
+}
+
 function closePreview() {
+  const assetId = previewPhoto.value?.assetId;
   previewEpoch++;
   previewOpen.value = false;
   previewVideoSrc.value = "";
   previewLoading.value = false;
+  if (assetId) scrollQzoneCellIntoView(assetId);
 }
 
 function previewNav(delta: number) {
@@ -707,6 +718,8 @@ watch(drawerOpen, open => {
     lightbox-loading-tip="正在准备视频…"
     :lightbox-can-prev="previewIndex > 0"
     :lightbox-can-next="previewIndex < photos.length - 1"
+    :lightbox-zoomable="!previewIsVideo && !!previewImageSrc"
+    :lightbox-zoom-reset-key="previewPhoto?.assetId"
     @lightbox-close="closePreview"
     @lightbox-prev="previewNav(-1)"
     @lightbox-next="previewNav(1)"
@@ -827,6 +840,7 @@ watch(drawerOpen, open => {
                       :key="row.photo.assetId"
                       type="button"
                       class="cell"
+                      :data-asset-id="row.photo.assetId"
                       :data-marquee-key="row.photo.assetId"
                       :class="{ selected: selectMode && isSelected(row.photo.assetId) }"
                       :title="row.photo.name"

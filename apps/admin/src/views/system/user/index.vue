@@ -10,6 +10,7 @@ import type { Key } from "ant-design-vue/es/_util/type";
 import { VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
+import CcDictTag from "@/components/DictTag/index.vue";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditUserForm from "./components/EditUserForm.vue";
 import { SearchFormItem } from "@/components/FormView/type";

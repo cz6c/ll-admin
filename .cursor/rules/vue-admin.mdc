@@ -45,14 +45,16 @@ alwaysApply: false
 
 - 优先 **Composition API**（`<script setup>`），与现有页面风格一致。
 
-### 组件自动引入（强制）
+### 组件全局注册（强制）
 
-- **`src/components/**/*.vue`**：`unplugin-vue-components` 扫描（`build/vite/plugins/component.ts`），**统一 `Cc` 前缀**；组件文件名勿再叠 `Base`/`Cs` 等冗余层（如 `Image/index.vue` → `<CcImage>`，`SearchForm` → `<CcSearchForm>`）。
-- 模板 / TSX 中直接使用 **`Cc` + 组件名**，**禁止** `import Xxx from "@/components/.../*.vue"`。
-- **类型 / 常量**：仍可从 `@/components/**/type`、`*.d.ts`、`ToolButton.vue` 等 **仅类型或 TS 导出** 路径 `import type`；这不是组件注册。
-- **允许手写 import 的例外**：在 **`.ts` 非 SFC** 里用 `h()` / `resolveComponent` 等编程式渲染（如 `useRenderIcon` 引 `IconifyIcon`）。
-- **`registerGlobComp`** 只注册 VXE / Tippy / Cropper 等插件，**不**注册 `src/components` 业务组件。
-- 本地 dev/build 后类型见 gitignore 的 `types/components.d.ts`；IDE 无提示时跑一次 `pnpm --filter @apps/admin dev` 或 build 生成。
+- **`src/components/**/*.vue`**：在 `registerCcComponents.ts` **全局注册**，模板统一 **`Cc` + 组件名**（如 `Image/index.vue` → `<CcImage>`）；文件名勿再叠 `Base`/`Cs` 等冗余层。
+- **`defineOptions({ name })`**：与全局标签一致写 **`Cc` + 目录名**（如 `CcImage`），禁止 `Image`/`Dialog` 等 HTML·SVG 保留名（`vue/no-reserved-component-names`）。
+- 模板 / TSX 中直接使用 `<CcXxx>`，**禁止** `import Xxx from "@/components/.../*.vue"`（组件注册）。
+- **类型 / 常量**：仍可从 `@/components/**/type`、`*.d.ts`、`ToolButton.vue` 等 **仅类型或 TS 导出** 路径 `import type`；Cc 组件 TS 类型见 `types/ccComponents.d.ts`。
+- **允许手写 import 的例外**：`<script lang="tsx">` 内 JSX、**`.ts` 非 SFC** 里 `h()` / `resolveComponent`（如 `useRenderIcon` 引 `IconifyIcon`、表格 slot 内 `<CcDictTag />`）。
+- **`registerGlobComp`**：Cc 业务组件 + VXE / Tippy / Cropper；**antd / VueUse** 仍由 `unplugin-vue-components` resolver 按需解析。
+- 新增 Cc 组件时同步更新 `registerCcComponents.ts` 与 `types/ccComponents.d.ts`。
+- antd 组件类型见 gitignore 的 `types/components.d.ts`（dev/build 自动生成）。
 - **业务弹窗**：页面/列表编辑、详情、相册工具等须用 **`CcDialog`**（`src/components/Dialog`），禁止直接写 `<a-modal>`；静态确认仍走 `$feedback.confirm`。
 
 ### 组件设计

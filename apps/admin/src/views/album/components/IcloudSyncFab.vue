@@ -11,6 +11,7 @@ import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
+import { scrollRevealInRoot } from "../scrollRevealInRoot";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
@@ -284,9 +285,19 @@ function openCloudPreview(row: CloudListDisplayRow) {
   previewOpen.value = true;
 }
 
+function scrollCloudRowIntoView(rowKey: string) {
+  nextTick(() => {
+    const root = cloudGridScrollRef.value;
+    const cell = root?.querySelector<HTMLElement>(`.cloud-cell[data-row-key="${CSS.escape(rowKey)}"]`);
+    scrollRevealInRoot(root, cell, { block: "center" });
+  });
+}
+
 function closeCloudPreview() {
+  const rowKey = previewRowKey.value;
   previewOpen.value = false;
   previewRowKey.value = null;
+  if (rowKey) scrollCloudRowIntoView(rowKey);
 }
 
 function navCloudPreview(delta: number) {
@@ -632,6 +643,8 @@ onBeforeUnmount(() => {
     :lightbox-meta="previewMeta"
     :lightbox-can-prev="previewIndex > 0"
     :lightbox-can-next="previewIndex >= 0 && previewIndex < cloudRows.length - 1"
+    :lightbox-zoomable="!!previewSrc"
+    :lightbox-zoom-reset-key="previewRowKey"
     @lightbox-close="closeCloudPreview"
     @lightbox-prev="navCloudPreview(-1)"
     @lightbox-next="navCloudPreview(1)"
@@ -709,6 +722,7 @@ onBeforeUnmount(() => {
                 v-for="row in cloudRows"
                 :key="row.rowKey"
                 class="cloud-cell"
+                :data-row-key="row.rowKey"
                 :data-marquee-key="canSelectCloudRow(row) ? row.rowKey : undefined"
                 :class="{ selected: selectMode && isCloudRowSelected(row), 'select-mode': selectMode }"
                 :title="`${row.displayFilename}\n${formatSortKeyTime(row.captureAt ?? row.sortKey)} · ${row.displayStateLabel}`"

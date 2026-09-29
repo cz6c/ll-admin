@@ -7,6 +7,7 @@
   @note 相册强制暗黑：遮罩/控件按暗色灯箱绘制，不跟随浅色 :root
 -->
 <script setup lang="ts">
+import MediaPreviewZoom from "./MediaPreviewZoom.vue";
 import { useEventListener } from "@vueuse/core";
 
 const props = withDefaults(
@@ -20,6 +21,10 @@ const props = withDefaults(
     loadingTip?: string;
     canPrev?: boolean;
     canNext?: boolean;
+    /** 静态图启用滚轮/双击/拖拽缩放 */
+    zoomable?: boolean;
+    /** 切换媒体时重置缩放 */
+    zoomResetKey?: string | number | null;
   }>(),
   {
     title: "",
@@ -27,7 +32,9 @@ const props = withDefaults(
     loading: false,
     loadingTip: "加载中…",
     canPrev: false,
-    canNext: false
+    canNext: false,
+    zoomable: false,
+    zoomResetKey: null
   }
 );
 
@@ -101,7 +108,10 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
 
       <div class="viewer-content" @click.stop>
         <a-spin :spinning="loading" :tip="loadingTip">
-          <slot />
+          <MediaPreviewZoom v-if="zoomable" class="viewer-zoom-wrap" :active="open" :reset-key="zoomResetKey">
+            <slot />
+          </MediaPreviewZoom>
+          <slot v-else />
         </a-spin>
       </div>
 
@@ -164,6 +174,10 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
 }
 .viewer-next {
   right: 16px;
+}
+.viewer-zoom-wrap {
+  width: 100%;
+  height: 100%;
 }
 .viewer-content {
   width: 90vw;

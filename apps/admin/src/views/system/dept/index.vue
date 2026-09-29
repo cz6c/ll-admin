@@ -5,6 +5,7 @@ import { formatToDatetime } from "@llcz/common";
 import $feedback from "@/utils/feedback";
 import { useDict } from "@/hooks/useDict";
 import { SearchFormItem } from "@/components/FormView/type";
+import CcDictTag from "@/components/DictTag/index.vue";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import { VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";

@@ -9,7 +9,8 @@ import imgError from "@/assets/images/imgError.png";
 import imgLoading from "@/assets/images/imgLoading.png";
 
 defineOptions({
-  name: "Image"
+  /** 全局注册为 CcImage；勿用 Image（HTML/SVG 保留名，eslint vue/no-reserved-component-names） */
+  name: "CcImage"
 });
 
 const props = defineProps({

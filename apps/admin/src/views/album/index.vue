@@ -263,10 +263,11 @@ const activeYearKey = computed(() => findDaySectionAt(dayLayout.value, scrollTop
 
 const viewerOpen = computed(() => !!viewerState.value);
 
-const { resetYearWindowToLatest, focusYear, onAlbumYearKey } = useAlbumYearWindow({
+const { resetYearWindowToLatest, focusYear, revealFilePath, onAlbumYearKey } = useAlbumYearWindow({
   loadedYearKeys,
   yearAxis,
   dayLayout,
+  catalogFiles,
   displayFiles,
   scrollEl,
   scrollTop,
@@ -326,6 +327,12 @@ function openViewer(file: MediaFile) {
   if (fi >= 0) {
     viewerState.value = { groupIdx: 0, fileIdx: fi };
   }
+}
+
+/** 灯箱关闭：滚回预览内最后浏览的文件（含切图后） */
+function onViewerClose(filePath?: string) {
+  viewerState.value = null;
+  if (filePath) void revealFilePath(filePath);
 }
 
 function onDuplicatesDeleted() {
@@ -491,7 +498,7 @@ onBeforeUnmount(() => {
       :groups="viewerGroups"
       :initial-group-idx="viewerState.groupIdx"
       :initial-file-idx="viewerState.fileIdx"
-      @close="viewerState = null"
+      @close="onViewerClose"
     />
 
     <IcloudSyncFab />

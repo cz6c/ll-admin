@@ -7,6 +7,7 @@ import { useDict } from "@/hooks/useDict";
 import { VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
+import CcDictTag from "@/components/DictTag/index.vue";
 import { BtnOptionsProps } from "@/components/ToolButtons/ToolButton.vue";
 import EditPostForm from "./components/EditNoticeForm.vue";
 import { SearchFormItem } from "@/components/FormView/type";

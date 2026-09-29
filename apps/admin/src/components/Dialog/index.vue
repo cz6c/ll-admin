@@ -8,7 +8,8 @@ import { useAntModalDrag } from "@/composables/useAntModalDrag";
 import type { CSSProperties } from "vue";
 
 defineOptions({
-  name: "Dialog",
+  /** 全局注册为 CcDialog；勿用 Dialog（HTML 保留名，eslint vue/no-reserved-component-names） */
+  name: "CcDialog",
   inheritAttrs: false
 });
 

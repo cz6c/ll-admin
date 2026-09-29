@@ -4,8 +4,8 @@
  * 适用：album/index.vue；discover 仍全库，本模块只管已挂载 yearKeys
  */
 import type { ComputedRef, Ref } from "vue";
-import { neighborYearKey, pickLatestYearKey, stepAlbumYear, type AlbumAxisYear } from "./albumYearAxis";
-import type { AlbumDayLayout } from "./albumDayLayout";
+import { albumYearKey, neighborYearKey, pickLatestYearKey, stepAlbumYear, type AlbumAxisYear } from "./albumYearAxis";
+import { findThumbPlacement, type AlbumDayLayout } from "./albumDayLayout";
 import type { MediaFile } from "./types";
 
 /** 滚到顶/底约两行内触发邻年挂载 */
@@ -16,6 +16,8 @@ export interface UseAlbumYearWindowOptions {
   loadedYearKeys: Ref<string[]>;
   yearAxis: ComputedRef<AlbumAxisYear[]>;
   dayLayout: ComputedRef<AlbumDayLayout>;
+  /** 全库筛选列表；灯箱退出定位用 */
+  catalogFiles: ComputedRef<MediaFile[]>;
   displayFiles: ComputedRef<MediaFile[]>;
   scrollEl: Ref<HTMLElement | null>;
   scrollTop: Ref<number>;
@@ -40,6 +42,7 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
     loadedYearKeys,
     yearAxis,
     dayLayout,
+    catalogFiles,
     displayFiles,
     scrollEl,
     scrollTop,
@@ -95,6 +98,42 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
     if (!el) return;
     el.scrollTop = 0;
     scrollTop.value = 0;
+  }
+
+  /** 按布局坐标滚到缩略图，尽量居中 */
+  function scrollToThumbPlacement(top: number, height: number) {
+    preferBottom = false;
+    suppressEdgeUntil = Date.now() + 500;
+    const el = scrollEl.value;
+    if (!el) return;
+    const viewH = viewportHeight.value || el.clientHeight;
+    const ideal = top - Math.max(0, (viewH - height) / 2);
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    const next = Math.min(max, Math.max(0, ideal));
+    el.scrollTop = next;
+    scrollTop.value = next;
+  }
+
+  /**
+   * 灯箱退出后滚回当前文件（预览内切图后仍对准最后一张）
+   * 未挂载年份时先切到该年再按布局坐标滚动
+   */
+  async function revealFilePath(filePath: string) {
+    const file = catalogFiles.value.find(item => item.path === filePath);
+    if (!file) return;
+    const yearKey = albumYearKey(file);
+    if (!loadedYearKeys.value.includes(yearKey)) {
+      preferBottom = false;
+      loadedYearKeys.value = [yearKey];
+    }
+    await nextTick();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const placement = findThumbPlacement(dayLayout.value, filePath);
+        if (!placement) return;
+        scrollToThumbPlacement(placement.top, placement.height);
+      });
+    });
   }
 
   /**
@@ -204,6 +243,7 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
   return {
     resetYearWindowToLatest,
     focusYear,
+    revealFilePath,
     onAlbumYearKey,
     yearEdgePx: ALBUM_YEAR_EDGE_PX
   };

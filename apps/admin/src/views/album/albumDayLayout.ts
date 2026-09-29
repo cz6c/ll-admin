@@ -172,3 +172,8 @@ export function yearStartTop(layout: AlbumDayLayout, yearKey: string): number {
   const section = layout.sections.find(item => item.yearKey === yearKey);
   return section?.headerTop ?? 0;
 }
+
+/** 按 path 查缩略图绝对坐标；灯箱退出后滚回宫格用 */
+export function findThumbPlacement(layout: AlbumDayLayout, filePath: string): AlbumThumbPlacement | null {
+  return layout.placements.find(item => item.file.path === filePath) ?? null;
+}

@@ -15,21 +15,14 @@ import VueTippy from "vue-tippy";
 import "tippy.js/dist/tippy.css";
 import "tippy.js/themes/light.css";
 
+import { registerCcComponents } from "./registerCcComponents";
+
 /**
- * 第三方 / 插件级全局注册（VXE、Tippy、Cropper）
- * `src/components` 下业务 .vue 由 unplugin-vue-components 按需 auto-import，勿在此重复注册
- * @see build/vite/plugins/component.ts · vue-admin.mdc「组件自动引入」
+ * 全局注册：Cc 业务组件 + 第三方插件（VXE、Tippy、Cropper）
+ * Cc 组件见 registerCcComponents.ts；antd / VueUse 仍由 unplugin 按需解析
  */
-const components = [];
-
-function install(app: App<Element>) {
-  components.forEach(component => {
-    app.component(component.name, component);
-  });
-}
-
 export function registerGlobComp(app: App) {
-  app.use({ install });
+  registerCcComponents(app);
   app.use(VueCropper);
   app.use(lazyVxeTable);
   app.use(VueTippy, {

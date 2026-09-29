@@ -26,6 +26,8 @@ const props = withDefaults(
     lightboxLoadingTip?: string;
     lightboxCanPrev?: boolean;
     lightboxCanNext?: boolean;
+    lightboxZoomable?: boolean;
+    lightboxZoomResetKey?: string | number | null;
   }>(),
   {
     defaultEdge: "right",
@@ -37,7 +39,9 @@ const props = withDefaults(
     lightboxLoading: false,
     lightboxLoadingTip: "加载中…",
     lightboxCanPrev: false,
-    lightboxCanNext: false
+    lightboxCanNext: false,
+    lightboxZoomable: false,
+    lightboxZoomResetKey: null
   }
 );
 
@@ -187,6 +191,8 @@ const mergedDrawerClass = computed(() => {
     :loading-tip="lightboxLoadingTip"
     :can-prev="lightboxCanPrev"
     :can-next="lightboxCanNext"
+    :zoomable="lightboxZoomable"
+    :zoom-reset-key="lightboxZoomResetKey"
     @close="emit('lightbox-close')"
     @prev="emit('lightbox-prev')"
     @next="emit('lightbox-next')"

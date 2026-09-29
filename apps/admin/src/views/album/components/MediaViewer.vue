@@ -16,7 +16,7 @@ const props = defineProps<{
   initialFileIdx: number;
 }>();
 
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: [filePath?: string] }>();
 
 defineOptions({ name: "MediaViewer" });
 
@@ -121,6 +121,12 @@ const resolutionLabel = computed(() => {
 
 const infoTitle = computed(() => current.value?.file.name ?? "");
 
+/** 静态图/Live 静帧可缩放；单独视频走原生 controls */
+const previewZoomable = computed(() => {
+  const kind = current.value?.file.kind;
+  return kind === "image" || kind === "livephoto";
+});
+
 const infoMeta = computed(() => {
   if (!current.value) return "";
   const parts: string[] = [];
@@ -159,9 +165,11 @@ onMounted(() => {
     :open="true"
     :title="infoTitle"
     :meta="infoMeta"
+    :zoomable="previewZoomable"
+    :zoom-reset-key="current?.file.path"
     :can-prev="currentIndex > 0"
     :can-next="currentIndex < flatFiles.length - 1"
-    @close="emit('close')"
+    @close="emit('close', current?.file.path)"
     @prev="prev"
     @next="next"
   >

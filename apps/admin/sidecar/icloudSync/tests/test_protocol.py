@@ -50,6 +50,40 @@ def test_catalog_done_event_style_in_mock() -> None:
     assert len(ev["items"]) == 2
 
 
+def test_catalog_include_hidden_merges_mock_hidden_items() -> None:
+    agent = _load_agent(mock=True)
+
+    ev = agent._dispatch({"cmd": "catalog", "view": "library", "include_hidden": True})
+    assert ev["type"] == "done"
+    assert ev["cmd"] == "catalog"
+    asset_ids = {item["asset_id"] for item in ev["items"]}
+    assert asset_ids == {"A1", "A2", "H1"}
+    hidden = [item for item in ev["items"] if item.get("catalog_scope") == "hidden"]
+    assert len(hidden) == 1
+    assert hidden[0]["asset_id"] == "H1"
+
+
+def test_catalog_include_shared_library_merges_mock_items() -> None:
+    agent = _load_agent(mock=True)
+
+    ev = agent._dispatch({"cmd": "catalog", "view": "library", "include_shared_library": True})
+    assert ev["type"] == "done"
+    asset_ids = {item["asset_id"] for item in ev["items"]}
+    assert "S1" in asset_ids
+    shared = [item for item in ev["items"] if item.get("catalog_scope") == "shared"]
+    assert len(shared) == 1
+    assert shared[0]["library_type"] == "shared"
+
+
+def test_catalog_include_hidden_ignored_for_recents_view() -> None:
+    agent = _load_agent(mock=True)
+
+    ev = agent._dispatch({"cmd": "catalog", "view": "recents", "include_hidden": True})
+    assert ev["type"] == "done"
+    assert len(ev["items"]) == 2
+    assert all(item.get("catalog_scope", "library") == "library" for item in ev["items"])
+
+
 def test_catalog_live_binding_error_code() -> None:
     agent = _load_agent(mock=True)
     original_items = list(agent.MOCK_CATALOG_ITEMS)
@@ -807,7 +841,12 @@ def test_delete_assets_live_dedupes_and_maps_parts(monkeypatch) -> None:
 
     calls: list[tuple[str, str | None]] = []
 
-    def _fake_delete(_api: object, record_name: str, change_tag: str | None = None) -> None:
+    def _fake_delete(
+        _api: object,
+        record_name: str,
+        change_tag: str | None = None,
+        **_: object,
+    ) -> None:
         calls.append((record_name, change_tag))
 
     monkeypatch.setattr(agent.ipd_photos, "delete_cpl_asset_by_record", _fake_delete)
@@ -843,7 +882,7 @@ def test_delete_assets_live_dedupes_and_maps_parts(monkeypatch) -> None:
 
     refreshed: list[list[str]] = []
 
-    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+    def _fake_fetch(_api: object, asset_ids: list[str], **_kwargs: object) -> dict[str, object]:
         refreshed.append(list(asset_ids))
         return {asset_id: object() for asset_id in asset_ids}
 
@@ -870,7 +909,7 @@ def test_batch_download_skips_fresh_lookup_within_ttl(monkeypatch) -> None:
 
     refreshed: list[list[str]] = []
 
-    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+    def _fake_fetch(_api: object, asset_ids: list[str], **_kwargs: object) -> dict[str, object]:
         refreshed.append(list(asset_ids))
         return {asset_id: object() for asset_id in asset_ids}
 
@@ -890,7 +929,7 @@ def test_stale_url_forces_lookup_even_when_fresh(monkeypatch) -> None:
 
     refreshed: list[list[str]] = []
 
-    def _fake_fetch(_api: object, asset_ids: list[str]) -> dict[str, object]:
+    def _fake_fetch(_api: object, asset_ids: list[str], **_kwargs: object) -> dict[str, object]:
         refreshed.append(list(asset_ids))
         return {asset_id: object() for asset_id in asset_ids}
 

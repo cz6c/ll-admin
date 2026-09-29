@@ -6,9 +6,9 @@
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
-> **对齐：** 2026-09-23（任务在 `job_mem` 进程内存，无 `jobs` 表；抽屉无云态 Tab，固定拉全量；删云一次性 + `$feedback.loading` 蒙层）
+> **对齐：** 2026-09-29（任务在 `job_mem` 进程内存，无 `jobs` 表；抽屉无云态 Tab，固定拉全量；删云一次性 + `$feedback.loading` 蒙层；可选 Hidden 相册混排同步）
 
-姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [表目录](./schemaCatalog.md)
+姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [表目录](./schemaCatalog.md) · [Shared Library 草案](./sharedLibraryDesign.md)
 
 > 本文为 iCloud 同步唯一流程/设计文档。改代码以本文硬规则 / 不变量为准。
 
@@ -31,13 +31,39 @@ flowchart LR
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
 | 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（**无云态 Tab**，固定 `cloudState=all` 分页）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；**一次性 await + `$feedback.loading` + toast**（不占进度卡 / 不入 job） |
-| 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；schema 无 `index_num` |
+| 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（**Hidden 项**在 `…/Hidden/` 子目录；本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
 | 本地优先保留 | 删云不删本地盘；相册右键只删本地不碰云 |
 | 互斥 | 同步 / 刷新目录占 **`job_mem`**；删云**不入 job**，执行中用内存旗标与 sync/catalog 互斥（共用 sidecar） |
 | 取消不抹统计 | 取消同步任务后，抽屉 cloud summary（如「待同步」计数）**保留**，不随 discard 清零 |
 | UI 不堵主线程 | sidecar / SQLite / auth 相关 command 用 `async fn` + `spawn_blocking`；`icloudimg` 已后台拉图。登录与缩略图仍争 **sidecar 单飞锁** |
+
+---
+
+## Hidden 相册（iCloud Hidden Album）
+
+> **不是** Shared Albums / 共享相册（需 `sharedstreams` API，当前**不支持**）。
+
+| 项 | 约定 |
+|----|------|
+| 产品开关 | CS **应用设置 → iCloud 同步 →「一并同步 Hidden 相册」**（`settings.json` → `syncHiddenAlbum`） |
+| catalog | sidecar **双枚举**（library + Hidden 智能相册），**单次 `done` 响应**；Rust **一次** `persist_catalog_delta` / diff |
+| 为何双枚举 | CloudKit 中 Hidden 与 library **互斥查询**，catalog 命令**无法**用单一 `view` 参数一次拉全 |
+| UI | 抽屉**单一宫格**混排（按 `sort_key` / 拍摄时间）；hidden 项左上角 🔒，tooltip 含「隐藏」 |
+| 落盘 | `catalog_scope=hidden` → `{albumRoot}/iCloudSync/<AppleID>/Hidden/`；入库 `media.origin_album=Hidden` |
+| 主相册墙 | 本地 discover 递归扫描相册根，Hidden 子目录文件**自然纳入**时间轴 |
+| 开关 OFF | 不再 catalog / 列表不展示 hidden 行；DB 内已有 hidden 行**保留**；`mark_catalog_deletions` **仅删 library scope** |
+| 开关 ON | catalog 带 `include_hidden=true`；列表 / summary 含 hidden；mark 删库对 hidden 行同样生效 |
+| 删云 | **「移除全部已同步」含 hidden**（`collect_synced_keys_for_cloud_delete` 无 scope 过滤） |
+
+```text
+settings.syncHiddenAlbum
+  → icloud_sync_refresh_catalog / start 串联 catalog
+  → sidecar catalog { view: library, include_hidden: true }
+  → items[].catalog_scope = library | hidden
+  → Rust diff 落库 + dest_path 按 scope 选子目录
+```
 
 ---
 
@@ -51,7 +77,8 @@ flowchart LR
 | **继续同步** | `paused_user` / 重登后 `paused_session` | resume；**不** re-catalog |
 | **取消任务** | 未完成且非 `cataloging` | `discard_task`；已下文件保留；summary 计数保留 |
 | **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
-| **从 iCloud 移除** | 工具栏危险主按钮 | 有勾选→移除所选；无勾选→移除全部已同步；确认 Modal + 1.5s；**一次性 await** 完成后 toast |
+| **从 iCloud 移除** | 工具栏危险主按钮 | 有勾选→移除所选；无勾选→**移除全部已同步（含 Hidden）**；确认 Modal + 1.5s；**一次性 await** 完成后 toast |
+| **同步 Hidden 相册** | CS 应用设置 | 开关保存到 `syncHiddenAlbum`；下次 catalog /「同步到本地」生效 |
 | **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
 | **换号登录** | 抽屉登录面板换 Apple ID | discard 旧 job + 清前端 jobId |
@@ -68,7 +95,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  R[同步到本地 / 仅更新状态] --> B[catalog 全量枚举]
+  R[同步到本地 / 仅更新状态] --> B["catalog 全量枚举<br/>+ 可选 Hidden"]
   B --> C[diff 落库]
   C --> D[mark 删除]
   D --> E[reconcile 本地缺失]
@@ -143,6 +170,8 @@ flowchart LR
 17. **catalog diff 前** 调用 `prepare_catalog_keys_temp`；`mark_catalog_deletions` / `enqueue_outstanding_for_full_sync` / in-catalog reconcile **依赖该临时表**，禁止逐行 N 次 SQL 旧路径。
 18. **`assets` 产品元数据**：`capture_at` / `added_at` / `latitude` / `longitude` 随 catalog 落库；**不**落 favorite / album / CPL 全量字段。下载入库时复制到 album `media`（origin 字段）；之后两库解耦。
 19. **持久库仅 `assets`**：无 `jobs` 表、无 `cloud_delete_queue`、无 `assets.index_num`、无 `cloud_cursors`；**不**维护 `user_version` 迁移。任务在 `job_mem`；删云一次性硬删行。
+20. **Hidden 相册**：仅 **Hidden 智能相册**（非 Shared Albums）；catalog 双枚举、Rust 单 diff；`catalog_scope` 区分落盘与 mark 删库 scope。
+21. **`sync_hidden_album=false`**：`load_sync_assets` / summary **过滤** hidden 行；catalog **不传** `include_hidden`；已下载 hidden 文件与 DB 行保留。
 
 ---
 
@@ -194,7 +223,8 @@ flowchart LR
 | `icloud_sync_resume_job` / `pause_job` | 续传 / 暂停 |
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
 | `icloud_sync_logout` | 清 sidecar + session（**不**清内存 job；换号 discard） |
-| `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选；UI 固定 `all`） |
+| `icloud_sync_get_settings` / `save_settings` | 含 `syncHiddenAlbum`（CS 应用设置） |
+| `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选；UI 固定 `all`；按 settings 过滤 scope） |
 | `icloud_sync_get_cloud_state_summary` | summary 计数（逻辑资产；Live=1） |
 | `icloud_sync_delete_assets` / `delete_all_synced` | 一次性删云（本机保留） |
 
@@ -213,13 +243,13 @@ flowchart LR
 **策略：降级 B** — sidecar **无** catalog 原生 delta API，每次 **全量枚举** + 本地 fingerprint 比对（**不是** incremental / changeToken 增量）。
 
 ```text
-sidecar catalog 全量枚举
-  → catalog_to_asset_rows（Live = still + mov 两行）
+sidecar catalog 全量枚举（library；syncHiddenAlbum 时 sidecar 追加 Hidden 枚举）
+  → catalog_to_asset_rows（Live = still + mov 两行；携带 catalog_scope）
   → load_existing_baselines
   → classify_catalog_rows
   → prepare_catalog_keys_temp（写入 TEMP 表，供后续批 SQL 复用）
   → apply_catalog_delta（刷新：不入队；仅更新 cloud_state）
-  → mark_catalog_deletions（单条 UPDATE + NOT EXISTS temp）
+  → mark_catalog_deletions（NOT EXISTS temp；OFF 时仅删 catalog_scope=library 行）
   → reconcile_synced_missing_local_files_in_catalog（仅 temp 内 synced 行 + is_file）
   →（开始同步时）enqueue_cloud_only_for_sync
   → set_job_catalog_counts → emit cloud-state-changed
@@ -260,15 +290,18 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | `added_at` | sidecar `added_date` | 加入图库时间 |
 | `latitude` / `longitude` | CPL `locationLatitude/Longitude`（有 GPS 才写） | 后续地图 / 地区分组 |
 | `sort_key` | 仍保留 | catalog 排序；Recents 任务下可能 = `added_at` |
+| `catalog_scope` | sidecar `catalog_scope`：`library` \| `hidden` | 落盘子目录、列表过滤、mark 删库 scope |
 
 - v3 → v4 迁移只加列；**旧行 NULL**，点「刷新 iCloud 状态」或「开始同步」后补齐。
-- **未落库**：favorite、hidden、caption raw、album 成员、CPL 全量 JSON（产品未定不扩）。
+- `catalog_scope` 列随 Hidden 功能追加（`ALTER TABLE`，默认 `library`）。
+- **未落库**：favorite、**系统 hidden 位**（单独布尔）、caption raw、album 成员、CPL 全量 JSON；Hidden **相册成员**用 `catalog_scope=hidden` 表达。
 
 ### 列表 / 筛选
 
 - `icloud_sync_load_assets` 日期筛选：**优先 `capture_at`**，空则回退 `sort_key`（`substr(..., 1, 10)`）。
 - 抽屉「拍摄时间」列：展示 `captureAt ?? sortKey`。
 - Live：DB 仍两行；Rust + `icloudSyncCloudList.ts` 合并 still/mov，云态取 **更差** 一侧。
+- Hidden：`syncHiddenAlbum=false` 时 Rust 列表 / summary **不返回** hidden 行；开启后混排，UI 🔒 标记。
 
 **步骤 reconcile + enqueue 顺序不可颠倒**：先 reconcile 再 enqueue，否则「本地已删文件」进不了本次下载队列。
 
@@ -317,6 +350,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 ## 明确不做
 
 - 「检查新照片」/ `incremental` 同步模式 / sidecar **真增量** catalog（无 native delta API）
+- **Shared Albums / 共享相册**（与 Hidden 智能相册不同 API）
 - 在线 **medium** / 未同步原片灯箱（产品锁定只做 thumb）
 - diff 层 Live **成对合并判态**（still/mov 分行 classify 即可；列表已合并展示；仅边缘脏数据可能 part 不一致）
 - 任务内 per-file 列表 UI（`list_asset_tasks` 保留供诊断）

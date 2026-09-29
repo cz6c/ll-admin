@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::types::{AssetRow, MediaKind};
+use super::types::{AssetRow, CatalogScope, LibraryType, MediaKind};
 
 /// catalog 行相对库内基线的变更类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +17,8 @@ pub enum CatalogDeltaKind {
   MetadataRefresh,
   /// fingerprint、changeTag、产品元数据均一致 → 仅批量刷新 last_catalog_at
   Unchanged,
+  /// 仅 catalog_scope / library zone 变化（私库↔共享图库迁移）；不强制重下
+  ScopeMigration,
 }
 
 /// 库内已有行的 diff 基线
@@ -29,6 +31,15 @@ pub struct ExistingAssetBaseline {
   pub added_at: Option<String>,
   pub latitude: Option<f64>,
   pub longitude: Option<f64>,
+  pub catalog_scope: CatalogScope,
+  pub library_type: LibraryType,
+  pub library_zone: String,
+}
+
+fn scope_changed(base: &ExistingAssetBaseline, row: &AssetRow) -> bool {
+  base.catalog_scope != row.catalog_scope
+    || base.library_type != row.library_type
+    || base.library_zone.trim() != row.library_zone.trim()
 }
 
 /// catalog 元数据指纹（降级 B；sidecar 无 native delta 时用）
@@ -61,6 +72,7 @@ pub fn classify_catalog_row(
     Some(base) if norm_tag(&base.cpl_asset_change_tag) != norm_tag(&row.cpl_asset_change_tag) => {
       CatalogDeltaKind::Modified
     }
+    Some(base) if scope_changed(base, row) => CatalogDeltaKind::ScopeMigration,
     Some(base) if product_meta_changed(base, row) => CatalogDeltaKind::MetadataRefresh,
     Some(_) => CatalogDeltaKind::Unchanged,
   }
@@ -85,7 +97,9 @@ pub fn classify_catalog_rows(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::icloud_sync::types::{AssetPart, AssetStatus, CloudState};
+  use crate::icloud_sync::types::{
+    AssetPart, AssetStatus, CatalogScope, CloudState, LibraryType, PRIMARY_SYNC_ZONE,
+  };
 
   fn sample_row(asset_id: &str, filename: &str) -> AssetRow {
     AssetRow {
@@ -111,6 +125,9 @@ mod tests {
       attempt_count: 0,
       cpl_asset_record_name: None,
       cpl_asset_change_tag: None,
+      catalog_scope: CatalogScope::Library,
+      library_type: LibraryType::Private,
+      library_zone: PRIMARY_SYNC_ZONE.to_string(),
     }
   }
 
@@ -123,7 +140,26 @@ mod tests {
       added_at: Some("2024-01-02".into()),
       latitude: None,
       longitude: None,
+      catalog_scope: CatalogScope::Library,
+      library_type: LibraryType::Private,
+      library_zone: PRIMARY_SYNC_ZONE.to_string(),
     }
+  }
+
+  #[test]
+  fn classify_scope_migration_when_only_scope_changes() {
+    let row = sample_row("A1", "a.jpg");
+    let fp = catalog_fingerprint(&row.sort_key, &row.original_filename, row.media_kind);
+    let mut existing = HashMap::new();
+    existing.insert(("A1".into(), "full".into()), baseline(&fp));
+    let mut row = row;
+    row.catalog_scope = CatalogScope::Shared;
+    row.library_type = LibraryType::Shared;
+    row.library_zone = "SharedLibrary-TEST".into();
+    assert_eq!(
+      classify_catalog_row(&row, &existing),
+      CatalogDeltaKind::ScopeMigration
+    );
   }
 
   #[test]

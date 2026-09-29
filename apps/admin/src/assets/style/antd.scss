@@ -59,7 +59,7 @@
 }
 
 /*
- * CS 顶栏常驻且 z-index 更高（CsToolsBar=2000）：
+ * CS 顶栏常驻且 z-index 更高（ToolsBar=2000）：
  * 全局浮层/遮罩勿盖住顶栏；全屏类扣高度，贴顶类加 top 偏移。
  * Web 下 --cs-shell-bar-height 为 0，规则无副作用。
  */
@@ -93,7 +93,7 @@ html.cs-shell {
     top: var(--cs-shell-bar-height) !important;
   }
 
-  /* VXE 表格工具栏「放大」：fixed 全屏，须下移避开 CsToolsBar */
+  /* VXE 表格工具栏「放大」：fixed 全屏，须下移避开 ToolsBar */
   .vxe-grid.is--maximize {
     top: var(--cs-shell-bar-height) !important;
     height: calc(100% - var(--cs-shell-bar-height)) !important;
@@ -131,6 +131,12 @@ html.cs-shell {
   }
 
   .ant-drawer-body {
+    padding: 16px !important;
+  }
+}
+
+.ant-modal {
+  .ant-modal-content {
     padding: 16px !important;
   }
 }

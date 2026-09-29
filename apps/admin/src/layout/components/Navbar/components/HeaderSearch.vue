@@ -1,6 +1,6 @@
 <template>
   <div class="header-search">
-    <IconifyIcon class="search-icon" icon="ant-design:search-outlined" width="16px" height="16px" />
+    <CcIconifyIcon class="search-icon" icon="ant-design:search-outlined" width="16px" height="16px" />
     <a-select
       v-model:value="search"
       show-search

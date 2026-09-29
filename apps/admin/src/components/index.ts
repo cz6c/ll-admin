@@ -15,11 +15,14 @@ import VueTippy from "vue-tippy";
 import "tippy.js/dist/tippy.css";
 import "tippy.js/themes/light.css";
 
-// components目录以外的组件导入注册
+/**
+ * 第三方 / 插件级全局注册（VXE、Tippy、Cropper）
+ * `src/components` 下业务 .vue 由 unplugin-vue-components 按需 auto-import，勿在此重复注册
+ * @see build/vite/plugins/component.ts · vue-admin.mdc「组件自动引入」
+ */
 const components = [];
 
 function install(app: App<Element>) {
-  // 组件循环注册
   components.forEach(component => {
     app.component(component.name, component);
   });
@@ -31,13 +34,11 @@ export function registerGlobComp(app: App) {
   app.use(lazyVxeTable);
   app.use(VueTippy, {
     defaultProps: {
-      // 这里可以设置全局默认props
       appendTo: () => document.body,
-      interactive: true, // 可交互
-      theme: "dark", // dark / light
+      interactive: true,
+      theme: "dark",
       maxWidth: 500,
       zIndex: 9999
-      // 其他默认选项
     }
   });
 }

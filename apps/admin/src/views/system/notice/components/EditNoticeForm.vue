@@ -81,7 +81,7 @@ getInfo();
         </a-col>
         <a-col :span="24">
           <a-form-item label="内容">
-            <WangEditor v-model="form.noticeContent" height="400px" />
+            <CcWangEditor v-model="form.noticeContent" height="400px" />
           </a-form-item>
         </a-col>
       </a-row>

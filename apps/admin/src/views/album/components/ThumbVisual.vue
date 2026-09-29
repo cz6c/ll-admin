@@ -18,7 +18,7 @@ const props = withDefaults(
     showLiveBadge?: boolean;
     /** sm：列表小格；md：宫格默认 */
     size?: "sm" | "md";
-    /** BaseImage 懒加载；IO 已门控时传 false 避免双重延迟 */
+    /** CcImage 懒加载；IO 已门控时传 false 避免双重延迟 */
     lazy?: boolean;
   }>(),
   {
@@ -41,18 +41,18 @@ const upperExt = computed(() => props.ext?.toUpperCase() ?? "");
 <template>
   <div class="thumb-visual" :class="`is-${size}`">
     <LivePhotoBadge v-if="showLiveBadge" class="thumb-badge" size="sm" />
-    <BaseImage v-if="src" class="thumb-img" :src="src" fit="cover" width="100%" height="100%" :lazy="lazy" />
+    <CcImage v-if="src" class="thumb-img" :src="src" fit="cover" width="100%" height="100%" :lazy="lazy" />
     <div v-else-if="kind === 'image' || kind === 'livephoto'" class="thumb-placeholder">
-      <IconifyIcon icon="ant-design:file-image-outlined" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
+      <CcIconifyIcon icon="ant-design:file-image-outlined" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
       <span v-if="size === 'md'" class="thumb-ext">{{ upperExt }}</span>
     </div>
     <div v-else class="thumb-placeholder">
-      <IconifyIcon icon="ant-design:play-circle-filled" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
+      <CcIconifyIcon icon="ant-design:play-circle-filled" :width="placeholderIconSize" :height="placeholderIconSize" class="thumb-placeholder-icon" />
       <span v-if="size === 'md'" class="thumb-ext">{{ upperExt }}</span>
     </div>
     <div v-if="kind === 'video' && src" class="video-play-overlay">
       <span class="video-play-btn">
-        <IconifyIcon icon="ant-design:caret-right-filled" :width="playIconSize" :height="playIconSize" class="video-play-icon" />
+        <CcIconifyIcon icon="ant-design:caret-right-filled" :width="playIconSize" :height="playIconSize" class="video-play-icon" />
       </span>
     </div>
   </div>

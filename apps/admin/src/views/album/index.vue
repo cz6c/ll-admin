@@ -4,11 +4,11 @@
   主流程：discover 全库 → 宫格只挂最新年 → 边缘滚动扩展邻年；勾选点格/框选；点击年份只挂该年
 -->
 <script setup lang="ts">
-import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import { invoke } from "@tauri-apps/api/core";
 import $feedback from "@/utils/feedback";
 import { dateUtil } from "@llcz/common";
 import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
+import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
 import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
@@ -28,9 +28,9 @@ import type { MediaFile, MediaGroup } from "./types";
 
 defineOptions({ name: "AlbumGallery" });
 
-const router = useRouter();
 /** CS 桌面端才支持 opener 打开本地目录 */
 const inTauri = isTauri();
+const { open: openCsSettings } = useCsSettingsModal();
 
 const groups = ref<MediaGroup[]>([]);
 const rootDir = ref("");
@@ -223,6 +223,18 @@ async function loadSettings() {
   }
 }
 
+/** 空态引导：保存根目录后回到当前页并触发扫描 */
+async function openAlbumSettingsFromEmpty() {
+  openCsSettings({
+    onSaved: async () => {
+      await loadSettings();
+      if (rootDir.value) {
+        await scan();
+      }
+    }
+  });
+}
+
 // ===== 按日分组虚拟滚动：只挂已加载年份；边缘再扩邻年 =====
 const scrollEl = ref<HTMLElement | null>(null);
 const { width: containerWidth, height: viewportHeight } = useElementSize(scrollEl);
@@ -380,7 +392,7 @@ onBeforeUnmount(() => {
   <div class="album-page">
     <a-result v-if="!rootDir && !loading" status="info" title="未设置相册根目录" class="state-panel">
       <template #extra>
-        <a-button type="primary" @click="router.push('/cs-settings')">前往设置</a-button>
+        <a-button type="primary" @click="openAlbumSettingsFromEmpty">前往设置</a-button>
       </template>
     </a-result>
 
@@ -425,17 +437,17 @@ onBeforeUnmount(() => {
             </template>
             <a-button v-if="inTauri" shape="circle" title="打开相册根目录" @click="openAlbumRootInExplorer">
               <template #icon>
-                <IconifyIcon icon="ant-design:folder-open-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:folder-open-outlined" width="16px" height="16px" />
               </template>
             </a-button>
             <a-button shape="circle" title="清理重复下载" @click="duplicateModalOpen = true">
               <template #icon>
-                <IconifyIcon icon="ant-design:clear-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:clear-outlined" width="16px" height="16px" />
               </template>
             </a-button>
             <a-button shape="circle" :loading="loading" title="刷新相册（强制重扫磁盘）" @click="scan(true)">
               <template #icon>
-                <IconifyIcon icon="ant-design:reload-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:reload-outlined" width="16px" height="16px" />
               </template>
             </a-button>
           </div>

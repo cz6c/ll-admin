@@ -66,7 +66,7 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
     <div v-if="open" class="viewer-overlay" role="dialog" aria-modal="true" :aria-label="title || '预览'" @click="emit('close')">
       <a-button class="viewer-close" shape="circle" type="text" title="关闭 (Esc)" @click.stop="emit('close')">
         <template #icon>
-          <IconifyIcon icon="ant-design:close-outlined" width="20" height="20" />
+          <CcIconifyIcon icon="ant-design:close-outlined" width="20" height="20" />
         </template>
       </a-button>
 
@@ -81,7 +81,7 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
         @click.stop="emit('prev')"
       >
         <template #icon>
-          <IconifyIcon icon="ant-design:left-outlined" width="24" height="24" />
+          <CcIconifyIcon icon="ant-design:left-outlined" width="24" height="24" />
         </template>
       </a-button>
 
@@ -95,7 +95,7 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
         @click.stop="emit('next')"
       >
         <template #icon>
-          <IconifyIcon icon="ant-design:right-outlined" width="24" height="24" />
+          <CcIconifyIcon icon="ant-design:right-outlined" width="24" height="24" />
         </template>
       </a-button>
 

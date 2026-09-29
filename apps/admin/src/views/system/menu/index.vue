@@ -296,17 +296,17 @@ function handleUpdate(row: MenuTreeVo | MenuTableRow | { menuId: number }, isPer
   <div class="app-page cz-card">
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
+        <CcSearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="middle" />
+        <CcToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #tools_slot="data">
-        <ToolButtons :buttons="rowButtons" :data="data" />
+        <CcToolButtons :buttons="rowButtons" :data="data" />
       </template>
     </vxe-grid>
 
-    <a-modal v-model:open="editDialog.open" :title="editDialog.title" :width="editDialog.isPerm ? '600px' : '800px'" :footer="null" destroy-on-close>
+    <CcDialog v-model:open="editDialog.open" :title="editDialog.title" :width="editDialog.isPerm ? '600px' : '800px'" :footer="null" destroy-on-close>
       <EditMenuForm
         v-if="editDialog.open"
         :menuId="editDialog.menuId"
@@ -316,7 +316,7 @@ function handleUpdate(row: MenuTreeVo | MenuTableRow | { menuId: number }, isPer
         @success="initListSearch"
         @cancel="editDialog.open = false"
       />
-    </a-modal>
+    </CcDialog>
   </div>
 </template>
 

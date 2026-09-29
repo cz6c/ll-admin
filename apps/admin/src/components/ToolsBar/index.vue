@@ -7,20 +7,21 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { productConfig } from "@/config";
-import { isCsSettingsPath } from "@/router/csPublic";
+import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isAlbumPath } from "@/router/album";
 import logo from "@/assets/images/logo.png";
 
-defineOptions({ name: "CsToolsBar" });
+defineOptions({ name: "ToolsBar" });
 
 const router = useRouter();
 const route = useRoute();
 const appWindow = getCurrentWindow();
 const appTitle = productConfig.title;
+const { visible: settingsVisible, open: openCsSettings } = useCsSettingsModal();
 
 const isAlbumActive = computed(() => isAlbumPath(route.path));
-const isSettingsActive = computed(() => isCsSettingsPath(route.path));
-const isAdminActive = computed(() => !isCsSettingsPath(route.path) && !isAlbumPath(route.path));
+const isSettingsActive = computed(() => settingsVisible.value);
+const isAdminActive = computed(() => !settingsVisible.value && !isAlbumPath(route.path));
 /** 最大化态：切换还原图标，并随窗口尺寸变化同步 */
 const isMaximized = ref(false);
 
@@ -45,8 +46,8 @@ function openAlbum() {
   router.push("/album/gallery");
 }
 
-function openCsSettings() {
-  router.push("/cs-settings");
+function onOpenCsSettings() {
+  openCsSettings();
 }
 
 /** 单击拖动窗口；双击切换最大化（替代系统标题栏习惯） */
@@ -132,7 +133,7 @@ onBeforeUnmount(() => {
         :class="{ active: isSettingsActive }"
         title="应用设置（开机自启、托盘、AI）"
         aria-label="应用设置"
-        @click="openCsSettings"
+        @click="onOpenCsSettings"
       >
         <component :is="useRenderIcon('ant-design:setting-outlined', { width: '16px', height: '16px' })" />
       </button>

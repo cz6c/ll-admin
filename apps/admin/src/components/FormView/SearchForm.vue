@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import type { SearchFormItem } from "./type";
 import { BreakPoint } from "@/components/Grid/type";
-import FormItem from "./components/FormItem.vue";
-import Grid from "@/components/Grid/index.vue";
-import GridItem from "@/components/Grid/components/GridItem.vue";
 import { useRenderIcon } from "@/hooks/useRenderIcon";
 import { cloneDeep } from "lodash-es";
 
@@ -79,13 +76,13 @@ const reset = () => {
     colon
     v-bind="$attrs"
   >
-    <Grid ref="gridRef" :collapsed="collapsed" :gap="[20, 0]" :cols="searchCol">
-      <GridItem v-for="(item, index) in columns" :key="item.prop" v-bind="item" :index="index">
+    <CcGrid ref="gridRef" :collapsed="collapsed" :gap="[20, 0]" :cols="searchCol">
+      <CcGridItem v-for="(item, index) in columns" :key="item.prop" v-bind="item" :index="index">
         <a-form-item :name="item.prop" :label="item.label" :label-col="item.itemLabelWidth ? toLabelCol(item.itemLabelWidth) : undefined">
-          <FormItem v-model="searchParam" :column="item" />
+          <CcFormItem v-model="searchParam" :column="item" />
         </a-form-item>
-      </GridItem>
-      <GridItem suffix>
+      </CcGridItem>
+      <CcGridItem suffix>
         <div class="operation">
           <a-space>
             <a-button type="primary" @click="$emit('search')">
@@ -102,12 +99,12 @@ const reset = () => {
             </a-button>
             <a-button v-if="showCollapse" type="link" class="search-isOpen" @click="collapsed = !collapsed">
               {{ collapsed ? "展开" : "合并" }}
-              <IconifyIcon class="collapse-icon" :icon="collapsed ? 'ant-design:down-outlined' : 'ant-design:up-outlined'" />
+              <CcIconifyIcon class="collapse-icon" :icon="collapsed ? 'ant-design:down-outlined' : 'ant-design:up-outlined'" />
             </a-button>
           </a-space>
         </div>
-      </GridItem>
-    </Grid>
+      </CcGridItem>
+    </CcGrid>
   </a-form>
 </template>
 <style lang="scss" scoped>

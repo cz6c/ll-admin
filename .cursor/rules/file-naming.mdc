@@ -13,8 +13,8 @@ alwaysApply: true
 |------|------|------|
 | 普通源码文件 | **小驼峰** `camelCase` | `reportDisplay.ts`、`dailyReport.ts` |
 | 普通源码目录 | **小驼峰** `camelCase` | `views/dailyReport/`、`api/appSettings/`、`csSettings/` |
-| Vue / 前端 **组件**文件 | **大驼峰** `PascalCase` | `CsToolsBar.vue`、`UserCard.vue` |
-| **组件**目录（含 `index.vue` 的文件夹） | **大驼峰** `PascalCase` | `components/CsToolsBar/`、`components/UserCard/` |
+| Vue / 前端 **组件**文件 | **大驼峰** `PascalCase` | `ToolsBar.vue`、`UserCard.vue` |
+| **组件**目录（含 `index.vue` 的文件夹） | **大驼峰** `PascalCase` | `components/ToolsBar/`、`components/UserCard/` |
 
 文件与其所在目录各自独立合规；不能因目录合规就放过文件名（反之亦然）。
 
@@ -29,7 +29,7 @@ alwaysApply: true
 ❌ views/daily-report/   cs-settings/   report_display.ts
 ✅ views/dailyReport/    csSettings/    reportDisplay.ts
 ❌ components/cs-tools-bar/
-✅ components/CsToolsBar/
+✅ components/ToolsBar/
 ```
 
 ## 例外（不要强行改名）

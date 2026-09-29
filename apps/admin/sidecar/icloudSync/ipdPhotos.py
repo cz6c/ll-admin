@@ -472,7 +472,38 @@ def _lookup_master_records(photos_service: Any, record_names: Sequence[str]) -> 
     return found
 
 
-def fetch_photo_assets_by_ids(api: Any, asset_ids: Sequence[str]) -> dict[str, Any]:
+def resolve_photos_service(
+    api: Any,
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
+) -> Any:
+    """
+    按 library_type/zone 返回绑定 CloudKit zone 的 PhotoLibrary。
+
+    @note 私库 PrimarySync 即 api.photos；shared 走 photos.shared_libraries[zone]
+    """
+    photos = getattr(api, "photos", None)
+    if photos is None:
+        raise RuntimeError("photos service unavailable")
+    if str(library_type).strip().lower() == "shared":
+        zone = str(library_zone).strip()
+        if not zone:
+            raise RuntimeError("library_zone required for shared library")
+        shared = getattr(photos, "shared_libraries", None) or {}
+        lib = shared.get(zone)
+        if lib is None:
+            raise RuntimeError(f"shared library zone not found: {zone}")
+        return lib
+    return photos
+
+
+def fetch_photo_assets_by_ids(
+    api: Any,
+    asset_ids: Sequence[str],
+    *,
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
+) -> dict[str, Any]:
     """
     按 asset_id（CPLMaster recordName）经 records/lookup 获取带新 downloadURL 的 PhotoAsset。
 
@@ -483,9 +514,7 @@ def fetch_photo_assets_by_ids(api: Any, asset_ids: Sequence[str]) -> dict[str, A
         return {}
 
     unique = list(dict.fromkeys(normalized))
-    photos_service = getattr(api, "photos", None)
-    if photos_service is None:
-        raise RuntimeError("photos service unavailable")
+    photos_service = resolve_photos_service(api, library_type, library_zone)
 
     found: dict[str, Any] = {}
     for offset in range(0, len(unique), PHOTO_LOOKUP_BATCH_SIZE):
@@ -558,7 +587,13 @@ def cpl_asset_meta_from_photo(photo: Any) -> dict[str, str]:
     return out
 
 
-def lookup_cpl_asset_change_tag(api: Any, record_name: str) -> str:
+def lookup_cpl_asset_change_tag(
+    api: Any,
+    record_name: str,
+    *,
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
+) -> str:
     """
     按 CPLAsset.recordName 定点 records/lookup 刷新 changeTag（O(1)，禁止扫库）。
 
@@ -568,10 +603,7 @@ def lookup_cpl_asset_change_tag(api: Any, record_name: str) -> str:
     if not name:
         raise RuntimeError("cpl_asset_record_name required")
 
-    photos_service = getattr(api, "photos", None)
-    if photos_service is None:
-        raise RuntimeError("photos service unavailable")
-
+    photos_service = resolve_photos_service(api, library_type, library_zone)
     service_endpoint = getattr(photos_service, "service_endpoint", None)
     params = getattr(photos_service, "params", None)
     session = getattr(photos_service, "session", None)
@@ -616,6 +648,9 @@ def delete_cpl_asset_by_record(
     api: Any,
     record_name: str,
     change_tag: str | None = None,
+    *,
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
 ) -> None:
     """
     用落库的 CPLAsset.recordName 软删；tag 缺失或冲突时定点 lookup 刷新一次。
@@ -626,10 +661,7 @@ def delete_cpl_asset_by_record(
     if not name:
         raise RuntimeError("cpl_asset_record_name required")
 
-    photos_service = getattr(api, "photos", None)
-    if photos_service is None:
-        raise RuntimeError("photos service unavailable")
-
+    photos_service = resolve_photos_service(api, library_type, library_zone)
     service_endpoint = getattr(photos_service, "service_endpoint", None)
     params = getattr(photos_service, "params", None)
     session = getattr(photos_service, "session", None)
@@ -639,7 +671,9 @@ def delete_cpl_asset_by_record(
 
     tag = (change_tag or "").strip()
     if not tag:
-        tag = lookup_cpl_asset_change_tag(api, name)
+        tag = lookup_cpl_asset_change_tag(
+            api, name, library_type=library_type, library_zone=library_zone
+        )
 
     url = f"{service_endpoint}/records/modify?{urlencode(params)}"
 
@@ -684,7 +718,9 @@ def delete_cpl_asset_by_record(
                 break
 
     if needs_retry:
-        fresh = lookup_cpl_asset_change_tag(api, name)
+        fresh = lookup_cpl_asset_change_tag(
+            api, name, library_type=library_type, library_zone=library_zone
+        )
         response = _post(fresh)
         status = getattr(response, "status_code", None)
         if status is not None and int(status) >= 400:

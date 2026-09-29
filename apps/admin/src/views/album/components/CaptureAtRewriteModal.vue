@@ -9,7 +9,6 @@ import { dateUtil, formatToDatetime } from "@llcz/common";
 import type { Dayjs } from "dayjs";
 import type Sortable from "sortablejs";
 import { setAlbumCaptureAt, type AlbumSetCaptureAtResult } from "@/api/album";
-import IconifyIcon from "@/components/IconifyIcon/index.vue";
 import $feedback from "@/utils/feedback";
 import AlbumThumbMedia from "./AlbumThumbMedia.vue";
 import type { MediaFile } from "../types";
@@ -319,7 +318,7 @@ async function onSave() {
 </script>
 
 <template>
-  <a-modal
+  <CcDialog
     v-model:open="open"
     title="修改拍摄时间"
     width="1040px"
@@ -365,12 +364,12 @@ async function onSave() {
         <div v-else ref="listEl" class="order-list" :style="{ height: `${LIST_HEIGHT}px` }">
           <div v-for="(file, index) in sessionFiles" :key="file.path" class="order-row" :data-path="file.path">
             <span class="drag-handle" title="拖动调整顺序" aria-label="拖动调整顺序">
-              <IconifyIcon icon="ant-design:holder-outlined" width="16px" height="16px" />
+              <CcIconifyIcon icon="ant-design:holder-outlined" width="16px" height="16px" />
             </span>
             <span class="col-seq">{{ index + 1 }}</span>
             <div class="row-nudge">
               <button type="button" class="nudge-btn" :disabled="submitting || index === 0" title="上移" aria-label="上移" @click="moveRow(index, index - 1)">
-                <IconifyIcon icon="ant-design:up-outlined" width="12px" height="12px" />
+                <CcIconifyIcon icon="ant-design:up-outlined" width="12px" height="12px" />
               </button>
               <button
                 type="button"
@@ -380,7 +379,7 @@ async function onSave() {
                 aria-label="下移"
                 @click="moveRow(index, index + 1)"
               >
-                <IconifyIcon icon="ant-design:down-outlined" width="12px" height="12px" />
+                <CcIconifyIcon icon="ant-design:down-outlined" width="12px" height="12px" />
               </button>
             </div>
             <div class="row-thumb" :title="file.name">
@@ -419,7 +418,7 @@ async function onSave() {
         </a-space>
       </div>
     </template>
-  </a-modal>
+  </CcDialog>
 </template>
 
 <style scoped lang="scss">

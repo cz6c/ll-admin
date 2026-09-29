@@ -3,7 +3,7 @@
     <!-- <a-button @click="print">打印</a-button> -->
     <a-card>
       <template #title>
-        <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:desktop-outlined" />服务器信息</span>
+        <span class="flex-center"><CcIconifyIcon class="mr-1" icon="ant-design:desktop-outlined" />服务器信息</span>
         <a-row v-if="server.sys" :gutter="10" class="mt-4">
           <a-col :span="6"> 服务器名称：{{ server.sys.computerName }} </a-col>
           <a-col :span="6"> 部署目录：{{ server.sys.userDir }} </a-col>
@@ -39,7 +39,7 @@
 
     <a-card class="mt-4">
       <template #title>
-        <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:database-outlined" />redis信息</span>
+        <span class="flex-center"><CcIconifyIcon class="mr-1" icon="ant-design:database-outlined" />redis信息</span>
         <a-row v-if="cache.info" :gutter="10" class="mt-4">
           <a-col :span="6"> Redis版本：{{ cache.info.redis_version }} </a-col>
           <a-col :span="6"> 端口：{{ cache.info.tcp_port }} </a-col>

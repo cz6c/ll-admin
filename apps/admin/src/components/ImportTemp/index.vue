@@ -101,7 +101,7 @@ async function submitFileForm() {
       :show-upload-list="true"
     >
       <p class="ant-upload-drag-icon">
-        <IconifyIcon class="upload-icon" icon="ant-design:cloud-upload-outlined" />
+        <CcIconifyIcon class="upload-icon" icon="ant-design:cloud-upload-outlined" />
       </p>
       <p class="ant-upload-text">将文件拖到此处，或<span class="link">点击上传</span></p>
     </a-upload-dragger>

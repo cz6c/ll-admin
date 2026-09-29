@@ -168,7 +168,7 @@ onMounted(() => {
     <template v-if="current">
       <a-result v-if="loadFailed" status="error" title="无法加载该文件" :sub-title="current.file.name" class="viewer-result" />
 
-      <BaseImage
+      <CcImage
         v-else-if="current.file.kind === 'image'"
         class="viewer-media viewer-img"
         :src="imagePreviewSrc(current.file)"

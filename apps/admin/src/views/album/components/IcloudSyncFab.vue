@@ -43,6 +43,10 @@ type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
   displayStateLabel: string;
   displayStateColor: string;
+  /** 来自 iCloud Hidden 相册 */
+  isHidden: boolean;
+  /** 来自 Shared Photo Library */
+  isShared: boolean;
 };
 
 const {
@@ -245,6 +249,8 @@ const previewMeta = computed(() => {
   const row = previewRow.value;
   if (!row || previewIndex.value < 0) return "";
   const parts = [formatSortKeyTime(row.captureAt ?? row.sortKey), row.displayStateLabel];
+  if (row.isHidden) parts.push("隐藏");
+  if (row.isShared) parts.push("共享图库");
   parts.push(`${previewIndex.value + 1} / ${cloudRows.value.length}`);
   return parts.join(" · ");
 });
@@ -391,7 +397,9 @@ function toDisplayRow(row: IcloudSyncCloudListRow): CloudListDisplayRow {
     ...displayRow,
     displayFilename: cloudListDisplayFilename(displayRow),
     displayStateLabel: cloudStateLabel(state),
-    displayStateColor: cloudStateColor(state)
+    displayStateColor: cloudStateColor(state),
+    isHidden: row.catalogScope === "hidden",
+    isShared: row.catalogScope === "shared"
   };
 }
 
@@ -631,7 +639,7 @@ onBeforeUnmount(() => {
     <template #fab>
       <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
         <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
-        <IconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
+        <CcIconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
       </a-button>
     </template>
 
@@ -715,6 +723,8 @@ onBeforeUnmount(() => {
                   :ext="row.displayFilename?.split('.').pop()"
                 />
                 <span class="cell-state" :style="{ background: row.displayStateColor || COLOR_NEUTRAL }">{{ row.displayStateLabel }}</span>
+                <span v-if="row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
+                <span v-if="row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
                 <span v-if="selectMode && isCloudRowSelected(row)" class="cell-check" aria-hidden="true">✓</span>
               </div>
               <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
@@ -735,7 +745,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template #lightbox>
-      <BaseImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
+      <CcImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
       <a-empty v-else description="无法加载预览" :image="false" />
     </template>
   </SyncFabShell>
@@ -919,6 +929,24 @@ onBeforeUnmount(() => {
   color: var(--color-text-light-solid);
   font-size: 11px;
   pointer-events: none;
+}
+.cell-hidden {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 2px var(--color-bg-mask-strong);
+}
+.cell-shared {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 2px var(--color-bg-mask-strong);
 }
 .cell-check {
   position: absolute;

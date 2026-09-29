@@ -9,7 +9,7 @@ import imgError from "@/assets/images/imgError.png";
 import imgLoading from "@/assets/images/imgLoading.png";
 
 defineOptions({
-  name: "BaseImage"
+  name: "Image"
 });
 
 const props = defineProps({

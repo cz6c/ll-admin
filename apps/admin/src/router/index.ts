@@ -2,7 +2,6 @@ import { createRouter, createWebHistory, createWebHashHistory } from "vue-router
 import type { RouteRecordRaw, RouterHistory } from "vue-router";
 import type { App } from "vue";
 import type { AppRouteRecordRaw } from "#/utils";
-import { csPublicConstantRoutes } from "@/router/csPublic";
 import { albumConstantRoutes } from "@/router/album";
 import { staticRoutes } from "@/router/staticRoutes";
 import { isTauri } from "@/utils/tauri";
@@ -21,7 +20,7 @@ export enum RouterEnum {
   BASE_NOT_FOUND_NAME = "NOT_FOUND"
 }
 
-// 公共菜单（404 必须最后；CS 应用设置插在 404 前）
+// 公共菜单（404 必须最后）
 const routesList: AppRouteRecordRaw[] = [
   // 根路由
   {
@@ -75,8 +74,6 @@ const routesList: AppRouteRecordRaw[] = [
       }
     ]
   },
-  // CS 应用设置：静态路由、免登录；入口在 CsToolsBar 设置按钮
-  ...(isTauri() ? csPublicConstantRoutes : []),
   // CS 本地相册（含 iCloud 同步）：静态路由、免登录；入口在 CsToolsBar
   ...(isTauri() ? albumConstantRoutes : []),
   // 菜单外静态页（个人中心等）：登录即可访问，不进侧栏、不进 sys_menu

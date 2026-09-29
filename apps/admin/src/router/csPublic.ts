@@ -1,35 +1,14 @@
 /**
- * CS 本机工具静态路由（应用设置）+ 路径白名单
- * 职责：免登录；独立壳布局与 admin Layout 隔离；主窗内路由，不新开窗口
- * 适用：右侧设置按钮 / 托盘进入
+ * CS 本机工具路径白名单
+ * 职责：相册等免登录页的路由守卫与登录 redirect 清洗
+ * 适用：guard / auth / login；应用设置见 useCsSettingsModal 全局弹窗
  */
 
-import type { AppRouteRecordRaw } from "#/utils";
 import { isAlbumPath } from "@/router/album";
 
-/** CS 应用设置路由（独立壳，不进 admin 侧栏） */
-export const csPublicConstantRoutes: AppRouteRecordRaw[] = [
-  {
-    path: "/cs-settings",
-    name: "CsAppSettings",
-    component: () => import("@/views/csSettings/index.vue"),
-    hidden: true,
-    meta: {
-      title: "应用设置",
-      breadcrumb: false,
-      noCache: true
-    }
-  }
-];
-
-/** 是否 CS 应用设置 path（路由守卫白名单） */
-export function isCsSettingsPath(path: string): boolean {
-  return path === "/cs-settings" || path.startsWith("/cs-settings/");
-}
-
-/** CS 本机工具免登录白名单（应用设置 + 相册） */
+/** CS 本机工具免登录白名单（相册等） */
 export function isCsPublicPath(path: string): boolean {
-  return isCsSettingsPath(path) || isAlbumPath(path);
+  return isAlbumPath(path);
 }
 
 /**

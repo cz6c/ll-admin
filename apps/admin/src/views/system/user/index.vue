@@ -7,7 +7,6 @@ import $feedback from "@/utils/feedback";
 import $file from "@/utils/file";
 import { useDict } from "@/hooks/useDict";
 import type { Key } from "ant-design-vue/es/_util/type";
-import ImportTemp from "@/components/ImportTemp/index.vue";
 import { VxeGridProps } from "vxe-table";
 import type { VxeGridBindOptions } from "#/vxe-grid";
 import { useTable } from "@/hooks/useVxetable";
@@ -163,7 +162,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
       title: "性别",
       slots: {
         default({ row }) {
-          return <dict-tag options={UserSexEnum.value} value={row.sex} />;
+          return <CcDictTag options={UserSexEnum.value} value={row.sex} />;
         }
       }
     },
@@ -172,7 +171,7 @@ const gridOptions = reactive<VxeGridProps<UserVo>>({
       title: "用户类型",
       slots: {
         default({ row }) {
-          return <dict-tag options={UserTypeEnum.value} value={row.userType} />;
+          return <CcDictTag options={UserTypeEnum.value} value={row.userType} />;
         }
       }
     },
@@ -398,17 +397,17 @@ getDeptTree();
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
+        <CcSearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="middle" />
+        <CcToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #left>
         <!--部门数据-->
         <div class="mr-8">
           <a-input v-model:value="deptName" placeholder="请输入部门名称" allow-clear style="margin-bottom: 20px">
             <template #prefix>
-              <IconifyIcon icon="ant-design:search-outlined" />
+              <CcIconifyIcon icon="ant-design:search-outlined" />
             </template>
           </a-input>
           <a-tree
@@ -422,17 +421,17 @@ getDeptTree();
         </div>
       </template>
       <template #tools_slot="data">
-        <ToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
+        <CcToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
       </template>
     </vxe-grid>
 
     <!-- 添加或修改对话框 -->
-    <a-modal v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
+    <CcDialog v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
       <EditUserForm v-if="editDialog.open" :deptOptions="deptOptions" :userId="editDialog.userId" @success="initListSearch" @cancel="editDialog.open = false" />
-    </a-modal>
+    </CcDialog>
     <!-- 导入对话框 -->
-    <a-modal v-model:open="uploadDialog.open" :title="uploadDialog.title" width="400px" :footer="null" destroy-on-close>
-      <ImportTemp
+    <CcDialog v-model:open="uploadDialog.open" :title="uploadDialog.title" width="400px" :footer="null" destroy-on-close>
+      <CcImportTemp
         v-if="uploadDialog.open"
         importUrl="/system/user/importData"
         importTempUrl="system/user/importTemplate"
@@ -440,6 +439,6 @@ getDeptTree();
         @success="initListSearch"
         @cancel="uploadDialog.open = false"
       />
-    </a-modal>
+    </CcDialog>
   </div>
 </template>

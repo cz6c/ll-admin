@@ -24,6 +24,10 @@ export interface IcloudSyncSettings {
   icloudDomain: "com" | "cn";
   /** 「记住我」：下次登录回填钥匙串密码 */
   rememberPassword: boolean;
+  /** 为 true 时 catalog 合并 Hidden 相册（sidecar 双枚举、单 diff） */
+  syncHiddenAlbum: boolean;
+  /** 为 true 时 catalog 合并 Shared Photo Library */
+  syncSharedLibrary: boolean;
 }
 
 /** 凭据 / session 概况（不含密码明文） */
@@ -132,6 +136,8 @@ export interface IcloudSyncSyncAssetRow {
   downloadStatus?: string | null;
   lastSyncedAt?: number | null;
   lastCatalogAt?: number | null;
+  /** `library` | `hidden`；hidden 项混排展示并落盘 Hidden 子目录 */
+  catalogScope?: string;
 }
 
 export interface IcloudSyncLoadAssetsResult {

@@ -40,6 +40,11 @@ fn push_cloud_list_where(parts: &mut Vec<String>) {
   parts.push(LIVE_MOV_LIST_HIDDEN.to_string());
 }
 
+/// 按设置过滤 catalog scope（未开启的 scope 不出现在列表/汇总）
+fn push_sync_scope_filter(parts: &mut Vec<String>, sync_hidden: bool, sync_shared: bool) {
+  parts.push(super::db::catalog_sync_scopes_sql(sync_hidden, sync_shared));
+}
+
 /// 文件名模糊：`original_filename` 大小写不敏感子串；空串不加条件
 fn push_filename_keyword(parts: &mut Vec<String>, keyword: Option<&str>) -> Option<String> {
   let kw = keyword.map(str::trim).filter(|s| !s.is_empty())?;
@@ -220,6 +225,7 @@ type CloudListRowRaw = (
   Option<String>,
   Option<i64>,
   Option<i64>,
+  String,
 );
 
 fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRowRaw> {
@@ -239,6 +245,7 @@ fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRow
     row.get(12)?,
     row.get(13)?,
     row.get(14)?,
+    row.get::<_, Option<String>>(15)?.unwrap_or_else(|| "library".to_string()),
   ))
 }
 
@@ -263,6 +270,7 @@ fn build_sync_asset_row(
     download_status,
     last_synced_at,
     last_catalog_at,
+    catalog_scope,
   ) = raw;
   let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
   let display = derive_list_display_state(conn, apple_id, &asset_id, &part, cloud_state)?;
@@ -286,6 +294,7 @@ fn build_sync_asset_row(
     download_status,
     last_synced_at,
     last_catalog_at,
+    catalog_scope,
   })
 }
 
@@ -316,6 +325,8 @@ pub fn load_sync_assets(
   date_from: Option<&str>,
   date_to: Option<&str>,
   filename_keyword: Option<&str>,
+  sync_hidden: bool,
+  sync_shared: bool,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let date_filter = SortKeyDateFilter::parse(date_from, date_to);
   let filter = cloud_state_filter
@@ -330,6 +341,8 @@ pub fn load_sync_assets(
       limit,
       &date_filter,
       filename_keyword,
+      sync_hidden,
+      sync_shared,
     );
   }
 
@@ -342,6 +355,7 @@ pub fn load_sync_assets(
   }
   date_filter.push_where(&mut where_parts);
   let filename_kw = push_filename_keyword(&mut where_parts, filename_keyword);
+  push_sync_scope_filter(&mut where_parts, sync_hidden, sync_shared);
   push_cloud_list_where(&mut where_parts);
   let where_clause = where_parts.join(" AND ");
 
@@ -350,7 +364,8 @@ pub fn load_sync_assets(
     r#"
     SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
-           dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
+           dest_path, cloud_state, download_status, last_synced_at, last_catalog_at,
+           catalog_scope
     FROM assets
     WHERE {where_clause}
     ORDER BY {CAPTURE_DATE_SQL} ASC,
@@ -415,6 +430,8 @@ fn load_sync_assets_download_failed(
   limit: u32,
   date_filter: &SortKeyDateFilter,
   filename_keyword: Option<&str>,
+  sync_hidden: bool,
+  sync_shared: bool,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let lim = i64::from(limit.clamp(1, 200));
   let off = i64::from(offset);
@@ -426,6 +443,7 @@ fn load_sync_assets_download_failed(
   ];
   date_filter.push_where(&mut where_parts);
   let filename_kw = push_filename_keyword(&mut where_parts, filename_keyword);
+  push_sync_scope_filter(&mut where_parts, sync_hidden, sync_shared);
   push_cloud_list_where(&mut where_parts);
   let where_clause = where_parts.join(" AND ");
 
@@ -434,7 +452,8 @@ fn load_sync_assets_download_failed(
     r#"
     SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
-           dest_path, cloud_state, download_status, last_synced_at, last_catalog_at
+           dest_path, cloud_state, download_status, last_synced_at, last_catalog_at,
+           catalog_scope
     FROM assets
     WHERE {where_clause}
     ORDER BY {CAPTURE_DATE_SQL} ASC,
@@ -489,9 +508,15 @@ fn load_sync_assets_download_failed(
 pub fn get_cloud_state_summary(
   conn: &Connection,
   apple_id: &str,
+  sync_hidden: bool,
+  sync_shared: bool,
 ) -> Result<IcloudSyncCloudStateSummary, String> {
+  let scope_sql = super::db::catalog_sync_scopes_sql(sync_hidden, sync_shared);
+  let sql = format!(
+    "SELECT asset_id, part, cloud_state FROM assets WHERE apple_id = ?1 AND {scope_sql}"
+  );
   let mut stmt = conn
-    .prepare("SELECT asset_id, part, cloud_state FROM assets WHERE apple_id = ?1")
+    .prepare(&sql)
     .map_err(|e| format!("准备 cloud_state 汇总失败: {e}"))?;
   let rows = stmt
     .query_map(params![apple_id], |row| {
@@ -584,6 +609,8 @@ pub async fn icloud_sync_load_assets(
       date_from.as_deref(),
       date_to.as_deref(),
       filename_keyword.as_deref(),
+      settings.sync_hidden_album,
+      settings.sync_shared_library,
     )
   })
   .await
@@ -603,7 +630,12 @@ pub async fn icloud_sync_get_cloud_state_summary(
     }
     let db_path = state_db_path(&app)?;
     let conn = open_db(&db_path)?;
-    get_cloud_state_summary(&conn, apple_id)
+    get_cloud_state_summary(
+      &conn,
+      apple_id,
+      settings.sync_hidden_album,
+      settings.sync_shared_library,
+    )
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?
@@ -669,7 +701,7 @@ mod tests {
       )
       .expect("insert synced");
 
-    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None)
+    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true)
       .expect("load");
     let by_id: std::collections::HashMap<_, _> = result
       .items
@@ -774,6 +806,8 @@ mod tests {
       Some("2024-01-01"),
       Some("2024-01-31"),
       None,
+      true,
+      true,
     )
     .expect("jan");
     assert_eq!(jan.total, 1);
@@ -788,6 +822,8 @@ mod tests {
       Some("2024-02-01"),
       Some("2024-03-31"),
       None,
+      true,
+      true,
     )
     .expect("feb_mar");
     assert_eq!(feb_mar.total, 2);
@@ -801,6 +837,8 @@ mod tests {
       None,
       None,
       Some("D2"),
+      true,
+      true,
     )
     .expect("by_name");
     // insert_synced 文件名为 `{asset_id}.jpg`
@@ -860,7 +898,7 @@ mod tests {
         .expect("insert live with dest");
     }
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L3").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_0027.MOV"));
 
@@ -884,7 +922,7 @@ mod tests {
         )
         .expect("insert live same name");
     }
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None, None, true, true).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L2").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_1.MOV"));
     let _ = std::fs::remove_file(path);
@@ -915,7 +953,7 @@ mod tests {
     );
     insert_synced(&conn, "P1", "2024-06-02", still.to_str().unwrap());
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true).expect("page");
     assert_eq!(page.total, 2, "live pair counts as one row");
     assert_eq!(page.items.len(), 2);
     assert!(page.items.iter().all(|r| r.part != "mov"));
@@ -957,11 +995,11 @@ mod tests {
       )
       .expect("insert failed orphan");
 
-    let summary = get_cloud_state_summary(&conn, "u@x.com").expect("summary");
+    let summary = get_cloud_state_summary(&conn, "u@x.com", true, true).expect("summary");
     assert_eq!(summary.download_failed, 1);
 
     let page =
-      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None, None).expect("page");
+      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None, None, true, true).expect("page");
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].asset_id, "F1");
     assert_eq!(page.items[0].download_status.as_deref(), Some("failed"));
@@ -1001,7 +1039,7 @@ mod tests {
       .expect("downgrade mov");
     insert_synced(&conn, "P1", "2024-06-02", still.to_str().unwrap());
 
-    let summary = get_cloud_state_summary(&conn, "u@x.com").expect("summary");
+    let summary = get_cloud_state_summary(&conn, "u@x.com", true, true).expect("summary");
     assert_eq!(summary.synced, 1, "photo only");
     assert_eq!(summary.cloud_only, 1, "live pair as one with worse state");
     assert_eq!(summary.total, 2, "全部 = synced + cloud_only");

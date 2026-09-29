@@ -8,7 +8,7 @@ alwaysApply: false
 
 实现栈：**ant-design-vue 4** ≈ Ant Design React **5.x**。列表数据区仍用 **VXE Table**；CS 壳遵守 `--cs-shell-bar-height`。工程/路由/权限见 **`vue-admin.mdc`**；主题见 `theme.scss`、`a-config-provider`。
 
-**CS 顶栏避让**：`html.cs-shell` 下，全屏浮层（Drawer / Modal / Image 预览）与贴顶反馈（message / notification / nprogress）须相对 `--cs-shell-bar-height` 下移或扣高，集中写在 `assets/style/antd.scss`；message/notification 的 inline `top` 由 `App.vue` `syncCsOverlayOffset` 对齐。禁止抬 z-index 盖住 `CsToolsBar`（窗口拖拽/关闭）。
+**CS 顶栏避让**：`html.cs-shell` 下，全屏浮层（Drawer / Modal / Image 预览）与贴顶反馈（message / notification / nprogress）须相对 `--cs-shell-bar-height` 下移或扣高，集中写在 `assets/style/antd.scss`；message/notification 的 inline `top` 由 `App.vue` `syncCsOverlayOffset` 对齐。禁止抬 z-index 盖住 `ToolsBar`（窗口拖拽/关闭）。
 
 有争议时以官方为准（下列为原则全文入口，规则正文是可执行摘要）：
 

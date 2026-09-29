@@ -227,19 +227,19 @@ function handleScroll() {
               <span class="flex-1 overflow-hidden whitespace-nowrap">
                 {{ tag.title }}
               </span>
-              <IconifyIcon v-if="!isAffix(tag)" icon="ant-design:close-outlined" class="close ml-1" @click.prevent.stop="closeSelectedTag(tag)" />
+              <CcIconifyIcon v-if="!isAffix(tag)" icon="ant-design:close-outlined" class="close ml-1" @click.prevent.stop="closeSelectedTag(tag)" />
             </div>
           </div>
         </router-link>
       </div>
     </scroll-pane>
     <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
-      <li @click="refreshSelectedTag()"><IconifyIcon icon="ant-design:redo-outlined" /> <span>刷新页面</span></li>
-      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><IconifyIcon icon="ant-design:close-outlined" /> <span>关闭当前标签页</span></li>
-      <li @click="closeOthersTags"><IconifyIcon icon="ant-design:close-circle-outlined" /> <span>关闭其他标签页</span></li>
-      <li v-if="!isFirstView()" @click="closeLeftTags"><IconifyIcon icon="ant-design:left-outlined" /> <span>关闭左侧标签页</span></li>
-      <li v-if="!isLastView()" @click="closeRightTags"><IconifyIcon icon="ant-design:right-outlined" /> <span>关闭右侧标签页</span></li>
-      <li @click="closeAllTags()"><IconifyIcon icon="ant-design:close-circle-outlined" /> <span>全部关闭标签页</span></li>
+      <li @click="refreshSelectedTag()"><CcIconifyIcon icon="ant-design:redo-outlined" /> <span>刷新页面</span></li>
+      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)"><CcIconifyIcon icon="ant-design:close-outlined" /> <span>关闭当前标签页</span></li>
+      <li @click="closeOthersTags"><CcIconifyIcon icon="ant-design:close-circle-outlined" /> <span>关闭其他标签页</span></li>
+      <li v-if="!isFirstView()" @click="closeLeftTags"><CcIconifyIcon icon="ant-design:left-outlined" /> <span>关闭左侧标签页</span></li>
+      <li v-if="!isLastView()" @click="closeRightTags"><CcIconifyIcon icon="ant-design:right-outlined" /> <span>关闭右侧标签页</span></li>
+      <li @click="closeAllTags()"><CcIconifyIcon icon="ant-design:close-circle-outlined" /> <span>全部关闭标签页</span></li>
     </ul>
   </div>
 </template>

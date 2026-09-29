@@ -115,14 +115,14 @@ getCookie();
           <a-form-item name="userName">
             <a-input v-model:value="loginForm.userName" autocomplete="off" placeholder="请输入账号" size="large">
               <template #prefix>
-                <IconifyIcon icon="ant-design:user-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:user-outlined" width="16px" height="16px" />
               </template>
             </a-input>
           </a-form-item>
           <a-form-item name="password">
             <a-input-password v-model:value="loginForm.password" autocomplete="off" placeholder="请输入密码" size="large" @pressEnter="handleLogin">
               <template #prefix>
-                <IconifyIcon icon="ant-design:lock-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:lock-outlined" width="16px" height="16px" />
               </template>
             </a-input-password>
           </a-form-item>
@@ -130,7 +130,7 @@ getCookie();
             <div class="login-code">
               <a-input v-model:value="loginForm.code" size="large" autocomplete="off" placeholder="验证码" style="width: 60%" @pressEnter="handleLogin()">
                 <template #prefix>
-                  <IconifyIcon icon="ant-design:safety-certificate-outlined" width="16px" height="16px" />
+                  <CcIconifyIcon icon="ant-design:safety-certificate-outlined" width="16px" height="16px" />
                 </template>
               </a-input>
               <div class="code" @click="getCode" v-html="codeUrl" />

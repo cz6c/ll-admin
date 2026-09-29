@@ -129,8 +129,8 @@ export default defineConfig([
         },
         extraFileExtensions: [".vue"],
         /**
-         * script lang=tsx 的列表页（dict-tag JSX）须显式挂 tsx parser，
-         * 否则 vue-eslint-parser 按 ts 解析会在 `<dict-tag` 上报 `'>' expected`
+         * script lang=tsx 的列表页（CcDictTag JSX）须显式挂 tsx parser，
+         * 否则 vue-eslint-parser 按 ts 解析会在 `<CcDictTag` 上报 `'>' expected`
          */
         parser: {
           js: "espree",

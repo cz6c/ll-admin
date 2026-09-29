@@ -21,6 +21,12 @@ pub struct IcloudSyncSettings {
   /// 「记住我」：为 true 时登录成功后把密码写入钥匙串，下次可回填
   #[serde(default)]
   pub remember_password: bool,
+  /// 为 true 时 catalog 合并 Hidden 相册（sidecar 双枚举、Rust 单 diff）
+  #[serde(default)]
+  pub sync_hidden_album: bool,
+  /// 为 true 时 catalog 合并 Shared Photo Library（sidecar 多 zone 枚举）
+  #[serde(default)]
+  pub sync_shared_library: bool,
 }
 
 fn default_icloud_domain() -> String {
@@ -33,9 +39,68 @@ impl Default for IcloudSyncSettings {
       apple_id: String::new(),
       icloud_domain: default_icloud_domain(),
       remember_password: false,
+      sync_hidden_album: false,
+      sync_shared_library: false,
     }
   }
 }
+
+/// catalog 来源：个人图库 / Hidden / Shared Library（互斥成员，混排展示）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CatalogScope {
+  #[default]
+  Library,
+  Hidden,
+  Shared,
+}
+
+impl CatalogScope {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Library => "library",
+      Self::Hidden => "hidden",
+      Self::Shared => "shared",
+    }
+  }
+
+  pub fn parse(s: &str) -> Self {
+    match s.trim().to_ascii_lowercase().as_str() {
+      "hidden" => Self::Hidden,
+      "shared" => Self::Shared,
+      _ => Self::Library,
+    }
+  }
+}
+
+/// CloudKit 库类型：lookup/download/delete 路由
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LibraryType {
+  #[default]
+  Private,
+  Shared,
+}
+
+impl LibraryType {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::Private => "private",
+      Self::Shared => "shared",
+    }
+  }
+
+  pub fn parse(s: &str) -> Self {
+    if s.trim().eq_ignore_ascii_case("shared") {
+      Self::Shared
+    } else {
+      Self::Private
+    }
+  }
+}
+
+/// 私库 PrimarySync zone 名（sidecar catalog 默认值）
+pub const PRIMARY_SYNC_ZONE: &str = "PrimarySync";
 
 /// 同步任务视图：Library 与 Recents 互斥
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -233,6 +298,9 @@ pub struct SyncAssetRow {
   pub download_status: Option<String>,
   pub last_synced_at: Option<i64>,
   pub last_catalog_at: Option<i64>,
+  /// `hidden` 表示来自 iCloud Hidden 相册（混排展示、独立落盘子目录）
+  #[serde(default)]
+  pub catalog_scope: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -304,6 +372,12 @@ pub struct AssetRow {
   pub cpl_asset_record_name: Option<String>,
   /// 最近一次 catalog 看到的 recordChangeTag；删前可按 recordName 定点刷新
   pub cpl_asset_change_tag: Option<String>,
+  /// catalog 来源 scope；决定落盘子目录与 UI 标记
+  pub catalog_scope: CatalogScope,
+  /// CloudKit 库类型；shared 项走 shared endpoint
+  pub library_type: LibraryType,
+  /// CloudKit zoneName；私库为 PrimarySync
+  pub library_zone: String,
 }
 
 /// 失败资产摘要（供同步页表格展示）

@@ -1,7 +1,8 @@
 <template>
   <a-config-provider :locale="zhCN" :theme="antdTheme">
     <div class="app-root" :class="{ 'is-cs': isCs }">
-      <CsToolsBar v-if="isCs" />
+      <CcToolsBar v-if="isCs" />
+      <CcSettingsModal v-if="isCs" />
       <div class="app-body">
         <router-view />
       </div>
@@ -15,7 +16,7 @@ import zhCN from "ant-design-vue/es/locale/zh_CN";
 import { message, notification } from "ant-design-vue";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
-import CsToolsBar from "@/components/CsToolsBar/index.vue";
+import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { useIcloudSyncBackgroundNotify } from "@/composables/useIcloudSyncBackgroundAlert";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
@@ -30,6 +31,7 @@ defineOptions({
 const router = useRouter();
 const isCs = isTauri();
 const settingsStore = useSettingsStore();
+const { open: openCsSettings } = useCsSettingsModal();
 
 useIcloudSyncBackgroundNotify();
 
@@ -54,7 +56,7 @@ const antdTheme = computed(() => ({
 function resolveAppNavigate(raw: string): string {
   switch (raw) {
     case "app-settings":
-      return "/cs-settings";
+      return "__open_cs_settings__";
     case "admin":
       return "/index";
     case "album":
@@ -82,7 +84,12 @@ onMounted(async () => {
   await ensureCsWindowMinInnerSize();
   const { listen } = await import("@tauri-apps/api/event");
   listen<string>("app:navigate", event => {
-    router.push(resolveAppNavigate(String(event.payload || "admin")));
+    const target = resolveAppNavigate(String(event.payload || "admin"));
+    if (target === "__open_cs_settings__") {
+      openCsSettings();
+      return;
+    }
+    router.push(target);
   });
 });
 

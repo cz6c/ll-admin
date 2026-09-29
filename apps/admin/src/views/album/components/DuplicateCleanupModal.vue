@@ -295,7 +295,7 @@ async function onDeleteSelected() {
 </script>
 
 <template>
-  <a-modal
+  <CcDialog
     v-model:open="open"
     title="清理重复下载"
     width="min(920px, 96vw)"
@@ -348,7 +348,7 @@ async function onDeleteSelected() {
         />
       </div>
     </div>
-  </a-modal>
+  </CcDialog>
 </template>
 
 <style scoped lang="scss">

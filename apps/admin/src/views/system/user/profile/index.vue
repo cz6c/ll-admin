@@ -14,37 +14,37 @@
             </div>
             <div class="list-group">
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:user-outlined" /><span>用户名称：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:user-outlined" /><span>用户名称：</span></div>
                 <div class="value">{{ state.userName }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:mobile-outlined" /><span>手机号码：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:mobile-outlined" /><span>手机号码：</span></div>
                 <div class="value">{{ state.phonenumber }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:mail-outlined" /><span>用户邮箱：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:mail-outlined" /><span>用户邮箱：</span></div>
                 <div class="value">{{ state.email }}</div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:apartment-outlined" /><span>所属部门：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:apartment-outlined" /><span>所属部门：</span></div>
                 <div v-if="state.dept" class="value">
                   {{ state.dept.deptName }}
                 </div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:idcard-outlined" /><span>所属岗位：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:idcard-outlined" /><span>所属岗位：</span></div>
                 <div v-if="state.posts" class="value">
                   {{ state.posts?.map(c => c.postName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:user-switch-outlined" /><span>所属角色：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:user-switch-outlined" /><span>所属角色：</span></div>
                 <div class="value">
                   {{ state.roles?.map(c => c.roleName).join(",") }}
                 </div>
               </div>
               <div class="list-group-item">
-                <div class="label"><IconifyIcon icon="ant-design:calendar-outlined" /><span>创建日期：</span></div>
+                <div class="label"><CcIconifyIcon icon="ant-design:calendar-outlined" /><span>创建日期：</span></div>
                 <div class="value">{{ state.createTime }}</div>
               </div>
             </div>

@@ -130,7 +130,7 @@ const gridOptions = reactive<VxeGridProps<any>>({
       title: "操作状态",
       slots: {
         default({ row }) {
-          return <dict-tag options={SuccessErrorEnum.value} value={row.status} />;
+          return <CcDictTag options={SuccessErrorEnum.value} value={row.status} />;
         }
       }
     },
@@ -220,17 +220,17 @@ const rowButtons: BtnOptionsProps[] = [
   <div class="app-page cz-card">
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
+        <CcSearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="middle" />
+        <CcToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #tools_slot="{ row }">
-        <ToolButtons :buttons="rowButtons" :data="{ row }" />
+        <CcToolButtons :buttons="rowButtons" :data="{ row }" />
       </template>
     </vxe-grid>
 
-    <a-modal v-model:open="detailOpen" title="操作日志详细" width="700px" :footer="null" destroy-on-close>
+    <CcDialog v-model:open="detailOpen" title="操作日志详细" width="700px" :footer="null" destroy-on-close>
       <a-form :model="detailRow" :label-col="{ style: { width: '100px' } }">
         <a-row>
           <a-col :span="12">
@@ -270,6 +270,6 @@ const rowButtons: BtnOptionsProps[] = [
       <div class="mt-16px text-right">
         <a-button @click="detailOpen = false">关 闭</a-button>
       </div>
-    </a-modal>
+    </CcDialog>
   </div>
 </template>

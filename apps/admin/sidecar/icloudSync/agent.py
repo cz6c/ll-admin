@@ -54,6 +54,36 @@ import ipdPhotos as ipd_photos
 
 CATALOG_VIEWS = {"library", "recents"}
 
+MOCK_SHARED_CATALOG_ITEMS: list[dict[str, Any]] = [
+    {
+        "asset_id": "S1",
+        "filename": "IMG_SHARED.HEIC",
+        "media_kind": "photo",
+        "live_pair_id": None,
+        "capture_at": "2024-04-01T10:00:00Z",
+        "added_at": "2024-04-02T10:00:00Z",
+        "parts": ["still"],
+        "catalog_scope": "shared",
+        "library_type": "shared",
+        "library_zone": "SharedLibrary-MOCK",
+    }
+]
+
+MOCK_HIDDEN_CATALOG_ITEMS: list[dict[str, Any]] = [
+    {
+        "asset_id": "H1",
+        "filename": "IMG_HIDDEN.HEIC",
+        "media_kind": "photo",
+        "live_pair_id": None,
+        "capture_at": "2024-03-01T10:00:00Z",
+        "added_at": "2024-03-02T10:00:00Z",
+        "parts": ["still"],
+        "catalog_scope": "hidden",
+        "library_type": "private",
+        "library_zone": "PrimarySync",
+    }
+]
+
 MOCK_CATALOG_ITEMS: list[dict[str, Any]] = [
     {
         "asset_id": "A1",
@@ -62,6 +92,9 @@ MOCK_CATALOG_ITEMS: list[dict[str, Any]] = [
         "live_pair_id": "L1",
         "capture_at": "2024-01-01T12:00:00Z",
         "added_at": "2024-01-02T12:00:00Z",
+        "catalog_scope": "library",
+        "library_type": "private",
+        "library_zone": "PrimarySync",
         "parts": ["still", "mov"],
         "cpl_asset_record_name": "CPL-A1",
         "cpl_asset_change_tag": "tag-a1",
@@ -73,6 +106,9 @@ MOCK_CATALOG_ITEMS: list[dict[str, Any]] = [
         "live_pair_id": None,
         "capture_at": "2024-01-03T12:00:00Z",
         "added_at": "2024-01-04T12:00:00Z",
+        "catalog_scope": "library",
+        "library_type": "private",
+        "library_zone": "PrimarySync",
         "parts": ["still"],
         "cpl_asset_record_name": "CPL-A2",
         "cpl_asset_change_tag": "tag-a2",
@@ -486,7 +522,20 @@ def _unique_asset_ids_from_items(items: Iterable[dict[str, Any]]) -> list[str]:
     return ordered
 
 
-def _refresh_asset_urls(api: Any, asset_ids: Sequence[str], *, force: bool = False) -> None:
+def _library_context_from_item(item: dict[str, Any]) -> tuple[str, str]:
+    library_type = str(item.get("library_type") or "private").strip().lower()
+    library_zone = str(item.get("library_zone") or "PrimarySync").strip()
+    return library_type, library_zone
+
+
+def _refresh_asset_urls(
+    api: Any,
+    asset_ids: Sequence[str],
+    *,
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
+    force: bool = False,
+) -> None:
     """
     经 records/lookup 拉取 downloadURL。
 
@@ -499,13 +548,31 @@ def _refresh_asset_urls(api: Any, asset_ids: Sequence[str], *, force: bool = Fal
         needed = _lookup_needed_asset_ids(unique, force=force)
         if not needed:
             return
-        photos = ipd_photos.fetch_photo_assets_by_ids(api, needed)
+        photos = ipd_photos.fetch_photo_assets_by_ids(
+            api,
+            needed,
+            library_type=library_type,
+            library_zone=library_zone,
+        )
         _merge_photos_into_cache(photos)
 
 
 def _ensure_batch_download_assets(api: Any, items: list[dict[str, Any]]) -> None:
-    """download_batch 开始前：对本批去重 asset_id 做 records/lookup（10min 内跳过已缓存）。"""
-    _refresh_asset_urls(api, _unique_asset_ids_from_items(items))
+    """download_batch 开始前：按 library zone 分组 lookup（10min 内跳过已缓存）。"""
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for item in items:
+        asset_id = str(item.get("asset_id", "")).strip()
+        if not asset_id:
+            continue
+        key = _library_context_from_item(item)
+        grouped.setdefault(key, []).append(asset_id)
+    for (library_type, library_zone), asset_ids in grouped.items():
+        _refresh_asset_urls(
+            api,
+            asset_ids,
+            library_type=library_type,
+            library_zone=library_zone,
+        )
 
 
 def _refresh_photo_cache_on_stale_url(api: Any, asset_ids: Sequence[str]) -> None:
@@ -1048,7 +1115,38 @@ def _photo_asset_id(photo: Any) -> str:
     return ""
 
 
-def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
+def _iter_shared_library_assets(api: Any) -> list[tuple[str, Any]]:
+    """Shared Photo Library：每个 zone 单独枚举 .all。"""
+    photos = getattr(api, "photos", None)
+    if photos is None:
+        raise RuntimeError("photos service unavailable")
+    shared = getattr(photos, "shared_libraries", None) or {}
+    out: list[tuple[str, Any]] = []
+    for zone_name, library in shared.items():
+        for photo in library.all:
+            out.append((str(zone_name), photo))
+    return out
+
+
+def _iter_hidden_assets(api: Any) -> Any:
+    """Hidden 智能相册枚举（与 library 互斥，需单独 CloudKit 查询）。"""
+    photos = getattr(api, "photos", None)
+    if photos is None:
+        raise RuntimeError("photos service unavailable")
+    albums = getattr(photos, "albums", None) or {}
+    album = albums.get("Hidden")
+    if not album:
+        raise RuntimeError("hidden album unavailable")
+    return album
+
+
+def _catalog_item_from_photo(
+    photo: Any,
+    view: str,
+    catalog_scope: str = "library",
+    library_type: str = "private",
+    library_zone: str = "PrimarySync",
+) -> dict[str, Any]:
     """将 pyicloud_ipd PhotoAsset 转换为 sidecar catalog item。"""
     if not ipd_photos.is_ipd_photo_asset(photo):
         raise RuntimeError("unsupported photo asset type; expected pyicloud_ipd PhotoAsset")
@@ -1076,6 +1174,9 @@ def _catalog_item_from_photo(photo: Any, view: str) -> dict[str, Any]:
         "capture_at": capture_at,
         "added_at": added_at,
         "parts": parts,
+        "catalog_scope": catalog_scope,
+        "library_type": library_type,
+        "library_zone": library_zone,
         **ipd_photos.cpl_asset_meta_from_photo(photo),
     }
     latitude, longitude = ipd_photos.catalog_location_from_photo(photo)
@@ -1394,28 +1495,42 @@ def _handle_delete_assets(cmd: dict[str, Any]) -> dict[str, Any]:
 
     # record_name → 首次出现的 change_tag（同 Live 多 part 去重）
     delete_by_name: dict[str, str | None] = {}
-    ordered: list[dict[str, str | None]] = []
+    delete_ctx_by_name: dict[str, tuple[str, str]] = {}
+    ordered: list[dict[str, Any]] = []
     for item in items:
         asset_id = str(item.get("asset_id", "")).strip()
         part = str(item.get("part", "")).strip()
         record_name = str(item.get("cpl_asset_record_name") or "").strip()
         change_tag = str(item.get("cpl_asset_change_tag") or "").strip() or None
+        library_type, library_zone = _library_context_from_item(item)
         ordered.append(
             {
                 "asset_id": asset_id,
                 "part": part,
                 "cpl_asset_record_name": record_name or None,
                 "cpl_asset_change_tag": change_tag,
+                "library_type": library_type,
+                "library_zone": library_zone,
             }
         )
         if record_name and record_name not in delete_by_name:
             delete_by_name[record_name] = change_tag
+            delete_ctx_by_name[record_name] = (library_type, library_zone)
 
     name_results: dict[str, dict[str, Any]] = {}
     try:
         for record_name, change_tag in delete_by_name.items():
             try:
-                ipd_photos.delete_cpl_asset_by_record(api, record_name, change_tag)
+                library_type, library_zone = delete_ctx_by_name.get(
+                    record_name, ("private", "PrimarySync")
+                )
+                ipd_photos.delete_cpl_asset_by_record(
+                    api,
+                    record_name,
+                    change_tag,
+                    library_type=library_type,
+                    library_zone=library_zone,
+                )
                 name_results[record_name] = {"ok": True}
             except Exception as exc:  # noqa: BLE001
                 mapped = _map_exception(exc)
@@ -2065,6 +2180,68 @@ def _validate_catalog_items(items: list[dict[str, Any]], view: str) -> tuple[boo
     return True, ""
 
 
+def _parse_bool_flag(cmd: dict[str, Any], key: str) -> bool:
+    raw = cmd.get(key)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    return False
+
+
+def _parse_include_hidden(cmd: dict[str, Any]) -> bool:
+    """是否合并 Hidden 相册枚举（仅 view=library 时生效）。"""
+    return _parse_bool_flag(cmd, "include_hidden")
+
+
+def _parse_include_shared_library(cmd: dict[str, Any]) -> bool:
+    """是否合并 Shared Photo Library 枚举（仅 view=library 时生效）。"""
+    return _parse_bool_flag(cmd, "include_shared_library")
+
+
+def _dedupe_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同 asset_id 多 scope 冲突时保留 shared > hidden > library。"""
+    priority = {"shared": 3, "hidden": 2, "library": 1}
+    best: dict[str, dict[str, Any]] = {}
+    for item in items:
+        asset_id = str(item.get("asset_id", "")).strip()
+        if not asset_id:
+            continue
+        scope = str(item.get("catalog_scope") or "library").strip().lower()
+        score = priority.get(scope, 0)
+        prev = best.get(asset_id)
+        if prev is None or score > priority.get(str(prev.get("catalog_scope") or "library").lower(), 0):
+            best[asset_id] = item
+    return list(best.values())
+
+
+def _collect_catalog_items(
+    api: Any,
+    view: str,
+    include_hidden: bool,
+    include_shared_library: bool,
+) -> list[dict[str, Any]]:
+    """
+    按 view 枚举图库；library 时可追加 Hidden / Shared Library（多枚举、单响应）。
+    @note Hidden 与 library 在 CloudKit 为互斥查询，无法一次参数拉全。
+    """
+    items = [
+        _catalog_item_from_photo(photo, view, "library", "private", "PrimarySync")
+        for photo in _iter_view_assets(api, view)
+    ]
+    if include_hidden and view == "library":
+        items.extend(
+            _catalog_item_from_photo(photo, "library", "hidden", "private", "PrimarySync")
+            for photo in _iter_hidden_assets(api)
+        )
+    if include_shared_library and view == "library":
+        for zone_name, photo in _iter_shared_library_assets(api):
+            items.append(
+                _catalog_item_from_photo(photo, "library", "shared", "shared", zone_name)
+            )
+    return _dedupe_catalog_items(items)
+
+
 def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
     """
     处理 catalog 命令。
@@ -2075,21 +2252,35 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
     if view not in CATALOG_VIEWS:
         return error_event("catalog", CODE_INVALID_REQUEST, "view must be library or recents")
 
+    include_hidden = _parse_include_hidden(cmd) and view == "library"
+    include_shared_library = _parse_include_shared_library(cmd) and view == "library"
+
     try:
         if _is_mock_mode():
             items = [dict(item) for item in MOCK_CATALOG_ITEMS]
+            if include_hidden:
+                items.extend(dict(item) for item in MOCK_HIDDEN_CATALOG_ITEMS)
+            if include_shared_library:
+                items.extend(dict(item) for item in MOCK_SHARED_CATALOG_ITEMS)
+            items = _dedupe_catalog_items(items)
         else:
             api = _ensure_api(
                 str(cmd.get("apple_id", "")).strip(),
                 str(cmd.get("session_dir", "")).strip(),
             )
-            items = [_catalog_item_from_photo(photo, view) for photo in _iter_view_assets(api, view)]
+            items = _collect_catalog_items(api, view, include_hidden, include_shared_library)
 
         ok, err_code = _validate_catalog_items(items, view)
         if not ok:
             return error_event("catalog", err_code, "catalog validation failed")
         if not _is_mock_mode():
-            _record_auth_success("catalog", f"catalog completed: {len(items)} items (view={view})")
+            scope_bits = []
+            if include_hidden:
+                scope_bits.append("hidden")
+            if include_shared_library:
+                scope_bits.append("shared")
+            scope_note = f" +{'+'.join(scope_bits)}" if scope_bits else ""
+            _record_auth_success("catalog", f"catalog completed: {len(items)} items (view={view}{scope_note})")
         return done_event("catalog", items=items)
     except CatalogSortMissingError as exc:
         return error_event("catalog", CODE_CATALOG_SORT_MISSING, str(exc))

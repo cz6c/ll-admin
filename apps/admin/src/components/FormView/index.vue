@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { BreakPoint } from "@/components/Grid/type";
-import FormItem from "./components/FormItem.vue";
 import type { BaseFormItem } from "@/components/FormView/type";
 import { isFunction } from "@llcz/common";
 import { cloneDeep } from "lodash-es";
@@ -114,7 +113,7 @@ defineExpose({
             :required="item.required"
             :label-col="item.itemLabelWidth ? toLabelCol(item.itemLabelWidth) : undefined"
           >
-            <FormItem v-model="formData" :column="item" />
+            <CcFormItem v-model="formData" :column="item" />
           </a-form-item>
         </template>
       </a-col>

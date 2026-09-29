@@ -2,7 +2,7 @@
   <div class="navbar">
     <div class="navbar-left">
       <div class="collapse" :class="{ active: !sidebar.opened }" :title="!sidebar.opened ? '点击展开' : '点击折叠'" @click="emits('toggleClick')">
-        <IconifyIcon icon="ant-design:menu-fold-outlined" width="18px" height="18px" />
+        <CcIconifyIcon icon="ant-design:menu-fold-outlined" width="18px" height="18px" />
       </div>
       <!-- <Breadcrumb /> -->
       <HeaderSearch />
@@ -14,7 +14,7 @@
         <div class="tool">
           <div class="flex-center gap-2">
             <div class="img-wrap">
-              <BaseImage :src="userStore.avatar" fit="cover" border-radius="50%" />
+              <CcImage :src="userStore.avatar" fit="cover" border-radius="50%" />
             </div>
             <span class="name">{{ userStore.userName }}</span>
           </div>
@@ -23,20 +23,20 @@
           <a-menu>
             <a-menu-item @click="handleProfile">
               <div class="flex-center gap-2">
-                <IconifyIcon icon="ant-design:user-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:user-outlined" width="16px" height="16px" />
                 <span>个人中心</span>
               </div>
             </a-menu-item>
             <a-menu-item @click="emits('setLayout')">
               <div class="flex-center gap-2">
-                <IconifyIcon icon="ant-design:setting-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:setting-outlined" width="16px" height="16px" />
                 <span>布局设置</span>
               </div>
             </a-menu-item>
             <a-menu-divider />
             <a-menu-item @click="logout">
               <div class="flex-center gap-2">
-                <IconifyIcon icon="ant-design:logout-outlined" width="16px" height="16px" />
+                <CcIconifyIcon icon="ant-design:logout-outlined" width="16px" height="16px" />
                 <span>退出系统</span>
               </div>
             </a-menu-item>

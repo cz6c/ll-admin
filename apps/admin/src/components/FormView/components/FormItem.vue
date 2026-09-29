@@ -71,14 +71,14 @@
   </template>
   <!-- 图片上传 -->
   <template v-else-if="column.type === 'upload'">
-    <UploadImg v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
+    <CcUploadImg v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
   </template>
   <template v-else-if="column.type === 'uploads'">
-    <UploadImgs v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
+    <CcUploadImgs v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
   </template>
   <!-- 富文本 -->
   <template v-else-if="column.type === 'richtext'">
-    <WangEditor v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
+    <CcWangEditor v-model="modelValue[column.prop]" v-bind="{ ...(column.props || {}) }" />
   </template>
 </template>
 
@@ -89,10 +89,6 @@
  * 适用：FormView / SearchForm
  */
 import { FormItemProps } from "../type";
-import UploadImg from "@/components/Upload/UploadImg.vue";
-import UploadImgs from "@/components/Upload/UploadImgs.vue";
-import WangEditor from "@/components/WangEditor/index.vue";
-
 defineOptions({
   name: "FormItem"
 });

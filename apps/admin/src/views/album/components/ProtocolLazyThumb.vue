@@ -2,7 +2,7 @@
   协议缩略图懒挂载（icloudimg / qzoneimg）
   职责：滚动容器 IO 门控后再解析协议 src；视觉层委托 ThumbVisual
   适用：IcloudSyncFab 宫格、QzoneSyncFab 封面/缩略图；灯箱原图不走本组件
-  @note 协议默认 rootMargin / BaseImage.lazy 不同：iCloud 半屏预取且 IO 后不再叠 lazy，避免双重延迟
+  @note 协议默认 rootMargin / CcImage.lazy 不同：iCloud 半屏预取且 IO 后不再叠 lazy，避免双重延迟
 -->
 <script setup lang="ts">
 import { icloudProxiedThumbSrc } from "@/api/icloudSync";
@@ -46,7 +46,7 @@ let observer: IntersectionObserver | null = null;
 
 /** iCloud 预取半屏即可；过大一次打满 sidecar 单飞队列。QQ 保持更宽预取 */
 const rootMargin = computed(() => (props.protocol === "icloudimg" ? "40px 0px" : "120px 0px"));
-/** iCloud 已用 IO 门控，不再叠 BaseImage lazy；QQ 仍走 lazy */
+/** iCloud 已用 IO 门控，不再叠 CcImage lazy；QQ 仍走 lazy */
 const imageLazy = computed(() => props.protocol !== "icloudimg");
 
 const identityKey = computed(() => (props.protocol === "icloudimg" ? props.assetId : props.remoteUrl));

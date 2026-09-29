@@ -2,7 +2,6 @@
 import { updateMenu, addMenu, getMenuDetail } from "@/api/system/menu";
 import { useDict } from "@/hooks/useDict";
 import type { FormInstance, Rule } from "ant-design-vue/es/form";
-import IconSelect from "@/components/IconSelect/index.vue";
 import $feedback from "@/utils/feedback";
 
 defineOptions({
@@ -146,7 +145,7 @@ getInfo();
             <a-form-item name="perm">
               <template #label>
                 <span v-tippy="{ content: '页面功能权限标识，如`add,edit`' }">
-                  <IconifyIcon icon="ant-design:question-circle-filled" />
+                  <CcIconifyIcon icon="ant-design:question-circle-filled" />
                   功能标识
                 </span>
               </template>
@@ -162,7 +161,7 @@ getInfo();
           </a-col>
           <a-col :span="12">
             <a-form-item label="菜单图标" name="icon">
-              <IconSelect v-model="form.icon" />
+              <CcIconSelect v-model="form.icon" />
             </a-form-item>
           </a-col>
           <a-col :span="12">

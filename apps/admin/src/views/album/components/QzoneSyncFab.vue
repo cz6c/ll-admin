@@ -713,7 +713,7 @@ watch(drawerOpen, open => {
   >
     <template #fab>
       <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步">
-        <IconifyIcon icon="ri:qq-fill" width="28" height="28" />
+        <CcIconifyIcon icon="ri:qq-fill" width="28" height="28" />
       </a-button>
     </template>
 
@@ -859,7 +859,7 @@ watch(drawerOpen, open => {
 
     <template #lightbox>
       <video v-if="previewIsVideo && previewVideoSrc" class="viewer-media" controls autoplay playsinline :src="previewVideoSrc" />
-      <BaseImage
+      <CcImage
         v-else-if="!previewIsVideo && previewImageSrc"
         class="viewer-media viewer-img"
         :src="previewImageSrc"

@@ -2,7 +2,7 @@
 
 > **职责：** 陈列 `media.db` / `state.db` 各表作用（给人与可视化工具对照用）。  
 > **不合并：** 两库职责分离，见下文边界。  
-> **对齐：** 2026-09-23  
+> **对齐：** 2026-09-29  
 > 流程：[本地扫描](./loadingFlow.md) · [云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
 
 SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
@@ -15,6 +15,7 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 |----|------|--------|
 | **media.db** | `<appData>/album/media.db` | 本地相册根上的文件索引、缩略图/代理缓存路径、展示用 meta |
 | **state.db** | `<appData>/icloud-sync/state.db` | iCloud 账号下的资产注册（catalog 真相）与下载态 |
+| **settings.json** | `<appData>/icloud-sync/settings.json` | 非敏感 iCloud 同步配置（含 `syncHiddenAlbum`） |
 
 跨库关联（非 FK）：下载入库时把云侧身份写入 `media.origin*`；之后 **media 与 sync 解耦**（不再为 capture 反查 `dest_path`）。`media.path` 与 `assets.dest_path` 仅在「仍已同步且未硬删」时可能重合。
 
@@ -73,7 +74,8 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `asset_id` + `part` | 云侧主键分量（part 区分 still/mov 等） |
 | `media_kind` / `live_pair_id` | 类型与 Live 配对 |
 | `original_filename` / `sort_key` | 展示与排序 |
-| `dest_path` | 已下载本地绝对路径；删云/catalog 硬删行时一并消失（本地 media/文件不动） |
+| `dest_path` | 已下载本地绝对路径（library 在 `iCloudSync/<AppleID>/`；**hidden** 在 `…/Hidden/`）；删云/catalog 硬删行时一并消失（本地 media/文件不动） |
+| `catalog_scope` | `library`（默认）或 `hidden`；标记 catalog 来源（Hidden 智能相册 vs 个人图库） |
 | `cloud_state` | `cloud_only` / `synced` |
 | `download_status` / `active_job_id` | 当前下载态与所属**内存** job |
 | `cpl_asset_*` | CloudKit 记录名 / change tag |
@@ -108,6 +110,19 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 
 ---
 
+## settings.json（iCloud 同步配置）
+
+实现：`src-tauri/src/icloud_sync/settings.rs` · 前端 `api/icloudSync.ts`
+
+| 字段 | 含义 |
+|------|------|
+| `appleId` / `icloudDomain` | 当前账号与区域（com/cn） |
+| `syncHiddenAlbum` | 为 `true` 时 catalog 合并 Hidden 相册；列表 / summary 含 hidden 行 |
+
+落盘目录**不在**此文件：写死 `{albumRoot}/iCloudSync`（相册根来自 CS 应用设置）。
+
+---
+
 ## 一览
 
 ```text
@@ -115,8 +130,11 @@ media.db
 └── media                 本地文件索引 + 展示缓存 + meta
 
 state.db
-└── assets                iCloud 资产注册 + 下载态
+└── assets                iCloud 资产注册 + 下载态（含 catalog_scope）
     └── (temp) catalog_*  catalog 批处理辅助
+
+<appData>/icloud-sync/settings.json
+└── syncHiddenAlbum 等    非敏感同步配置
 
 进程内存 job_mem
 └── JobRow                同步 / 刷新目录任务头（不落盘）

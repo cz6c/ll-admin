@@ -10,6 +10,19 @@ Python 瘦 sidecar：`auth` / `catalog` / `download` / `preview_probe`，stdin/s
 | `ipdPhotos.py` | PhotoAsset 分类与 `photo.download(session, url)`（icloudpd v1.32.3 对齐） |
 | `protocol.py` | line-JSON 事件与错误码 |
 
+### catalog 与 Hidden 相册
+
+| 命令字段 | 说明 |
+|----------|------|
+| `view` | `library` 或 `recents` |
+| `include_hidden` | 可选 bool；**仅 `view=library` 生效**。为 true 时在 library 枚举后追加 Hidden 智能相册 |
+| `items[].catalog_scope` | `library`（默认）或 `hidden` |
+
+Hidden 与 library 在 CloudKit 为**互斥查询**，sidecar 双枚举、单次 `done` 返回合并列表；Rust 侧一次 diff。  
+**不是** Shared Albums（共享相册）。
+
+Mock：`ICLOUD_SYNC_MOCK=1` 时 `include_hidden=true` 会在 `MOCK_CATALOG_ITEMS` 上追加 `MOCK_HIDDEN_CATALOG_ITEMS`（如 `H1`）。
+
 ## 开发（源码调试）
 
 依赖 **icloudpd v1.32.3** 的 vendored `pyicloud_ipd`（见 `vendor/icloud_photos_downloader-1.32.3/src`）。`build.ps1` 会在缺失时自动下载官方 zip 解压。

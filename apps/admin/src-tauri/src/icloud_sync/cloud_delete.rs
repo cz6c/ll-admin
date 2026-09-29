@@ -94,6 +94,8 @@ fn call_delete_assets(
         "part": row.part,
         "cpl_asset_record_name": row.cpl_asset_record_name,
         "cpl_asset_change_tag": row.cpl_asset_change_tag,
+        "library_type": row.library_type.as_str(),
+        "library_zone": row.library_zone,
       })
     })
     .collect();

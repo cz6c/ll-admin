@@ -113,16 +113,16 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
     >
       <template v-if="modelValue">
         <div class="upload-card-inner">
-          <BaseImage :src="modelValue" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
+          <CcImage :src="modelValue" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
           <div class="upload-handle" @click.stop>
             <div v-if="!self_disabled" class="handle-icon" @click="editImg">
-              <IconifyIcon icon="ant-design:edit-outlined" class="action-icon" />
+              <CcIconifyIcon icon="ant-design:edit-outlined" class="action-icon" />
             </div>
             <div class="handle-icon" @click="imgViewVisible = true">
-              <IconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
+              <CcIconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
             </div>
             <div v-if="!self_disabled" class="handle-icon" @click="deleteImg">
-              <IconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
+              <CcIconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
             </div>
           </div>
         </div>
@@ -130,7 +130,7 @@ const beforeUpload: UploadProps["beforeUpload"] = file => {
       <template v-else>
         <div class="upload-empty">
           <slot name="empty">
-            <IconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
+            <CcIconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
           </slot>
         </div>
       </template>

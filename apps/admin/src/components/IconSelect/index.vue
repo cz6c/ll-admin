@@ -115,8 +115,8 @@ watch(
       <template #addonAfter>
         <a-popover :overlay-style="{ width: '372px' }" trigger="click" placement="bottom" @open-change="onOpenChange">
           <div class="w-8 h-8 cursor-pointer flex justify-center items-center">
-            <IconifyIcon v-if="!icon" icon="ant-design:file-search-outlined" />
-            <IconifyIcon v-else :icon="inputValue" />
+            <CcIconifyIcon v-if="!icon" icon="ant-design:file-search-outlined" />
+            <CcIconifyIcon v-else :icon="inputValue" />
           </div>
           <template #content>
             <a-input v-model:value="filterValue" class="px-2 pt-2" placeholder="搜索图标" allow-clear />
@@ -132,7 +132,7 @@ watch(
                       :style="iconItemStyle(item)"
                       @click="onChangeIcon(item)"
                     >
-                      <IconifyIcon :icon="PREFIX + item" width="20px" height="20px" />
+                      <CcIconifyIcon :icon="PREFIX + item" width="20px" height="20px" />
                     </li>
                   </ul>
                   <a-empty v-show="pageList.length === 0" :description="`${filterValue} 图标不存在`" :image-style="{ height: '60px' }" />

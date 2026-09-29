@@ -108,7 +108,7 @@ const gridOptions = reactive<VxeGridProps<MonitorLoginlogVO>>({
       title: "登录状态",
       slots: {
         default({ row }) {
-          return <dict-tag options={SuccessErrorEnum.value} value={row.status} />;
+          return <CcDictTag options={SuccessErrorEnum.value} value={row.status} />;
         }
       }
     },
@@ -157,10 +157,10 @@ function handleExport() {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
+        <CcSearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="middle" />
+        <CcToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
     </vxe-grid>
   </div>

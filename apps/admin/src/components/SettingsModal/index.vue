@@ -1,22 +1,20 @@
 <!--
-  CS 应用设置
+  CS 应用设置全局弹窗
   职责：开机自启、关闭到托盘、AI 接入、相册根目录与备份源落盘路径
-  主流程：拉取 → 编辑 → 保存
+  主流程：打开 → 拉取 → 编辑 → 保存 → 关闭
 -->
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getAppSettings, hasAppAiApiKey, saveAppSettings, setAppAiApiKey, type AppSettings } from "@/api/appSettings";
-import { formatIcloudSyncError } from "@/api/icloudSync";
-import CsSaveBar from "@/components/CsSaveBar/index.vue";
+import { formatIcloudSyncError, getIcloudSyncSettings, saveIcloudSyncSettings } from "@/api/icloudSync";
+import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
 import $feedback from "@/utils/feedback";
 
-defineOptions({ name: "CsAppSettings" });
+defineOptions({ name: "SettingsModal" });
 
-const route = useRoute();
-const router = useRouter();
-const fromSync = computed(() => route.query.from === "sync");
+const { visible, close, notifySaved } = useCsSettingsModal();
 
 const loading = ref(false);
 const saving = ref(false);
@@ -31,8 +29,11 @@ const form = reactive<AppSettings>({
   callAiWhenEmpty: false
 });
 
-// 相册设置 state
 const rootDir = ref("");
+/** iCloud 是否合并同步 Hidden 相册（sidecar 双枚举、Rust 单 diff） */
+const syncHiddenAlbum = ref(false);
+/** iCloud 是否合并同步 Shared Photo Library */
+const syncSharedLibrary = ref(false);
 
 async function load() {
   if (!isTauri()) return;
@@ -41,8 +42,9 @@ async function load() {
     Object.assign(form, await getAppSettings());
     hasKey.value = await hasAppAiApiKey();
     await loadAlbumSettings();
-  } catch (e: any) {
-    $feedback.message.error(e?.message || String(e));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    $feedback.message.error(msg);
   } finally {
     loading.value = false;
   }
@@ -50,8 +52,10 @@ async function load() {
 
 async function loadAlbumSettings() {
   try {
-    const albumSettings = await invoke<{ rootDir: string }>("album_get_settings");
+    const [albumSettings, icloudSettings] = await Promise.all([invoke<{ rootDir: string }>("album_get_settings"), getIcloudSyncSettings()]);
     rootDir.value = albumSettings.rootDir || "";
+    syncHiddenAlbum.value = icloudSettings.syncHiddenAlbum === true;
+    syncSharedLibrary.value = icloudSettings.syncSharedLibrary === true;
   } catch (e) {
     console.error("Failed to load album settings:", e);
     if (isTauri()) {
@@ -67,7 +71,6 @@ async function onSave() {
     if (apiKeyInput.value.trim()) {
       await setAppAiApiKey(apiKeyInput.value.trim());
       apiKeyInput.value = "";
-      // 以读回为准，避免「写成功假象」
       hasKey.value = await hasAppAiApiKey();
       if (!hasKey.value) {
         $feedback.message.error("Key 写入后无法读回，请重试或检查系统凭据权限");
@@ -77,18 +80,16 @@ async function onSave() {
       hasKey.value = await hasAppAiApiKey();
     }
 
-    // 相册设置保存（失败已提示，不重复 success）
     if (isTauri()) {
       const ok = await saveAlbumSettings();
       if (!ok) return;
     }
 
     $feedback.message.success(hasKey.value ? "已保存（已有 Key）" : "已保存（尚未配置 API Key）");
-    if (fromSync.value) {
-      router.push("/album/gallery");
-    }
-  } catch (e: any) {
-    $feedback.message.error(e?.message || String(e));
+    await notifySaved();
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    $feedback.message.error(msg);
   } finally {
     saving.value = false;
   }
@@ -105,6 +106,12 @@ async function saveAlbumSettings(): Promise<boolean> {
       settings: {
         rootDir: rootDir.value.trim()
       }
+    });
+    const icloudSettings = await getIcloudSyncSettings();
+    await saveIcloudSyncSettings({
+      ...icloudSettings,
+      syncHiddenAlbum: syncHiddenAlbum.value,
+      syncSharedLibrary: syncSharedLibrary.value
     });
     return true;
   } catch (e: unknown) {
@@ -131,23 +138,17 @@ async function clearKey() {
   $feedback.message.success("已清除 API Key");
 }
 
-onMounted(load);
-// 无 keep-alive 时切回会 remount；有缓存时用 activated 再刷一次钥匙串状态
-onActivated(load);
+watch(visible, open => {
+  if (open) {
+    void load();
+  }
+});
 </script>
 
 <template>
-  <div class="h-full overflow-auto bg-[var(--fill-color)]">
+  <CcDialog v-model:open="visible" title="应用设置" :width="800" :mask-closable="!saving" :keyboard="!saving" @cancel="close">
     <a-spin :spinning="loading">
-      <div class="box-border flex flex-col gap-16px px-16px pb-72px pt-16px">
-        <a-alert
-          v-if="fromSync"
-          type="info"
-          show-icon
-          class="mb-16px"
-          message="从 iCloud 同步页跳转而来"
-          description="确认相册根目录与落盘路径后保存，将自动返回同步页。"
-        />
+      <div class="cs-settings-body">
         <div class="flex flex-col gap-16px">
           <a-card class="section-card card-rounded" :bordered="true">
             <template #title>
@@ -214,29 +215,48 @@ onActivated(load);
 
                 <a-form-item label="落盘目录">
                   <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
+                    固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；隐藏相册在 …/Hidden/ 子目录；共享图库在 …/Shared/ 子目录
                   </p>
+                </a-form-item>
+
+                <a-form-item label="同步隐藏相册">
+                  <a-checkbox v-model:checked="syncHiddenAlbum">一并同步 Hidden 相册</a-checkbox>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">开启后与个人图库混排展示；关闭后不再刷新，已下载文件保留</p>
+                </a-form-item>
+
+                <a-form-item label="同步共享图库">
+                  <a-checkbox v-model:checked="syncSharedLibrary">一并同步 Shared Photo Library</a-checkbox>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">开启后与个人图库混排展示；关闭后不再刷新，已下载文件保留</p>
                 </a-form-item>
 
                 <a-divider orientation="left">QQ 空间同步</a-divider>
 
                 <a-form-item label="落盘目录">
-                  <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    固定路径：相册根/QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/；文件名 yyyyMMdd_HHmmss + 资源 id，不含账号段
-                  </p>
+                  <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">固定路径：相册根/QzoneSync/&lt;QQ号&gt;/&lt;相册&gt;/</p>
                 </a-form-item>
               </template>
             </a-form>
           </a-card>
         </div>
-
-        <CsSaveBar :saving="saving" @reload="load" @save="onSave" />
       </div>
     </a-spin>
-  </div>
+
+    <template #footer>
+      <a-space>
+        <a-button :disabled="saving" @click="close">取消</a-button>
+        <a-button :disabled="saving || loading" @click="load">重新加载</a-button>
+        <a-button type="primary" :loading="saving" @click="onSave">保存</a-button>
+      </a-space>
+    </template>
+  </CcDialog>
 </template>
 
 <style scoped lang="scss">
+.cs-settings-body {
+  max-height: min(70vh, calc(100vh - var(--cs-shell-bar-height) - 180px));
+  overflow: auto;
+  padding-right: 4px;
+}
 .section-card {
   :deep(.ant-card-head) {
     padding: 12px 16px;

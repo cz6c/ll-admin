@@ -125,7 +125,7 @@ const gridOptions = reactive<VxeGridProps<SysNoticeVo>>({
       title: "公告类型",
       slots: {
         default({ row }) {
-          return <dict-tag options={NoticeTypeEnum.value} value={row.noticeType} />;
+          return <CcDictTag options={NoticeTypeEnum.value} value={row.noticeType} />;
         }
       }
     },
@@ -134,7 +134,7 @@ const gridOptions = reactive<VxeGridProps<SysNoticeVo>>({
       title: "状态",
       slots: {
         default({ row }) {
-          return <dict-tag options={StatusEnum.value} value={row.status} />;
+          return <CcDictTag options={StatusEnum.value} value={row.status} />;
         }
       }
     },
@@ -242,19 +242,19 @@ function handleUpdate(row) {
     <!--表格数据-->
     <vxe-grid ref="gridRef" v-bind="gridOptions as VxeGridBindOptions" v-on="gridEvents">
       <template #form>
-        <SearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
+        <CcSearchForm v-model="apiQuery" :columns="searchList" @search="initListSearch" @reset="handleReset" />
       </template>
       <template #toolbar_buttons>
-        <ToolButtons :buttons="toolbarButtons" size="middle" />
+        <CcToolButtons :buttons="toolbarButtons" size="middle" />
       </template>
       <template #tools_slot="data">
-        <ToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
+        <CcToolButtons :buttons="rowButtons" :data="data" :maxShowNum="2" />
       </template>
     </vxe-grid>
 
     <!-- 添加或修改对话框 -->
-    <a-modal v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
+    <CcDialog v-model:open="editDialog.open" :title="editDialog.title" width="800px" :footer="null" destroy-on-close>
       <EditPostForm v-if="editDialog.open" :noticeId="editDialog.noticeId" @success="initListSearch" @cancel="editDialog.open = false" />
-    </a-modal>
+    </CcDialog>
   </div>
 </template>

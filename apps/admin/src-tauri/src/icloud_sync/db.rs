@@ -15,8 +15,9 @@ use super::catalog_diff::{catalog_fingerprint, CatalogDeltaKind, ExistingAssetBa
 use super::job_mem;
 use super::settings::icloud_sync_dir;
 use super::types::{
-  AssetPart, AssetRow, AssetStatus, CloudState, IcloudSyncAssetTaskRow, IcloudSyncFailedAssetRow,
-  JobRow, JobStatus, JobView, MediaKind, TaskType,
+  AssetPart, AssetRow, AssetStatus, CatalogScope, CloudState, IcloudSyncAssetTaskRow,
+  IcloudSyncFailedAssetRow, JobRow, JobStatus, JobView, LibraryType, MediaKind, TaskType,
+  PRIMARY_SYNC_ZONE,
 };
 
 /// icloud_sync SQLite 路径
@@ -45,11 +46,44 @@ pub fn open_db(db_path: &Path) -> Result<Connection, String> {
   Ok(conn)
 }
 
-/// 无 assets 则建表；已有表直接用，不读不写 user_version，不碰 jobs
+/// 无 assets 则建表；已有表只做 ADD COLUMN 迁移（不读 user_version）
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
   if !table_exists(conn, "assets")? {
     create_final_schema(conn)?;
+  } else {
+    ensure_assets_column(
+      conn,
+      "catalog_scope",
+      "TEXT NOT NULL DEFAULT 'library'",
+    )?;
+    ensure_assets_column(
+      conn,
+      "library_type",
+      "TEXT NOT NULL DEFAULT 'private'",
+    )?;
+    ensure_assets_column(
+      conn,
+      "library_zone",
+      "TEXT NOT NULL DEFAULT 'PrimarySync'",
+    )?;
   }
+  Ok(())
+}
+
+fn ensure_assets_column(conn: &Connection, name: &str, definition: &str) -> Result<(), String> {
+  let mut stmt = conn
+    .prepare("PRAGMA table_info(assets)")
+    .map_err(|e| format!("读取 assets 表结构失败: {e}"))?;
+  let cols = stmt
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("读取 assets 表结构失败: {e}"))?;
+  let exists = cols.filter_map(Result::ok).any(|col| col == name);
+  if exists {
+    return Ok(());
+  }
+  conn
+    .execute_batch(&format!("ALTER TABLE assets ADD COLUMN {name} {definition};"))
+    .map_err(|e| format!("迁移 assets.{name} 失败: {e}"))?;
   Ok(())
 }
 
@@ -101,6 +135,9 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
         added_at TEXT,
         latitude REAL,
         longitude REAL,
+        catalog_scope TEXT NOT NULL DEFAULT 'library',
+        library_type TEXT NOT NULL DEFAULT 'private',
+        library_zone TEXT NOT NULL DEFAULT 'PrimarySync',
         UNIQUE(apple_id, asset_id, part)
       );
 
@@ -143,6 +180,8 @@ pub struct CatalogApplySummary {
   pub modified: u32,
   /// fingerprint/changeTag 未变，仅刷新产品元数据
   pub metadata_refresh: u32,
+  /// 仅 catalog_scope / library zone 迁移
+  pub scope_migration: u32,
   pub unchanged: u32,
   /// Unchanged 且跳过逐行 UPDATE（仅批量 touch last_catalog_at）
   pub unchanged_skipped: u32,
@@ -247,7 +286,8 @@ pub fn load_existing_baselines(
       r#"
       SELECT asset_id, part, sort_key, original_filename, media_kind,
              cpl_asset_record_name, cpl_asset_change_tag,
-             capture_at, added_at, latitude, longitude
+             capture_at, added_at, latitude, longitude,
+             catalog_scope, library_type, library_zone
       FROM assets WHERE apple_id = ?1
       "#,
     )
@@ -270,6 +310,15 @@ pub fn load_existing_baselines(
           added_at: row.get(8)?,
           latitude: row.get(9)?,
           longitude: row.get(10)?,
+          catalog_scope: CatalogScope::parse(
+            row.get::<_, Option<String>>(11)?.unwrap_or_default().as_str(),
+          ),
+          library_type: super::types::LibraryType::parse(
+            row.get::<_, Option<String>>(12)?.unwrap_or_default().as_str(),
+          ),
+          library_zone: row
+            .get::<_, Option<String>>(13)?
+            .unwrap_or_else(|| super::types::PRIMARY_SYNC_ZONE.to_string()),
         },
       ))
     })
@@ -314,8 +363,9 @@ pub fn apply_catalog_delta(
             apple_id, asset_id, sort_key, original_filename, media_kind, live_pair_id,
             part, download_status, active_job_id, cloud_state, last_catalog_at,
             cpl_asset_record_name, cpl_asset_change_tag,
-            capture_at, added_at, latitude, longitude
-          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+            capture_at, added_at, latitude, longitude, catalog_scope,
+            library_type, library_zone
+          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
           ON CONFLICT(apple_id, asset_id, part) DO UPDATE SET
             sort_key = excluded.sort_key,
             original_filename = excluded.original_filename,
@@ -330,7 +380,10 @@ pub fn apply_catalog_delta(
             capture_at = excluded.capture_at,
             added_at = excluded.added_at,
             latitude = excluded.latitude,
-            longitude = excluded.longitude
+            longitude = excluded.longitude,
+            catalog_scope = excluded.catalog_scope,
+            library_type = excluded.library_type,
+            library_zone = excluded.library_zone
           "#,
           params![
             apple_id,
@@ -350,6 +403,9 @@ pub fn apply_catalog_delta(
             row.added_at,
             row.latitude,
             row.longitude,
+            row.catalog_scope.as_str(),
+            row.library_type.as_str(),
+            row.library_zone,
           ],
         )
         .map_err(|e| format!("写入 added asset 失败: {e}"))?;
@@ -375,8 +431,11 @@ pub fn apply_catalog_delta(
             capture_at = ?10,
             added_at = ?11,
             latitude = ?12,
-            longitude = ?13
-          WHERE apple_id = ?14 AND asset_id = ?15 AND part = ?16
+            longitude = ?13,
+            catalog_scope = ?14,
+            library_type = ?15,
+            library_zone = ?16
+          WHERE apple_id = ?17 AND asset_id = ?18 AND part = ?19
           "#,
           params![
             row.sort_key,
@@ -392,12 +451,50 @@ pub fn apply_catalog_delta(
             row.added_at,
             row.latitude,
             row.longitude,
+            row.catalog_scope.as_str(),
+            row.library_type.as_str(),
+            row.library_zone,
             apple_id,
             row.asset_id,
             row.part.as_str(),
           ],
         )
         .map_err(|e| format!("写入 modified→cloud_only asset 失败: {e}"))?;
+      }
+      CatalogDeltaKind::ScopeMigration => {
+        summary.scope_migration += 1;
+        tx.execute(
+          r#"
+          UPDATE assets SET
+            last_catalog_at = ?1,
+            cpl_asset_record_name = COALESCE(?2, cpl_asset_record_name),
+            cpl_asset_change_tag = COALESCE(?3, cpl_asset_change_tag),
+            capture_at = ?4,
+            added_at = ?5,
+            latitude = ?6,
+            longitude = ?7,
+            catalog_scope = ?8,
+            library_type = ?9,
+            library_zone = ?10
+          WHERE apple_id = ?11 AND asset_id = ?12 AND part = ?13
+          "#,
+          params![
+            now,
+            row.cpl_asset_record_name,
+            row.cpl_asset_change_tag,
+            row.capture_at,
+            row.added_at,
+            row.latitude,
+            row.longitude,
+            row.catalog_scope.as_str(),
+            row.library_type.as_str(),
+            row.library_zone,
+            apple_id,
+            row.asset_id,
+            row.part.as_str(),
+          ],
+        )
+        .map_err(|e| format!("写入 scope 迁移 asset 失败: {e}"))?;
       }
       CatalogDeltaKind::MetadataRefresh => {
         summary.metadata_refresh += 1;
@@ -497,13 +594,21 @@ pub fn enqueue_cloud_only_for_sync(
 
 /// catalog 中消失的行硬删除（覆盖模式）；进行中的云删队列行保留
 /// @note 不删本地磁盘 / media.db；需先 `prepare_catalog_keys_temp`
-pub fn mark_catalog_deletions(conn: &Connection, apple_id: &str) -> Result<u32, String> {
+/// @param sync_hidden/sync_shared 为 false 时对应 scope 行不因 catalog 消失被硬删
+pub fn mark_catalog_deletions(
+  conn: &Connection,
+  apple_id: &str,
+  sync_hidden: bool,
+  sync_shared: bool,
+) -> Result<u32, String> {
+  let scope_clause = catalog_sync_scope_clause(sync_hidden, sync_shared);
   let changed = conn
     .execute(
       &format!(
         r#"
         DELETE FROM assets
         WHERE apple_id = ?1
+          {scope_clause}
           AND NOT EXISTS (
             SELECT 1 FROM {CATALOG_KEYS_TEMP} t
             WHERE t.asset_id = assets.asset_id AND t.part = assets.part
@@ -940,7 +1045,8 @@ fn list_assets_by_statuses(
            live_pair_id, part, download_status, active_job_id, dest_path,
            cloud_state, last_synced_at, last_catalog_at, last_error, attempt_count,
            cpl_asset_record_name, cpl_asset_change_tag,
-           capture_at, added_at, latitude, longitude
+           capture_at, added_at, latitude, longitude, catalog_scope,
+           library_type, library_zone
     FROM assets
     WHERE active_job_id = ?1 AND download_status IN ({placeholders})
     ORDER BY sort_key ASC,
@@ -996,6 +1102,15 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
     added_at: row.get(19)?,
     latitude: row.get(20)?,
     longitude: row.get(21)?,
+    catalog_scope: CatalogScope::parse(
+      row.get::<_, Option<String>>(22)?.unwrap_or_default().as_str(),
+    ),
+    library_type: LibraryType::parse(
+      row.get::<_, Option<String>>(23)?.unwrap_or_default().as_str(),
+    ),
+    library_zone: row
+      .get::<_, Option<String>>(24)?
+      .unwrap_or_else(|| PRIMARY_SYNC_ZONE.to_string()),
   })
 }
 
@@ -1044,6 +1159,26 @@ pub fn collect_synced_keys_for_cloud_delete(
   Ok(rows)
 }
 
+/// 本次 catalog 纳入的 scope 集合 WHERE 条件（无 leading AND）
+pub fn catalog_sync_scopes_sql(sync_hidden: bool, sync_shared: bool) -> String {
+  let mut scopes = vec!["'library'"];
+  if sync_hidden {
+    scopes.push("'hidden'");
+  }
+  if sync_shared {
+    scopes.push("'shared'");
+  }
+  format!(
+    "(catalog_scope IS NULL OR catalog_scope IN ({}))",
+    scopes.join(", ")
+  )
+}
+
+/// mark 删库用 scope 片段（带 leading AND）
+pub fn catalog_sync_scope_clause(sync_hidden: bool, sync_shared: bool) -> String {
+  format!(" AND {}", catalog_sync_scopes_sql(sync_hidden, sync_shared))
+}
+
 /// 一次性删云候选（不入 queue；sidecar 按 CPL 定点删）
 #[derive(Debug, Clone)]
 pub struct CloudDeleteCandidate {
@@ -1054,6 +1189,8 @@ pub struct CloudDeleteCandidate {
   pub reason: String,
   pub cpl_asset_record_name: String,
   pub cpl_asset_change_tag: Option<String>,
+  pub library_type: LibraryType,
+  pub library_zone: String,
 }
 
 /**
@@ -1084,20 +1221,35 @@ pub fn resolve_cloud_delete_candidates(
       Option<String>,
       Option<String>,
       String,
+      Option<String>,
+      Option<String>,
     )> = conn
       .query_row(
         r#"
-        SELECT cloud_state, dest_path, cpl_asset_record_name, cpl_asset_change_tag, original_filename
+        SELECT cloud_state, dest_path, cpl_asset_record_name, cpl_asset_change_tag, original_filename,
+               library_type, library_zone
         FROM assets
         WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
         "#,
         params![apple_id, asset_id, part],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        |row| {
+          Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+          ))
+        },
       )
       .optional()
       .map_err(|e| format!("读取 asset 云态失败: {e}"))?;
 
-    let Some((_cloud_state, dest_path, cpl_name, cpl_tag, filename)) = row else {
+    let Some((_cloud_state, dest_path, cpl_name, cpl_tag, filename, library_type_s, library_zone_s)) =
+      row
+    else {
       outcomes
         .entry(asset_id.clone())
         .or_default()
@@ -1128,6 +1280,11 @@ pub fn resolve_cloud_delete_candidates(
       reason: reason.to_string(),
       cpl_asset_record_name: cpl,
       cpl_asset_change_tag: cpl_tag,
+      library_type: LibraryType::parse(
+        library_type_s.as_deref().unwrap_or("private"),
+      ),
+      library_zone: library_zone_s
+        .unwrap_or_else(|| PRIMARY_SYNC_ZONE.to_string()),
     });
     outcomes
       .entry(asset_id.clone())
@@ -1684,6 +1841,9 @@ mod tests {
         added_at: None,
         latitude: None,
         longitude: None,
+        catalog_scope: CatalogScope::Library,
+        library_type: LibraryType::Private,
+        library_zone: PRIMARY_SYNC_ZONE.to_string(),
       },
       AssetRow {
         id: 0,
@@ -1708,6 +1868,9 @@ mod tests {
         added_at: None,
         latitude: None,
         longitude: None,
+        catalog_scope: CatalogScope::Library,
+        library_type: LibraryType::Private,
+        library_zone: PRIMARY_SYNC_ZONE.to_string(),
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -1769,6 +1932,9 @@ mod tests {
         added_at: None,
         latitude: None,
         longitude: None,
+        catalog_scope: CatalogScope::Library,
+        library_type: LibraryType::Private,
+        library_zone: PRIMARY_SYNC_ZONE.to_string(),
       },
       AssetRow {
         id: 0,
@@ -1793,6 +1959,9 @@ mod tests {
         added_at: None,
         latitude: None,
         longitude: None,
+        catalog_scope: CatalogScope::Library,
+        library_type: LibraryType::Private,
+        library_zone: PRIMARY_SYNC_ZONE.to_string(),
       },
       AssetRow {
         id: 0,
@@ -1817,6 +1986,9 @@ mod tests {
         added_at: None,
         latitude: None,
         longitude: None,
+        catalog_scope: CatalogScope::Library,
+        library_type: LibraryType::Private,
+        library_zone: PRIMARY_SYNC_ZONE.to_string(),
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -1906,6 +2078,9 @@ mod tests {
       attempt_count: 0,
       cpl_asset_record_name: None,
       cpl_asset_change_tag: None,
+      catalog_scope: CatalogScope::Library,
+      library_type: LibraryType::Private,
+      library_zone: PRIMARY_SYNC_ZONE.to_string(),
     };
     let classified = vec![(row, CatalogDeltaKind::Unchanged)];
     let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified, true).expect("delta");

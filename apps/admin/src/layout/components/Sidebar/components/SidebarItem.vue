@@ -59,14 +59,14 @@ function menuKey(route: AppRouteRecordRaw) {
     <!-- title 必须给满：收起时 ant Menu 用它做 hover tooltip；短标题也要能显示「首页」等 -->
     <a-menu-item v-if="leafInfo.isLeaf && leafInfo.route.meta" :key="menuKey(leafInfo.route)" :title="(leafInfo.route.meta.title as string) || undefined">
       <template v-if="leafInfo.route.meta.icon" #icon>
-        <IconifyIcon :icon="String(leafInfo.route.meta.icon)" width="1em" height="1em" />
+        <CcIconifyIcon :icon="String(leafInfo.route.meta.icon)" width="1em" height="1em" />
       </template>
       {{ leafInfo.route.meta.title }}
     </a-menu-item>
 
     <a-sub-menu v-else :key="item.path">
       <template v-if="item.meta?.icon" #icon>
-        <IconifyIcon :icon="String(item.meta.icon)" width="1em" height="1em" />
+        <CcIconifyIcon :icon="String(item.meta.icon)" width="1em" height="1em" />
       </template>
       <template v-if="item.meta" #title>
         <span :title="titleTip(item.meta.title as string)">{{ item.meta.title }}</span>

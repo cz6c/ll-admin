@@ -5,7 +5,7 @@
         <a-card style="height: calc(100vh - var(--cs-shell-bar-height) - 125px)">
           <template #title>
             <div class="flex-center justify-between">
-              <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:database-outlined" />缓存列表</span>
+              <span class="flex-center"><CcIconifyIcon class="mr-1" icon="ant-design:database-outlined" />缓存列表</span>
               <a-button type="link" @click="refreshCacheNames()">
                 <template #icon>
                   <component :is="useRenderIcon('ant-design:reload-outlined')" />
@@ -42,7 +42,7 @@
         <a-card style="height: calc(100vh - var(--cs-shell-bar-height) - 125px)">
           <template #title>
             <div class="flex-center justify-between">
-              <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:key-outlined" />键名列表</span>
+              <span class="flex-center"><CcIconifyIcon class="mr-1" icon="ant-design:key-outlined" />键名列表</span>
               <a-button type="link" @click="refreshCacheKeys()">
                 <template #icon>
                   <component :is="useRenderIcon('ant-design:reload-outlined')" />
@@ -79,7 +79,7 @@
         <a-card :bordered="false" style="height: calc(100vh - var(--cs-shell-bar-height) - 125px)">
           <template #title>
             <div class="flex-center justify-between">
-              <span class="flex-center"><IconifyIcon class="mr-1" icon="ant-design:file-text-outlined" />缓存内容</span>
+              <span class="flex-center"><CcIconifyIcon class="mr-1" icon="ant-design:file-text-outlined" />缓存内容</span>
             </div>
           </template>
           <a-form :model="cacheForm" :label-col="{ style: { width: '90px' } }">

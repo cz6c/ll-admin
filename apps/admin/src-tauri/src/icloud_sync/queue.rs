@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use rand::Rng;
+use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
@@ -64,6 +65,10 @@ pub struct CatalogItem {
   pub cpl_asset_record_name: Option<String>,
   /// catalog 时的 recordChangeTag；可按 recordName 定点刷新
   pub cpl_asset_change_tag: Option<String>,
+  /// `library` / `hidden` / `shared`；sidecar 合并 catalog 时带回
+  pub catalog_scope: super::types::CatalogScope,
+  pub library_type: super::types::LibraryType,
+  pub library_zone: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -266,6 +271,9 @@ pub fn catalog_to_asset_rows(
         attempt_count: 0,
         cpl_asset_record_name: item.cpl_asset_record_name.clone(),
         cpl_asset_change_tag: item.cpl_asset_change_tag.clone(),
+        catalog_scope: item.catalog_scope,
+        library_type: item.library_type,
+        library_zone: item.library_zone.clone(),
       });
     }
   }
@@ -339,6 +347,23 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         .filter(|s| !s.is_empty());
       let latitude = value.get("latitude").and_then(|v| v.as_f64());
       let longitude = value.get("longitude").and_then(|v| v.as_f64());
+      let catalog_scope = value
+        .get("catalog_scope")
+        .and_then(|v| v.as_str())
+        .map(super::types::CatalogScope::parse)
+        .unwrap_or_default();
+      let library_type = value
+        .get("library_type")
+        .and_then(|v| v.as_str())
+        .map(super::types::LibraryType::parse)
+        .unwrap_or_default();
+      let library_zone = value
+        .get("library_zone")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| super::types::PRIMARY_SYNC_ZONE.to_string());
 
       Ok(CatalogItem {
         asset_id,
@@ -352,6 +377,9 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         parts,
         cpl_asset_record_name,
         cpl_asset_change_tag,
+        catalog_scope,
+        library_type,
+        library_zone,
       })
     })
     .collect()
@@ -378,9 +406,70 @@ fn dest_path_for_asset(output_dir: &str, asset: &AssetRow) -> PathBuf {
     &asset.original_filename,
     asset.part,
   );
-  Path::new(output_dir)
-    .join(super::naming::account_dir_name(&asset.apple_id))
-    .join(name)
+  let mut dir = Path::new(output_dir).join(super::naming::account_dir_name(&asset.apple_id));
+  match asset.catalog_scope {
+    super::types::CatalogScope::Hidden => {
+      dir = dir.join("Hidden");
+    }
+    super::types::CatalogScope::Shared => {
+      dir = dir.join("Shared");
+    }
+    super::types::CatalogScope::Library => {}
+  }
+  dir.join(name)
+}
+
+/// scope 迁移后：已 synced 且本地文件在旧路径时 best-effort 移到新 scope 子目录
+fn relocate_asset_after_scope_migration(
+  conn: &rusqlite::Connection,
+  output_dir: &str,
+  apple_id: &str,
+  row: &super::types::AssetRow,
+) -> Result<(), String> {
+  let current: Option<(String, Option<String>)> = conn
+    .query_row(
+      r#"
+      SELECT cloud_state, dest_path FROM assets
+      WHERE apple_id = ?1 AND asset_id = ?2 AND part = ?3
+      "#,
+      params![apple_id, row.asset_id, row.part.as_str()],
+      |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()
+    .map_err(|e| format!("读取 scope 迁移资产失败: {e}"))?;
+  let Some((cloud_state, dest_path)) = current else {
+    return Ok(());
+  };
+  if cloud_state != super::types::CloudState::Synced.as_str() {
+    return Ok(());
+  }
+  let mut asset_for_path = row.clone();
+  asset_for_path.apple_id = apple_id.to_string();
+  let new_dest = dest_path_for_asset(output_dir, &asset_for_path);
+  let new_dest_str = new_dest.to_string_lossy().into_owned();
+  if dest_path.as_deref() == Some(new_dest_str.as_str()) {
+    return Ok(());
+  }
+  if let Some(old) = dest_path.as_deref().filter(|p| std::path::Path::new(p).is_file()) {
+    if let Some(parent) = new_dest.parent() {
+      std::fs::create_dir_all(parent).map_err(|e| format!("创建 scope 迁移目录失败: {e}"))?;
+    }
+    if std::fs::rename(old, &new_dest).is_err() {
+      if std::fs::copy(old, &new_dest).is_ok() {
+        let _ = std::fs::remove_file(old);
+      }
+    }
+  }
+  conn
+    .execute(
+      r#"
+      UPDATE assets SET dest_path = ?1
+      WHERE apple_id = ?2 AND asset_id = ?3 AND part = ?4
+      "#,
+      params![new_dest_str, apple_id, row.asset_id, row.part.as_str()],
+    )
+    .map_err(|e| format!("更新 scope 迁移 dest_path 失败: {e}"))?;
+  Ok(())
 }
 
 fn emit_progress(
@@ -428,7 +517,11 @@ fn icloud_ingress_item(
     origin: "icloud".into(),
     origin_asset_id: asset.asset_id.clone(),
     origin_account: asset.apple_id.clone(),
-    origin_album: None,
+    origin_album: match asset.catalog_scope {
+      super::types::CatalogScope::Hidden => Some("Hidden".into()),
+      super::types::CatalogScope::Shared => Some("Shared".into()),
+      super::types::CatalogScope::Library => None,
+    },
     origin_capture_at: asset.capture_at.clone(),
     added_at: asset.added_at.clone(),
     latitude: asset.latitude,
@@ -542,6 +635,8 @@ fn fetch_catalog(
   view: JobView,
   apple_id: &str,
   session_path: &Path,
+  include_hidden: bool,
+  include_shared_library: bool,
 ) -> Result<Vec<CatalogItem>, String> {
   let event = client
     .request(
@@ -549,6 +644,8 @@ fn fetch_catalog(
       serde_json::json!({
         "cmd": "catalog",
         "view": view.as_str(),
+        "include_hidden": include_hidden && view == JobView::Library,
+        "include_shared_library": include_shared_library && view == JobView::Library,
         "apple_id": apple_id,
         "session_dir": session_path.to_string_lossy(),
       }),
@@ -585,6 +682,9 @@ fn persist_catalog_delta(
   view: JobView,
   catalog_items: &[CatalogItem],
   enqueue: bool,
+  include_hidden: bool,
+  include_shared_library: bool,
+  output_dir: Option<&str>,
 ) -> Result<(), String> {
   let rows = catalog_to_asset_rows(view, catalog_items)?;
   let existing = load_existing_baselines(conn, apple_id)?;
@@ -592,7 +692,15 @@ fn persist_catalog_delta(
   prepare_catalog_keys_temp(conn, &catalog_keys)?;
   // 刷新目录：只更新云态，不把 download 绑到 catalog job
   let mut summary = apply_catalog_delta(conn, job_id, apple_id, &classified, enqueue)?;
-  summary.deleted = mark_catalog_deletions(conn, apple_id)?;
+  if let Some(dir) = output_dir {
+    for (row, kind) in &classified {
+      if *kind == super::catalog_diff::CatalogDeltaKind::ScopeMigration {
+        relocate_asset_after_scope_migration(conn, dir, apple_id, row)?;
+      }
+    }
+  }
+  summary.deleted =
+    mark_catalog_deletions(conn, apple_id, include_hidden, include_shared_library)?;
   // 本地文件缺失的 synced 行降级为 cloud_only，须在 enqueue 前完成以便本次 job 可下载
   let reconciled = reconcile_synced_missing_local_files_in_catalog(conn, apple_id)?;
   if reconciled > 0 {
@@ -606,10 +714,11 @@ fn persist_catalog_delta(
     set_job_catalog_counts(conn, job_id)?;
   }
   log::info!(
-    "icloud catalog delta job {job_id}: added={} modified={} meta_refresh={} unchanged={} skipped={} deleted={} enqueued={} (enqueue={})",
+    "icloud catalog delta job {job_id}: added={} modified={} meta_refresh={} scope_mig={} unchanged={} skipped={} deleted={} enqueued={} (enqueue={})",
     summary.added,
     summary.modified,
     summary.metadata_refresh,
+    summary.scope_migration,
     summary.unchanged,
     summary.unchanged_skipped,
     summary.deleted,
@@ -649,6 +758,8 @@ fn download_batch(
         "asset_id": asset.asset_id,
         "part": sidecar_part_for_download(asset),
         "dest_path": dest.to_string_lossy(),
+        "library_type": asset.library_type.as_str(),
+        "library_zone": asset.library_zone,
       })
     })
     .collect();
@@ -1397,17 +1508,43 @@ pub async fn icloud_sync_refresh_catalog(
     emit_task_status(&app, &conn, job_id);
 
     try_claim_job(job_id)?;
+    let include_hidden = settings.sync_hidden_album;
+    let include_shared_library = settings.sync_shared_library;
+    let output_dir = resolve_output_dir(&app)?;
     let app_bg = app.clone();
     let client_bg = client.clone();
     thread::spawn(move || {
       let outcome = (|| -> Result<(), String> {
         client_bg.ensure_started(&app_bg).map_err(|e| e.to_string())?;
-        let catalog_items = fetch_catalog(&client_bg, &app_bg, view, &apple_id, &session_path)?;
+        let catalog_items = fetch_catalog(
+          &client_bg,
+          &app_bg,
+          view,
+          &apple_id,
+          &session_path,
+          include_hidden,
+          include_shared_library,
+        )?;
         let conn = open_db(&db_path)?;
         if get_job(&conn, job_id)?.is_none() {
           return Ok(());
         }
-        persist_catalog_delta(&app_bg, &conn, job_id, &apple_id, view, &catalog_items, false)?;
+        let output_dir_ref = output_dir
+          .as_ref()
+          .and_then(|p| p.to_str())
+          .filter(|s| !s.is_empty());
+        persist_catalog_delta(
+          &app_bg,
+          &conn,
+          job_id,
+          &apple_id,
+          view,
+          &catalog_items,
+          false,
+          include_hidden,
+          include_shared_library,
+          output_dir_ref,
+        )?;
         set_task_status(&app_bg, &conn, job_id, JobStatus::Done)?;
         Ok(())
       })();
@@ -1453,6 +1590,7 @@ impl Default for SidecarClientHandle {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::icloud_sync::types::{CatalogScope, LibraryType, PRIMARY_SYNC_ZONE};
 
   fn photo(id: &str, capture: &str, added: &str) -> CatalogItem {
     CatalogItem {
@@ -1467,6 +1605,9 @@ mod tests {
       parts: vec!["still".into()],
       cpl_asset_record_name: Some(format!("CPL-{id}")),
       cpl_asset_change_tag: Some("t".into()),
+      catalog_scope: CatalogScope::Library,
+      library_type: LibraryType::Private,
+      library_zone: PRIMARY_SYNC_ZONE.to_string(),
     }
   }
 
@@ -1483,6 +1624,9 @@ mod tests {
       parts: vec!["still".into(), "mov".into()],
       cpl_asset_record_name: Some(format!("CPL-{id}")),
       cpl_asset_change_tag: Some("t".into()),
+      catalog_scope: CatalogScope::Library,
+      library_type: LibraryType::Private,
+      library_zone: PRIMARY_SYNC_ZONE.to_string(),
     }
   }
 
@@ -1619,6 +1763,9 @@ mod tests {
       attempt_count: 0,
       cpl_asset_record_name: None,
       cpl_asset_change_tag: None,
+      catalog_scope: super::super::types::CatalogScope::Library,
+      library_type: super::super::types::LibraryType::Private,
+      library_zone: super::super::types::PRIMARY_SYNC_ZONE.to_string(),
     };
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", std::slice::from_ref(&asset)).expect("insert");
     asset.id = conn

@@ -121,18 +121,18 @@ const handlePictureCardPreview = (file: UploadFile) => {
     >
       <div v-if="modelValue.length < limit" class="upload-empty">
         <slot name="empty">
-          <IconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
+          <CcIconifyIcon icon="ant-design:plus-outlined" class="upload-plus" />
         </slot>
       </div>
       <template #itemRender="{ file }">
         <div class="upload-list-item">
-          <BaseImage :src="file.url" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
+          <CcImage :src="file.url" fit="contain" width="100%" height="100%" :lazy="true" class="upload-image" />
           <div class="upload-handle" @click.stop>
             <div class="handle-icon" @click="handlePictureCardPreview(file)">
-              <IconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
+              <CcIconifyIcon icon="ant-design:zoom-in-outlined" class="action-icon" />
             </div>
             <div v-if="!self_disabled" class="handle-icon" @click="handleRemove(file)">
-              <IconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
+              <CcIconifyIcon icon="ant-design:delete-outlined" class="action-icon" />
             </div>
           </div>
         </div>

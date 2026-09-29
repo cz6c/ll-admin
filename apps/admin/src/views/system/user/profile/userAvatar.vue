@@ -4,9 +4,9 @@
     主流程：点头像开 Modal → 选图本地预览裁剪 → 提交 uploadImg + uploadAvatar
   -->
   <div class="user-info-head" @click="editCropper()">
-    <BaseImage v-if="options.img" :src="options.img" fit="cover" width="120px" height="120px" border-radius="50%" :lazy="true" />
+    <CcImage v-if="options.img" :src="options.img" fit="cover" width="120px" height="120px" border-radius="50%" :lazy="true" />
     <span v-else>点击上传头像</span>
-    <a-modal v-model:open="open" :title="title" width="800px" :footer="null" destroy-on-close @cancel="closeDialog">
+    <CcDialog v-model:open="open" :title="title" width="800px" :footer="null" destroy-on-close @cancel="closeDialog">
       <a-row>
         <a-col :xs="24" :md="12" :style="{ height: '350px' }">
           <!--
@@ -39,7 +39,7 @@
           <a-upload accept="image/*" :show-upload-list="false" :before-upload="beforeUpload">
             <a-button>
               选择
-              <IconifyIcon icon="ant-design:upload-outlined" />
+              <CcIconifyIcon icon="ant-design:upload-outlined" />
             </a-button>
           </a-upload>
         </a-col>
@@ -67,7 +67,7 @@
           <a-button type="primary" @click="sumbit()">提 交</a-button>
         </a-col>
       </a-row>
-    </a-modal>
+    </CcDialog>
   </div>
 </template>
 

@@ -81,7 +81,7 @@ pub struct MediaFile {
   pub width: Option<u32>,
   /// 像素高（优先缩略图解码）
   pub height: Option<u32>,
-  /// 来源：`icloud` / `qzone`；本地扫描为 None
+  /// 来源图库键：`icloud` / `qzone` / `local`（discover 回填后本地为 `local`，不再长期为 None）
   pub origin: Option<String>,
   /// 云端 asset id（与 sync 表 asset_id 对应；断层后仍可追溯）
   pub origin_asset_id: Option<String>,

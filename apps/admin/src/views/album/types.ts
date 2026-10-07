@@ -73,7 +73,7 @@ export interface MediaFile {
   width?: number;
   /** 像素高（优先缩略图解码） */
   height?: number;
-  /** icloud | qzone */
+  /** icloud | qzone | local；与 originAccount 组成图库键 */
   origin?: string;
   originAssetId?: string;
   originAccount?: string;

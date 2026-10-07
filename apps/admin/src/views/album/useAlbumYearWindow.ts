@@ -25,6 +25,8 @@ export interface UseAlbumYearWindowOptions {
   totalHeight: ComputedRef<number>;
   /** 目录筛选变化时重置窗口 */
   dirFilter: Ref<string | null>;
+  /** 图库筛选变化时重置窗口；null=全部图库 */
+  libraryFilter: Ref<string | null>;
   /** 改拍摄时间 / 灯箱 / 重复清理打开时忽略年份快捷键 */
   captureRewriteOpen: Ref<boolean>;
   viewerOpen: Ref<boolean> | ComputedRef<boolean>;
@@ -49,6 +51,7 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
     viewportHeight,
     totalHeight,
     dirFilter,
+    libraryFilter,
     captureRewriteOpen,
     viewerOpen,
     duplicateModalOpen,
@@ -64,7 +67,7 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
 
   /**
    * 重置为只挂最新一年并滚到底
-   * 扫描完成、目录筛选变化时调用
+   * 扫描完成、目录或图库筛选变化时调用
    */
   function resetYearWindowToLatest() {
     const latest = pickLatestYearKey(yearAxis.value);
@@ -214,6 +217,10 @@ export function useAlbumYearWindow(options: UseAlbumYearWindowOptions) {
   }
 
   watch(dirFilter, () => {
+    resetYearWindowToLatest();
+  });
+
+  watch(libraryFilter, () => {
     resetYearWindowToLatest();
   });
 

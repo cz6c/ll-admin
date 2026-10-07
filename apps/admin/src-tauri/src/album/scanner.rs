@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
+use rusqlite::params;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
@@ -786,6 +787,47 @@ pub fn discover_groups(
   });
 
   db::sync_media_index(&conn, album_dir, root, &groups, &alive_paths)?;
+  db::backfill_local_origin(&conn, root)?;
+
+  // discover 构造行 origin 恒为 None（保留 upsert COALESCE）；回填后回读再补本地键
+  let mut identity_stmt = conn
+    .prepare("SELECT path, origin, origin_account FROM media WHERE root = ?1")
+    .map_err(|e| format!("准备图库身份查询失败: {e}"))?;
+  let identities: HashMap<String, (Option<String>, Option<String>)> = identity_stmt
+    .query_map(params![root], |row| {
+      let path: String = row.get(0)?;
+      let origin: Option<String> = row.get(1)?;
+      let origin = origin.filter(|s| !s.trim().is_empty());
+      let origin_account: Option<String> = row.get(2)?;
+      let origin_account = origin_account.filter(|s| !s.trim().is_empty());
+      Ok((path, (origin, origin_account)))
+    })
+    .map_err(|e| format!("查询图库身份失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+
+  for group in &mut groups {
+    for file in &mut group.files {
+      if let Some((origin, origin_account)) = identities.get(&file.path) {
+        file.origin = origin.clone();
+        file.origin_account = origin_account.clone();
+      }
+      let origin_empty = file
+        .origin
+        .as_ref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true);
+      let account_empty = file
+        .origin_account
+        .as_ref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true);
+      if origin_empty && account_empty {
+        file.origin = Some("local".to_string());
+        file.origin_account = Some("_local".to_string());
+      }
+    }
+  }
 
   Ok(groups)
 }

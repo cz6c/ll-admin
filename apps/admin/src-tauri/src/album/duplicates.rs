@@ -227,7 +227,7 @@ fn build_scanned_entries(
       .as_ref()
       .and_then(|vp| origin_meta.get(&normalize_path_key(vp)));
 
-    // 有 origin* → 同步入库正本（优先保留）
+    // 有云侧同步身份（load_origin_path_index 已排除 origin=local）→ 正本优先保留
     let in_db = still_meta.is_some() || mov_meta.is_some();
     let name_meta = still_meta.or(mov_meta);
     let asset_id = name_meta.and_then(|(id, _)| id.clone());

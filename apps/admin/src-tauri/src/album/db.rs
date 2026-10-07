@@ -492,6 +492,33 @@ pub fn sync_media_index(
   Ok(())
 }
 
+/**
+ * 扫描后回填本地图库键：无同步身份的行写入 `local` / `_local`
+ *
+ * discover upsert 对 origin 使用 COALESCE(excluded.origin, media.origin)，
+ * 不能在 upsert 时一律写 local，否则重扫会把已有 icloud/qzone 同步身份覆盖掉。
+ * 须在 sync 完成后单独 UPDATE 仅 origin 与 origin_account 均为空的行。
+ *
+ * @param conn 已打开的 media.db 连接
+ * @param root 当前扫描根目录（与 media.root 一致）
+ * @returns 受影响的行数
+ */
+pub fn backfill_local_origin(conn: &Connection, root: &str) -> Result<u64, String> {
+  conn
+    .execute(
+      r#"
+      UPDATE media
+      SET origin = 'local', origin_account = '_local'
+      WHERE root = ?1
+        AND (origin IS NULL OR trim(origin) = '')
+        AND (origin_account IS NULL OR trim(origin_account) = '')
+      "#,
+      params![root],
+    )
+    .map_err(|e| format!("回填本地图库键失败: {e}"))?;
+  Ok(conn.changes())
+}
+
 /// 事务内批量更新缩略图/预览路径与解码尺寸（供 pipeline 每 chunk 提交一次）
 /// - thumb/preview/宽高 传 None 表示「不更新」（COALESCE 保留旧值）
 /// - 成功更新时重置 fail_count
@@ -1274,8 +1301,11 @@ pub fn save_content_hash(
 }
 
 /**
- * 同步入库身份索引：有 `origin` / `origin_asset_id` 的 media 行
- * @returns 规范化 path → (origin_asset_id?, kind)；供重复检测正本优先，不读 sync 库
+ * 同步入库身份索引：有云侧身份的 media 行（供重复检测正本优先）
+ *
+ * @note `origin=local` 只是本地图库键，不是同步入库；必须排除，否则回填后
+ *       纯本地文件也会被当成 in_db 正本，可能误删 icloud/qzone 副本。
+ * @returns 规范化 path → (origin_asset_id?, kind)；不读 sync 库
  */
 pub fn load_origin_path_index(
   conn: &Connection,
@@ -1286,7 +1316,11 @@ pub fn load_origin_path_index(
       SELECT path, origin_asset_id, kind
       FROM media
       WHERE (origin_asset_id IS NOT NULL AND trim(origin_asset_id) != '')
-         OR (origin IS NOT NULL AND trim(origin) != '')
+         OR (
+           origin IS NOT NULL
+           AND trim(origin) != ''
+           AND lower(trim(origin)) != 'local'
+         )
       "#,
     )
     .map_err(|e| format!("准备 origin 索引查询失败: {e}"))?;
@@ -1355,6 +1389,137 @@ mod tests {
       .query_row("SELECT COUNT(*) FROM media", [], |r| r.get(0))
       .expect("count");
     assert_eq!(n, 0);
+    let _ = std::fs::remove_dir_all(&album_dir);
+  }
+
+  #[test]
+  fn backfill_local_origin_fills_empty_only() {
+    let nanos = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("time")
+      .as_nanos();
+    let album_dir = std::env::temp_dir().join(format!("album_backfill_{nanos}"));
+    let root = album_dir.join("photos");
+    std::fs::create_dir_all(&root).expect("root");
+    let conn = open_db(&album_dir).expect("db");
+
+    let local_path = root.join("pure_local.jpg");
+    let icloud_path = root.join("from_icloud.jpg");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO media(
+          path, root, rel_dir, name, kind, size, modified, ext, scanned_at, fail_count,
+          origin, origin_account
+        ) VALUES (?1, ?2, '.', 'pure_local.jpg', 'image', 1, 1, 'jpg', 0, 0, NULL, NULL)
+        "#,
+        params![
+          local_path.to_string_lossy().as_ref(),
+          root.to_string_lossy().as_ref(),
+        ],
+      )
+      .expect("insert local");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO media(
+          path, root, rel_dir, name, kind, size, modified, ext, scanned_at, fail_count,
+          origin, origin_account
+        ) VALUES (?1, ?2, '.', 'from_icloud.jpg', 'image', 1, 1, 'jpg', 0, 0, 'icloud', 'user@icloud.com')
+        "#,
+        params![
+          icloud_path.to_string_lossy().as_ref(),
+          root.to_string_lossy().as_ref(),
+        ],
+      )
+      .expect("insert icloud");
+
+    let updated =
+      backfill_local_origin(&conn, root.to_str().unwrap()).expect("backfill");
+    assert_eq!(updated, 1);
+
+    let (local_origin, local_account): (String, String) = conn
+      .query_row(
+        "SELECT origin, origin_account FROM media WHERE path = ?1",
+        params![local_path.to_string_lossy().as_ref()],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+      )
+      .expect("local row");
+    assert_eq!(local_origin, "local");
+    assert_eq!(local_account, "_local");
+
+    let (icloud_origin, icloud_account): (String, String) = conn
+      .query_row(
+        "SELECT origin, origin_account FROM media WHERE path = ?1",
+        params![icloud_path.to_string_lossy().as_ref()],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+      )
+      .expect("icloud row");
+    assert_eq!(icloud_origin, "icloud");
+    assert_eq!(icloud_account, "user@icloud.com");
+
+    let _ = std::fs::remove_dir_all(&album_dir);
+  }
+
+  #[test]
+  fn load_origin_path_index_skips_local_gallery_origin() {
+    let nanos = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("time")
+      .as_nanos();
+    let album_dir = std::env::temp_dir().join(format!("album_origin_idx_{nanos}"));
+    let root = album_dir.join("photos");
+    std::fs::create_dir_all(&root).expect("root");
+    let conn = open_db(&album_dir).expect("db");
+
+    let local_path = root.join("pure_local.jpg");
+    let icloud_path = root.join("from_icloud.jpg");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO media(
+          path, root, rel_dir, name, kind, size, modified, ext, scanned_at, fail_count,
+          origin, origin_account
+        ) VALUES (?1, ?2, '.', 'pure_local.jpg', 'image', 1, 1, 'jpg', 0, 0, 'local', '_local')
+        "#,
+        params![
+          local_path.to_string_lossy().as_ref(),
+          root.to_string_lossy().as_ref(),
+        ],
+      )
+      .expect("insert local");
+
+    conn
+      .execute(
+        r#"
+        INSERT INTO media(
+          path, root, rel_dir, name, kind, size, modified, ext, scanned_at, fail_count,
+          origin, origin_account, origin_asset_id
+        ) VALUES (?1, ?2, '.', 'from_icloud.jpg', 'image', 1, 1, 'jpg', 0, 0, 'icloud', 'user@icloud.com', 'ASSET1')
+        "#,
+        params![
+          icloud_path.to_string_lossy().as_ref(),
+          root.to_string_lossy().as_ref(),
+        ],
+      )
+      .expect("insert icloud");
+
+    let idx = load_origin_path_index(&conn).expect("index");
+    let local_key = local_path.to_string_lossy().replace('\\', "/").to_lowercase();
+    let icloud_key = icloud_path
+      .to_string_lossy()
+      .replace('\\', "/")
+      .to_lowercase();
+    assert!(!idx.contains_key(&local_key), "local gallery must not count as sync identity");
+    assert!(idx.contains_key(&icloud_key));
+    assert_eq!(
+      idx.get(&icloud_key).and_then(|(id, _)| id.as_deref()),
+      Some("ASSET1")
+    );
+
     let _ = std::fs::remove_dir_all(&album_dir);
   }
 

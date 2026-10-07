@@ -44,7 +44,8 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `capture_at` / `camera` | 拍摄时间 / 机型（仅补空：本表已有 → origin → EXIF → 文件名前缀；用户可覆盖写 `capture_at`） |
 | `capture_at_source` | `origin` / `exif` / `filename` / `user` |
 | `capture_at_probed` | 已探测拍摄时间 |
-| `origin` / `origin_asset_id` / `origin_account` / `origin_album` | 同步下载入库时复制的云侧身份；catalog 刷新后仍留在本表 |
+| `origin` / `origin_account` | 同步下载入库时的来源身份（catalog 刷新后仍留在本表）；**兼作图库键**，`(origin, origin_account)` 唯一标识一个来源图库：`icloud`+Apple ID、`qzone`+uin、纯本地文件 `local`+`_local`（详见 [来源图库设计](./sourceLibraryDesign.md)） |
+| `origin_asset_id` / `origin_album` | 云侧资产 id（去重/正本等）；子范围提示（如 `Hidden` / `Shared`，**不参与**图库切换键） |
 | `added_at` / `latitude` / `longitude` | 下载时从云侧 catalog 带入（仅补空） |
 | `width` / `height` | 图=解码；单独视频=打开时 ffprobe |
 | `content_hash` / `hash_algo` | 重复清理用 BLAKE3 |

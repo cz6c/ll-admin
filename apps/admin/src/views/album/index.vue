@@ -1,7 +1,7 @@
 <!--
   相册主页 — 按日分组照片墙
-  职责：扫描根目录；目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年；勾选改拍摄时间
-  主流程：discover 全库 → 宫格只挂最新年 → 边缘滚动扩展邻年；勾选点格/框选；点击年份只挂该年
+  职责：扫描根目录；图库与目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年；勾选改拍摄时间
+  主流程：discover 全库 → 图库∩目录过滤 → 宫格只挂最新年 → 边缘滚动扩展邻年；勾选点格/框选；点击年份只挂该年
 -->
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
@@ -13,6 +13,7 @@ import { isTauri } from "@/utils/tauri";
 import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
 import AlbumYearAxis from "./components/AlbumYearAxis.vue";
+import { collectLibraryOptions, matchesLibrary } from "./albumLibrary";
 import { buildAlbumYearAxis, filterFilesByYearKeys } from "./albumYearAxis";
 import { buildAlbumDayLayout, DAY_HEADER_HEIGHT, findDaySectionAt, sliceVisibleDayLayout } from "./albumDayLayout";
 import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
@@ -39,6 +40,18 @@ const viewerState = ref<{ groupIdx: number; fileIdx: number } | null>(null);
 const duplicateModalOpen = ref(false);
 /** 目录筛选（空=全部；含子孙） */
 const dirFilter = ref<string | null>(null);
+/**
+ * 图库筛选（null=全部图库）
+ * allow-clear 会把 a-select 写成 undefined；matchesLibrary 只认 null 为全部，须收回 null
+ */
+const libraryFilter = ref<string | null>(null);
+watch(
+  libraryFilter,
+  value => {
+    if (value == null && libraryFilter.value !== null) libraryFilter.value = null;
+  },
+  { flush: "sync" }
+);
 const captureRewriteOpen = ref(false);
 /**
  * 右侧已挂载的年份（升序）
@@ -60,6 +73,9 @@ const pathIndex = computed(() => {
 /** 相册根下全部媒体（各目录 group 扁平合并） */
 const allMediaFiles = computed<MediaFile[]>(() => groups.value.flatMap(g => g.files));
 
+/** 图库下拉：当前已入库文件按 (origin, originAccount) 去重 */
+const librarySelectOptions = computed(() => collectLibraryOptions(allMediaFiles.value));
+
 /**
  * 拍摄时间排序键：可解析 captureAt → ms；空/不可解析 → null（不用 modified）
  * 宫格排序唯一真源在前端：与筛选同处；Rust discover 不再排拍摄序
@@ -73,8 +89,9 @@ function mediaTimeSortKey(file: MediaFile): number | null {
   return null;
 }
 
-/** 目录筛（含子孙；空=全部） */
+/** 图库 ∩ 目录筛（均为空=全部；目录含子孙） */
 function matchesLocalSearch(file: MediaFile): boolean {
+  if (!matchesLibrary(file, libraryFilter.value)) return false;
   const dir = dirFilter.value;
   if (dir && !matchesDirOrDescendant(file.relDir, dir)) return false;
   return true;
@@ -247,7 +264,7 @@ const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
 const rowHeight = computed(() => gridLayout.value.rowHeight);
 
-/** 全库筛选结果（目录）；左侧轴与统计用这份，不随年份窗口变 */
+/** 全库筛选结果（图库 ∩ 目录）；左侧轴与统计用这份，不随年份窗口变 */
 const catalogFiles = computed<MediaFile[]>(() => filteredFiles.value);
 const yearAxis = computed(() => buildAlbumYearAxis(catalogFiles.value));
 
@@ -274,6 +291,7 @@ const { resetYearWindowToLatest, focusYear, revealFilePath, onAlbumYearKey } = u
   viewportHeight,
   totalHeight,
   dirFilter,
+  libraryFilter,
   captureRewriteOpen,
   viewerOpen,
   duplicateModalOpen,
@@ -300,6 +318,11 @@ const {
   onPointerDown: onGridPointerDown,
   onDragStart: onGridDragStart
 } = useAlbumGridSelect(displayFiles, thumbPlacements);
+
+/** 换图库清空勾选，避免跨库误改拍摄时间 */
+watch(libraryFilter, () => {
+  exitSelectMode();
+});
 
 /** 宫格勾选 → 修改拍摄时间弹窗候选 */
 const rewriteCandidateFiles = computed(() => selectedPaths.value.map(p => pathIndex.value.get(p)).filter((f): f is MediaFile => !!f));
@@ -431,6 +454,13 @@ onBeforeUnmount(() => {
             :tree-data="dirTree"
             :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
           />
+          <a-select
+            v-model:value="libraryFilter"
+            class="album-library-filter"
+            allow-clear
+            placeholder="全部图库"
+            :options="librarySelectOptions"
+          />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
             <template v-if="!selectMode">
@@ -560,6 +590,10 @@ onBeforeUnmount(() => {
 }
 
 .album-dir-filter {
+  width: 220px;
+}
+
+.album-library-filter {
   width: 220px;
 }
 

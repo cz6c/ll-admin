@@ -15,7 +15,7 @@
 | UI | CS 设置开关；抽屉 **单一宫格混排**（与 Hidden 一致）；角标 👥 |
 | 落盘 | `{albumRoot}/iCloudSync/<AppleID>/Shared/` |
 | 开关 OFF | 不 catalog shared；列表/summary 不展示；DB 行保留；`mark_catalog_deletions` 仅删 library（+ 现有 hidden 规则） |
-| 删云 | 「移除全部已同步」**含 shared**（与 Hidden 一致，无 scope 过滤） |
+| 删云 | 勾选移除所选（含已加载的 shared 项；与 Hidden 一致） |
 | 删云确认 | shared 项文案加重（删的是共享库原件，所有参与者不可见） |
 
 ---

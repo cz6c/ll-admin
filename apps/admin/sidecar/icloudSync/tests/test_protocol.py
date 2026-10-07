@@ -526,7 +526,7 @@ def test_auth_probe_build_failure_keeps_session_files(tmp_path: Path) -> None:
         {
             "apple_id": apple_id,
             "session_dir": str(tmp_path),
-            "icloud_domain": "com",
+            "icloud_domain": "cn",
         }
     )
     assert ev["type"] == "error"
@@ -556,7 +556,7 @@ def test_auth_probe_incomplete_auth_keeps_session_files(tmp_path: Path) -> None:
         {
             "apple_id": apple_id,
             "session_dir": str(tmp_path),
-            "icloud_domain": "com",
+            "icloud_domain": "cn",
         }
     )
     assert ev["type"] == "error"

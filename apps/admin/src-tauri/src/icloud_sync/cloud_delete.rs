@@ -11,9 +11,8 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use super::db::{
-  collect_synced_keys_for_cloud_delete, expand_live_delete_pair, hard_delete_asset_part, open_db,
-  resolve_cloud_delete_candidates, state_db_path,
-  CloudDeleteCandidate,
+  expand_live_delete_pair, hard_delete_asset_part, open_db, resolve_cloud_delete_candidates,
+  state_db_path, CloudDeleteCandidate,
 };
 use super::ensure_sidecar_authenticated;
 use super::queue::{SidecarClientHandle, CLOUD_STATE_CHANGED_EVENT};
@@ -341,43 +340,6 @@ pub async fn icloud_sync_delete_assets(
       .map(str::trim)
       .filter(|s| !s.is_empty())
       .unwrap_or("user_batch");
-    run_cloud_delete_once(&app, client.as_ref(), &apple_id, &keys, reason_text)
-  })
-  .await
-  .map_err(|e| format!("任务失败: {e}"))?
-}
-
-#[tauri::command]
-pub async fn icloud_sync_delete_all_synced(
-  app: AppHandle,
-  sidecar: State<'_, SidecarClientHandle>,
-  reason: Option<String>,
-) -> Result<IcloudSyncDeleteAssetsResult, String> {
-  let client = sidecar.client();
-  tokio::task::spawn_blocking(move || {
-    let settings = load_settings(&app)?;
-    let apple_id = settings.apple_id.trim().to_string();
-    if apple_id.is_empty() {
-      return Err("请先填写 Apple ID".to_string());
-    }
-
-    let db_path = state_db_path(&app)?;
-    let conn = open_db(&db_path)?;
-    let synced = collect_synced_keys_for_cloud_delete(&conn, &apple_id)?;
-    let mut seen = std::collections::HashSet::new();
-    let mut keys: Vec<(String, String)> = Vec::new();
-    for (asset_id, part) in synced {
-      for key in expand_live_delete_pair(&conn, &apple_id, &asset_id, &part)? {
-        if seen.insert(key.clone()) {
-          keys.push(key);
-        }
-      }
-    }
-    let reason_text = reason
-      .as_deref()
-      .map(str::trim)
-      .filter(|s| !s.is_empty())
-      .unwrap_or("user_all_synced");
     run_cloud_delete_once(&app, client.as_ref(), &apple_id, &keys, reason_text)
   })
   .await

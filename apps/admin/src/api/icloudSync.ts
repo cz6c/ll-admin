@@ -20,8 +20,8 @@ export type IcloudSyncTaskType = "sync" | "catalog";
 /** 非敏感配置（Apple ID 密码不在此结构） */
 export interface IcloudSyncSettings {
   appleId: string;
-  /** iCloud 根域：`com` 国际 / `cn` 中国大陆 */
-  icloudDomain: "com" | "cn";
+  /** iCloud 根域：产品仅支持中国大陆 `cn`（icloud.com.cn） */
+  icloudDomain: "cn";
   /** 「记住我」：下次登录回填钥匙串密码 */
   rememberPassword: boolean;
   /** 为 true 时 catalog 合并 Hidden 相册（sidecar 双枚举、单 diff） */
@@ -40,8 +40,8 @@ export interface IcloudSyncAuthState {
   sessionForCurrentAppleId: boolean;
   /** 已登录：当前账号有落盘 session（重启后据此恢复 UI；真正探活在下载前） */
   loggedIn: boolean;
-  /** 当前设置的 iCloud 根域 */
-  icloudDomain: "com" | "cn";
+  /** 当前设置的 iCloud 根域（恒为 cn） */
+  icloudDomain: "cn";
 }
 
 /** sidecar auth-diagnostic.json / login 错误诊断 */
@@ -214,9 +214,10 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_MISSING]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_VERSION_MISMATCH]: "请重装或更新应用",
   [ICLOUD_SYNC_ERROR_CODES.AUTH_FAILED]: "登录失败，请检查 Apple ID 与密码",
-  // 默认兼写两区；有 icloudDomain 时由 networkErrorMessage 覆盖
+  // network_error 细文案见 networkErrorMessage（中国大陆节点）
   [ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR]: "无法连接 Apple iCloud，请检查网络",
-  [ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED]: "登录状态已失效，请重新登录后继续下载",
+  [ICLOUD_SYNC_ERROR_CODES.NEED_2FA]: "登录未完成，请重新登录并完成二次验证",
+  [ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED]: "登录状态已失效，请重新登录后再继续",
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_LOCKED]: "账号可能被临时锁定，请前往 Apple 官方页面（iforgot.apple.com）解锁后再试；请勿在本工具内重复尝试登录",
   [ICLOUD_SYNC_ERROR_CODES.RATE_LIMITED]: "请求过于频繁，请稍后再试；请勿在本工具内重复尝试登录",
   [ICLOUD_SYNC_ERROR_CODES.CATALOG_SORT_MISSING]: "目录缺少排序字段，无法创建下载任务；请稍后重试或更换视图",
@@ -224,32 +225,47 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED]: "下载引擎异常退出，请重新登录后继续",
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_MISMATCH]: "当前 Apple ID 与任务创建账号不一致，请开始新下载",
   [ICLOUD_SYNC_ERROR_CODES.ALREADY_LOGGED_IN]: "已处于登录状态，请先退出后再登录",
-  [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "iCloud 区域与 Apple ID 不匹配，请切换区域后重新登录",
+  [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "本产品仅支持中国大陆 Apple ID（icloud.com.cn），国际区账号无法登录",
   [ICLOUD_SYNC_ERROR_CODES.DELETE_FAILED]: "从 iCloud 移除失败，请稍后重试",
   [ICLOUD_SYNC_ERROR_CODES.TASK_ACTIVE]: "已有任务进行中，请先取消后再操作"
 };
 
 /**
- * 网络错误文案：按当前所选 iCloud 区域给出可操作提示
- * @param domain `cn` 中国大陆 / `com` 国际；未知时给中性提示
+ * 网络错误文案：中国大陆登录节点可操作提示
+ * @note 产品仅支持 cn；`domain` 参数保留兼容调用方，不再区分国际区
  */
-export function networkErrorMessage(domain?: "com" | "cn" | string | null): string {
-  const d = String(domain ?? "")
-    .trim()
-    .toLowerCase();
-  if (d === "cn") {
-    return "无法连接 Apple 登录节点 idmsa.apple.com.cn（中国大陆）。本机到 icloud.com.cn 网页可能仍正常；请换手机热点，或暂时关闭杀毒/公司网的 HTTPS 扫描后重试";
-  }
-  if (d === "com") {
-    return "无法连接 Apple iCloud（国际）。请检查网络；通常需要可访问 icloud.com / idmsa.apple.com 的代理";
-  }
-  return "无法连接 Apple iCloud，请检查网络。中国大陆请确认能访问 idmsa.apple.com.cn；国际区通常需可访问 icloud.com 的代理";
+export function networkErrorMessage(_domain?: "cn" | string | null): string {
+  return "无法连接 Apple 登录节点 idmsa.apple.com.cn（中国大陆）。本机到 icloud.com.cn 网页可能仍正常；请换手机热点，或暂时关闭杀毒/公司网的 HTTPS 扫描后重试";
 }
 
-/** formatIcloudSyncError 可选上下文（登录面板传入当前区域） */
+/**
+ * 是否业务层会话不可用（应完整 logout 并回到登录面板，而非只 toast）
+ * @note 含 need_2fa：业务页无输码 UI，只能清伪登录后走完整重登
+ */
+export function isIcloudSessionAuthFailure(err: unknown): boolean {
+  const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "");
+  const code = raw.split(":")[0]?.trim() ?? "";
+  if (
+    code === ICLOUD_SYNC_ERROR_CODES.NEED_2FA ||
+    code === ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED ||
+    code === ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED
+  ) {
+    return true;
+  }
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes("need_2fa") ||
+    lower.includes("session_expired") ||
+    lower.includes("需要二次验证") ||
+    lower.includes("登录状态已失效") ||
+    lower.includes("请先登录 apple id")
+  );
+}
+
+/** formatIcloudSyncError 可选上下文 */
 export interface FormatIcloudSyncErrorOptions {
-  /** 当前设置的 iCloud 根域；用于 network_error 分区提示 */
-  icloudDomain?: "com" | "cn" | string | null;
+  /** @deprecated 产品仅 cn；传入不影响文案 */
+  icloudDomain?: "cn" | string | null;
 }
 
 /**
@@ -504,9 +520,4 @@ export function deleteIcloudSyncAssets(items: IcloudSyncDeleteAssetItem[], reaso
     items: items.map(item => ({ assetId: item.assetId, part: item.part })),
     reason
   });
-}
-
-/** 已下载全部从 iCloud 移除（跨页；仍校验本地文件；一次性） */
-export function deleteAllSyncedIcloudAssets(reason = "user_all_synced") {
-  return invoke<IcloudSyncDeleteAssetsResult>("icloud_sync_delete_all_synced", { reason });
 }

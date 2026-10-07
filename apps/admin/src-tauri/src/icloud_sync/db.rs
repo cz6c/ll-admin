@@ -1135,30 +1135,6 @@ fn local_file_ready_for_cloud_delete(dest_path: Option<&str>) -> bool {
   Path::new(p).is_file()
 }
 
-/// 收集 `cloud_state=synced` 的 (asset_id, part)，供「已同步全部删云」
-pub fn collect_synced_keys_for_cloud_delete(
-  conn: &Connection,
-  apple_id: &str,
-) -> Result<Vec<(String, String)>, String> {
-  let mut stmt = conn
-    .prepare(
-      r#"
-      SELECT asset_id, part FROM assets
-      WHERE apple_id = ?1 AND cloud_state = ?2
-      ORDER BY sort_key DESC, asset_id, part
-      "#,
-    )
-    .map_err(|e| format!("准备 synced 列表失败: {e}"))?;
-  let rows = stmt
-    .query_map(params![apple_id, CloudState::Synced.as_str()], |row| {
-      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })
-    .map_err(|e| format!("扫描 synced 失败: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("解析 synced 行失败: {e}"))?;
-  Ok(rows)
-}
-
 /// 本次 catalog 纳入的 scope 集合 WHERE 条件（无 leading AND）
 pub fn catalog_sync_scopes_sql(sync_hidden: bool, sync_shared: bool) -> String {
   let mut scopes = vec!["'library'"];

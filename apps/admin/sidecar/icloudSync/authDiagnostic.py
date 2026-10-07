@@ -31,7 +31,7 @@ _HINT_ACTIONS: dict[str, str] = {
     "PARTIAL_SESSION_ON_DISK": "存在半成品 session：先退出登录清 session，再重新登录",
     "STALE_SESSION_MISSING_DSINFO": "旧版 pyicloud session 与 pyicloud_ipd 不兼容：已自动清理，请重新输入密码登录",
     "ICLOUD_CN_DOMAIN_REQUIRED": "中国大陆 Apple ID 需走 iCloud.com.cn；已自动切换 cn 域，请重新登录一次",
-    "ACCOUNT_MAY_BE_RATE_LIMITED": "可能触发 Apple 限流：停止一切登录尝试数小时，先用 icloud.com 确认账号正常",
+    "ACCOUNT_MAY_BE_RATE_LIMITED": "可能触发 Apple 限流：停止一切登录尝试数小时，先用 icloud.com.cn 确认账号正常",
     "MFA_RATE_LIMITED": "验证码次数过多或已锁定：停止本工具内重试，等待冷却后再完整登录一次",
     "SRP_ALREADY_RAN": "已完成密码登录；2FA 阶段请只提交验证码，勿再点「登录」",
     "KICKOFF_PUT_ONLY": "已用 icloudpd PUT 触发设备验证；请在 iPhone 点「允许」后输入码",

@@ -1,8 +1,8 @@
 <!--
   iCloud 下载浮动触发区
-  职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；工具栏危险区删云
+  职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；勾选后删云
   主流程：hydrate → FAB → StatusCard → 宫格（固定全部，无状态 Tab）；点格灯箱；
-  删云勾选对齐 QQ：先「勾选」再点格切换，左键拖拽框选复用相册宫格；删除走 $feedback 全屏蒙层；成功后刷新云列表
+  删云勾选对齐 QQ：先「勾选」再点格/框选，左键拖拽框选复用相册宫格；删除走 $feedback 全屏蒙层；成功后刷新云列表
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -16,9 +16,9 @@ import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
   icloudProxiedThumbSrc,
+  isIcloudSessionAuthFailure,
   loadIcloudSyncCloudList,
   deleteIcloudSyncAssets,
-  deleteAllSyncedIcloudAssets,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetsResult
 } from "@/api/icloudSync";
@@ -62,7 +62,8 @@ const {
   onLoggedIn,
   onLogoutAccount,
   hydrateFromStorage,
-  refreshAccountSettings
+  refreshAccountSettings,
+  reportBusinessError
 } = useIcloudSyncJob();
 
 const drawerOpen = ref(false);
@@ -89,7 +90,6 @@ let cloudSentinelObserver: IntersectionObserver | null = null;
 const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
-const deletingAllSynced = ref(false);
 /** 勾选模式：点格切换选中（对齐 QQ）；未进入时点格仍开灯箱 */
 const selectMode = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
@@ -321,12 +321,6 @@ function guardCloudManageAction(): boolean {
   return false;
 }
 
-/** 无勾选时的「移除全部已下载」是否可点 */
-const deleteAllSyncedDisabled = computed(() => {
-  if (!canManageCloudSpace.value || deletingAllSynced.value) return true;
-  return !cloudSummary.value?.synced;
-});
-
 /** 勾选入口：有已下载项且无任务占用 */
 const canEnterSelectMode = computed(() => canManageCloudSpace.value && (cloudSummary.value?.synced ?? 0) > 0);
 
@@ -370,7 +364,7 @@ async function refreshCloudAssets() {
     refreshSelectedRowsFromPage(cloudRows.value);
     resetCloudSentinel();
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    await reportBusinessError(e);
   } finally {
     loadingCloud.value = false;
   }
@@ -395,7 +389,7 @@ async function loadMoreCloudAssets() {
     cloudHasMore.value = cloudRows.value.length < list.total;
     refreshSelectedRowsFromPage(cloudRows.value);
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e));
+    await reportBusinessError(e);
   } finally {
     cloudLoadingMore.value = false;
   }
@@ -472,10 +466,13 @@ function notifyDeleteResult(result: IcloudSyncDeleteAssetsResult) {
 }
 
 /**
- * 删云相关操作失败：轻提示，不写抽屉底栏
- * @note 「没有可删除…」属可纠正条件，用 warning
+ * 删云相关操作失败：会话类回登录面板；「没有可删除…」用 warning；其它 error
  */
-function notifyDeleteOpError(e: unknown) {
+async function notifyDeleteOpError(e: unknown) {
+  if (isIcloudSessionAuthFailure(e)) {
+    await reportBusinessError(e);
+    return;
+  }
   const text = formatIcloudSyncError(e);
   if (text.includes("没有可删除")) $feedback.message.warning(text);
   else $feedback.message.error(text);
@@ -528,40 +525,6 @@ function confirmDeleteCloud() {
       } finally {
         $feedback.closeLoading();
         deletingCloud.value = false;
-      }
-    }
-  });
-}
-
-/** 全部已下载项从 iCloud 移除（跨页；一次性）；全屏蒙层禁操作 */
-function confirmDeleteAllSynced() {
-  if (!guardCloudManageAction()) return;
-  const syncedCount = cloudSummary.value?.synced ?? 0;
-  if (syncedCount <= 0) {
-    $feedback.message.info("没有已下载到本地、可从 iCloud 移除的项");
-    return;
-  }
-
-  openDeleteConfirmModal({
-    title: `从 iCloud 移除全部已下载项（约 ${syncedCount} 项）？`,
-    content: `${ICLOUD_REMOVE_HINT} 本地文件缺失的项会自动跳过。`,
-    onConfirm: async () => {
-      if (deletingAllSynced.value) return;
-      deletingAllSynced.value = true;
-      $feedback.loading("正在从 iCloud 移除…");
-      try {
-        const result = await deleteAllSyncedIcloudAssets();
-        exitSelectMode();
-        await refreshCloudAssets();
-        $feedback.closeLoading();
-        notifyDeleteResult(result);
-      } catch (e) {
-        $feedback.closeLoading();
-        notifyDeleteOpError(e);
-        throw e;
-      } finally {
-        $feedback.closeLoading();
-        deletingAllSynced.value = false;
       }
     }
   });
@@ -686,16 +649,9 @@ onBeforeUnmount(() => {
               <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
                 <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
               </a-tooltip>
-              <template v-if="!selectMode">
-                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                  <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">勾选</a-button>
-                </a-tooltip>
-                <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                  <a-button type="primary" danger :loading="deletingAllSynced" :disabled="deleteAllSyncedDisabled" @click="confirmDeleteAllSynced()">
-                    移除全部已下载
-                  </a-button>
-                </a-tooltip>
-              </template>
+              <a-tooltip v-if="!selectMode" v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">勾选</a-button>
+              </a-tooltip>
               <template v-else>
                 <a-button danger :loading="deletingCloud" :disabled="selectedCloudCount === 0 || !canManageCloudSpace" @click="confirmDeleteCloud()">
                   从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}

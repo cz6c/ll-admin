@@ -15,7 +15,7 @@ pub struct IcloudSyncSettings {
   /// 上次登录 Apple ID（日志脱敏由调用方负责）
   #[serde(default)]
   pub apple_id: String,
-  /// iCloud 根域：`com` 国际 / `cn` 中国大陆
+  /// iCloud 根域：产品仅支持中国大陆 `cn`（icloud.com.cn）
   #[serde(default = "default_icloud_domain")]
   pub icloud_domain: String,
   /// 「记住我」：为 true 时登录成功后把密码写入钥匙串，下次可回填

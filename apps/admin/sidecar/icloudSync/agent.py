@@ -315,7 +315,7 @@ def _map_exception(exc: BaseException) -> str:
         return CODE_DOMAIN_MISMATCH
     if _looks_like_network_error(exc):
         return CODE_NETWORK_ERROR
-    # PyiCloudConnectionException 无明确区域信息时，按网络不可达处理（国际区常需代理）
+    # PyiCloudConnectionException 无明确区域信息时，按网络不可达处理（大陆节点）
     if exc_type == "PyiCloudConnectionException" or ipd_auth.is_domain_mismatch_exception(exc):
         return CODE_NETWORK_ERROR
     mapped = ipd_auth.map_api_exception(exc, is_2fa_required=_is_2fa_required_exception)

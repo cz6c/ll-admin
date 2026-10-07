@@ -10,12 +10,9 @@ use tauri::{AppHandle, Manager};
 
 use super::types::IcloudSyncSettings;
 
-/// 规整 iCloud 根域：仅允许 `com` / `cn`
-pub fn normalize_icloud_domain(raw: &str) -> String {
-  match raw.trim().to_lowercase().as_str() {
-    "cn" => "cn".to_string(),
-    _ => "com".to_string(),
-  }
+/// 规整 iCloud 根域：产品仅支持中国大陆 `cn`（忽略入参中的其它值）
+pub fn normalize_icloud_domain(_raw: &str) -> String {
+  "cn".to_string()
 }
 
 /// pyicloud session 文件名 stem（与 sidecar agent.py 一致）
@@ -93,13 +90,17 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// 读取设置；文件不存在时返回默认值
+/// @note 读盘后强制 `icloud_domain=cn`（产品仅大陆区）
 pub fn load_settings(app: &AppHandle) -> Result<IcloudSyncSettings, String> {
   let path = settings_path(app)?;
   if !path.exists() {
     return Ok(IcloudSyncSettings::default());
   }
   let raw = fs::read_to_string(&path).map_err(|e| format!("读取 iCloud 下载设置失败: {e}"))?;
-  serde_json::from_str(&raw).map_err(|e| format!("解析 iCloud 下载设置失败: {e}"))
+  let mut settings: IcloudSyncSettings =
+    serde_json::from_str(&raw).map_err(|e| format!("解析 iCloud 下载设置失败: {e}"))?;
+  settings.icloud_domain = normalize_icloud_domain(&settings.icloud_domain);
+  Ok(settings)
 }
 
 /// 覆盖写入设置（不含 Apple ID 密码）
@@ -148,10 +149,10 @@ mod tests {
   use super::*;
 
   #[test]
-  fn normalize_icloud_domain_cn_and_default_com() {
+  fn normalize_icloud_domain_always_cn() {
     assert_eq!(normalize_icloud_domain("cn"), "cn");
     assert_eq!(normalize_icloud_domain("CN"), "cn");
-    assert_eq!(normalize_icloud_domain("com"), "com");
-    assert_eq!(normalize_icloud_domain("other"), "com");
+    assert_eq!(normalize_icloud_domain("com"), "cn");
+    assert_eq!(normalize_icloud_domain("other"), "cn");
   }
 }

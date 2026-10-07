@@ -2,6 +2,7 @@
  * iCloud 统一任务状态
  * 职责：下载 / 删云 / 刷新 catalog 单任务模型；主按钮「下载到本地」串联刷新+下载
  * 适用：IcloudSyncFab · IcloudSyncStatusCard · IcloudSyncAuthPanel（登录后回调）
+ * @note 业务层会话失效（含 need_2fa）：完整 logout 回登录面板；不在业务页承接输码
  */
 
 import dayjs from "dayjs";
@@ -19,6 +20,7 @@ import {
   ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT,
   ICLOUD_SYNC_JOB_STATUS_EVENT,
   ICLOUD_SYNC_PROGRESS_EVENT,
+  isIcloudSessionAuthFailure,
   logoutIcloudSync,
   pauseIcloudSyncJob,
   refreshIcloudSyncCatalog,
@@ -77,6 +79,10 @@ function _useIcloudSyncJob() {
   const jobErrorMessage = ref("");
   /** 已对某 jobId 弹过失败 toast，避免 status 重复事件刷屏 */
   let toastedFailJobId: number | null = null;
+  /** paused_session 已触发过强制重登，避免事件重复刷 logout */
+  let forcedLogoutForPausedJobId: number | null = null;
+  /** 强制重登进行中（防并发） */
+  let forcingSessionLogout = false;
   const progress = ref<IcloudSyncProgressPayload>({ done: 0, total: 0, failed: 0, pending: 0, filename: "" });
   const refreshingCatalog = ref(false);
   /**
@@ -253,7 +259,7 @@ function _useIcloudSyncJob() {
       return "照片已在本地。有新增时再点「下载到本地」；也可勾选已下载项从 iCloud 移除。";
     }
     if (showEmptyGuide.value && isLoggedIn.value) {
-      return "可勾选已下载项，或使用「移除全部已下载」从 iCloud 移除副本";
+      return "可勾选已下载项后从 iCloud 移除副本";
     }
     if (showEmptyGuide.value) {
       return "";
@@ -345,6 +351,39 @@ function _useIcloudSyncJob() {
     }
   }
 
+  /**
+   * 业务层会话不可用：完整 logout（清盘）并露出登录面板。
+   * @note 不 clearActiveJob——paused_session 断点保留，同号重登后可 resume
+   * @note 业务页无 2FA 输码 UI；need_2fa 也只能走完整重登
+   */
+  async function forceReloginAfterSessionFailure() {
+    if (!isTauri() || forcingSessionLogout) return;
+    forcingSessionLogout = true;
+    try {
+      await logoutIcloudSync(true);
+      sessionReauthReady.value = false;
+      await loadAccountContext();
+      $feedback.message.warning("登录状态已失效，请重新登录后再继续");
+    } catch (e) {
+      isLoggedIn.value = false;
+      sessionReauthReady.value = false;
+      $feedback.message.error(formatIcloudSyncError(e));
+    } finally {
+      forcingSessionLogout = false;
+    }
+  }
+
+  /**
+   * 业务操作失败：会话类错误强制回登录面板，其它走 error toast
+   */
+  async function reportBusinessError(e: unknown) {
+    if (isIcloudSessionAuthFailure(e)) {
+      await forceReloginAfterSessionFailure();
+      return;
+    }
+    $feedback.message.error(formatIcloudSyncError(e));
+  }
+
   function storeJobId(jobId: number | null) {
     activeJobId.value = jobId;
     try {
@@ -367,6 +406,7 @@ function _useIcloudSyncJob() {
     outputDir.value = "";
     jobErrorMessage.value = "";
     toastedFailJobId = null;
+    forcedLogoutForPausedJobId = null;
     progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
     downloadStartedAt.value = null;
     syncCatalogTimer();
@@ -402,6 +442,13 @@ function _useIcloudSyncJob() {
     }
     if (status.status === "paused_session") {
       sessionReauthReady.value = false;
+      // 下载中会话死：清伪登录并露出 AuthPanel（业务层无输码入口）
+      if (forcedLogoutForPausedJobId !== status.jobId) {
+        forcedLogoutForPausedJobId = status.jobId;
+        void forceReloginAfterSessionFailure();
+      }
+    } else if (forcedLogoutForPausedJobId === status.jobId) {
+      forcedLogoutForPausedJobId = null;
     }
     if (status.total > 0 && downloadStartedAt.value == null && status.status === "running") {
       downloadStartedAt.value = Date.now();
@@ -454,7 +501,7 @@ function _useIcloudSyncJob() {
       progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
       void refreshJobStatus(result.jobId);
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       starting.value = false;
     }
@@ -462,7 +509,7 @@ function _useIcloudSyncJob() {
 
   /**
    * catalog 成功后的入队下载；starting 已由 onSyncToLocal 置位，此处不再重复置位
-   * @note 无 cloud_only 时 start_job 会报错，由 $feedback.message.error 轻提示
+   * @note 无 cloud_only 时 start_job 会报错，由 reportBusinessError 轻提示
    */
   async function startDownloadAfterCatalog() {
     try {
@@ -481,7 +528,7 @@ function _useIcloudSyncJob() {
       progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
       void refreshJobStatus(result.jobId);
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       starting.value = false;
     }
@@ -513,7 +560,7 @@ function _useIcloudSyncJob() {
       // starting 保持 true，直至 startDownloadAfterCatalog / catalog failed
     } catch (e) {
       pendingAutoStartAfterCatalog = false;
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
       starting.value = false;
     }
   }
@@ -526,7 +573,7 @@ function _useIcloudSyncJob() {
       await pauseIcloudSyncJob(jobId);
       await refreshJobStatus(jobId);
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       pausing.value = false;
     }
@@ -540,7 +587,7 @@ function _useIcloudSyncJob() {
       await resumeIcloudSyncJob(jobId);
       await refreshJobStatus(jobId);
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       resuming.value = false;
     }
@@ -556,7 +603,7 @@ function _useIcloudSyncJob() {
       clearActiveJob();
       await onSyncToLocal();
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       discarding.value = false;
     }
@@ -571,7 +618,7 @@ function _useIcloudSyncJob() {
       await discardIcloudSyncJob(jobId);
       clearActiveJob();
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       discarding.value = false;
     }
@@ -593,7 +640,7 @@ function _useIcloudSyncJob() {
       progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
       void refreshJobStatus(result.jobId);
     } catch (e) {
-      $feedback.message.error(formatIcloudSyncError(e));
+      await reportBusinessError(e);
     } finally {
       refreshingCatalog.value = false;
     }
@@ -618,7 +665,7 @@ function _useIcloudSyncJob() {
 
   /**
    * 主动退出登录前协作暂停下载 worker
-   * @note 不 discard job：同号重登可 resume；会话失效由 Rust 置 paused_session
+   * @note 不 discard job：同号重登可 resume；会话失效由 Rust 置 paused_session 后前端强制重登
    */
   async function prepareSyncBeforeLogout() {
     const jobId = activeJobId.value;
@@ -823,6 +870,8 @@ function _useIcloudSyncJob() {
     jobAppleId,
     outputDir,
     progress,
+    /** 业务层会话失败：logout 回登录面板；其它错误 toast */
+    reportBusinessError,
     sessionReauthReady,
     jobAccountMismatch,
     isCataloging,

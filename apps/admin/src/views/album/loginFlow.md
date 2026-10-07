@@ -76,7 +76,7 @@ Need2FA 时：**禁止再点「登录」**；先换码，连续失败则 logout 
 | `auth_failed`（验码阶段） | 码错/过期：改最新码或「重发」；**勿**再点登录；**勿**当成密码错误 |
 | `session_expired`（无 pending） | logout → 重新登录一轮（勿连点） |
 | `session_expired`（WEBAUTH 真失效） | logout → 隔几小时再登 |
-| `domain_mismatch` | 设置切 com/cn → logout → 完整重登 |
+| `domain_mismatch` | 国际区 Apple ID（产品仅 cn）→ 换中国大陆账号后完整重登 |
 | `account_locked` / `rate_limited` | **立即停止**（MFA `tooManyCodes*` / `securityCodeLocked` 亦映射 `rate_limited`） |
 
 > 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [cloudSyncFlow](./cloudSyncFlow.md)。  
@@ -92,16 +92,16 @@ flowchart LR
   C -->|有效| D[继续下载]
   C -->|待 2FA| E[抽屉登录面板]
   C -->|失效| F[paused_session]
-  C -->|区域不符| G[domain_mismatch]
+  C -->|国际账号| G[domain_mismatch]
 ```
 
 | 现象 | 是否暂停整 job |
 |------|----------------|
-| session_expired（未登录 / 会话死） | ✅ `paused_session` |
-| need_2fa / sidecar_crashed | ✅ `paused_session` |
+| session_expired（未登录 / 会话死） | ✅ `paused_session` → 前端完整 logout 回登录面板 |
+| need_2fa / sidecar_crashed | ✅ 同上（业务页无输码 UI，只能完整重登） |
 | auth_failed（验码错、泛登录失败） | ❌ 单文件/操作失败，**不**整 job 暂停 |
 | CDN 410/404 | ❌ 单文件 failed + lookup |
-| domain_mismatch | ❌ 换区域后重登 |
+| domain_mismatch | ❌ 换中国大陆 Apple ID 后重登 |
 
 > sidecar「尚未 auth」类显式未登录 → `session_expired`（可 pause）；验码阶段 `auth_failed` 不打断下载队列。
 > 2FA validate 后补 WEBAUTH：优先 token `accountLogin`，失败再至多一次 `trust`（避免双 `/2sv/trust`）。

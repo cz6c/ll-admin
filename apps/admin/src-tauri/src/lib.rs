@@ -92,7 +92,6 @@ pub fn run() {
       icloud_sync::cloud_assets::icloud_sync_load_assets,
       icloud_sync::cloud_assets::icloud_sync_get_cloud_state_summary,
       icloud_sync::cloud_delete::icloud_sync_delete_assets,
-      icloud_sync::cloud_delete::icloud_sync_delete_all_synced,
       qzone_sync::qzone_sync_auth_state,
       qzone_sync::qzone_sync_qr_start,
       qzone_sync::qzone_sync_qr_poll,

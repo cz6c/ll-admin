@@ -1,6 +1,6 @@
 <!--
   iCloud 下载 — Apple ID 登录面板（抽屉内嵌）
-  职责：凭据、区域、2FA、「记住我」；账号前提 tip
+  职责：凭据、2FA、「记住我」；账号前提 tip；根域固定中国大陆（cn）
   主流程：密码直传 login 换 session；仅勾选记住我且成功后写入钥匙串供下次回填
   @note 面板回填只读 settings/钥匙串，不调 auth_state（探活见 hydrate / 写操作 ensure）
   @note 2FA 仅登录时推送一次；换码须点「重发验证码」，提交失败不自动再推
@@ -23,6 +23,9 @@ import { isTauri } from "@/utils/tauri";
 import $feedback from "@/utils/feedback";
 
 defineOptions({ name: "IcloudSyncAuthPanel" });
+
+/** 产品仅支持中国大陆 iCloud（icloud.com.cn） */
+const ICLOUD_DOMAIN_CN = "cn" as const;
 
 const props = defineProps<{
   /** 抽屉打开且未登录时为 true，触发拉状态并重置瞬时字段 */
@@ -51,13 +54,6 @@ const password = ref("");
 const rememberMe = ref(false);
 const initialAppleId = ref("");
 const pendingAccountChanged = ref(false);
-/** iCloud 根域：中国大陆账号选 cn，海外账号选 com */
-const icloudDomain = ref<"com" | "cn">("cn");
-
-const icloudDomainOptions = [
-  { value: "cn" as const, label: "中国大陆（icloud.com.cn）" },
-  { value: "com" as const, label: "国际（icloud.com）" }
-];
 
 const accountSwitchPending = computed(() => {
   const next = appleId.value.trim().toLowerCase();
@@ -72,9 +68,7 @@ function applyAuthFailure(result: IcloudSyncLoginResult) {
   // 诊断落盘后 exceptionDetail 更完整；短 message 可能被截断
   const diagDetail = result.diagnostic?.exceptionDetail?.trim() || result.diagnostic?.exceptionType?.trim() || "";
   const rawForFormat = detail ? `${code}: ${detail}` : diagDetail ? `${code}: ${diagDetail}` : code;
-  const message = formatIcloudSyncError(rawForFormat, {
-    icloudDomain: icloudDomain.value
-  });
+  const message = formatIcloudSyncError(rawForFormat);
   $feedback.message.error(message);
 
   // 无 pending / session 失效：回到登录表单，避免用户对着失效 challenge 连点提交
@@ -123,13 +117,13 @@ const canResend2fa = computed(
 
 const canSubmitLogin = computed(() => appleId.value.trim().length > 0 && password.value.length > 0 && !loggingIn.value && !need2fa.value);
 
-/** 写入区域、appleId、「记住我」开关（不含密码） */
+/** 写入 appleId、「记住我」开关；根域恒为 cn（不含密码） */
 async function persistLoginSettings() {
   const current = await getIcloudSyncSettings();
   const next: IcloudSyncSettings = {
     ...current,
     appleId: appleId.value.trim(),
-    icloudDomain: icloudDomain.value,
+    icloudDomain: ICLOUD_DOMAIN_CN,
     rememberPassword: rememberMe.value
   };
   await saveIcloudSyncSettings(next);
@@ -154,7 +148,6 @@ async function loadState() {
     const settings = await getIcloudSyncSettings();
     appleId.value = settings.appleId || "";
     initialAppleId.value = appleId.value.trim();
-    icloudDomain.value = settings.icloudDomain === "com" || settings.icloudDomain === "cn" ? settings.icloudDomain : "cn";
     rememberMe.value = !!settings.rememberPassword;
     if (rememberMe.value) {
       password.value = (await getIcloudSyncRememberedPassword())?.trim() || "";
@@ -162,7 +155,7 @@ async function loadState() {
       password.value = "";
     }
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     loading.value = false;
   }
@@ -202,7 +195,7 @@ async function onLogin() {
     await syncKeyringAfterSuccess();
     emit("loggedIn", { accountChanged });
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     loggingIn.value = false;
   }
@@ -234,7 +227,7 @@ async function onSubmit2fa() {
     await syncKeyringAfterSuccess();
     emit("loggedIn", { accountChanged: pendingAccountChanged.value });
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     submitting2fa.value = false;
   }
@@ -254,7 +247,7 @@ async function onResend2fa() {
     twoFaCode.value = "";
     $feedback.message.success("已重新发送验证码，请查收手机短信或设备弹窗");
   } catch (e) {
-    $feedback.message.error(formatIcloudSyncError(e, { icloudDomain: icloudDomain.value }));
+    $feedback.message.error(formatIcloudSyncError(e));
   } finally {
     resending2fa.value = false;
   }
@@ -285,26 +278,19 @@ onBeforeUnmount(() => {
       <a-alert type="info" show-icon class="mb-12px" message="登录前请确认">
         <template #description>
           <ul class="prep-tips">
-            <li>1. Apple ID 已开启「网页访问 iCloud 数据」</li>
-            <li>2. 已关闭 Advanced Data Protection（高级数据保护）</li>
+            <li>1. 仅支持中国大陆 Apple ID（icloud.com.cn）</li>
+            <li>2. 已开启「网页访问 iCloud 数据」</li>
+            <li>3. 已关闭 Advanced Data Protection（高级数据保护）</li>
           </ul>
         </template>
       </a-alert>
 
       <a-form layout="vertical" class="cred-form">
-        <a-form-item label="iCloud 区域" class="form-item-tight">
-          <a-select
-            v-model:value="icloudDomain"
-            :options="icloudDomainOptions"
-            :disabled="need2fa || loggingIn || loading"
-            placeholder="按 Apple ID 分区选择，选错不会自动切换"
-          />
-        </a-form-item>
         <a-form-item label="Apple ID" class="form-item-tight">
           <a-input
             v-model:value="appleId"
             type="email"
-            placeholder="name@example.com"
+            placeholder="中国大陆 Apple ID"
             autocomplete="username"
             spellcheck="false"
             :disabled="need2fa || loggingIn || loading"

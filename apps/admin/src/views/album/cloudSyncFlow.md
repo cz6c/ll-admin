@@ -19,7 +19,7 @@
 ```mermaid
 flowchart LR
   A[同步到本地] --> B[本地相册可浏览]
-  B --> C[工具栏：移除所选 / 移除全部已同步]
+  B --> C[工具栏：勾选后从 iCloud 移除]
   C --> D[iCloud 腾出空间]
   D --> E[再次同步到本地]
   E --> A
@@ -30,7 +30,7 @@ flowchart LR
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
 | 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
 | 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
-| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（**无云态 Tab**，固定 `cloudState=all` 分页）。删云在工具栏危险区：勾选已同步项可删 / 无勾选可「移除全部已同步」；**一次性 await + `$feedback.loading` + toast**（不占进度卡 / 不入 job） |
+| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（**无云态 Tab**，固定 `cloudState=all` 分页）。删云：先「勾选」再点格/框选，再「从 iCloud 移除」；**一次性 await + `$feedback.loading` + toast**（不占进度卡 / 不入 job） |
 | 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（**Hidden 项**在 `…/Hidden/` 子目录；本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
@@ -55,7 +55,7 @@ flowchart LR
 | 主相册墙 | 本地 discover 递归扫描相册根，Hidden 子目录文件**自然纳入**时间轴 |
 | 开关 OFF | 不再 catalog / 列表不展示 hidden 行；DB 内已有 hidden 行**保留**；`mark_catalog_deletions` **仅删 library scope** |
 | 开关 ON | catalog 带 `include_hidden=true`；列表 / summary 含 hidden；mark 删库对 hidden 行同样生效 |
-| 删云 | **「移除全部已同步」含 hidden**（`collect_synced_keys_for_cloud_delete` 无 scope 过滤） |
+| 删云 | 勾选移除所选（含已加载的 hidden 项）；无「移除全部」入口 |
 
 ```text
 settings.syncHiddenAlbum
@@ -77,7 +77,7 @@ settings.syncHiddenAlbum
 | **继续同步** | `paused_user` / 重登后 `paused_session` | resume；**不** re-catalog |
 | **取消任务** | 未完成且非 `cataloging` | `discard_task`；已下文件保留；summary 计数保留 |
 | **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
-| **从 iCloud 移除** | 工具栏危险主按钮 | 有勾选→移除所选；无勾选→**移除全部已同步（含 Hidden）**；确认 Modal + 1.5s；**一次性 await** 完成后 toast |
+| **从 iCloud 移除** | 勾选模式工具栏 | 须先点格/框选已下载项；确认 Modal + 1.5s；**一次性 await** 完成后 toast |
 | **同步 Hidden 相册** | CS 应用设置 | 开关保存到 `syncHiddenAlbum`；下次 catalog /「同步到本地」生效 |
 | **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
@@ -226,7 +226,7 @@ flowchart LR
 | `icloud_sync_get_settings` / `save_settings` | 含 `syncHiddenAlbum`（CS 应用设置） |
 | `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选；UI 固定 `all`；按 settings 过滤 scope） |
 | `icloud_sync_get_cloud_state_summary` | summary 计数（逻辑资产；Live=1） |
-| `icloud_sync_delete_assets` / `delete_all_synced` | 一次性删云（本机保留） |
+| `icloud_sync_delete_assets` | 一次性删云所选（本机保留） |
 
 ### 事件
 

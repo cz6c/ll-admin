@@ -20,8 +20,9 @@ from typing import Any, Callable
 
 ICLOUDPD_VENDOR_TAG = "1.32.3"
 ICLOUDPD_VENDOR_DIR = "icloud_photos_downloader-1.32.3"
-DEFAULT_ICLOUD_DOMAIN = "com"
-SUPPORTED_ICLOUD_DOMAINS = ("com", "cn")
+# 产品仅支持中国大陆 iCloud（icloud.com.cn）；国际区 com 不再作为可选根域
+DEFAULT_ICLOUD_DOMAIN = "cn"
+SUPPORTED_ICLOUD_DOMAINS = ("cn",)
 
 
 def _sidecar_root() -> Path:
@@ -86,40 +87,39 @@ class IcloudIncompleteAuthError(RuntimeError):
 
 class IcloudDomainMismatchError(RuntimeError):
     """
-    用户选择的 iCloud 根域与 Apple 账号要求不一致。
+    Apple 账号根域与本产品支持的中国大陆区不一致。
 
-    @note UI 应提示切换「iCloud 区域」后重新登录，勿在后端静默换域重试。
+    @note 常见于国际区 Apple ID；勿静默换到 com 重试。
     """
 
     def __init__(self, selected: str, required: str | None = None) -> None:
-        self.selected = selected.strip().lower()
-        self.required = (required or ("cn" if self.selected == "com" else "com")).strip().lower()
+        self.selected = selected.strip().lower() or DEFAULT_ICLOUD_DOMAIN
+        self.required = (required or "com").strip().lower()
         super().__init__(format_domain_mismatch_message(self.selected, self.required))
 
 
 def format_domain_mismatch_message(selected: str, required: str) -> str:
-    """将 com/cn 转为面向用户的区域切换提示。"""
-    labels = {
-        "com": "国际（iCloud.com）",
-        "cn": "中国大陆（iCloud.com.cn）",
-    }
-    selected_label = labels.get(selected.strip().lower(), selected)
-    required_label = labels.get(required.strip().lower(), required)
-    return (
-        f"当前选择的是{selected_label}，但该 Apple ID 需使用{required_label}。"
-        f"请切换「iCloud 区域」后重新登录"
-    )
+    """根域不匹配时的用户文案（产品仅 cn）。"""
+    _ = selected
+    required_norm = required.strip().lower()
+    if required_norm == "com":
+        return "本产品仅支持中国大陆 Apple ID（icloud.com.cn），国际区账号无法登录"
+    return "该 Apple ID 与中国大陆 iCloud（icloud.com.cn）不匹配，无法登录"
 
 
 def normalize_icloud_domain(raw: Any) -> str | None:
     """
     规整 iCloud 根域参数。
 
-    @returns `com` / `cn` / None（未指定）
+    @returns `cn`（显式或兼容传入）/ None（未指定）
+    @note 历史 `com` 与其它非法值一律视为未指定，由调用方回退到 DEFAULT（cn）。
     """
     value = str(raw or "").strip().lower()
-    if value in SUPPORTED_ICLOUD_DOMAINS:
-        return value
+    if not value:
+        return None
+    if value == "cn":
+        return "cn"
+    # com / 其它：不认作合法域，避免继续打国际节点
     return None
 
 
@@ -162,7 +162,7 @@ def load_domain_hint(session_dir: str, apple_id: str) -> str | None:
     """
     读取上次成功登录使用的 iCloud 域。
 
-    @returns `com` / `cn` / None
+    @returns `cn` / None（含历史 com 落盘，一律忽略）
     """
     path = domain_hint_path(session_dir, apple_id)
     try:
@@ -173,7 +173,7 @@ def load_domain_hint(session_dir: str, apple_id: str) -> str | None:
 
 
 def save_domain_hint(session_dir: str, apple_id: str, domain: str) -> None:
-    """持久化账号对应的 iCloud 根域（中国大陆账号通常为 cn）。"""
+    """持久化账号对应的 iCloud 根域（仅 cn）。"""
     normalized = domain.strip().lower()
     if normalized not in SUPPORTED_ICLOUD_DOMAINS:
         return
@@ -213,7 +213,7 @@ def parse_required_domain(exc: BaseException) -> str | None:
 
 
 def is_domain_mismatch_exception(exc: BaseException) -> bool:
-    """是否为 iCloud 根域不匹配（需切换 com/cn）。"""
+    """是否为 iCloud 根域不匹配（产品仅 cn；国际账号会映射 domain_mismatch）。"""
     if parse_required_domain(exc) is not None:
         return True
     try:
@@ -226,15 +226,9 @@ def is_domain_mismatch_exception(exc: BaseException) -> bool:
 
 
 def build_domain_attempt_order(session_dir: str, apple_id: str) -> list[str]:
-    """构造 domain 尝试顺序：优先已落盘偏好，其次 com → cn。"""
-    saved = load_domain_hint(session_dir, apple_id)
-    order: list[str] = []
-    if saved:
-        order.append(saved)
-    for domain in SUPPORTED_ICLOUD_DOMAINS:
-        if domain not in order:
-            order.append(domain)
-    return order
+    """构造 domain 尝试顺序：仅中国大陆 cn。"""
+    _ = session_dir, apple_id
+    return [DEFAULT_ICLOUD_DOMAIN]
 
 
 def api_domain(api: Any) -> str:
@@ -320,10 +314,11 @@ def build_api(
     """
     创建 icloudpd PyiCloudService 客户端。
 
-    @param icloud_domain 用户显式选择的根域（`com` / `cn`）；未指定时读落盘偏好或默认 com。
-    @param allow_domain_fallback 为 True 时在 domain 不匹配时自动切换并重试（仅兼容旧路径）。
+    @param icloud_domain 显式根域；仅 `cn` 生效，其它值回退默认 cn。
+    @param allow_domain_fallback 保留参数兼容调用方；产品仅 cn，无跨域重试。
     @note stale session 导致 IcloudIncompleteAuthError 时会清盘并重试一次（同域内）。
     """
+    _ = allow_domain_fallback
     Service = load_sidecar_service_class()
     pwd = password
     aid = apple_id.strip()
@@ -331,46 +326,36 @@ def build_api(
     def password_provider() -> str | None:
         return pwd or None
 
-    explicit = normalize_icloud_domain(icloud_domain)
-    if explicit:
-        domains = [explicit]
-    elif allow_domain_fallback:
-        domains = build_domain_attempt_order(session_dir, aid)
-    else:
-        domains = [load_domain_hint(session_dir, aid) or DEFAULT_ICLOUD_DOMAIN]
+    domain = (
+        normalize_icloud_domain(icloud_domain)
+        or load_domain_hint(session_dir, aid)
+        or DEFAULT_ICLOUD_DOMAIN
+    )
 
     last_exc: Exception | None = None
-    for domain in domains:
-        for stale_attempt in range(2):
-            try:
-                api = Service(
-                    domain,
-                    aid,
-                    password_provider,
-                    None,
-                    cookie_directory=session_dir,
-                )
-                save_domain_hint(session_dir, aid, domain)
-                return api
-            except IcloudIncompleteAuthError as exc:
-                last_exc = exc
-                if stale_attempt == 0:
-                    clear_session_artifacts(session_dir, aid)
-                    continue
-                raise
-            except Exception as exc:
-                if is_domain_mismatch_exception(exc):
-                    required = parse_required_domain(exc) or ("cn" if domain == "com" else "com")
-                    last_exc = exc
-                    clear_session_artifacts(session_dir, aid)
-                    if allow_domain_fallback and required != domain and len(domains) > 1:
-                        break
-                    if allow_domain_fallback and required != domain and domain == domains[-1]:
-                        continue
-                    if not allow_domain_fallback or len(domains) == 1:
-                        raise IcloudDomainMismatchError(domain, required) from exc
-                    break
-                raise
+    for stale_attempt in range(2):
+        try:
+            api = Service(
+                domain,
+                aid,
+                password_provider,
+                None,
+                cookie_directory=session_dir,
+            )
+            save_domain_hint(session_dir, aid, domain)
+            return api
+        except IcloudIncompleteAuthError as exc:
+            last_exc = exc
+            if stale_attempt == 0:
+                clear_session_artifacts(session_dir, aid)
+                continue
+            raise
+        except Exception as exc:
+            if is_domain_mismatch_exception(exc):
+                required = parse_required_domain(exc) or "com"
+                clear_session_artifacts(session_dir, aid)
+                raise IcloudDomainMismatchError(domain, required) from exc
+            raise
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("build_api failed without exception")
@@ -577,7 +562,7 @@ def map_api_exception(exc: BaseException, *, is_2fa_required: Callable[[BaseExce
         )
     ):
         return CODE_NETWORK_ERROR
-    # ConnectionException 无明确区域要求时按网络失败（国际区常需代理）
+    # ConnectionException 无明确区域要求时按网络失败（大陆节点连通性）
     if exc_type == "PyiCloudConnectionException" or is_domain_mismatch_exception(exc):
         return CODE_NETWORK_ERROR
 

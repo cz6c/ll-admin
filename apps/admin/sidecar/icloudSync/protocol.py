@@ -31,6 +31,8 @@ CODE_LIVE_BIND_MISSING = "live_bind_missing"
 CODE_DOWNLOAD_FAILED = "download_failed"
 CODE_DELETE_FAILED = "delete_failed"
 CODE_DOMAIN_MISMATCH = "domain_mismatch"
+# Photos zone 未开通 / 网页端未完成 iCloud 初始设置（非密码错误）
+CODE_ICLOUD_SETUP_INCOMPLETE = "icloud_setup_incomplete"
 CODE_PREVIEW_SIZE_MISSING = "preview_size_missing"
 CODE_PREVIEW_TOO_LARGE = "preview_too_large"
 

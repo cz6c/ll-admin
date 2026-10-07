@@ -279,8 +279,9 @@ onBeforeUnmount(() => {
         <template #description>
           <ul class="prep-tips">
             <li>1. 仅支持中国大陆 Apple ID（icloud.com.cn）</li>
-            <li>2. 已开启「网页访问 iCloud 数据」</li>
-            <li>3. 已关闭 Advanced Data Protection（高级数据保护）</li>
+            <li>2. 已在浏览器打开 icloud.com.cn 完成 iCloud / 照片初始设置</li>
+            <li>3. 已开启「网页访问 iCloud 数据」</li>
+            <li>4. 已关闭 Advanced Data Protection（高级数据保护）</li>
           </ul>
         </template>
       </a-alert>

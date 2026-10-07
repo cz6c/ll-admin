@@ -206,6 +206,8 @@ export const ICLOUD_SYNC_ERROR_CODES = {
   ACCOUNT_MISMATCH: "account_mismatch",
   ALREADY_LOGGED_IN: "already_logged_in",
   DOMAIN_MISMATCH: "domain_mismatch",
+  /** Photos zone 未开通 / 网页端未完成 iCloud 初始设置（非密码错误） */
+  ICLOUD_SETUP_INCOMPLETE: "icloud_setup_incomplete",
   DELETE_FAILED: "delete_failed",
   TASK_ACTIVE: "task_active"
 } as const;
@@ -226,6 +228,8 @@ const ERROR_USER_MESSAGES: Record<string, string> = {
   [ICLOUD_SYNC_ERROR_CODES.ACCOUNT_MISMATCH]: "当前 Apple ID 与任务创建账号不一致，请开始新下载",
   [ICLOUD_SYNC_ERROR_CODES.ALREADY_LOGGED_IN]: "已处于登录状态，请先退出后再登录",
   [ICLOUD_SYNC_ERROR_CODES.DOMAIN_MISMATCH]: "本产品仅支持中国大陆 Apple ID（icloud.com.cn），国际区账号无法登录",
+  [ICLOUD_SYNC_ERROR_CODES.ICLOUD_SETUP_INCOMPLETE]:
+    "iCloud 尚未在网页端完成初始设置。请用浏览器打开 https://www.icloud.com.cn 登录并开通照片（Photos）后，再回到本应用登录",
   [ICLOUD_SYNC_ERROR_CODES.DELETE_FAILED]: "从 iCloud 移除失败，请稍后重试",
   [ICLOUD_SYNC_ERROR_CODES.TASK_ACTIVE]: "已有任务进行中，请先取消后再操作"
 };
@@ -245,11 +249,7 @@ export function networkErrorMessage(_domain?: "cn" | string | null): string {
 export function isIcloudSessionAuthFailure(err: unknown): boolean {
   const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "");
   const code = raw.split(":")[0]?.trim() ?? "";
-  if (
-    code === ICLOUD_SYNC_ERROR_CODES.NEED_2FA ||
-    code === ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED ||
-    code === ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED
-  ) {
+  if (code === ICLOUD_SYNC_ERROR_CODES.NEED_2FA || code === ICLOUD_SYNC_ERROR_CODES.SESSION_EXPIRED || code === ICLOUD_SYNC_ERROR_CODES.SIDECAR_CRASHED) {
     return true;
   }
   const lower = raw.toLowerCase();
@@ -280,6 +280,14 @@ export function formatIcloudSyncError(err: unknown, options?: FormatIcloudSyncEr
   if (lower.includes("without pending challenge") || lower.includes("无 pending challenge")) {
     return "二次验证已失效，请退出后重新登录一次（勿连点）";
   }
+  // 旧 sidecar 仍可能把 ZONE_NOT_FOUND 标成 auth_failed；按文案识别，勿提示「检查密码」
+  if (
+    lower.includes("zone_not_found") ||
+    lower.includes("icloud setup is not complete") ||
+    (lower.includes("manually finish setting up") && lower.includes("icloud"))
+  ) {
+    return ERROR_USER_MESSAGES[ICLOUD_SYNC_ERROR_CODES.ICLOUD_SETUP_INCOMPLETE];
+  }
   if (lower.includes("验证码") && (lower.includes("无效") || lower.includes("错误") || lower.includes("过期") || lower.includes("最新"))) {
     // sidecar 已给出中文验码文案时直接展示，勿再套「检查密码」
     const colon = raw.indexOf(":");
@@ -290,6 +298,9 @@ export function formatIcloudSyncError(err: unknown, options?: FormatIcloudSyncEr
   }
 
   const code = raw.split(":")[0]?.trim() ?? raw;
+  if (code === ICLOUD_SYNC_ERROR_CODES.ICLOUD_SETUP_INCOMPLETE) {
+    return ERROR_USER_MESSAGES[ICLOUD_SYNC_ERROR_CODES.ICLOUD_SETUP_INCOMPLETE];
+  }
   if (code === ICLOUD_SYNC_ERROR_CODES.NETWORK_ERROR) {
     const base = networkErrorMessage(options?.icloudDomain);
     const tail = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";

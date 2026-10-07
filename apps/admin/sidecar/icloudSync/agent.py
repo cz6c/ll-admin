@@ -32,6 +32,7 @@ from protocol import (
     CODE_DELETE_FAILED,
     CODE_DOMAIN_MISMATCH,
     CODE_DOWNLOAD_FAILED,
+    CODE_ICLOUD_SETUP_INCOMPLETE,
     CODE_INVALID_REQUEST,
     CODE_LIVE_BIND_MISSING,
     CODE_NEED_2FA,
@@ -313,6 +314,8 @@ def _map_exception(exc: BaseException) -> str:
         return CODE_DOMAIN_MISMATCH
     if ipd_auth.is_domain_mismatch_exception(exc) and ipd_auth.parse_required_domain(exc):
         return CODE_DOMAIN_MISMATCH
+    if _looks_like_icloud_setup_incomplete(msg, code):
+        return CODE_ICLOUD_SETUP_INCOMPLETE
     if _looks_like_network_error(exc):
         return CODE_NETWORK_ERROR
     # PyiCloudConnectionException 无明确区域信息时，按网络不可达处理（大陆节点）
@@ -332,8 +335,8 @@ def _map_exception(exc: BaseException) -> str:
             return CODE_SESSION_EXPIRED
         if code == "ACCESS_DENIED":
             return CODE_RATE_LIMITED
-        if code in ("ZONE_NOT_FOUND",):
-            return CODE_AUTH_FAILED
+        if code in ("ZONE_NOT_FOUND",) or _looks_like_icloud_setup_incomplete(msg, code):
+            return CODE_ICLOUD_SETUP_INCOMPLETE
         if code == "-20209" or "-20209" in code:
             return CODE_ACCOUNT_LOCKED
         if _looks_like_session_death(msg, code):
@@ -356,6 +359,19 @@ def _map_exception(exc: BaseException) -> str:
     if _looks_like_session_death(msg, code):
         return CODE_SESSION_EXPIRED
     return CODE_AUTH_FAILED
+
+
+def _looks_like_icloud_setup_incomplete(msg: str, code: str = "") -> bool:
+    """Photos zone 未创建 / 网页端未完成 iCloud 开通（勿提示「检查密码」）。"""
+    code_u = (code or "").upper()
+    if code_u == "ZONE_NOT_FOUND":
+        return True
+    lowered = msg.lower()
+    return (
+        "zone_not_found" in lowered
+        or "icloud setup is not complete" in lowered
+        or ("manually finish setting up" in lowered and "icloud" in lowered)
+    )
 
 
 def _looks_like_session_death(msg: str, code: str = "") -> bool:

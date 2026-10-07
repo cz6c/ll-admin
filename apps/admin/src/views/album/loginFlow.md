@@ -77,6 +77,7 @@ Need2FA 时：**禁止再点「登录」**；先换码，连续失败则 logout 
 | `session_expired`（无 pending） | logout → 重新登录一轮（勿连点） |
 | `session_expired`（WEBAUTH 真失效） | logout → 隔几小时再登 |
 | `domain_mismatch` | 国际区 Apple ID（产品仅 cn）→ 换中国大陆账号后完整重登 |
+| `icloud_setup_incomplete`（`ZONE_NOT_FOUND`） | 浏览器打开 icloud.com.cn 完成照片初始设置后再登（**不是**密码错误） |
 | `account_locked` / `rate_limited` | **立即停止**（MFA `tooManyCodes*` / `securityCodeLocked` 亦映射 `rate_limited`） |
 
 > 下载 HTTP **410/404** = CDN URL 过期 → `download_failed`，**不是** `session_expired`。见 [cloudSyncFlow](./cloudSyncFlow.md)。  

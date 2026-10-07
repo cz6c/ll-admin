@@ -432,6 +432,9 @@ pub mod error_codes {
   pub const ALREADY_LOGGED_IN: &str = "already_logged_in";
   /// 所选 iCloud 区域与 Apple ID 不匹配
   pub const DOMAIN_MISMATCH: &str = "domain_mismatch";
+  /// 网页端未完成 iCloud / Photos 初始设置（ZONE_NOT_FOUND）；非密码错误
+  #[allow(dead_code)]
+  pub const ICLOUD_SETUP_INCOMPLETE: &str = "icloud_setup_incomplete";
   pub const DELETE_FAILED: &str = "delete_failed";
   /// 已有未完成任务，须先取消
   pub const TASK_ACTIVE: &str = "task_active";

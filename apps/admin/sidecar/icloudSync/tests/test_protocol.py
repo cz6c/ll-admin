@@ -359,6 +359,23 @@ def test_map_exception_authentication_required_is_session_expired() -> None:
     assert agent._map_exception(_Exc("Authentication required")) == "session_expired"
 
 
+def test_map_exception_zone_not_found_is_setup_incomplete() -> None:
+    """ZONE_NOT_FOUND = 网页端未完成 iCloud 开通，勿映射成检查密码。"""
+    agent = _load_agent(mock=False)
+
+    class PyiCloudAPIResponseException(Exception):
+        def __init__(self, message: str) -> None:
+            super().__init__(message)
+            self.code = "ZONE_NOT_FOUND"
+
+    msg = (
+        "Apple iCloud setup is not complete. Please log into https://icloud.com/ "
+        "to manually finish setting up your iCloud service (ZONE_NOT_FOUND)"
+    )
+    assert agent._map_exception(PyiCloudAPIResponseException(msg)) == "icloud_setup_incomplete"
+    assert agent._looks_like_icloud_setup_incomplete(msg, "ZONE_NOT_FOUND") is True
+
+
 def test_map_exception_mfa_rate_limit_fields() -> None:
     """P0-3：tooManyCodes* / securityCodeLocked → rate_limited。"""
     agent = _load_agent(mock=False)

@@ -366,7 +366,7 @@ function onDuplicatesDeleted() {
 async function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
   try {
-    await $feedback.confirm(`将从磁盘删除「${file.name}」，不影响 iCloud 云端。`, {
+    await $feedback.confirm(`将从磁盘删除「${file.name}」。`, {
       title: "删除本地文件？",
       okText: "删除"
     });
@@ -454,23 +454,17 @@ onBeforeUnmount(() => {
             :tree-data="dirTree"
             :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
           />
-          <a-select
-            v-model:value="libraryFilter"
-            class="album-library-filter"
-            allow-clear
-            placeholder="全部图库"
-            :options="librarySelectOptions"
-          />
+          <a-select v-model:value="libraryFilter" class="album-library-filter" allow-clear placeholder="全部图库" :options="librarySelectOptions" />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
             <template v-if="!selectMode">
-              <a-button size="small" :disabled="catalogFiles.length === 0" @click="enterSelectMode">勾选</a-button>
+              <a-button size="small" :disabled="catalogFiles.length === 0" @click="enterSelectMode">选择</a-button>
             </template>
             <template v-else>
               <a-button type="primary" size="small" :disabled="selectedPaths.length === 0" @click="captureRewriteOpen = true">
                 修改拍摄时间{{ selectedPaths.length ? ` (${selectedPaths.length})` : "" }}
               </a-button>
-              <a-button size="small" @click="exitSelectMode">取消勾选</a-button>
+              <a-button size="small" @click="exitSelectMode">取消选择</a-button>
             </template>
             <a-button v-if="inTauri" shape="circle" title="打开相册根目录" @click="openAlbumRootInExplorer">
               <template #icon>

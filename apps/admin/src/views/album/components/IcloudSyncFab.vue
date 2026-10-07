@@ -650,13 +650,13 @@ onBeforeUnmount(() => {
                 <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
               </a-tooltip>
               <a-tooltip v-if="!selectMode" v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">勾选</a-button>
+                <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">选择</a-button>
               </a-tooltip>
               <template v-else>
                 <a-button danger :loading="deletingCloud" :disabled="selectedCloudCount === 0 || !canManageCloudSpace" @click="confirmDeleteCloud()">
                   从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}
                 </a-button>
-                <a-button @click="exitSelectMode">取消勾选</a-button>
+                <a-button @click="exitSelectMode">取消选择</a-button>
               </template>
             </div>
           </div>
@@ -695,7 +695,6 @@ onBeforeUnmount(() => {
                 <span class="cell-state" :style="{ background: row.displayStateColor || COLOR_NEUTRAL }">{{ row.displayStateLabel }}</span>
                 <span v-if="row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
                 <span v-if="row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
-                <span v-if="selectMode && isCloudRowSelected(row)" class="cell-check" aria-hidden="true">✓</span>
               </div>
               <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
             </div>
@@ -864,20 +863,38 @@ onBeforeUnmount(() => {
   aspect-ratio: 1;
   border-radius: 8px;
   overflow: hidden;
-  border: 2px solid transparent;
   cursor: zoom-in;
   background: var(--color-fill-quaternary);
   &.select-mode {
     cursor: pointer;
   }
-  &.selected {
-    border-color: var(--color-primary);
+  /* 与本地相册宫格对齐：选中=压暗+主色环；未选无态；不用角标勾 */
+  &.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    background: var(--color-bg-mask-strong);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  &.selected::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    box-sizing: border-box;
+    border: 2px solid var(--color-primary);
+    border-radius: inherit;
+    pointer-events: none;
   }
 }
 .cell-state {
   position: absolute;
   left: 4px;
   bottom: 4px;
+  z-index: 5;
   max-width: calc(100% - 28px);
   padding: 1px 6px;
   border-radius: 4px;
@@ -893,6 +910,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   left: 4px;
+  z-index: 5;
   padding: 0 6px;
   border-radius: 4px;
   background: var(--color-bg-mask-strong);
@@ -904,6 +922,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   left: 4px;
+  z-index: 5;
   font-size: 12px;
   line-height: 1;
   pointer-events: none;
@@ -913,24 +932,11 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 4px;
   right: 4px;
+  z-index: 5;
   font-size: 12px;
   line-height: 1;
   pointer-events: none;
   text-shadow: 0 0 2px var(--color-bg-mask-strong);
-}
-.cell-check {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  background: var(--color-primary);
-  color: var(--color-text-light-solid);
-  font-size: 12px;
-  line-height: 20px;
-  text-align: center;
-  pointer-events: none;
 }
 .cloud-grid-sentinel {
   flex-shrink: 0;

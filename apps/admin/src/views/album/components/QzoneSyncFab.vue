@@ -780,12 +780,12 @@ watch(drawerOpen, open => {
         <span class="browse-hint">左侧选相册，右侧浏览；角标「已下载」表示本机已有；可勾选后从 QQ 空间移除（本机保留）</span>
         <div class="browse-actions">
           <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
-          <a-button v-if="!selectMode" size="small" :disabled="!activeAlbumId || !photos.length || busy" @click="selectMode = true"> 勾选 </a-button>
+          <a-button v-if="!selectMode" size="small" :disabled="!activeAlbumId || !photos.length || busy" @click="selectMode = true"> 选择 </a-button>
           <template v-else>
             <a-button size="small" danger :loading="deletingCloud" :disabled="selectedCount === 0 || busy" @click="onDeleteSelectedFromCloud">
               从 QQ 空间移除{{ selectedCount ? ` (${selectedCount})` : "" }}
             </a-button>
-            <a-button size="small" :disabled="deletingCloud" @click="exitSelectMode">取消勾选</a-button>
+            <a-button size="small" :disabled="deletingCloud" @click="exitSelectMode">取消选择</a-button>
           </template>
         </div>
       </div>
@@ -858,7 +858,6 @@ watch(drawerOpen, open => {
                       <div v-else class="cell-ph" />
                       <!-- 角标：synced 且盘上文件仍在（拉列表前会 reconcile 缺盘） -->
                       <span v-if="row.photo.downloaded" class="cell-badge">已下载</span>
-                      <span v-if="selectMode && isSelected(row.photo.assetId)" class="cell-check" aria-hidden="true">✓</span>
                     </button>
                   </div>
                 </section>
@@ -1197,14 +1196,32 @@ watch(drawerOpen, open => {
 .cell {
   position: relative;
   aspect-ratio: 1;
-  border: 2px solid transparent;
   padding: 0;
+  border: none;
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   background: var(--bg-color-secondary);
-  &.selected {
-    border-color: var(--color-primary);
+  /* 与本地相册宫格对齐：选中=压暗+主色环；未选无态；不用角标勾 */
+  &.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    background: var(--color-bg-mask-strong);
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  &.selected::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    box-sizing: border-box;
+    border: 2px solid var(--color-primary);
+    border-radius: inherit;
+    pointer-events: none;
   }
   img {
     width: 100%;
@@ -1223,26 +1240,13 @@ watch(drawerOpen, open => {
   position: absolute;
   top: 4px;
   left: 4px;
+  z-index: 5;
   padding: 0 6px;
   border-radius: 4px;
   background: var(--color-bg-mask-strong);
   color: var(--color-text-light-solid);
   font-size: 11px;
   line-height: 1.6;
-  pointer-events: none;
-}
-.cell-check {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  background: var(--color-primary);
-  color: var(--color-text-light-solid);
-  font-size: 12px;
-  line-height: 20px;
-  text-align: center;
   pointer-events: none;
 }
 .badge {

@@ -98,3 +98,15 @@ export function matchesLibrary(
   if (filter === null) return true;
   return encodeLibraryKey(normalizeLibraryKey(file)) === filter;
 }
+
+/**
+ * 是否为同步入库来源（非本地图库）
+ * @note 宫格右上角同步角标：icloud/qzone 等为 true；local/_local 为 false
+ */
+export function isSyncedLibrarySource(file: {
+  origin?: string;
+  originAccount?: string;
+}): boolean {
+  const key = normalizeLibraryKey(file);
+  return !(key.origin === LOCAL_ORIGIN && key.originAccount === LOCAL_ACCOUNT);
+}

@@ -180,7 +180,20 @@ export interface IcloudSyncDeleteAssetsResult {
   rejectedMissingCpl: number;
   /** 本地 dest_path 缺失或磁盘无文件 */
   rejectedLocalMissing: number;
+  /** sidecar 删除失败的逻辑资产 id */
+  failedAssetIds: string[];
+  /** 校验阶段跳过的逻辑资产 id */
+  rejectedAssetIds: string[];
   message: string;
+}
+
+/** 删云进度事件（每批 sidecar 返回后推送一次） */
+export const ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT = "icloud-sync://cloud-delete-progress";
+
+/** 删云进度；计数为逻辑资产（Live still+mov=1） */
+export interface IcloudSyncCloudDeleteProgressPayload {
+  processed: number;
+  total: number;
 }
 
 /** 云态变更后刷新 summary / 列表（catalog、下载完成等） */

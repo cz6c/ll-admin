@@ -24,8 +24,29 @@ use super::types::{error_codes, TaskType};
 const DELETE_BATCH_SIZE: usize = 50;
 const DELETE_BATCH_GAP_MS: u64 = 800;
 
+/// 删云进度事件；前端删云弹窗进度条订阅
+const CLOUD_DELETE_PROGRESS_EVENT: &str = "icloud-sync://cloud-delete-progress";
+
 fn emit_cloud_state_changed(app: &AppHandle) {
   let _ = app.emit(CLOUD_STATE_CHANGED_EVENT, ());
+}
+
+/// 删云进度（逻辑资产口径；Live still+mov=1）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudDeleteProgressPayload {
+  processed: u32,
+  total: u32,
+}
+
+fn emit_cloud_delete_progress(app: &AppHandle, processed: usize, total: usize) {
+  let _ = app.emit(
+    CLOUD_DELETE_PROGRESS_EVENT,
+    CloudDeleteProgressPayload {
+      processed: u32::try_from(processed).unwrap_or(u32::MAX),
+      total: u32::try_from(total).unwrap_or(u32::MAX),
+    },
+  );
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +68,10 @@ pub struct IcloudSyncDeleteAssetsResult {
   pub rejected: u32,
   pub rejected_missing_cpl: u32,
   pub rejected_local_missing: u32,
+  /// sidecar 删除失败的逻辑资产 id
+  pub failed_asset_ids: Vec<String>,
+  /// 校验阶段跳过的逻辑资产 id
+  pub rejected_asset_ids: Vec<String>,
   pub message: String,
 }
 
@@ -239,6 +264,16 @@ fn run_cloud_delete_once(
       std::collections::HashSet::new();
     let mut last_err = String::new();
 
+    // Live 的 still/mov 可能被分到相邻两批，按已处理过的 asset_id 去重计进度
+    let total_assets = candidates
+      .iter()
+      .map(|row| row.asset_id.as_str())
+      .collect::<std::collections::HashSet<_>>()
+      .len();
+    let mut processed_assets: std::collections::HashSet<String> =
+      std::collections::HashSet::new();
+    emit_cloud_delete_progress(app, 0, total_assets);
+
     for chunk in candidates.chunks(DELETE_BATCH_SIZE) {
       match call_delete_assets(client, app, chunk, apple_id, &session_path) {
         Ok(results) => {
@@ -269,6 +304,8 @@ fn run_cloud_delete_once(
           }
         }
       }
+      processed_assets.extend(chunk.iter().map(|row| row.asset_id.clone()));
+      emit_cloud_delete_progress(app, processed_assets.len(), total_assets);
       emit_cloud_state_changed(app);
       thread::sleep(Duration::from_millis(DELETE_BATCH_GAP_MS));
     }
@@ -284,9 +321,11 @@ fn run_cloud_delete_once(
     }
     let mut deleted = 0u32;
     let mut failed = 0u32;
-    for (ok, fail) in by_asset.values() {
+    let mut failed_asset_ids = Vec::new();
+    for (asset_id, (ok, fail)) in &by_asset {
       if *fail {
         failed = failed.saturating_add(1);
+        failed_asset_ids.push(asset_id.clone());
       } else if *ok {
         deleted = deleted.saturating_add(1);
       }
@@ -306,6 +345,8 @@ fn run_cloud_delete_once(
       rejected: gate.rejected,
       rejected_missing_cpl: gate.rejected_missing_cpl,
       rejected_local_missing: gate.rejected_local_missing,
+      failed_asset_ids,
+      rejected_asset_ids: gate.rejected_asset_ids,
       message,
     })
   })();

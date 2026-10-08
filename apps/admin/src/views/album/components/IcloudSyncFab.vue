@@ -2,10 +2,11 @@
   iCloud 下载浮动触发区
   职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；勾选后删云
   主流程：hydrate → FAB → StatusCard → 宫格（固定全部，无状态 Tab）；点格灯箱；
-  删云勾选对齐 QQ：先「勾选」再点格/框选，左键拖拽框选复用相册宫格；删除走 $feedback 全屏蒙层；成功后刷新云列表
+  删云勾选对齐 QQ：先「勾选」再点格/框选，左键拖拽框选复用相册宫格；删除走进度小弹窗并在弹窗内出结果；结束后刷新云列表，失败项保留勾选
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
+import IcloudSyncDeleteDialog from "./IcloudSyncDeleteDialog.vue";
 import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
@@ -16,11 +17,9 @@ import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
   icloudProxiedThumbSrc,
-  isIcloudSessionAuthFailure,
   loadIcloudSyncCloudList,
-  deleteIcloudSyncAssets,
   type IcloudSyncCloudStateSummary,
-  type IcloudSyncDeleteAssetsResult
+  type IcloudSyncDeleteAssetItem
 } from "@/api/icloudSync";
 import {
   cloudListRowsToAssetItems,
@@ -90,6 +89,8 @@ let cloudSentinelObserver: IntersectionObserver | null = null;
 const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
+const deleteDialogOpen = ref(false);
+const deleteDialogItems = ref<IcloudSyncDeleteAssetItem[]>([]);
 /** 勾选模式：点格切换选中（对齐 QQ）；未进入时点格仍开灯箱 */
 const selectMode = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
@@ -444,40 +445,6 @@ function refreshCloudIfVisible() {
 const ICLOUD_REMOVE_HINT =
   "只删除 iCloud 上的副本，电脑里的文件会保留。照片会先进入 iCloud「最近删除」，通常约 30 天后才彻底释放空间；此期间可在 iPhone 或 iCloud.com 恢复。";
 
-/**
- * 一次性删云结果 toast（对齐 QQ：不入任务队列、无全屏浮层）
- */
-function notifyDeleteResult(result: IcloudSyncDeleteAssetsResult) {
-  const parts: string[] = [];
-  if (result.deleted > 0) parts.push(`已移除 ${result.deleted} 项`);
-  if (result.failed > 0) parts.push(`失败 ${result.failed} 项`);
-  if (result.rejectedLocalMissing > 0) {
-    parts.push(`${result.rejectedLocalMissing} 项本地文件缺失已跳过`);
-  }
-  if (result.rejectedMissingCpl > 0) {
-    parts.push(`${result.rejectedMissingCpl} 项缺云端元数据`);
-  }
-  const otherRejected = result.rejected - (result.rejectedLocalMissing ?? 0) - (result.rejectedMissingCpl ?? 0);
-  if (otherRejected > 0) parts.push(`${otherRejected} 项已跳过`);
-  const text = result.message?.trim() || parts.join("，") || "操作完成";
-  if (result.failed > 0 && result.deleted === 0) $feedback.message.error(text);
-  else if (result.failed > 0 || result.rejected > 0) $feedback.message.warning(text);
-  else $feedback.message.success(text);
-}
-
-/**
- * 删云相关操作失败：会话类回登录面板；「没有可删除…」用 warning；其它 error
- */
-async function notifyDeleteOpError(e: unknown) {
-  if (isIcloudSessionAuthFailure(e)) {
-    await reportBusinessError(e);
-    return;
-  }
-  const text = formatIcloudSyncError(e);
-  if (text.includes("没有可删除")) $feedback.message.warning(text);
-  else $feedback.message.error(text);
-}
-
 /** 删云确认：1.5s 冷却后才可点确认（设计 §安全） */
 async function openDeleteConfirmModal(opts: { title: string; content: string; onConfirm: () => Promise<void> }) {
   try {
@@ -492,11 +459,11 @@ async function openDeleteConfirmModal(opts: { title: string; content: string; on
   try {
     await opts.onConfirm();
   } catch {
-    /* onConfirm 内已 toast；此处吞掉避免未处理 rejection */
+    /* 结果由 onConfirm 自行展示；此处吞掉避免未处理 rejection */
   }
 }
 
-/** 从 iCloud 移除所选（一次性；本机保留）；全屏蒙层禁操作 */
+/** 从 iCloud 移除所选（一次性；本机保留）；确认后交给进度弹窗执行 */
 function confirmDeleteCloud() {
   if (!guardCloudManageAction()) return;
   const selected = selectedCloudRows().filter(row => row.cloudState === "synced");
@@ -511,23 +478,26 @@ function confirmDeleteCloud() {
     onConfirm: async () => {
       if (deletingCloud.value) return;
       deletingCloud.value = true;
-      $feedback.loading("正在从 iCloud 移除…");
-      try {
-        const result = await deleteIcloudSyncAssets(cloudListRowsToAssetItems(selected));
-        clearCloudSelection();
-        await refreshCloudAssets();
-        $feedback.closeLoading();
-        notifyDeleteResult(result);
-      } catch (e) {
-        $feedback.closeLoading();
-        notifyDeleteOpError(e);
-        throw e;
-      } finally {
-        $feedback.closeLoading();
-        deletingCloud.value = false;
-      }
+      deleteDialogItems.value = cloudListRowsToAssetItems(selected);
+      deleteDialogOpen.value = true;
     }
   });
+}
+
+/** 删云结束：只保留未移除成功项的勾选（rowKey 即 assetId），再刷新列表 */
+async function onCloudDeleteFinished(keepAssetIds: string[]) {
+  const keep = new Set(keepAssetIds);
+  const nextMap = new Map<string, CloudListDisplayRow>();
+  for (const [key, row] of cloudSelectedRowsByKey.value) {
+    if (keep.has(row.assetId)) nextMap.set(key, row);
+  }
+  cloudSelectedKeys.value = [...nextMap.keys()];
+  cloudSelectedRowsByKey.value = nextMap;
+  try {
+    await refreshCloudAssets();
+  } finally {
+    deletingCloud.value = false;
+  }
 }
 
 watch(canManageCloudSpace, ok => {
@@ -718,6 +688,7 @@ onBeforeUnmount(() => {
       <a-empty v-else description="无法加载预览" :image="false" />
     </template>
   </SyncFabShell>
+  <IcloudSyncDeleteDialog v-model:open="deleteDialogOpen" :items="deleteDialogItems" @finished="onCloudDeleteFinished" />
 </template>
 
 <style scoped lang="scss">

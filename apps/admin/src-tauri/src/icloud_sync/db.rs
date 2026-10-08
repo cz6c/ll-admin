@@ -1125,6 +1125,8 @@ pub struct EnqueueCloudDeleteResult {
   pub rejected_missing_cpl: u32,
   /// dest_path 空或磁盘无文件（按逻辑资产）
   pub rejected_local_missing: u32,
+  /// 被跳过的逻辑资产 id（前端据此保留勾选）
+  pub rejected_asset_ids: Vec<String>,
 }
 
 /// 腾空间硬门禁：本地非空文件必须存在，否则禁止删云
@@ -1269,7 +1271,7 @@ pub fn resolve_cloud_delete_candidates(
   }
 
   let mut result = EnqueueCloudDeleteResult::default();
-  for part_outcomes in outcomes.values() {
+  for (asset_id, part_outcomes) in &outcomes {
     if part_outcomes
       .iter()
       .any(|o| matches!(o, PartOutcome::Accepted))
@@ -1278,6 +1280,7 @@ pub fn resolve_cloud_delete_candidates(
       continue;
     }
     result.rejected = result.rejected.saturating_add(1);
+    result.rejected_asset_ids.push(asset_id.clone());
     if part_outcomes
       .iter()
       .any(|o| matches!(o, PartOutcome::RejectedMissingCpl))

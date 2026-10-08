@@ -568,28 +568,73 @@ pub fn enqueue_outstanding_for_full_sync(
 }
 
 /// 「开始同步」入队：将当前账号全部 `cloud_only` 绑到 sync job（不依赖 catalog temp；须先刷新落库）
+/// 将可下载行入队为 pending（绑定 active_job_id）
+/// @param asset_ids `None`=全量 `cloud_only`；`Some`=仅这些 asset_id（须仍为 cloud_only 或 download_status=failed）
 pub fn enqueue_cloud_only_for_sync(
   conn: &Connection,
   job_id: i64,
   apple_id: &str,
+  asset_ids: Option<&[String]>,
 ) -> Result<u32, String> {
-  let changed = conn
-    .execute(
+  let Some(ids) = asset_ids else {
+    let changed = conn
+      .execute(
+        r#"
+        UPDATE assets SET download_status = 'pending', active_job_id = ?1
+        WHERE apple_id = ?2
+          AND cloud_state = 'cloud_only'
+          AND (
+            active_job_id IS NULL
+            OR active_job_id != ?1
+            OR download_status IS NULL
+            OR download_status != 'pending'
+          )
+        "#,
+        params![job_id, apple_id],
+      )
+      .map_err(|e| format!("cloud_only 入队失败: {e}"))?;
+    return Ok(u32::try_from(changed).unwrap_or(0));
+  };
+  if ids.is_empty() {
+    return Ok(0);
+  }
+  // 分块 IN，避免单条 SQL 参数过多；失败行允许子集重试
+  let mut total: u32 = 0;
+  for chunk in ids.chunks(200) {
+    let placeholders = (0..chunk.len())
+      .map(|i| format!("?{}", i + 3))
+      .collect::<Vec<_>>()
+      .join(",");
+    let sql = format!(
       r#"
       UPDATE assets SET download_status = 'pending', active_job_id = ?1
       WHERE apple_id = ?2
-        AND cloud_state = 'cloud_only'
+        AND asset_id IN ({placeholders})
+        AND (
+          cloud_state = 'cloud_only'
+          OR download_status = 'failed'
+        )
         AND (
           active_job_id IS NULL
           OR active_job_id != ?1
           OR download_status IS NULL
           OR download_status != 'pending'
         )
-      "#,
-      params![job_id, apple_id],
-    )
-    .map_err(|e| format!("cloud_only 入队失败: {e}"))?;
-  Ok(u32::try_from(changed).unwrap_or(0))
+      "#
+    );
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(2 + chunk.len());
+    params.push(Box::new(job_id));
+    params.push(Box::new(apple_id.to_string()));
+    for id in chunk {
+      params.push(Box::new(id.clone()));
+    }
+    let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let changed = conn
+      .execute(&sql, refs.as_slice())
+      .map_err(|e| format!("cloud_only 子集入队失败: {e}"))?;
+    total = total.saturating_add(u32::try_from(changed).unwrap_or(0));
+  }
+  Ok(total)
 }
 
 /// catalog 中消失的行硬删除（覆盖模式）；进行中的云删队列行保留
@@ -2134,6 +2179,48 @@ mod tests {
     update_job_status(&conn, job_id, JobStatus::PausedSession).expect("pause");
     let job = get_job(&conn, job_id).expect("get").expect("row");
     assert_eq!(job.status, JobStatus::PausedSession);
+    let _ = std::fs::remove_file(path);
+  }
+
+  #[test]
+  fn enqueue_cloud_only_subset_only_selected_ids() {
+    let path = temp_db_path();
+    let conn = open_db(&path).expect("open");
+    let job_id = insert_job(
+      &conn,
+      TaskType::Sync,
+      JobView::Library,
+      "C:\\out",
+      "user@icloud.com",
+      JobStatus::Pending,
+      1,
+    )
+    .expect("job");
+    for (id, name) in [("A1", "a.jpg"), ("A2", "b.jpg"), ("A3", "c.jpg")] {
+      conn
+        .execute(
+          r#"
+          INSERT INTO assets(
+            apple_id, asset_id, sort_key, original_filename, media_kind,
+            part, download_status, cloud_state
+          ) VALUES('user@icloud.com', ?1, '2024', ?2, 'photo', 'full', NULL, 'cloud_only')
+          "#,
+          params![id, name],
+        )
+        .expect("insert");
+    }
+    let n = enqueue_cloud_only_for_sync(
+      &conn,
+      job_id,
+      "user@icloud.com",
+      Some(&["A1".into(), "A3".into()]),
+    )
+    .expect("enqueue");
+    assert_eq!(n, 2);
+    let pending = list_pending_assets(&conn, job_id).expect("pending");
+    let mut ids: Vec<_> = pending.into_iter().map(|a| a.asset_id).collect();
+    ids.sort();
+    assert_eq!(ids, vec!["A1".to_string(), "A3".to_string()]);
     let _ = std::fs::remove_file(path);
   }
 }

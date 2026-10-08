@@ -2,7 +2,8 @@
 
 > **产品目的：** iCloud 空间不够 → **单向同步到本地** → **显式删云腾空间** → 再 **同步到本地**，如此往复。  
 > **职责：** catalog 落库 → 可续传下载 → 抽屉云管理 → 用户显式删云。  
-> **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncStatusCard` · `useIcloudSyncJob`  
+> **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncFooter` · `useIcloudSyncJob`  
+> **UI 改版：** 2026-10-08 — 收掉顶部 StatusCard；忙时底栏；意图先行「下载/移除」；宫格四态（待下载/下载中/已下载/失败）；`start_job` 可选 `assetIds` 子集入队（见 `docs/superpowers/specs/2026-10-08-icloud-sync-drawer-download-ux-design.md`）
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
@@ -28,9 +29,9 @@ flowchart LR
 | 原则 | 含义 |
 |------|------|
 | 单向 | 只「云 → 本地」；不上传、不比对本地是否被改过 |
-| 单一拉取入口（UI） | 主按钮 **「同步到本地」** = 自动 catalog/diff → 入队下载；**「仅更新状态」** 只刷新不下载 |
-| 后端仍拆步 | `start_job` **不** re-catalog；只把已有 `cloud_only` 入队；刷新走 `TaskType::Catalog` |
-| 抽屉宫格 | 顶部为**全局进度/主操作**；其下为 **在线 thumb 宫格**（**无云态 Tab**，固定 `cloudState=all` 分页）。删云：先「勾选」再点格/框选，再「从 iCloud 移除」；**一次性 await + `$feedback.loading` + toast**（不占进度卡 / 不入 job） |
+| 单一拉取入口（UI） | 工具栏 **「同步到本地」** = catalog/diff → **全量**入队下载；**「刷新状态」** 只刷新不下载；**「下载」** = 意图先行子集入队（不强制 catalog） |
+| 后端仍拆步 | `start_job` **不** re-catalog；`assetIds` 省略则全量 `cloud_only` 入队，传入则子集；刷新走 `TaskType::Catalog` |
+| 抽屉宫格 | 工具栏 + **在线 thumb 宫格**（无常驻云态 Tab；意图时临时筛 `cloud_only` / `synced`）。进度在**忙时底栏**。下载/移除均为意图先行：点按钮→筛态→勾选/框选→再点执行。删云确认 Modal + 1.5s；不入 job |
 | 本地排序 | 落盘 `{yyyyMMdd}_{HHmmss}_{id16}.ext` 于 `iCloudSync/<AppleID>/`（**Hidden 项**在 `…/Hidden/` 子目录；本地时区钟面；无原始 stem；换号靠账号子目录隔离），相册按文件名字典序近 Library 拍摄序；schema 无 `index_num` |
 | 删云为腾空间 | 删云是产品主路径之一，不是附属功能 |
 | 显式确认 | 绝不因「已下载」就自动删云；Modal + 1.5s |
@@ -71,13 +72,12 @@ settings.syncHiddenAlbum
 
 | 操作 | 何时出现 | 行为 |
 |------|----------|------|
-| **同步到本地** | 空闲 / 上次 `done` | UI 串联：catalog job → 成功后 `start_job` 入队下载 |
-| **刷新状态** | 抽屉工具栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载（「同步到本地」自带刷新） |
-| **暂停同步** | `running`（同步任务） | 协作暂停 worker → `paused_user` |
-| **继续同步** | `paused_user` / 重登后 `paused_session` | resume；**不** re-catalog |
-| **取消任务** | 未完成且非 `cataloging` | `discard_task`；已下文件保留；summary 计数保留 |
-| **重新开始** | `failed` / 账号不一致 | discard → 同步到本地 |
-| **从 iCloud 移除** | 勾选模式工具栏 | 须先点格/框选已下载项；确认 Modal + 1.5s；**一次性 await** 完成后 toast |
+| **同步到本地** | 工具栏；空闲 | UI 串联：catalog job → 成功后 `start_job` **全量**入队 |
+| **下载** | 工具栏；空闲 | 意图先行：筛待下载 → 勾选 → 再点 `start_job(assetIds)`；不强制 catalog |
+| **移除** | 工具栏；空闲 | 意图先行：筛已下载 → 勾选 → 再点；确认 Modal + 1.5s；一次性删云 |
+| **刷新状态** | 工具栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载 |
+| **暂停 / 继续 / 取消** | 忙时底栏 | 与既有 job 控制一致 |
+| **重新开始** | 失败时底栏 | discard → 同步到本地 |
 | **同步 Hidden 相册** | CS 应用设置 | 开关保存到 `syncHiddenAlbum`；下次 catalog /「同步到本地」生效 |
 | **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard** |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
@@ -314,7 +314,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | 组件 | 职责 |
 |------|------|
 | `IcloudSyncFab` | FAB；抽屉云态筛选 + 列表 + 工具栏删云（一次性 toast） |
-| `IcloudSyncStatusCard` | 状态标题、**单一**进度条（sync/catalog）、主/次按钮 |
+| `IcloudSyncFooter` | 忙时底栏：四态词标题、进度、暂停/继续/取消/重新开始（替代原顶部 StatusCard） |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
 | `icloudSyncCloudList.ts` | 状态文案 / Live 行合并 / `download_failed` 展示覆盖 |

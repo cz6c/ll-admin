@@ -1237,11 +1237,13 @@ fn set_job_status(
   set_task_status(app, conn, job_id, status)
 }
 
-/// 新建同步任务：不 re-catalog；将已刷新的 `cloud_only` 入队后下载
+/// 新建同步任务：不 re-catalog；将已刷新的 `cloud_only`（或指定 assetIds）入队后下载
+/// @param asset_ids 子集下载 asset_id 列表；`None`/省略=全量 cloud_only
 #[tauri::command]
 pub async fn icloud_sync_start_job(
   app: AppHandle,
   view: JobView,
+  asset_ids: Option<Vec<String>>,
   sidecar: tauri::State<'_, SidecarClientHandle>,
 ) -> Result<IcloudSyncStartJobResult, String> {
   let client = sidecar.client();
@@ -1271,7 +1273,8 @@ pub async fn icloud_sync_start_job(
       created_at,
     )?;
 
-    let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id)?;
+    let ids_ref = asset_ids.as_deref();
+    let enqueued = enqueue_cloud_only_for_sync(&conn, job_id, &apple_id, ids_ref)?;
     if enqueued == 0 {
       let _ = discard_sync_job(&conn, job_id);
       return Err("没有待下载项。请先「刷新 iCloud 状态」更新列表后再开始下载。".to_string());

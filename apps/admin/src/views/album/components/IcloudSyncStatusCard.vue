@@ -1,9 +1,7 @@
 <!--
-  iCloud 统一任务状态卡片（抽屉版）
-  职责：抽屉顶部下载/catalog 任务态与主按钮；不随列表 Tab 切换
-  适用：IcloudSyncFab 抽屉顶部
-  @note 删云为一次性消费（不占 jobs）；本卡只管 sync / catalog
-  @note 失败 / 会话失效 / 账号不一致走标题+主按钮行，不用 a-alert
+  iCloud 统一任务状态卡片（抽屉版）— 已由 IcloudSyncFooter 替代，保留供对照/回滚
+  职责：原抽屉顶部下载/catalog 任务态与主按钮
+  @note 2026-10-08 起 IcloudSyncFab 不再引用本组件
 -->
 <script setup lang="ts">
 import { useIcloudSyncJob, type IcloudSyncPrimaryAction } from "@/composables/useIcloudSyncJob";

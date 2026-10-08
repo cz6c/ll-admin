@@ -139,6 +139,7 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
   const activeDl = pairDownloadStatus(row.downloadStatus, row.liveMovDownloadStatus);
 
   if (activeDl === "failed") return "download_failed";
+  if (activeDl === "pending") return "downloading";
 
   // legacy DB 行可能仍为 modified_cloud，展示与待下载一致
 
@@ -150,22 +151,24 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
 const CLOUD_STATE_LABELS: Record<string, string> = {
   cloud_only: "待下载",
   modified_cloud: "待下载",
+  downloading: "下载中",
   synced: "已下载",
-  download_failed: "下载失败"
+  download_failed: "失败"
 };
 
-/** iCloud 资产状态 Tag 文案 */
+/** iCloud 资产状态角标文案（四态） */
 export function cloudStateLabel(state: string): string {
   return CLOUD_STATE_LABELS[state] ?? state;
 }
 
-/** iCloud 资产状态 Tag 颜色（Ant Design Vue） */
+/** iCloud 资产状态角标底色（CSS 色，供宫格 span background） */
 export function cloudStateColor(state: string): string {
   const normalized = state === "modified_cloud" ? "cloud_only" : state;
-  if (normalized === "synced") return "success";
-  if (normalized === "cloud_only") return "processing";
-  if (normalized === "download_failed") return "error";
-  return "default";
+  if (normalized === "synced") return "#49aa19";
+  if (normalized === "cloud_only") return "#1677dc";
+  if (normalized === "downloading") return "#1688ff";
+  if (normalized === "download_failed") return "#dc4446";
+  return "#8c8c8c";
 }
 
 /**

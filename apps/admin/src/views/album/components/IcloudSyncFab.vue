@@ -1,13 +1,13 @@
 <!--
   iCloud 下载浮动触发区
-  职责：右下角 FAB；抽屉顶部全局进度 +「下载到本地」网格浏览（在线 thumb）；勾选后删云
-  主流程：hydrate → FAB → StatusCard → 宫格（固定全部，无状态 Tab）；点格灯箱；
-  删云勾选对齐 QQ：先「勾选」再点格/框选，左键拖拽框选复用相册宫格；删除走进度小弹窗并在弹窗内出结果；结束后刷新云列表，失败项保留勾选
+  职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
+  主流程：hydrate → FAB → 工具栏（同步到本地 / 下载 / 移除）→ 宫格；
+  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；删云走进度弹窗；失败项保留勾选
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
 import IcloudSyncDeleteDialog from "./IcloudSyncDeleteDialog.vue";
-import IcloudSyncStatusCard from "./IcloudSyncStatusCard.vue";
+import IcloudSyncFooter from "./IcloudSyncFooter.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
@@ -18,6 +18,7 @@ import {
   getIcloudSyncCloudStateSummary,
   icloudProxiedThumbSrc,
   loadIcloudSyncCloudList,
+  type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetItem
 } from "@/api/icloudSync";
@@ -39,6 +40,9 @@ import { COLOR_NEUTRAL } from "@/utils/theme";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
+/** 意图先行：null=混排浏览；download/delete=筛态勾选 */
+type CloudIntent = null | "download" | "delete";
+
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
   displayStateLabel: string;
@@ -57,7 +61,11 @@ const {
   downloadProgressTick,
   canManageCloudSpace,
   refreshingCatalog,
+  starting,
+  showSyncFooter,
   onRefreshCatalog,
+  onSyncToLocal,
+  onStartSelected,
   onLoggedIn,
   onLogoutAccount,
   hydrateFromStorage,
@@ -71,8 +79,15 @@ const loggingOut = ref(false);
 /** 抽屉打开且未登录：内嵌登录面板（替代原弹窗） */
 const authPanelActive = computed(() => drawerOpen.value && !isLoggedIn.value);
 
-/** 无状态 Tab：宫格固定全部（待下载 / 已下载 / 失败） */
-const CLOUD_LIST_STATE = "all" as const;
+/** 意图筛选：idle=全部；下载=待下载；移除=已下载（失败并进待下载筛选语义由展示态覆盖） */
+const intent = ref<CloudIntent>(null);
+const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
+  if (intent.value === "download") return "cloud_only";
+  if (intent.value === "delete") return "synced";
+  return "all";
+});
+const selectMode = computed(() => intent.value != null);
+
 /** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
 const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
 const cloudPage = ref(1);
@@ -91,10 +106,8 @@ const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deleteDialogOpen = ref(false);
 const deleteDialogItems = ref<IcloudSyncDeleteAssetItem[]>([]);
-/** 勾选模式：点格切换选中（对齐 QQ）；未进入时点格仍开灯箱 */
-const selectMode = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
-/** 跨页勾选的行快照；无限滚动后当前页不含他页行，删云须用此 Map */
+/** 跨页勾选的行快照；无限滚动后当前页不含他页行，删云/子集下载须用此 Map */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
 
 function clearCloudSelection() {
@@ -102,14 +115,10 @@ function clearCloudSelection() {
   cloudSelectedRowsByKey.value = new Map();
 }
 
-function exitSelectMode() {
-  selectMode.value = false;
+function exitIntent() {
+  intent.value = null;
   clearCloudSelection();
-}
-
-function enterSelectMode() {
-  if (!guardCloudManageAction()) return;
-  selectMode.value = true;
+  void refreshCloudAssets();
 }
 
 /** 用当前页最新行刷新已选快照（catalog 刷新后 cloudState 可能已变） */
@@ -129,9 +138,13 @@ function selectedCloudRows(): CloudListDisplayRow[] {
 
 const selectedCloudCount = computed(() => cloudSelectedKeys.value.length);
 
-/** 已登录且可腾空间时：仅 synced 可勾选删云 */
+/** 当前意图下该行是否可勾选 */
 function canSelectCloudRow(row: CloudListDisplayRow): boolean {
-  return canManageCloudSpace.value && row.cloudState === "synced";
+  if (!canManageCloudSpace.value || !intent.value) return false;
+  const state = cloudListDisplayState(row);
+  if (intent.value === "delete") return state === "synced";
+  // 下载意图：待下载；失败行若仍在列表（活跃 job 外通常已回 cloud_only）也可勾
+  return state === "cloud_only" || state === "download_failed";
 }
 
 function isCloudRowSelected(row: CloudListDisplayRow): boolean {
@@ -151,11 +164,11 @@ function toggleCloudRowSelect(row: CloudListDisplayRow) {
   cloudSelectedRowsByKey.value = nextMap;
 }
 
-/** 勾选模式点格切换；否则开灯箱 */
+/** 意图选择态点格切换；否则开灯箱 */
 function onCloudCellClick(row: CloudListDisplayRow) {
-  if (selectMode.value) {
+  if (intent.value) {
     if (!canSelectCloudRow(row)) {
-      $feedback.message.info("仅已下载到本地的项可勾选移除");
+      $feedback.message.info(intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载");
       return;
     }
     toggleCloudRowSelect(row);
@@ -186,7 +199,6 @@ function applyCloudMarquee(keys: string[]) {
   }
   cloudSelectedKeys.value = [...nextMap.keys()];
   cloudSelectedRowsByKey.value = nextMap;
-  if (nextMap.size > 0) selectMode.value = true;
 }
 
 function restoreCloudSelectSnapshot() {
@@ -218,13 +230,12 @@ const {
   },
   onEnd(committed) {
     if (!committed) restoreCloudSelectSnapshot();
-    else if (cloudSelectedKeys.value.length > 0) selectMode.value = true;
     cloudSelectSnapshot = null;
   }
 });
 
 function onCloudPointerDown(event: PointerEvent) {
-  if (!canManageCloudSpace.value) return;
+  if (!canManageCloudSpace.value || !intent.value) return;
   const scroll = cloudGridScrollRef.value;
   const frame = cloudGridFrameRef.value;
   if (!scroll || !frame) return;
@@ -322,8 +333,50 @@ function guardCloudManageAction(): boolean {
   return false;
 }
 
-/** 勾选入口：有已下载项且无任务占用 */
-const canEnterSelectMode = computed(() => canManageCloudSpace.value && (cloudSummary.value?.synced ?? 0) > 0);
+const downloadIntentLabel = computed(() =>
+  intent.value === "download" && selectedCloudCount.value > 0 ? `下载 (${selectedCloudCount.value})` : "下载"
+);
+const deleteIntentLabel = computed(() =>
+  intent.value === "delete" && selectedCloudCount.value > 0 ? `移除 (${selectedCloudCount.value})` : "移除"
+);
+
+/**
+ * 进入或切换意图：清勾选并按意图重载列表
+ * @param next download | delete
+ */
+function enterIntent(next: "download" | "delete") {
+  if (!guardCloudManageAction()) return;
+  if (intent.value === next) return;
+  clearCloudSelection();
+  intent.value = next;
+  void refreshCloudAssets();
+}
+
+/** 意图先行：下载 — 首次进入筛选；再次点击执行子集入队 */
+async function onDownloadIntentClick() {
+  if (!guardCloudManageAction()) return;
+  if (intent.value !== "download") {
+    enterIntent("download");
+    return;
+  }
+  if (selectedCloudCount.value === 0) {
+    $feedback.message.warning("请先勾选要下载的照片");
+    return;
+  }
+  const ids = selectedCloudRows().map(r => r.assetId);
+  const ok = await onStartSelected(ids);
+  if (ok) exitIntent();
+}
+
+/** 意图先行：移除 — 首次进入筛选；再次点击走删云确认 */
+function onDeleteIntentClick() {
+  if (!guardCloudManageAction()) return;
+  if (intent.value !== "delete") {
+    enterIntent("delete");
+    return;
+  }
+  confirmDeleteCloud();
+}
 
 /**
  * 展示 catalog 时间键（Library=拍摄时间；Recents=加入时间）
@@ -356,7 +409,7 @@ async function refreshCloudAssets() {
     const list = await loadIcloudSyncCloudList({
       offset: 0,
       limit: cloudPageSize.value,
-      cloudState: CLOUD_LIST_STATE,
+      cloudState: cloudListState.value,
       ...cloudDateBounds()
     });
     cloudRows.value = list.items.map(toDisplayRow);
@@ -380,7 +433,7 @@ async function loadMoreCloudAssets() {
     const list = await loadIcloudSyncCloudList({
       offset: (next - 1) * cloudPageSize.value,
       limit: cloudPageSize.value,
-      cloudState: CLOUD_LIST_STATE,
+      cloudState: cloudListState.value,
       ...cloudDateBounds()
     });
     const rows = list.items.map(toDisplayRow);
@@ -495,13 +548,17 @@ async function onCloudDeleteFinished(keepAssetIds: string[]) {
   cloudSelectedRowsByKey.value = nextMap;
   try {
     await refreshCloudAssets();
+    // 全部移除成功则退出意图，回到混排
+    if (intent.value === "delete" && cloudSelectedKeys.value.length === 0) {
+      exitIntent();
+    }
   } finally {
     deletingCloud.value = false;
   }
 }
 
 watch(canManageCloudSpace, ok => {
-  if (!ok) exitSelectMode();
+  if (!ok && intent.value) exitIntent();
 });
 
 watch(drawerOpen, open => {
@@ -510,7 +567,10 @@ watch(drawerOpen, open => {
     void refreshAccountSettings();
     refreshCloudIfVisible();
   } else {
-    exitSelectMode();
+    if (intent.value) {
+      intent.value = null;
+      clearCloudSelection();
+    }
     closeCloudPreview();
   }
 });
@@ -600,10 +660,6 @@ onBeforeUnmount(() => {
       <IcloudSyncAuthPanel v-if="!isLoggedIn" :active="authPanelActive" @logged-in="onLoggedIn" />
 
       <template v-else>
-        <div class="upper-panel">
-          <IcloudSyncStatusCard />
-        </div>
-
         <div class="cloud-toolbar">
           <div class="toolbar-actions">
             <div class="toolbar-left">
@@ -616,18 +672,23 @@ onBeforeUnmount(() => {
               />
             </div>
             <div class="toolbar-right">
-              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()"> 刷新状态 </a-button>
+              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
+                <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">同步到本地</a-button>
               </a-tooltip>
-              <a-tooltip v-if="!selectMode" v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :disabled="!canEnterSelectMode" @click="enterSelectMode">选择</a-button>
-              </a-tooltip>
-              <template v-else>
-                <a-button danger :loading="deletingCloud" :disabled="selectedCloudCount === 0 || !canManageCloudSpace" @click="confirmDeleteCloud()">
-                  从 iCloud 移除{{ selectedCloudCount ? ` (${selectedCloudCount})` : "" }}
+              <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选待下载项后再下' } : { title: TASK_BUSY_HINT }">
+                <a-button :loading="starting && intent === 'download'" :disabled="!canManageCloudSpace" @click="onDownloadIntentClick">
+                  {{ downloadIntentLabel }}
                 </a-button>
-                <a-button @click="exitSelectMode">取消选择</a-button>
-              </template>
+              </a-tooltip>
+              <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选已下载项后从 iCloud 移除' } : { title: TASK_BUSY_HINT }">
+                <a-button danger :loading="deletingCloud" :disabled="!canManageCloudSpace" @click="onDeleteIntentClick">
+                  {{ deleteIntentLabel }}
+                </a-button>
+              </a-tooltip>
+              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">刷新状态</a-button>
+              </a-tooltip>
+              <a-button v-if="intent" @click="exitIntent">取消</a-button>
             </div>
           </div>
         </div>
@@ -680,6 +741,8 @@ onBeforeUnmount(() => {
             </span>
           </div>
         </div>
+
+        <IcloudSyncFooter v-if="showSyncFooter" />
       </template>
     </div>
 
@@ -757,13 +820,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   gap: 14px;
-}
-.upper-panel {
-  flex-shrink: 0;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: var(--color-fill-quaternary);
-  border: 1px solid var(--color-border-secondary);
 }
 .cloud-toolbar {
   flex-shrink: 0;

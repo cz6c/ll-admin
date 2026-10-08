@@ -449,9 +449,15 @@ export function icloudProxiedThumbSrc(assetId: string): string {
   return `http://icloudimg.localhost/?id=${encodeURIComponent(id)}&k=thumb`;
 }
 
-/** 开始同步：将已刷新的 cloud_only 入队并下载（不 catalog；无待下载项会报错） */
-export function startIcloudSyncJob(view: IcloudSyncJobView = "library") {
-  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", { view });
+/**
+ * 开始同步：将已刷新的 cloud_only 入队并下载（不 catalog；无待下载项会报错）
+ * @param assetIds 子集下载；省略/`null`=全量 cloud_only
+ */
+export function startIcloudSyncJob(view: IcloudSyncJobView = "library", assetIds?: string[] | null) {
+  return invoke<IcloudSyncStartJobResult>("icloud_sync_start_job", {
+    view,
+    assetIds: assetIds?.length ? assetIds : null
+  });
 }
 
 /** 从断点续传（paused_session / paused_user 等）；session 失效时需用户已重新登录 */

@@ -177,6 +177,7 @@ fn scan_all_media(root: &Path) -> Vec<MediaFile> {
       camera: None,
       width: None,
       height: None,
+      duration_ms: None,
       origin: None,
       origin_asset_id: None,
       origin_account: None,

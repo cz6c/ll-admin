@@ -40,6 +40,8 @@ export interface AlbumThumbReadyPayload {
   height?: number;
   /** Live mov / 视频 H.264 播放代理 */
   playbackPath?: string;
+  /** 普通视频时长回填（毫秒）；0 = 探测失败 */
+  durationMs?: number;
 }
 
 export type MediaKind = "image" | "video" | "livephoto";
@@ -73,6 +75,8 @@ export interface MediaFile {
   width?: number;
   /** 像素高（优先缩略图解码） */
   height?: number;
+  /** 视频时长（毫秒，仅普通视频）；未探测为空，0 = 探测失败（不显示） */
+  durationMs?: number;
   /** icloud | qzone | local；与 originAccount 组成图库键 */
   origin?: string;
   originAssetId?: string;

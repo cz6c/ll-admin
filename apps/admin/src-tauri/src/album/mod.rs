@@ -279,7 +279,8 @@ fn persist_playback_path(album_data_dir: &std::path::Path, source_path: &str, ca
   }
 }
 
-/// 打开视频时一次 ffprobe 取 codec+分辨率；分辨率落库（仅 path 行存在时生效）
+/// 打开视频时一次 ffprobe 取 codec+分辨率+时长；分辨率与时长落库（仅 path 行存在时生效）
+/// @note 时长只在读到时写入；Live 的 mov 不是 media 行主键，UPDATE 自然无命中
 fn probe_and_persist_video_stream(
   album_data_dir: &std::path::Path,
   source_path: &str,
@@ -293,15 +294,21 @@ fn probe_and_persist_video_stream(
   else {
     return (None, None, None);
   };
-  let (width, height) = match (info.width, info.height) {
-    (Some(w), Some(h)) => {
-      if let Ok(conn) = db::open_db(album_data_dir) {
+  let dims = match (info.width, info.height) {
+    (Some(w), Some(h)) => Some((w, h)),
+    _ => None,
+  };
+  if dims.is_some() || info.duration_ms.is_some() {
+    if let Ok(conn) = db::open_db(album_data_dir) {
+      if let Some((w, h)) = dims {
         let _ = db::update_dimensions(&conn, source_path, w, h);
       }
-      (Some(w), Some(h))
+      if let Some(ms) = info.duration_ms {
+        let _ = db::update_duration_batch(&conn, &[(source_path.to_string(), ms)]);
+      }
     }
-    _ => (None, None),
-  };
+  }
+  let (width, height) = dims.map_or((None, None), |(w, h)| (Some(w), Some(h)));
   (width, height, info.codec)
 }
 

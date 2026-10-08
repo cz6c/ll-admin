@@ -95,6 +95,7 @@ export function useAlbumScan(options: UseAlbumScanOptions) {
     if (payload.camera) file.camera ??= payload.camera;
     if (payload.width) file.width ??= payload.width;
     if (payload.height) file.height ??= payload.height;
+    if (payload.durationMs != null) file.durationMs = payload.durationMs;
   }
 
   // scan 重入保护：进行中只排队一次，结束后再扫

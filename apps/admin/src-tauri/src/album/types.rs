@@ -81,6 +81,9 @@ pub struct MediaFile {
   pub width: Option<u32>,
   /// 像素高（优先缩略图解码）
   pub height: Option<u32>,
+  /// 视频时长（毫秒，仅普通视频）；None=未探测，0=已探测但读不到（不再重试）
+  #[serde(default)]
+  pub duration_ms: Option<u64>,
   /// 来源图库键：`icloud` / `qzone` / `local`（discover 回填后本地为 `local`，不再长期为 None）
   pub origin: Option<String>,
   /// 云端 asset id（与 sync 表 asset_id 对应；断层后仍可追溯）
@@ -158,6 +161,9 @@ pub struct AlbumThumbReadyPayload {
   pub height: Option<u32>,
   /// Live mov / 视频播放代理；path 为 still（Live）或视频自身
   pub playback_path: Option<String>,
+  /// 普通视频时长回填（毫秒）；0 表示探测失败
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub duration_ms: Option<u64>,
 }
 
 /// 批量修改拍摄时间：单条 path → 目标时间

@@ -72,12 +72,41 @@ fn emit_thumb_ready(
       width,
       height,
       playback_path,
+      duration_ms: None,
+    },
+  );
+}
+
+/// 视频时长回填专用推送：只带时长与 ffprobe 分辨率，其余字段留空让前端保持原值
+fn emit_video_probe_ready(
+  app: &AppHandle,
+  path: &str,
+  duration_ms: u64,
+  width: Option<u32>,
+  height: Option<u32>,
+) {
+  let _ = app.emit(
+    ALBUM_THUMB_READY_EVENT,
+    AlbumThumbReadyPayload {
+      path: path.to_string(),
+      thumb_path: None,
+      preview_path: None,
+      capture_at: None,
+      capture_at_source: None,
+      capture_at_probed: None,
+      camera: None,
+      width,
+      height,
+      playback_path: None,
+      duration_ms: Some(duration_ms),
     },
   );
 }
 
 /// EXIF/sync 回填并行度（每线程自开只读 sync 库）
 const META_PARALLEL: usize = 4;
+/// 视频时长 ffprobe 并行度：单次只读容器头，进程启动为主要开销，4 路足够且不抢缩略图 CPU
+const VIDEO_PROBE_PARALLEL: usize = 4;
 /// Live 预热转码并行度：每路 HEVC→H.264 吃满多核+大内存；>2 易拖垮整机
 const LIVE_PROXY_PARALLEL: usize = 2;
 
@@ -134,10 +163,11 @@ fn persist_meta_for_paths(
   }
 }
 
-/// 缩略图后是否还有 meta / 尺寸 / Live 代理待办（已就绪则整段跳过）
+/// 缩略图后是否还有 meta / 尺寸 / 视频时长 / Live 代理待办（已就绪则整段跳过）
 fn has_post_thumb_work(conn: &rusqlite::Connection, root: &str) -> bool {
   db::has_missing_meta(conn, root).unwrap_or(false)
     || db::has_missing_image_dimensions(conn, root).unwrap_or(false)
+    || db::has_video_missing_duration(conn, root).unwrap_or(false)
     || db::has_live_missing_playback(conn, root).unwrap_or(false)
 }
 
@@ -190,6 +220,75 @@ fn backfill_missing_image_dimensions(
       Some(h),
       None,
     );
+  }
+}
+
+/// 普通视频补时长：并行 ffprobe（顺带拿真实分辨率），批量写库后逐条推送
+/// @note 探测失败写 0 占位，文件未变更前不再重试；无 ffprobe 时整段跳过、保持 NULL 待下次
+fn backfill_video_duration(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  root: &str,
+  ffprobe_bin: Option<&Path>,
+  cancel: &ScanCancelToken,
+  still_current: &(dyn Fn() -> bool + Sync),
+) {
+  let Some(ffprobe) = ffprobe_bin else {
+    return;
+  };
+  let Ok(paths) = db::list_videos_missing_duration(conn, root) else {
+    return;
+  };
+  if paths.is_empty() {
+    return;
+  }
+
+  let parallelism = VIDEO_PROBE_PARALLEL.min(paths.len()).max(1);
+  let chunk_size = paths.len().div_ceil(parallelism);
+  // (path, duration_ms, width, height)
+  let mut probed: Vec<(String, u64, Option<u32>, Option<u32>)> = Vec::with_capacity(paths.len());
+
+  std::thread::scope(|s| {
+    let handles: Vec<_> = paths
+      .chunks(chunk_size)
+      .map(|chunk| {
+        let token = cancel.clone();
+        s.spawn(move || {
+          let mut out = Vec::with_capacity(chunk.len());
+          for path in chunk {
+            if token.is_cancelled() {
+              break;
+            }
+            let info = ffmpeg::probe_video_stream_info(ffprobe, Path::new(path));
+            let duration = info.as_ref().and_then(|i| i.duration_ms).unwrap_or(0);
+            let (width, height) = info
+              .map(|i| (i.width, i.height))
+              .unwrap_or((None, None));
+            out.push((path.clone(), duration, width, height));
+          }
+          out
+        })
+      })
+      .collect();
+    for handle in handles {
+      probed.extend(handle.join().unwrap_or_default());
+    }
+  });
+
+  if !still_current() || cancel.is_cancelled() || probed.is_empty() {
+    return;
+  }
+
+  let durations: Vec<(String, u64)> = probed.iter().map(|(p, d, _, _)| (p.clone(), *d)).collect();
+  let _ = db::update_duration_batch(conn, &durations);
+  let dims: Vec<(String, u32, u32)> = probed
+    .iter()
+    .filter_map(|(p, _, w, h)| Some((p.clone(), (*w)?, (*h)?)))
+    .collect();
+  let _ = db::update_dimensions_batch(conn, &dims);
+
+  for (path, duration, width, height) in probed {
+    emit_video_probe_ready(app, &path, duration, width, height);
   }
 }
 
@@ -621,6 +720,7 @@ pub fn discover_groups(
     let mut camera = None;
     let mut width = None;
     let mut height = None;
+    let mut duration_ms = None;
     if let Some(row) = indexed.get(&file_path) {
       if row.size == size && row.modified == modified {
         if row
@@ -662,6 +762,7 @@ pub fn discover_groups(
           .cloned();
         width = row.width.filter(|&v| v > 0);
         height = row.height.filter(|&v| v > 0);
+        duration_ms = row.duration_ms;
       }
     }
 
@@ -711,6 +812,7 @@ pub fn discover_groups(
       camera,
       width,
       height,
+      duration_ms,
       origin: None,
       origin_asset_id: None,
       origin_account: None,
@@ -1037,6 +1139,16 @@ pub fn run_thumbnail_pipeline(
     if let Some(conn) = &conn {
       if has_post_thumb_work(conn, &root) {
         backfill_missing_meta(&app, conn, &root);
+        // 时长探测轻量，排在 Live 重转码之前，宫格角标尽早出现
+        let ffprobe_bin = ffmpeg::resolve_ffprobe_binary(&app);
+        backfill_video_duration(
+          &app,
+          conn,
+          &root,
+          ffprobe_bin.as_deref(),
+          &cancel,
+          &still_current,
+        );
         prewarm_live_playback(
           &app,
           conn,
@@ -1074,6 +1186,7 @@ mod tests {
       camera: None,
       width: None,
       height: None,
+      duration_ms: None,
       origin: None,
       origin_asset_id: None,
       origin_account: None,
@@ -1103,6 +1216,7 @@ mod tests {
       camera: None,
       width: None,
       height: None,
+      duration_ms: None,
       origin: None,
       origin_asset_id: None,
       origin_account: None,

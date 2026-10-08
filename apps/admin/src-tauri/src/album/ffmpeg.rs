@@ -115,15 +115,17 @@ fn which_tool_in_path(name: &str) -> Option<PathBuf> {
   None
 }
 
-/// 一次 ffprobe：编码名 + 宽高（打开视频时复用，避免多次起进程）
+/// 一次 ffprobe：编码名 + 宽高 + 时长（打开视频 / 扫描回填复用，避免多次起进程）
 #[derive(Debug, Clone, Default)]
 pub struct VideoStreamInfo {
   pub codec: Option<String>,
   pub width: Option<u32>,
   pub height: Option<u32>,
+  /// 容器时长（毫秒）；ffprobe 报 `N/A` 或 ≤0 时为 None
+  pub duration_ms: Option<u64>,
 }
 
-/// 读取视频流 codec / width / height；失败返回 None（stdout 空或非成功）
+/// 读取视频流 codec / width / height 与容器 duration；失败返回 None（stdout 空或非成功）
 pub fn probe_video_stream_info(ffprobe: &Path, input: &Path) -> Option<VideoStreamInfo> {
   let mut cmd = Command::new(ffprobe);
   cmd.args([
@@ -132,9 +134,9 @@ pub fn probe_video_stream_info(ffprobe: &Path, input: &Path) -> Option<VideoStre
     "-select_streams",
     "v:0",
     "-show_entries",
-    "stream=codec_name,width,height",
+    "stream=codec_name,width,height:format=duration",
     "-of",
-    "csv=p=0",
+    "default=noprint_wrappers=1",
   ]);
   cmd.arg(input);
   #[cfg(windows)]
@@ -147,35 +149,39 @@ pub fn probe_video_stream_info(ffprobe: &Path, input: &Path) -> Option<VideoStre
   if !output.status.success() {
     return None;
   }
-  // 典型：`hevc,1920,1080`
-  let line = String::from_utf8_lossy(&output.stdout);
-  let line = line.trim();
-  if line.is_empty() {
+  parse_video_stream_info(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// 解析 ffprobe `key=value` 输出；stream 与 format 两段混排，用 key 区分比按 CSV 列位更稳
+fn parse_video_stream_info(stdout: &str) -> Option<VideoStreamInfo> {
+  let mut info = VideoStreamInfo::default();
+  for line in stdout.lines() {
+    let Some((key, value)) = line.trim().split_once('=') else {
+      continue;
+    };
+    let value = value.trim();
+    match key.trim() {
+      "codec_name" if !value.is_empty() => info.codec = Some(value.to_lowercase()),
+      "width" => info.width = value.parse::<u32>().ok().filter(|&w| w > 0),
+      "height" => info.height = value.parse::<u32>().ok().filter(|&h| h > 0),
+      "duration" => {
+        info.duration_ms = value
+          .parse::<f64>()
+          .ok()
+          .filter(|s| s.is_finite() && *s > 0.0)
+          .map(|s| (s * 1000.0).round() as u64)
+      }
+      _ => {}
+    }
+  }
+  if info.codec.is_none()
+    && info.width.is_none()
+    && info.height.is_none()
+    && info.duration_ms.is_none()
+  {
     return None;
   }
-  let mut parts = line.split(|c| c == ',' || c == '\n' || c == '\r');
-  let codec_raw = parts.next()?.trim().to_lowercase();
-  let codec = if codec_raw.is_empty() {
-    None
-  } else {
-    Some(codec_raw)
-  };
-  let width = parts
-    .next()
-    .and_then(|s| s.trim().parse::<u32>().ok())
-    .filter(|&w| w > 0);
-  let height = parts
-    .next()
-    .and_then(|s| s.trim().parse::<u32>().ok())
-    .filter(|&h| h > 0);
-  if codec.is_none() && width.is_none() && height.is_none() {
-    return None;
-  }
-  Some(VideoStreamInfo {
-    codec,
-    width,
-    height,
-  })
+  Some(info)
 }
 
 /// 读取视频流 codec_name（如 hevc / h264）；无视频流或失败返回 None
@@ -440,6 +446,24 @@ mod tests {
     assert!(needs_playback_transcode("hev1"));
     assert!(!needs_playback_transcode("h264"));
     assert!(!needs_playback_transcode("vp9"));
+  }
+
+  #[test]
+  fn parse_stream_info_with_duration() {
+    let out = "codec_name=hevc\r\nwidth=1920\r\nheight=1080\r\nduration=12.345678\r\n";
+    let info = parse_video_stream_info(out).expect("parsed");
+    assert_eq!(info.codec.as_deref(), Some("hevc"));
+    assert_eq!(info.width, Some(1920));
+    assert_eq!(info.height, Some(1080));
+    assert_eq!(info.duration_ms, Some(12_346));
+  }
+
+  #[test]
+  fn parse_stream_info_duration_na() {
+    let info = parse_video_stream_info("codec_name=h264\nwidth=640\nheight=480\nduration=N/A\n")
+      .expect("parsed");
+    assert_eq!(info.duration_ms, None);
+    assert!(parse_video_stream_info("").is_none());
   }
 
   #[test]

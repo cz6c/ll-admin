@@ -86,6 +86,7 @@ fn create_schema(conn: &Connection) -> Result<(), String> {
         camera TEXT,
         width INTEGER,
         height INTEGER,
+        duration_ms INTEGER,
         content_hash TEXT,
         hash_algo TEXT,
         origin TEXT,
@@ -112,7 +113,7 @@ pub fn load_indexed_paths(
   let mut stmt = conn
     .prepare(
       "SELECT path, size, modified, thumb_path, preview_path, playback_path, capture_at, camera, width, height,
-              capture_at_source, capture_at_probed
+              capture_at_source, capture_at_probed, duration_ms
        FROM media WHERE root = ?1",
     )
     .map_err(|e| format!("准备索引查询失败: {e}"))?;
@@ -132,6 +133,7 @@ pub fn load_indexed_paths(
         height: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
         capture_at_source: row.get(10)?,
         capture_at_probed: row.get::<_, i64>(11).unwrap_or(0) != 0,
+        duration_ms: row.get::<_, Option<i64>>(12)?.map(|v| v.max(0) as u64),
       })
     })
     .map_err(|e| format!("查询索引失败: {e}"))?
@@ -156,6 +158,7 @@ pub struct IndexedRow {
   pub height: Option<u32>,
   pub capture_at_source: Option<String>,
   pub capture_at_probed: bool,
+  pub duration_ms: Option<u64>,
 }
 
 /// 从 DB 重建 groups（缓存命中路径：dirty=false 时使用，跳过 WalkDir 全量重扫）
@@ -166,7 +169,8 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
     .prepare(
       "SELECT path, name, kind, size, modified, ext, thumb_path, preview_path, playback_path, video_path, rel_dir,
               capture_at, camera, width, height, capture_at_source, capture_at_probed,
-              origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude
+              origin, origin_asset_id, origin_account, origin_album, added_at, latitude, longitude,
+              duration_ms
        FROM media WHERE root = ?1 ORDER BY rel_dir, name",
     )
     .map_err(|e| format!("准备缓存查询失败: {e}"))?;
@@ -224,6 +228,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
       let added_at = added_at.filter(|s| !s.trim().is_empty());
       let latitude: Option<f64> = row.get(22)?;
       let longitude: Option<f64> = row.get(23)?;
+      let duration_ms = row.get::<_, Option<i64>>(24)?.map(|v| v.max(0) as u64);
       Ok((rel_dir.clone(), dir_name, MediaFile {
         path: row.get(0)?,
         name: row.get(1)?,
@@ -242,6 +247,7 @@ pub fn load_groups(conn: &Connection, root: &str) -> Result<Vec<MediaGroup>, Str
         camera,
         width,
         height,
+        duration_ms,
         origin,
         origin_asset_id,
         origin_account,
@@ -367,6 +373,12 @@ fn upsert_media_impl(
         height = CASE
           WHEN media.modified = excluded.modified AND media.size = excluded.size
             THEN media.height
+          ELSE NULL
+        END,
+        -- 时长只由回填写入，INSERT 不带；文件变更后清空以便重新探测
+        duration_ms = CASE
+          WHEN media.modified = excluded.modified AND media.size = excluded.size
+            THEN media.duration_ms
           ELSE NULL
         END,
         content_hash = CASE
@@ -734,6 +746,7 @@ pub fn upsert_media_from_sync(
     camera: fill.camera.clone(),
     width: None,
     height: None,
+    duration_ms: None,
     origin: nonempty(&item.origin),
     origin_asset_id: nonempty(&item.origin_asset_id),
     origin_account: nonempty(&item.origin_account),
@@ -1043,6 +1056,53 @@ pub fn update_dimensions_batch(
   }
   tx.commit()
     .map_err(|e| format!("提交分辨率批量事务失败: {e}"))?;
+  Ok(())
+}
+
+/// 是否存在未探测时长的普通视频（LIMIT 1，供 pipeline 早退）
+/// @note 实况 MOV 挂在 livephoto 行上，按产品约定不显示时长，故只查 kind='video'
+pub fn has_video_missing_duration(conn: &Connection, root: &str) -> Result<bool, String> {
+  conn
+    .query_row(
+      "SELECT 1 FROM media WHERE root = ?1 AND kind = 'video' AND duration_ms IS NULL LIMIT 1",
+      params![root],
+      |_| Ok(true),
+    )
+    .optional()
+    .map(|o| o.unwrap_or(false))
+    .map_err(|e| format!("探测缺视频时长失败: {e}"))
+}
+
+/// 未探测时长的普通视频路径
+pub fn list_videos_missing_duration(conn: &Connection, root: &str) -> Result<Vec<String>, String> {
+  let mut stmt = conn
+    .prepare("SELECT path FROM media WHERE root = ?1 AND kind = 'video' AND duration_ms IS NULL")
+    .map_err(|e| format!("准备缺视频时长查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![root], |row| row.get::<_, String>(0))
+    .map_err(|e| format!("查询缺视频时长失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+  Ok(rows)
+}
+
+/// 批量写入视频时长（单事务）；0 = 探测失败占位，避免每轮扫描重复起 ffprobe
+pub fn update_duration_batch(conn: &Connection, updates: &[(String, u64)]) -> Result<(), String> {
+  if updates.is_empty() {
+    return Ok(());
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启时长批量事务失败: {e}"))?;
+  for (path, duration_ms) in updates {
+    tx.execute(
+      "UPDATE media SET duration_ms = ?2 WHERE path = ?1",
+      params![path, i64::try_from(*duration_ms).unwrap_or(i64::MAX)],
+    )
+    .map_err(|e| format!("更新视频时长失败: {e}"))?;
+  }
+  tx.commit()
+    .map_err(|e| format!("提交时长批量事务失败: {e}"))?;
   Ok(())
 }
 

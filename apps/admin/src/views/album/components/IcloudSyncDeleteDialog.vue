@@ -113,15 +113,7 @@ watch(open, value => {
 </script>
 
 <template>
-  <CcDialog
-    v-model:open="open"
-    title="从 iCloud 移除"
-    :width="420"
-    :closable="phase === 'done'"
-    :mask-closable="false"
-    :keyboard="false"
-    :footer="phase === 'running' ? null : undefined"
-  >
+  <CcDialog v-model:open="open" title="从 iCloud 移除" :width="420" :closable="phase === 'done'" :mask-closable="false" :keyboard="false" :footer="null">
     <div v-if="phase === 'running'" class="flex flex-col gap-8px py-16px">
       <a-progress :percent="percent" status="active" />
       <span class="progress-text">{{ progressText }}</span>

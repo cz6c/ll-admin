@@ -88,8 +88,6 @@ const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
 });
 const selectMode = computed(() => intent.value != null);
 
-/** 按拍摄/加入时间区间筛选（YYYY-MM-DD） */
-const cloudDateRange = ref<[Dayjs, Dayjs] | null>(null);
 const cloudPage = ref(1);
 const cloudPageSize = ref(100);
 const cloudTotal = ref(0);
@@ -334,11 +332,9 @@ function guardCloudManageAction(): boolean {
 }
 
 const downloadIntentLabel = computed(() =>
-  intent.value === "download" && selectedCloudCount.value > 0 ? `下载 (${selectedCloudCount.value})` : "下载"
+  intent.value === "download" && selectedCloudCount.value > 0 ? `批量下载 (${selectedCloudCount.value})` : "批量下载"
 );
-const deleteIntentLabel = computed(() =>
-  intent.value === "delete" && selectedCloudCount.value > 0 ? `移除 (${selectedCloudCount.value})` : "移除"
-);
+const deleteIntentLabel = computed(() => (intent.value === "delete" && selectedCloudCount.value > 0 ? `批量移除 (${selectedCloudCount.value})` : "批量移除"));
 
 /**
  * 进入或切换意图：清勾选并按意图重载列表
@@ -389,16 +385,6 @@ function formatSortKeyTime(sortKey: string | undefined | null): string {
   return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : raw;
 }
 
-/** 当前时间区间筛选参数（传给 load_assets） */
-function cloudDateBounds(): { dateFrom?: string; dateTo?: string } {
-  if (!cloudDateRange.value) return {};
-  const [from, to] = cloudDateRange.value;
-  return {
-    dateFrom: from?.format("YYYY-MM-DD"),
-    dateTo: to?.format("YYYY-MM-DD")
-  };
-}
-
 async function refreshCloudAssets() {
   if (!isLoggedIn.value) return;
   loadingCloud.value = true;
@@ -409,8 +395,7 @@ async function refreshCloudAssets() {
     const list = await loadIcloudSyncCloudList({
       offset: 0,
       limit: cloudPageSize.value,
-      cloudState: cloudListState.value,
-      ...cloudDateBounds()
+      cloudState: cloudListState.value
     });
     cloudRows.value = list.items.map(toDisplayRow);
     cloudTotal.value = list.total;
@@ -433,8 +418,7 @@ async function loadMoreCloudAssets() {
     const list = await loadIcloudSyncCloudList({
       offset: (next - 1) * cloudPageSize.value,
       limit: cloudPageSize.value,
-      cloudState: cloudListState.value,
-      ...cloudDateBounds()
+      cloudState: cloudListState.value
     });
     const rows = list.items.map(toDisplayRow);
     cloudRows.value = [...cloudRows.value, ...rows];
@@ -480,12 +464,6 @@ function resetCloudSentinel() {
     );
     cloudSentinelObserver.observe(el);
   });
-}
-
-function onCloudFilterChange() {
-  cloudPage.value = 1;
-  clearCloudSelection();
-  void refreshCloudAssets();
 }
 
 /** 抽屉打开且已登录时刷新列表 */
@@ -663,20 +641,16 @@ onBeforeUnmount(() => {
         <div class="cloud-toolbar">
           <div class="toolbar-actions">
             <div class="toolbar-left">
-              <a-range-picker
-                v-model:value="cloudDateRange"
-                class="cloud-date-range"
-                :placeholder="['拍摄时间起始', '拍摄时间结束']"
-                allow-clear
-                @change="onCloudFilterChange"
-              />
+              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
+                <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">下载全部</a-button>
+              </a-tooltip>
             </div>
             <div class="toolbar-right">
-              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
-                <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">同步到本地</a-button>
+              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
+                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">刷新状态</a-button>
               </a-tooltip>
               <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选待下载项后再下' } : { title: TASK_BUSY_HINT }">
-                <a-button :loading="starting && intent === 'download'" :disabled="!canManageCloudSpace" @click="onDownloadIntentClick">
+                <a-button type="primary" ghost :loading="starting && intent === 'download'" :disabled="!canManageCloudSpace" @click="onDownloadIntentClick">
                   {{ downloadIntentLabel }}
                 </a-button>
               </a-tooltip>
@@ -684,9 +658,6 @@ onBeforeUnmount(() => {
                 <a-button danger :loading="deletingCloud" :disabled="!canManageCloudSpace" @click="onDeleteIntentClick">
                   {{ deleteIntentLabel }}
                 </a-button>
-              </a-tooltip>
-              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">刷新状态</a-button>
               </a-tooltip>
               <a-button v-if="intent" @click="exitIntent">取消</a-button>
             </div>
@@ -819,7 +790,7 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  gap: 14px;
+  gap: 16px;
 }
 .cloud-toolbar {
   flex-shrink: 0;
@@ -837,9 +808,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-.cloud-date-range {
-  width: 260px;
 }
 .cloud-grid-wrap {
   flex: 1 1 0;

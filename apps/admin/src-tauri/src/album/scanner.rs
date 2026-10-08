@@ -787,6 +787,20 @@ pub fn discover_groups(
   });
 
   db::sync_media_index(&conn, album_dir, root, &groups, &alive_paths)?;
+  // 纠正图库键是 best-effort：失败只记日志，不能拖垮扫描主流程
+  for (source, sync_dir) in [
+    ("icloud", crate::icloud_sync::resolve_sync_output_dir(app)),
+    ("qzone", crate::qzone_sync::resolve_sync_output_dir(app)),
+  ] {
+    let Some(sync_dir) = sync_dir else {
+      continue;
+    };
+    match db::reconcile_sync_dir_origins(&conn, root, source, &sync_dir) {
+      Ok(n) if n > 0 => log::info!("album scan: 按 {source} 输出目录纠正图库键 {n} 条"),
+      Ok(_) => {}
+      Err(e) => log::warn!("album scan: 按 {source} 输出目录纠正图库键失败: {e}"),
+    }
+  }
   db::backfill_local_origin(&conn, root)?;
 
   // discover 构造行 origin 恒为 None（保留 upsert COALESCE）；回填后回读再补本地键

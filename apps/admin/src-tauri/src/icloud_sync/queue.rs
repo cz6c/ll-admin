@@ -665,7 +665,25 @@ fn fetch_catalog(
   }
 
   let raw_items = event.items.ok_or_else(|| "catalog 响应缺少 items".to_string())?;
-  parse_catalog_items(&raw_items)
+  let items = parse_catalog_items(&raw_items)?;
+  let shared_n = items
+    .iter()
+    .filter(|i| i.catalog_scope == super::types::CatalogScope::Shared)
+    .count();
+  log::info!(
+    "icloud catalog: view={} items={} shared={} include_hidden={} include_shared={}",
+    view.as_str(),
+    items.len(),
+    shared_n,
+    include_hidden,
+    include_shared_library
+  );
+  if include_shared_library && shared_n == 0 {
+    log::warn!(
+      "icloud catalog: sync_shared_library=true but 0 shared items (no SharedSync zones or empty library)"
+    );
+  }
+  Ok(items)
 }
 
 fn emit_cloud_state_changed(app: &AppHandle) {

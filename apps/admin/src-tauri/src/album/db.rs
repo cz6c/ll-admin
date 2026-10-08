@@ -492,6 +492,113 @@ pub fn sync_media_index(
   Ok(())
 }
 
+/// 路径比对键：统一分隔符；Windows 文件系统大小写不敏感，再转小写
+fn path_match_key(path: &str) -> String {
+  let unified = path.replace('\\', "/");
+  if cfg!(windows) {
+    unified.to_lowercase()
+  } else {
+    unified
+  }
+}
+
+/**
+ * 按同步输出目录结构纠正图库键：命中的行改写为 icloud / qzone 身份
+ *
+ * 多图库前同步落盘的文件在 media 中没有 origin，曾被 `backfill_local_origin`
+ * 误标为 `local` / `_local`。只依据 media.db 自身路径判定：同步库会随 catalog
+ * 刷新覆盖（云端已删、本地保留的文件记录会被清掉），不可作为来源依据。
+ * 须在 `backfill_local_origin` 之前调用，避免新扫入的同步文件先被标成本地。
+ *
+ * 输出目录内非同步命名的媒体在扫描前已被收容进 `pending/`，
+ * 因此 `{sync_dir}/{账号}/[子目录/]文件` 必为该同步源产物：
+ * - 账号 = 第一级目录名（落盘时 `account_dir_name(账号)`，邮箱 / QQ 号原样保留）
+ * - origin_album = 账号与文件之间的子目录（iCloud 的 Hidden/Shared、QQ 的相册名），无则不改
+ * - origin_asset_id 无从得知，保持原值
+ * 仅改写「无身份」或「local + _local」的行；`pending/` 内的异物仍归本地。
+ *
+ * @param conn 已打开的 media.db 连接
+ * @param root 当前扫描根目录（与 media.root 一致）
+ * @param origin 同步源键（`icloud` / `qzone`）
+ * @param sync_dir 该同步源输出目录
+ * @returns 被纠正的行数
+ */
+pub fn reconcile_sync_dir_origins(
+  conn: &Connection,
+  root: &str,
+  origin: &str,
+  sync_dir: &Path,
+) -> Result<u64, String> {
+  let dir_unified = sync_dir
+    .to_string_lossy()
+    .replace('\\', "/")
+    .trim_end_matches('/')
+    .to_string();
+  if dir_unified.is_empty() {
+    return Ok(0);
+  }
+  let prefix_key = format!("{}/", path_match_key(&dir_unified));
+  let pending_dir_name = "pending";
+
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT path FROM media
+      WHERE root = ?1
+        AND (
+          ((origin IS NULL OR trim(origin) = '') AND (origin_account IS NULL OR trim(origin_account) = ''))
+          OR (lower(trim(origin)) = 'local' AND trim(origin_account) = '_local')
+        )
+      "#,
+    )
+    .map_err(|e| format!("准备同步目录图库键查询失败: {e}"))?;
+  let candidates: Vec<String> = stmt
+    .query_map(params![root], |row| row.get(0))
+    .map_err(|e| format!("查询同步目录图库键失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .collect();
+  drop(stmt);
+
+  // (path, 账号, 子目录)
+  let mut matched: Vec<(String, String, Option<String>)> = Vec::new();
+  for path in candidates {
+    let unified = path.replace('\\', "/");
+    if !path_match_key(&unified).starts_with(&prefix_key) {
+      continue;
+    }
+    // 大小写不敏感比对前缀，但账号 / 相册名须保留原大小写，故从原串按字节切
+    let Some(rel) = unified.get(dir_unified.len() + 1..) else {
+      continue;
+    };
+    let segs: Vec<&str> = rel.split('/').filter(|s| !s.is_empty()).collect();
+    if segs.len() < 2 || segs[0].eq_ignore_ascii_case(pending_dir_name) {
+      continue;
+    }
+    let album = (segs.len() > 2).then(|| segs[1..segs.len() - 1].join("/"));
+    matched.push((path, segs[0].to_string(), album));
+  }
+  if matched.is_empty() {
+    return Ok(0);
+  }
+
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启同步目录图库键事务失败: {e}"))?;
+  let mut fixed = 0u64;
+  for (path, account, album) in matched {
+    fixed += tx
+      .execute(
+        "UPDATE media SET origin = ?2, origin_account = ?3, origin_album = COALESCE(?4, origin_album)
+         WHERE path = ?1",
+        params![path, origin, account, album],
+      )
+      .map_err(|e| format!("按同步目录纠正图库键失败: {e}"))? as u64;
+  }
+  tx.commit()
+    .map_err(|e| format!("提交同步目录图库键事务失败: {e}"))?;
+  Ok(fixed)
+}
+
 /**
  * 扫描后回填本地图库键：无同步身份的行写入 `local` / `_local`
  *
@@ -1459,6 +1566,91 @@ mod tests {
       .expect("icloud row");
     assert_eq!(icloud_origin, "icloud");
     assert_eq!(icloud_account, "user@icloud.com");
+
+    let _ = std::fs::remove_dir_all(&album_dir);
+  }
+
+  #[test]
+  fn reconcile_sync_dir_origins_uses_account_dir() {
+    let nanos = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("time")
+      .as_nanos();
+    let album_dir = std::env::temp_dir().join(format!("album_reconcile_dir_{nanos}"));
+    let root = album_dir.join("photos");
+    let sync_dir = root.join("iCloudSync");
+    std::fs::create_dir_all(&root).expect("root");
+    let conn = open_db(&album_dir).expect("db");
+    let root_str = root.to_string_lossy().to_string();
+
+    let insert = |rel: &[&str], origin: Option<&str>, account: Option<&str>| {
+      let mut p = root.clone();
+      for seg in rel {
+        p = p.join(seg);
+      }
+      let path = p.to_string_lossy().to_string();
+      conn
+        .execute(
+          r#"
+          INSERT INTO media(
+            path, root, rel_dir, name, kind, size, modified, ext, scanned_at, fail_count,
+            origin, origin_account
+          ) VALUES (?1, ?2, '.', 'x.jpg', 'image', 1, 1, 'jpg', 0, 0, ?3, ?4)
+          "#,
+          params![path, root_str, origin, account],
+        )
+        .expect("insert");
+      path
+    };
+    let local = (Some("local"), Some("_local"));
+    let in_account = insert(
+      &["iCloudSync", "User@qq.com", "20240105_094445_98ca8f4bfcbda927.HEIC"],
+      local.0,
+      local.1,
+    );
+    let in_hidden = insert(
+      &["iCloudSync", "User@qq.com", "Hidden", "20240105_094445_1111111111111111.jpg"],
+      local.0,
+      local.1,
+    );
+    let unlabeled = insert(
+      &["iCloudSync", "User@qq.com", "20240105_094445_2222222222222222.jpg"],
+      None,
+      None,
+    );
+    let other_account = insert(
+      &["iCloudSync", "User@qq.com", "20240105_094445_3333333333333333.jpg"],
+      Some("icloud"),
+      Some("other@icloud.com"),
+    );
+    let in_pending = insert(&["iCloudSync", "pending", "IMG_1.JPG"], local.0, local.1);
+    let outside = insert(&["2017-2019", "IMG_2.JPG"], local.0, local.1);
+
+    let fixed =
+      reconcile_sync_dir_origins(&conn, &root_str, "icloud", &sync_dir).expect("reconcile");
+    assert_eq!(fixed, 3);
+
+    let identity = |path: &str| -> (String, String, Option<String>) {
+      conn
+        .query_row(
+          "SELECT origin, origin_account, origin_album FROM media WHERE path = ?1",
+          params![path],
+          |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("row")
+    };
+    assert_eq!(identity(&in_account), ("icloud".into(), "User@qq.com".into(), None));
+    assert_eq!(
+      identity(&in_hidden),
+      ("icloud".into(), "User@qq.com".into(), Some("Hidden".into()))
+    );
+    assert_eq!(identity(&unlabeled), ("icloud".into(), "User@qq.com".into(), None));
+    assert_eq!(
+      identity(&other_account),
+      ("icloud".into(), "other@icloud.com".into(), None)
+    );
+    assert_eq!(identity(&in_pending), ("local".into(), "_local".into(), None));
+    assert_eq!(identity(&outside), ("local".into(), "_local".into(), None));
 
     let _ = std::fs::remove_dir_all(&album_dir);
   }

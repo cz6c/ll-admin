@@ -1010,7 +1010,7 @@ pub fn run_thumbnail_pipeline(
       emit_scan_progress(&app, "thumbnails", 0, thumb_total);
       emitted_progress_total = true;
     } else if still_current() {
-      // 同步入队追加后刷新 total，便于进度条与收尾 failed 对齐
+      // pending 追加（如刷新时旧管线仍在跑）后刷新 total，便于进度条与收尾 failed 对齐
       let done = thumbs_attempted.saturating_sub(batch_len);
       emit_scan_progress(&app, "thumbnails", done, thumb_total);
     }

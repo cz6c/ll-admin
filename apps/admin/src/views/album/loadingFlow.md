@@ -159,7 +159,7 @@ flowchart LR
 | 命令 | 作用 |
 |------|------|
 | `album_scan(root, force?)` | dirty/force → discover 或 load_groups；按需起 pipeline（出图尺寸用编译期常量） |
-| 同步入队 `enqueue_thumbs_from_sync` | iCloud/QQ 落盘后追加共享 pending；**已有管线只追加**，空闲才开 worker |
+| 同步入库 `enqueue_thumbs_from_sync` | iCloud/QQ 落盘后**仅静默** upsert `media.db`（origin/时间）；**不**入 pending、**不**启出图；用户点刷新 `album_scan` 再挂列表并出图 |
 | `album_cancel_scan` | 取消 pipeline（离页）；force 全扫由内部 cancel |
 | `album_get/save_settings` | `rootDir`；改 root 会强制下次全扫 |
 | `album_ensure_playback` | 单独视频（及 Live 兜底）懒转码；**顺带 ffprobe 分辨率落库** |

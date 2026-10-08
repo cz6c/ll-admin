@@ -19,7 +19,7 @@ pub(crate) mod types;
 mod watcher;
 
 pub use types::{AlbumSettings, DuplicateGroup, MediaGroup};
-/// 同步落盘后入队相册缩略图（与 scan 共用管线）
+/// 同步落盘后静默写入 media.db（不出图；刷新 album_scan 再出图）
 pub use thumb_ingress::enqueue_thumbs_from_sync;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -268,6 +268,25 @@ pub async fn album_scan(
     if let Ok(mut guard) = state.lock() {
       guard.pipeline = Some(handle);
     }
+  } else {
+    // 旧管线仍在跑：把本次列表缺图 path 追加进 pending，由现有 worker drain
+    // （同步入库不再写 pending，刷新时若管线未结束须补挂，否则新图会一直无缩略图）
+    let thumb_pending = {
+      let guard = state.lock().map_err(|e| format!("锁失败: {e}"))?;
+      Arc::clone(&guard.thumb_pending)
+    };
+    let mut seed: Vec<String> = Vec::new();
+    for group in &groups {
+      for file in &group.files {
+        let needs_thumb = file.thumb_path.is_none();
+        let needs_preview =
+          thumbnail::is_heif_ext(&file.ext) && file.preview_path.is_none();
+        if needs_thumb || needs_preview {
+          seed.push(file.path.clone());
+        }
+      }
+    }
+    thumb_pending.extend(seed);
   }
 
   Ok(groups)

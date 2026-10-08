@@ -32,7 +32,7 @@
   → 灯箱预览 / 全部下载 / 下载本相册
   → catalog → state.db（cloud_only → synced）
   → 落盘 {albumRoot}/QzoneSync/<uin>/<相册名>/{yyyyMMdd}_{HHmmss}_{id16}.ext
-  → album_scan 发现 → media.db
+  → 静默 upsert media.db（origin）；刷新 album_scan 再挂宫格并出图
 ```
 
 | 原则 | 含义 |
@@ -105,7 +105,7 @@
 
 - 扫描：`QzoneSync` 输出目录异物收容（命名谓词 `is_sync_asset_filename`）
 - meta：下载时写入 media（`origin` 拍摄时间等）；事后回填仅 EXIF → 文件名前缀（**不**再查 QQ state.db）
-- 缩略图：下载/跳过已存在成功后 `enqueue_thumbs_from_sync`，与相册 scan **同一管线**（共享 pending，不另开 worker 互盖）
+- 入库：下载/跳过已存在成功后 `enqueue_thumbs_from_sync` **仅静默**写 `media.db`；**不**启出图、不改底下宫格。任务 `done` 且有新增时轻提示；用户点「刷新」再 `album_scan` 挂列表并出图
 
 ---
 

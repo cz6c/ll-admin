@@ -163,7 +163,7 @@ flowchart LR
 12. sync/catalog 用 `try_claim_job`；删云用内存旗标；`require_no_incomplete_task` 拦截并行。
 13. **删云前本地必须在盘**；否则 `rejected_local_missing`。
 14. **主动退出不 discard**；**换号登录 discard**；**会话失效 paused_session 不 discard**。
-15. **同步落盘后入队相册缩略图**：与 `album_scan` 共用 single-flight 管线 + 共享 pending；只追加不 new pipeline；关抽屉不影响；用户刷新才 cancel/epoch。盘上已存在跳过下载时同样走 media ingress。
+15. **同步落盘后静默写入相册 media**：`enqueue_thumbs_from_sync` 只 upsert `media.db`（origin 等）；**不**入出图 pending、**不**启 worker，避免同步中底下宫格「加载文件」进度。任务完成后 UI 轻提示；用户点「刷新」走 `album_scan` 再挂列表并出图。盘上已存在跳过下载时同样静默 ingress。
 15. **`modified_cloud` 已并入 `cloud_only`**（schema v3 迁移）；diff 的 modified 也写 `cloud_only`。
 16. 删云成功 **DELETE assets 行**（同步表只反映云端）；本地 media/文件不动。
 17. catalog 刷新覆盖：不见于 catalog 的行硬删除。

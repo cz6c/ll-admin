@@ -664,13 +664,21 @@ onMounted(async () => {
     unlisten = await listen<QzoneJobSnapshot>("qzone-sync://progress", ev => {
       const prev = job.value.status;
       job.value = ev.payload;
+      const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
+      // 下载任务结束：提示刷新本地相册（同步中不扰动底下宫格；点刷新才出图挂列表）
+      if (wasActive && ev.payload.status === "done") {
+        const n = ev.payload.updated ?? 0;
+        if (n > 0) {
+          $feedback.message.info(`有 ${n} 张新照片已下载到本地，点击「刷新」可在相册中查看`);
+        }
+      }
       // 任务结束：刷新当前相册角标（reconcile 后 downloaded 会变）
       if (
         drawerOpen.value &&
         loggedIn.value &&
         activeAlbumId.value &&
         (ev.payload.status === "done" || ev.payload.status === "failed" || ev.payload.status === "idle") &&
-        (prev === "cataloging" || prev === "downloading" || prev === "paused")
+        wasActive
       ) {
         void selectAlbum(activeAlbumId.value, true);
       }

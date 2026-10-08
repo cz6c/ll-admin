@@ -1,25 +1,20 @@
-//! 相册缩略图入队（与 album_scan 共用 single-flight 管线）
-//! 职责：同步落盘后把 path 写入共享 pending；已有 worker 则只追加，空闲才启动
-//! 适用：icloud_sync / qzone_sync 下载成功；禁止每次入队 new pipeline 覆盖相册管线
-//! @note 下载即 upsert media（origin 元数据 + 初始 capture_at），与 sync 表此后断层
+//! 同步落盘后的相册 media 静默入库
+//! 职责：iCloud/QQ 下载成功后 upsert media.db（origin / capture_at）；**不**入出图 pending、**不**启 worker
+//! 适用：同步为旁路任务，底下宫格浏览不被「加载文件」进度打扰；用户点刷新 `album_scan` 再出图并挂列表
+//! @note 下载即 upsert media（与 sync 表此后断层）；缩略图由下次 album_scan 的 pipeline 从缺图列表 seed
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::path::Path;
+use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use super::db;
-use super::ffmpeg;
-use super::scan_state::ScanCancelToken;
-use super::scanner;
 use super::settings::{self, album_dir};
 use super::thumbnail;
 use super::types::SyncedMediaIngress;
-use super::AlbumState;
 
-/// 进程内共享待出图路径（scan 与同步共同写入）
+/// 进程内共享待出图路径（仅 `album_scan` pipeline 写入/drain；同步入库不再写入）
 #[derive(Default)]
 pub struct ThumbPending {
   inner: Mutex<HashSet<String>>,
@@ -68,17 +63,15 @@ fn is_album_image_ext(ext: &str) -> bool {
 }
 
 /**
- * 同步下载成功后：写入 media.db（含 origin 字段与初始拍摄时间）并入队出图
- * @note 不 cancel 正在跑的相册管线；仅追加。空闲时才 bump epoch 开新 worker。
- * @note path 须落在当前相册 root 下；不擦已有 thumb_path。
+ * 同步下载成功后：仅静默写入 media.db（origin 与初始拍摄时间）
+ * @note 不入 shared pending、不启动缩略图 worker，避免同步中底下宫格出现「加载文件」进度
+ * @note 出图与宫格刷新改由用户点「刷新」触发的 `album_scan` 完成
+ * @note path 须落在当前相册 root 下；不擦已有 thumb_path
  */
 pub fn enqueue_thumbs_from_sync(app: &AppHandle, items: Vec<SyncedMediaIngress>) {
   if items.is_empty() {
     return;
   }
-  let Some(state) = app.try_state::<Mutex<AlbumState>>() else {
-    return;
-  };
   let Ok(settings) = settings::load_settings(app) else {
     return;
   };
@@ -117,64 +110,5 @@ pub fn enqueue_thumbs_from_sync(app: &AppHandle, items: Vec<SyncedMediaIngress>)
         log::warn!("album sync ingress: upsert media {}: {e}", item.path);
       }
     }
-  }
-
-  let paths: Vec<String> = accepted.into_iter().map(|i| i.path).collect();
-
-  let pending = {
-    let Ok(guard) = state.lock() else {
-      return;
-    };
-    guard.thumb_pending.extend(paths);
-    Arc::clone(&guard.thumb_pending)
-  };
-
-  ensure_thumb_worker(app, &state, pending, root, album_data_dir);
-}
-
-/// 若管线空闲则启动 drain worker；已在跑则只依赖 pending 追加
-fn ensure_thumb_worker(
-  app: &AppHandle,
-  state: &tauri::State<'_, Mutex<AlbumState>>,
-  thumb_pending: Arc<ThumbPending>,
-  root: String,
-  album_data_dir: PathBuf,
-) {
-  let (pipeline_epoch, my_epoch, cancel) = {
-    let Ok(mut guard) = state.lock() else {
-      return;
-    };
-    if let Some(h) = &guard.pipeline {
-      if !h.is_finished() {
-        return;
-      }
-    }
-    let my_epoch = guard.pipeline_epoch.fetch_add(1, Ordering::SeqCst) + 1;
-    let token = ScanCancelToken::default();
-    guard.cancel = token.clone();
-    (Arc::clone(&guard.pipeline_epoch), my_epoch, token)
-  };
-
-  let app_bg = app.clone();
-  let ffmpeg_bin = ffmpeg::resolve_ffmpeg_binary(app);
-  // sync / qzone worker 在 std::thread 上，无当前 Tokio Handle；
-  // 须经 Tauri 全局 runtime，不能 tokio::task::spawn_blocking（会 panic: no reactor）
-  let handle = match tauri::async_runtime::handle().spawn_blocking(move || {
-    scanner::run_thumbnail_pipeline(
-      app_bg,
-      root,
-      album_data_dir,
-      ffmpeg_bin,
-      Vec::new(),
-      cancel,
-      pipeline_epoch,
-      my_epoch,
-      thumb_pending,
-    );
-  }) {
-    tauri::async_runtime::JoinHandle::Tokio(h) => h,
-  };
-  if let Ok(mut guard) = state.lock() {
-    guard.pipeline = Some(handle);
   }
 }

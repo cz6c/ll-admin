@@ -79,6 +79,8 @@ function _useIcloudSyncJob() {
   const jobErrorMessage = ref("");
   /** 已对某 jobId 弹过失败 toast，避免 status 重复事件刷屏 */
   let toastedFailJobId: number | null = null;
+  /** 已对某下载完成 jobId 提示「刷新查看」，避免 status 重复事件刷屏 */
+  let toastedDoneJobId: number | null = null;
   /** paused_session 已触发过强制重登，避免事件重复刷 logout */
   let forcedLogoutForPausedJobId: number | null = null;
   /** 强制重登进行中（防并发） */
@@ -406,6 +408,7 @@ function _useIcloudSyncJob() {
     outputDir.value = "";
     jobErrorMessage.value = "";
     toastedFailJobId = null;
+    toastedDoneJobId = null;
     forcedLogoutForPausedJobId = null;
     progress.value = { done: 0, total: 0, failed: 0, pending: 0, filename: "" };
     downloadStartedAt.value = null;
@@ -472,6 +475,15 @@ function _useIcloudSyncJob() {
         localStorage.removeItem(ICLOUD_SYNC_ACTIVE_JOB_KEY);
       } catch {
         /* 已完成任务不再持久化 */
+      }
+      // 下载任务完成：轻提示刷新本地相册（同步中静默入库，不启出图、不改宫格）
+      if (
+        normalizeTaskType(status.taskType) === "sync" &&
+        toastedDoneJobId !== status.jobId &&
+        status.done > 0
+      ) {
+        toastedDoneJobId = status.jobId;
+        $feedback.message.info(`有 ${status.done} 张照片已下载到本地，点击「刷新」可在相册中查看`);
       }
     }
   }

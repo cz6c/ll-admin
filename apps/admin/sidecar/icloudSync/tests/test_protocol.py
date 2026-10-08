@@ -75,6 +75,171 @@ def test_catalog_include_shared_library_merges_mock_items() -> None:
     assert shared[0]["library_type"] == "shared"
 
 
+def test_list_shared_library_zones_skips_primary_and_deleted() -> None:
+    agent = _load_agent(mock=False)
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "zones": [
+                    {"deleted": True, "zoneID": {"zoneName": "SharedSync-DEAD"}},
+                    {"zoneID": {"zoneName": "PrimarySync"}},
+                    {"zoneID": {"zoneName": "SharedSync-ABC"}},
+                ]
+            }
+
+    class _Session:
+        def post(self, *_a, **_k):
+            return _Resp()
+
+    class _Photos:
+        session = _Session()
+
+        def get_service_endpoint(self, library_type: str) -> str:
+            return f"https://example.test/{library_type}"
+
+    zones = agent._list_shared_library_zones(_Photos())
+    assert len(zones) == 1
+    assert zones[0]["zoneID"]["zoneName"] == "SharedSync-ABC"
+
+
+def test_list_shared_library_zones_http_error_raises() -> None:
+    agent = _load_agent(mock=False)
+
+    class _Resp:
+        status_code = 500
+
+        def json(self):
+            return {}
+
+    class _Session:
+        def post(self, *_a, **_k):
+            return _Resp()
+
+    class _Photos:
+        session = _Session()
+
+        def get_service_endpoint(self, library_type: str) -> str:
+            return f"https://example.test/{library_type}"
+
+    try:
+        agent._list_shared_library_zones(_Photos())
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "HTTP 500" in str(exc)
+
+
+def test_iter_shared_library_assets_raises_when_zones_unopenable() -> None:
+    """有 zone 但 PhotoLibrary 全打不开时必须失败，禁止静默 0 条。"""
+    agent = _load_agent(mock=False)
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class _Session:
+        def post(self, url, *_a, **_k):
+            # private 端有 SharedSync；shared 端空
+            if "/private/zones/list" in str(url):
+                return _Resp({"zones": [{"zoneID": {"zoneName": "SharedSync-X"}}]})
+            return _Resp({"zones": []})
+
+    class PhotoLibrary:
+        def __init__(self, *_a, **_k):
+            raise RuntimeError("indexing not finished")
+
+    class _PhotosService:
+        session = _Session()
+        params = {}
+        _shared_libraries = None
+        _private_libraries = None
+
+        def get_service_endpoint(self, library_type: str) -> str:
+            return f"https://example.test/database/1/com.apple.photos.cloud/production/{library_type}"
+
+    class _FakePhotos(_PhotosService, PhotoLibrary):
+        def __init__(self) -> None:
+            pass
+
+    class _Api:
+        photos = _FakePhotos()
+
+    try:
+        agent._iter_shared_library_assets(_Api())
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "enumeration failed" in str(exc)
+
+
+def test_iter_shared_library_assets_reads_private_sharedsync() -> None:
+    """SharedSync 在 private zones/list 时必须枚举出来（icloudpd --list-libraries 同源）。"""
+    agent = _load_agent(mock=False)
+
+    class _Photo:
+        pass
+
+    class _Album:
+        def __iter__(self):
+            yield _Photo()
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class _Session:
+        def post(self, url, *_a, **_k):
+            if "/private/zones/list" in str(url):
+                return _Resp(
+                    {
+                        "zones": [
+                            {"zoneID": {"zoneName": "PrimarySync"}},
+                            {"zoneID": {"zoneName": "SharedSync-ABC"}},
+                        ]
+                    }
+                )
+            return _Resp({"zones": []})
+
+    class PhotoLibrary:
+        def __init__(self, *_a, **_k):
+            self.all = _Album()
+
+    class _PhotosService:
+        session = _Session()
+        params = {}
+        _shared_libraries = None
+        _private_libraries = None
+
+        def get_service_endpoint(self, library_type: str) -> str:
+            return f"https://example.test/database/1/com.apple.photos.cloud/production/{library_type}"
+
+    class _FakePhotos(_PhotosService, PhotoLibrary):
+        def __init__(self) -> None:
+            pass
+
+    class _Api:
+        photos = _FakePhotos()
+
+    rows = agent._iter_shared_library_assets(_Api())
+    assert len(rows) == 1
+    zone_name, library_type, photo = rows[0]
+    assert zone_name == "SharedSync-ABC"
+    assert library_type == "private"
+    assert isinstance(photo, _Photo)
+    assert "SharedSync-ABC" in (_Api.photos._private_libraries or {})
+
+
 def test_catalog_include_hidden_ignored_for_recents_view() -> None:
     agent = _load_agent(mock=True)
 

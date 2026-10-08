@@ -480,19 +480,31 @@ def resolve_photos_service(
     """
     按 library_type/zone 返回绑定 CloudKit zone 的 PhotoLibrary。
 
-    @note 私库 PrimarySync 即 api.photos；shared 走 photos.shared_libraries[zone]
+    @note 私库 PrimarySync 即 api.photos；SharedSync-* 在 private_libraries；
+          shared 端 zone 走 shared_libraries。
     """
     photos = getattr(api, "photos", None)
     if photos is None:
         raise RuntimeError("photos service unavailable")
-    if str(library_type).strip().lower() == "shared":
-        zone = str(library_zone).strip()
-        if not zone:
+
+    zone = str(library_zone or "").strip() or "PrimarySync"
+    kind = str(library_type or "private").strip().lower()
+
+    if kind == "shared":
+        if not zone or zone == "PrimarySync":
             raise RuntimeError("library_zone required for shared library")
         shared = getattr(photos, "shared_libraries", None) or {}
-        lib = shared.get(zone)
+        lib = shared.get(zone) if isinstance(shared, dict) else None
         if lib is None:
             raise RuntimeError(f"shared library zone not found: {zone}")
+        return lib
+
+    # private：Shared Photo Library 常落在 private_libraries[SharedSync-…]
+    if zone != "PrimarySync":
+        private = getattr(photos, "private_libraries", None) or {}
+        lib = private.get(zone) if isinstance(private, dict) else None
+        if lib is None:
+            raise RuntimeError(f"private library zone not found: {zone}")
         return lib
     return photos
 

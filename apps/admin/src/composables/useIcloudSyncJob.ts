@@ -21,6 +21,7 @@ import {
   ICLOUD_SYNC_JOB_STATUS_EVENT,
   ICLOUD_SYNC_PROGRESS_EVENT,
   isIcloudSessionAuthFailure,
+  loadIcloudSyncAssets,
   logoutIcloudSync,
   pauseIcloudSyncJob,
   refreshIcloudSyncCatalog,
@@ -52,6 +53,17 @@ export interface IcloudSyncPrimaryAction {
 
 /** 「下载到本地」主路径 tip：UI 自动串联刷新 + 入队下载 */
 const SYNC_TO_LOCAL_TIP = "将先更新 iCloud 状态，再把待下载项下载到本地";
+
+/**
+ * 进程级事件订阅（勿放进 createSharedComposable 可销毁闭包）
+ * @note 共享 composable 无订阅者时会 dispose；listen 不卸 + 闭包内标志重置 → remount 叠多个回调，
+ *       同一 failed / paused_session 会重复 toast、重复强制 logout
+ * @note 回调经 active* 指针转发到当前实例，remount 只换指针、不再 listen
+ */
+let jobListenersBound = false;
+let activeApplyJobStatus: ((status: IcloudSyncJobStatusResult) => void) | null = null;
+let activeOnProgress: ((payload: IcloudSyncProgressPayload) => void) | null = null;
+let activeOnCloudStateChanged: (() => void) | null = null;
 
 function maskAppleId(raw: string): string {
   const id = raw.trim();
@@ -99,7 +111,6 @@ function _useIcloudSyncJob() {
   const sessionReauthReady = ref(false);
 
   let catalogTimer: ReturnType<typeof setInterval> | undefined;
-  let listenersBound = false;
   /** FAB 抽屉订阅 cloud-state-changed 时递增，供外部 watch 刷新列表 */
   const cloudStateTick = ref(0);
   /** 下载 progress 事件计数；抽屉云列表节流刷新 download_status */
@@ -412,6 +423,25 @@ function _useIcloudSyncJob() {
     syncCatalogTimer();
   }
 
+  /**
+   * 开关已开但 catalog 无 shared 行：给用户可操作的诊断（勿当失败）
+   * @note SharedSync 常在 private zones；参与者账号 API 也可能列不出
+   */
+  async function tipSharedLibraryEmptyIfNeeded() {
+    try {
+      const settings = await getIcloudSyncSettings();
+      if (!settings.syncSharedLibrary) return;
+      const page = await loadIcloudSyncAssets({ offset: 0, limit: 200 });
+      const hasShared = page.items.some(row => row.catalogScope === "shared");
+      if (hasShared) return;
+      $feedback.message.warning(
+        "已开启「同步共享图库」，但未发现 SharedSync zone。请确认是 Shared Photo Library（非共享相册）；若仅为参与者而非创建者，Apple API 可能列不出。"
+      );
+    } catch {
+      /* 诊断失败不挡主路径 */
+    }
+  }
+
   function applyJobStatus(status: IcloudSyncJobStatusResult) {
     if (activeJobId.value != null && status.jobId !== activeJobId.value) return;
     if (activeJobId.value == null) storeJobId(status.jobId);
@@ -458,6 +488,7 @@ function _useIcloudSyncJob() {
     if (pendingAutoStartAfterCatalog && status.taskType === "catalog") {
       if (status.status === "done") {
         pendingAutoStartAfterCatalog = false;
+        void tipSharedLibraryEmptyIfNeeded();
         void startDownloadAfterCatalog();
         return;
       }
@@ -468,6 +499,9 @@ function _useIcloudSyncJob() {
     }
     if (status.status === "done") {
       progress.value = { done: status.total, total: status.total, failed: 0, pending: 0, filename: "" };
+      if (status.taskType === "catalog") {
+        void tipSharedLibraryEmptyIfNeeded();
+      }
       try {
         localStorage.removeItem(ICLOUD_SYNC_ACTIVE_JOB_KEY);
       } catch {
@@ -805,28 +839,32 @@ function _useIcloudSyncJob() {
   }
 
   async function ensureListeners() {
-    if (listenersBound || !isTauri()) return;
-    listenersBound = true;
+    if (!isTauri()) return;
 
-    // 进程级长连接：相册壳生命周期内不卸载
-    await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
-      if (event.payload) {
-        progress.value = event.payload;
-        downloadProgressTick.value += 1;
-        if (event.payload.total > 0 && downloadStartedAt.value == null) {
-          downloadStartedAt.value = Date.now();
-        }
+    activeApplyJobStatus = applyJobStatus;
+    activeOnProgress = (payload: IcloudSyncProgressPayload) => {
+      progress.value = payload;
+      downloadProgressTick.value += 1;
+      if (payload.total > 0 && downloadStartedAt.value == null) {
+        downloadStartedAt.value = Date.now();
       }
-    });
-
-    await listen<IcloudSyncJobStatusResult>(ICLOUD_SYNC_JOB_STATUS_EVENT, event => {
-      if (event.payload) {
-        applyJobStatus(event.payload);
-      }
-    });
-
-    await listen(ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT, () => {
+    };
+    activeOnCloudStateChanged = () => {
       cloudStateTick.value += 1;
+    };
+
+    if (jobListenersBound) return;
+    jobListenersBound = true;
+
+    // 进程级只注册一次：相册壳生命周期内不卸载
+    await listen<IcloudSyncProgressPayload>(ICLOUD_SYNC_PROGRESS_EVENT, event => {
+      if (event.payload) activeOnProgress?.(event.payload);
+    });
+    await listen<IcloudSyncJobStatusResult>(ICLOUD_SYNC_JOB_STATUS_EVENT, event => {
+      if (event.payload) activeApplyJobStatus?.(event.payload);
+    });
+    await listen(ICLOUD_SYNC_CLOUD_STATE_CHANGED_EVENT, () => {
+      activeOnCloudStateChanged?.();
     });
   }
 

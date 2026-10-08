@@ -1131,16 +1131,161 @@ def _photo_asset_id(photo: Any) -> str:
     return ""
 
 
-def _iter_shared_library_assets(api: Any) -> list[tuple[str, Any]]:
-    """Shared Photo Library：每个 zone 单独枚举 .all。"""
+def _photo_library_class(photos: Any) -> type[Any]:
+    """从 PhotosService MRO 取 PhotoLibrary 类（构造 shared zone 用）。"""
+    for base in type(photos).__mro__:
+        if base is not type(photos) and base.__name__ == "PhotoLibrary":
+            return base
+    raise RuntimeError("PhotoLibrary class not found on photos service")
+
+
+def _list_cloudkit_zones(photos: Any, library_type: str) -> list[dict[str, Any]]:
+    """
+    直接 POST `{private|shared}/zones/list`，失败上抛。
+
+    @note 不走 photos.shared_libraries / private_libraries：vendor `_fetch_libraries`
+          吞异常后返回 {}，会造成「开关已开、刷新成功、共享 0 条」。
+    @note Shared Photo Library 的 SharedSync-* 常在 **private** zones/list，
+          仅扫 shared 端会漏（与 icloudpd --list-libraries 并集一致）。
+    """
+    kind = str(library_type).strip().lower()
+    if kind not in ("private", "shared"):
+        raise RuntimeError(f"unsupported library_type for zones/list: {library_type}")
+
+    get_endpoint = getattr(photos, "get_service_endpoint", None)
+    session = getattr(photos, "session", None)
+    if not callable(get_endpoint) or session is None:
+        raise RuntimeError("photos service missing zones/list API")
+
+    service_endpoint = str(get_endpoint(kind)).rstrip("/")
+    url = f"{service_endpoint}/zones/list"
+    request = session.post(url, data="{}", headers={"Content-type": "text/plain"})
+    status = int(getattr(request, "status_code", 0) or 0)
+    if status >= 400:
+        raise RuntimeError(f"{kind} zones/list HTTP {status}")
+
+    try:
+        response = request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"{kind} zones/list invalid JSON: {exc}") from exc
+    if not isinstance(response, dict):
+        raise RuntimeError(f"{kind} zones/list: unexpected payload")
+
+    reason = str(response.get("reason") or response.get("serverErrorCode") or "").strip()
+    if reason:
+        raise RuntimeError(f"{kind} zones/list: {reason}")
+
+    zones = response.get("zones")
+    if not isinstance(zones, list):
+        raise RuntimeError(f"{kind} zones/list missing zones array")
+
+    out: list[dict[str, Any]] = []
+    for zone in zones:
+        if not isinstance(zone, dict) or zone.get("deleted"):
+            continue
+        zone_id = zone.get("zoneID")
+        if not isinstance(zone_id, dict):
+            continue
+        name = str(zone_id.get("zoneName") or "").strip()
+        # PrimarySync 由 photos.all 覆盖；此处只收 SharedSync 等额外 zone
+        if not name or name == "PrimarySync":
+            continue
+        out.append(zone)
+    return out
+
+
+def _list_shared_library_zones(photos: Any) -> list[dict[str, Any]]:
+    """仅 shared 端 zones/list（单测与诊断用）。"""
+    return _list_cloudkit_zones(photos, "shared")
+
+
+def _enumerate_zone_photos(
+    photos: Any,
+    zones: list[dict[str, Any]],
+    library_type: str,
+) -> tuple[list[tuple[str, str, Any]], dict[str, Any], list[str]]:
+    """
+    打开并枚举一组 CloudKit zone。
+    @returns (zone,library_type,photo) 列表、已打开 library 缓存、逐 zone 错误
+    """
+    if not zones:
+        return [], {}, []
+
+    photo_library_cls = _photo_library_class(photos)
+    service_endpoint = str(photos.get_service_endpoint(library_type)).rstrip("/")
+    params = getattr(photos, "params", {}) or {}
+    session = photos.session
+
+    out: list[tuple[str, str, Any]] = []
+    opened: dict[str, Any] = {}
+    zone_errors: list[str] = []
+
+    for zone in zones:
+        zone_id = zone["zoneID"]
+        zone_name = str(zone_id.get("zoneName") or "").strip()
+        if not zone_name:
+            continue
+        try:
+            library = photo_library_cls(
+                service_endpoint, params, session, zone_id, library_type
+            )
+        except Exception as exc:  # noqa: BLE001
+            zone_errors.append(f"{library_type}/{zone_name} open: {exc}")
+            continue
+        opened[zone_name] = library
+        try:
+            for photo in library.all:
+                out.append((zone_name, library_type, photo))
+        except Exception as exc:  # noqa: BLE001
+            zone_errors.append(f"{library_type}/{zone_name} enumerate: {exc}")
+
+    return out, opened, zone_errors
+
+
+def _iter_shared_library_assets(api: Any) -> list[tuple[str, str, Any]]:
+    """
+    Shared Photo Library：private + shared 两端 zones/list，跳过 PrimarySync，逐 zone 枚举 .all。
+
+    @returns (zone_name, library_type, photo)；无额外 zone 时返回 []
+    @raises RuntimeError zones/list 失败，或有 zone 但全部无法打开/枚举
+    @note library_type 必须与 CloudKit endpoint 一致，供 download/delete 路由
+    """
     photos = getattr(api, "photos", None)
     if photos is None:
         raise RuntimeError("photos service unavailable")
-    shared = getattr(photos, "shared_libraries", None) or {}
-    out: list[tuple[str, Any]] = []
-    for zone_name, library in shared.items():
-        for photo in library.all:
-            out.append((str(zone_name), photo))
+
+    private_zones = _list_cloudkit_zones(photos, "private")
+    shared_zones = _list_cloudkit_zones(photos, "shared")
+
+    private_items, private_opened, private_errors = _enumerate_zone_photos(
+        photos, private_zones, "private"
+    )
+    shared_items, shared_opened, shared_errors = _enumerate_zone_photos(
+        photos, shared_zones, "shared"
+    )
+
+    # 写入缓存，供 resolve_photos_service 命中，避免再走会吞错的 property
+    try:
+        existing_private = getattr(photos, "_private_libraries", None) or {}
+        if not isinstance(existing_private, dict):
+            existing_private = {}
+        photos._private_libraries = {**existing_private, **private_opened}
+        photos._shared_libraries = shared_opened
+    except Exception:  # noqa: BLE001
+        pass
+
+    out = private_items + shared_items
+    zone_errors = private_errors + shared_errors
+    zone_count = len(private_zones) + len(shared_zones)
+
+    if zone_count == 0:
+        return []
+
+    if not out and zone_errors:
+        sample = "; ".join(zone_errors[:3])
+        raise RuntimeError(
+            f"shared library zones found ({zone_count}) but enumeration failed: {sample}"
+        )
     return out
 
 
@@ -2251,9 +2396,9 @@ def _collect_catalog_items(
             for photo in _iter_hidden_assets(api)
         )
     if include_shared_library and view == "library":
-        for zone_name, photo in _iter_shared_library_assets(api):
+        for zone_name, library_type, photo in _iter_shared_library_assets(api):
             items.append(
-                _catalog_item_from_photo(photo, "library", "shared", "shared", zone_name)
+                _catalog_item_from_photo(photo, "library", "shared", library_type, zone_name)
             )
     return _dedupe_catalog_items(items)
 
@@ -2296,7 +2441,22 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
             if include_shared_library:
                 scope_bits.append("shared")
             scope_note = f" +{'+'.join(scope_bits)}" if scope_bits else ""
-            _record_auth_success("catalog", f"catalog completed: {len(items)} items (view={view}{scope_note})")
+            shared_n = sum(1 for i in items if str(i.get("catalog_scope") or "") == "shared")
+            hidden_n = sum(1 for i in items if str(i.get("catalog_scope") or "") == "hidden")
+            shared_zones = sorted(
+                {
+                    str(i.get("library_zone") or "").strip()
+                    for i in items
+                    if str(i.get("catalog_scope") or "") == "shared"
+                    and str(i.get("library_zone") or "").strip()
+                }
+            )
+            zones_note = f" zones={','.join(shared_zones)}" if shared_zones else " zones=none"
+            _record_auth_success(
+                "catalog",
+                f"catalog completed: {len(items)} items "
+                f"(view={view}{scope_note}; hidden={hidden_n} shared={shared_n}{zones_note})",
+            )
         return done_event("catalog", items=items)
     except CatalogSortMissingError as exc:
         return error_event("catalog", CODE_CATALOG_SORT_MISSING, str(exc))

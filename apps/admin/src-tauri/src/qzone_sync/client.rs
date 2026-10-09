@@ -403,6 +403,7 @@ pub fn list_photo_views(
           capture_at: p.capture_at,
           sloc,
           downloaded: false,
+          cloud_state: "cloud_only".into(),
         }
       })
       .collect(),
@@ -952,19 +953,21 @@ pub fn upload_image_to_album(
  * @param pairs (lloc, sloc)；sloc 空则用 lloc
  * @note 对齐 qzone_api：`cgi_delpic_multi_v2` 虽名含 multi，公开用法为**单张一次请求**；
  *       多张逗号拼接常只删第一张却仍 code=0，故此处逐张 POST。
- * @returns (成功数, 失败数, 成功 lloc 列表, 最后一次失败信息)
+ * @param on_progress 每张处理后回调 (processed, total)；total 为本次 pairs 长度
+ * @returns (成功数, 失败数, 成功 lloc 列表, 失败 lloc 列表, 最后一次失败信息)
  */
 pub fn delete_photos(
   session: &QzoneSession,
   album_id: &str,
   priv_code: i32,
   pairs: &[(String, String)],
-) -> Result<(u32, u32, Vec<String>, String), String> {
+  mut on_progress: impl FnMut(u32, u32),
+) -> Result<(u32, u32, Vec<String>, Vec<String>, String), String> {
   if album_id.trim().is_empty() {
     return Err("album_id 不能为空".into());
   }
   if pairs.is_empty() {
-    return Ok((0, 0, Vec::new(), String::new()));
+    return Ok((0, 0, Vec::new(), Vec::new(), String::new()));
   }
   let priv_n = if priv_code <= 0 { 1 } else { priv_code };
   let client = build_client(session)?;
@@ -977,7 +980,10 @@ pub fn delete_photos(
   let mut deleted = 0u32;
   let mut failed = 0u32;
   let mut ok_ids: Vec<String> = Vec::new();
+  let mut failed_ids: Vec<String> = Vec::new();
   let mut last_err = String::new();
+  let total = pairs.len() as u32;
+  let mut processed = 0u32;
 
   for (lloc, sloc) in pairs {
     let s = if sloc.trim().is_empty() {
@@ -1010,29 +1016,32 @@ pub fn delete_photos(
         let status = resp.status();
         if !status.is_success() {
           failed += 1;
+          failed_ids.push(lloc.clone());
           last_err = map_http_status_err("删图", status);
-          continue;
-        }
-        match resp.text() {
-          Ok(body) => match parse_delete_response(&body).and_then(|root| {
-            api_code_ok(&root)?;
-            Ok(())
-          }) {
-            Ok(()) => {
-              deleted += 1;
-              ok_ids.push(lloc.clone());
-            }
-            Err(e) => {
-              if is_auth_expired_error(&e) {
-                return Err(e);
+        } else {
+          match resp.text() {
+            Ok(body) => match parse_delete_response(&body).and_then(|root| {
+              api_code_ok(&root)?;
+              Ok(())
+            }) {
+              Ok(()) => {
+                deleted += 1;
+                ok_ids.push(lloc.clone());
               }
+              Err(e) => {
+                if is_auth_expired_error(&e) {
+                  return Err(e);
+                }
+                failed += 1;
+                failed_ids.push(lloc.clone());
+                last_err = e;
+              }
+            },
+            Err(e) => {
               failed += 1;
-              last_err = e;
+              failed_ids.push(lloc.clone());
+              last_err = format_reqwest_err("读删图响应失败", &e);
             }
-          },
-          Err(e) => {
-            failed += 1;
-            last_err = format_reqwest_err("读删图响应失败", &e);
           }
         }
       }
@@ -1042,11 +1051,14 @@ pub fn delete_photos(
           return Err(msg);
         }
         failed += 1;
+        failed_ids.push(lloc.clone());
         last_err = msg;
       }
     }
+    processed += 1;
+    on_progress(processed, total);
   }
-  Ok((deleted, failed, ok_ids, last_err))
+  Ok((deleted, failed, ok_ids, failed_ids, last_err))
 }
 
 /// 删图响应可能是纯 JSON 或带 callback 的包装

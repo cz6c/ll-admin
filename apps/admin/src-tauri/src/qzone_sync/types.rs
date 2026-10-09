@@ -66,9 +66,16 @@ pub struct QzonePhotoView {
   /// 删图用定位串；缺省与 asset_id（lloc）相同
   #[serde(default)]
   pub sloc: String,
-  /// 本机已下载（sync `cloud_state=synced` 且 dest_path 非空）
+  /// 本机已下载（`cloud_state=synced`）；兼容旧前端
   #[serde(default)]
   pub downloaded: bool,
+  /// 宫格四态：cloud_only / downloading / synced / download_failed
+  #[serde(default = "default_cloud_only")]
+  pub cloud_state: String,
+}
+
+fn default_cloud_only() -> String {
+  "cloud_only".into()
 }
 
 /// 批量从 QQ 空间移除（本机文件保留）
@@ -91,6 +98,17 @@ pub struct QzoneDeletePhotosResult {
   pub failed: u32,
   #[serde(default)]
   pub message: String,
+  /// 未移除成功的 assetId；前端删云结束后保留勾选
+  #[serde(default)]
+  pub failed_asset_ids: Vec<String>,
+}
+
+/// 删云进度（`qzone-sync://cloud-delete-progress`）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QzoneCloudDeleteProgress {
+  pub processed: u32,
+  pub total: u32,
 }
 
 /// 批量上传到指定相册的结果

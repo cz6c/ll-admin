@@ -501,6 +501,11 @@ export function loadIcloudSyncAssets(
     dateTo?: string;
     /** 云端原名 original_filename 子串模糊（大小写不敏感） */
     filenameKeyword?: string;
+    /**
+     * false=跳过逐行 is_file（全量轻量元数据 / 虚拟列表）；缺省 true
+     * @note 轻量模式下单次 limit 上限 2000
+     */
+    checkLocalFile?: boolean;
   } = {}
 ) {
   return invoke<IcloudSyncLoadAssetsResult>("icloud_sync_load_assets", {
@@ -509,7 +514,8 @@ export function loadIcloudSyncAssets(
     cloudState: options.cloudState && options.cloudState !== "all" ? options.cloudState : null,
     dateFrom: options.dateFrom?.trim() || null,
     dateTo: options.dateTo?.trim() || null,
-    filenameKeyword: options.filenameKeyword?.trim() || null
+    filenameKeyword: options.filenameKeyword?.trim() || null,
+    checkLocalFile: options.checkLocalFile ?? true
   });
 }
 

@@ -161,14 +161,17 @@ export function cloudStateLabel(state: string): string {
   return CLOUD_STATE_LABELS[state] ?? state;
 }
 
-/** iCloud 资产状态角标底色（CSS 色，供宫格 span background） */
-export function cloudStateColor(state: string): string {
+/**
+ * iCloud 资产状态角标 a-tag color
+ * @note 与 QQ 宫格角标同一套语义色（success / processing / error）
+ */
+export function cloudStateTagColor(state: string): string {
   const normalized = state === "modified_cloud" ? "cloud_only" : state;
-  if (normalized === "synced") return "#49aa19";
-  if (normalized === "cloud_only") return "#1677dc";
-  if (normalized === "downloading") return "#1688ff";
-  if (normalized === "download_failed") return "#dc4446";
-  return "#8c8c8c";
+  if (normalized === "synced") return "success";
+  if (normalized === "cloud_only") return "processing";
+  if (normalized === "downloading") return "processing";
+  if (normalized === "download_failed") return "error";
+  return "default";
 }
 
 /**

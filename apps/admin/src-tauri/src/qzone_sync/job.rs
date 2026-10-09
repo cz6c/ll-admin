@@ -58,10 +58,19 @@ fn busy() -> bool {
   )
 }
 
-/// 开始：catalog 本人相册 → 下载 cloud_only；`album_id` 有值时仅该相册
-pub fn start_sync(app: AppHandle, album_id: Option<String>) -> Result<QzoneJobSnapshot, String> {
+/// 开始：catalog 本人相册 → 下载 cloud_only；`album_id` 有值时仅该相册；`asset_ids` 有值时仅下载勾选子集
+pub fn start_sync(
+  app: AppHandle,
+  album_id: Option<String>,
+  asset_ids: Option<Vec<String>>,
+) -> Result<QzoneJobSnapshot, String> {
   if busy() {
     return Err("已有 QQ 空间同步任务进行中".into());
+  }
+  if let Some(ref ids) = asset_ids {
+    if ids.is_empty() {
+      return Err("未选择要下载的照片".into());
+    }
   }
   let session = session::load_session(&app)?
     .ok_or_else(|| "未登录 QQ 空间".to_string())?;
@@ -75,7 +84,7 @@ pub fn start_sync(app: AppHandle, album_id: Option<String>) -> Result<QzoneJobSn
   let handle = thread::Builder::new()
     .name("qzone-sync-worker".into())
     .spawn(move || {
-      run_pipeline(app, session, output, album_id);
+      run_pipeline(app, session, output, album_id, asset_ids);
     })
     .map_err(|e| format!("启动同步线程失败: {e}"))?;
 
@@ -112,6 +121,10 @@ pub fn resume_job(app: AppHandle) -> Result<QzoneJobSnapshot, String> {
 pub fn cancel_job(app: AppHandle) -> Result<QzoneJobSnapshot, String> {
   runtime().cancel.store(true, Ordering::SeqCst);
   runtime().pause.store(false, Ordering::SeqCst);
+  // 取消后把「下载中」回退为待下载，避免宫格卡在 downloading
+  if let Ok(conn) = db::open_app_db(&app) {
+    let _ = db::reset_downloading_to_cloud_only(&conn);
+  }
   let mut snap = current_snapshot();
   snap.status = QzoneJobStatus::Idle.as_str().into();
   snap.message = "已取消".into();
@@ -137,6 +150,7 @@ fn run_pipeline(
   session: super::types::QzoneSession,
   output: PathBuf,
   album_filter: Option<String>,
+  asset_ids: Option<Vec<String>>,
 ) {
   let fail = |app: &AppHandle, msg: String| {
     set_snapshot(
@@ -255,6 +269,12 @@ fn run_pipeline(
     Err(e) => log::warn!("qzone_sync: reconcile missing local: {e}"),
     _ => {}
   }
+  // 上次崩溃/取消残留的 downloading → cloud_only
+  if let Ok(n) = db::reset_downloading_to_cloud_only(&conn) {
+    if n > 0 {
+      log::info!("qzone_sync: reset stale downloading → cloud_only {n}");
+    }
+  }
 
   let pending = match db::list_pending_downloads(&conn, album_filter.as_deref()) {
     Ok(p) => p,
@@ -262,6 +282,17 @@ fn run_pipeline(
       fail(&app, e);
       return;
     }
+  };
+
+  // 批量下载所选：catalog 后只入队勾选且仍为 cloud_only 的项
+  let pending = if let Some(ref ids) = asset_ids {
+    let want: std::collections::HashSet<&str> = ids.iter().map(|s| s.as_str()).collect();
+    pending
+      .into_iter()
+      .filter(|(asset_id, ..)| want.contains(asset_id.as_str()))
+      .collect::<Vec<_>>()
+  } else {
+    pending
   };
 
   let total = pending.len() as u32;
@@ -284,8 +315,10 @@ fn run_pipeline(
     pending.into_iter().enumerate()
   {
     if !wait_if_paused(&app) {
+      let _ = db::reset_downloading_to_cloud_only(&conn);
       return;
     }
+    let _ = db::mark_downloading(&conn, &asset_id);
     // 视频：catalog 里常是封面/空 URL，下载前用 floatview 解析 MP4
     let fetch_url = if media_kind == "video" {
       match client::resolve_video_download_url(&session, &album_id, &asset_id) {
@@ -297,6 +330,7 @@ fn run_pipeline(
             return;
           }
           log::warn!("qzone_sync: resolve video {asset_id}: {e}");
+          let _ = db::mark_download_failed(&conn, &asset_id);
           failed += 1;
           set_snapshot(
             QzoneJobSnapshot {
@@ -391,6 +425,7 @@ fn run_pipeline(
           return;
         }
         log::warn!("qzone_sync: download {asset_id}: {e}");
+        let _ = db::mark_download_failed(&conn, &asset_id);
         failed += 1;
         let _ = std::fs::remove_file(&dest);
       }

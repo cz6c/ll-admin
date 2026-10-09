@@ -100,7 +100,9 @@ pub fn upsert_asset(
         updated_at = excluded.updated_at,
         cloud_state = CASE
           WHEN assets.cloud_state = 'synced' AND assets.dest_path IS NOT NULL AND trim(assets.dest_path) != ''
-            THEN assets.cloud_state
+            THEN 'synced'
+          -- 保留失败态，便于宫格「失败」角标与重试入队
+          WHEN assets.cloud_state = 'download_failed' THEN 'download_failed'
           ELSE 'cloud_only'
         END
       "#,
@@ -130,6 +132,42 @@ pub fn mark_synced(conn: &Connection, asset_id: &str, dest_path: &str) -> Result
   Ok(())
 }
 
+/// 标记正在下载（宫格「下载中」）
+pub fn mark_downloading(conn: &Connection, asset_id: &str) -> Result<(), String> {
+  let now = chrono::Utc::now().timestamp();
+  conn
+    .execute(
+      "UPDATE assets SET cloud_state = 'downloading', updated_at = ?2 WHERE asset_id = ?1 AND cloud_state != 'synced'",
+      params![asset_id, now],
+    )
+    .map_err(|e| format!("标记下载中失败: {e}"))?;
+  Ok(())
+}
+
+/// 标记下载失败（宫格「失败」，可再入队）
+pub fn mark_download_failed(conn: &Connection, asset_id: &str) -> Result<(), String> {
+  let now = chrono::Utc::now().timestamp();
+  conn
+    .execute(
+      "UPDATE assets SET cloud_state = 'download_failed', dest_path = NULL, updated_at = ?2 WHERE asset_id = ?1 AND cloud_state != 'synced'",
+      params![asset_id, now],
+    )
+    .map_err(|e| format!("标记下载失败: {e}"))?;
+  Ok(())
+}
+
+/// 任务取消/崩溃残留：downloading → cloud_only
+pub fn reset_downloading_to_cloud_only(conn: &Connection) -> Result<u32, String> {
+  let now = chrono::Utc::now().timestamp();
+  let n = conn
+    .execute(
+      "UPDATE assets SET cloud_state = 'cloud_only', updated_at = ?1 WHERE cloud_state = 'downloading'",
+      params![now],
+    )
+    .map_err(|e| format!("重置下载中失败: {e}"))?;
+  Ok(n as u32)
+}
+
 pub fn count_by_state(conn: &Connection, state: &str) -> Result<u32, String> {
   conn
     .query_row(
@@ -141,7 +179,7 @@ pub fn count_by_state(conn: &Connection, state: &str) -> Result<u32, String> {
     .map_err(|e| format!("统计资产失败: {e}"))
 }
 
-/// 待下载：cloud_only 且有 URL；`album_id` 有值时仅该相册
+/// 待下载：cloud_only / download_failed 且有 URL（失败可重试）；`album_id` 有值时仅该相册
 /// 元组：asset_id, album_id, album_name, original_filename, capture_at, download_url, media_kind
 pub fn list_pending_downloads(
   conn: &Connection,
@@ -151,7 +189,7 @@ pub fn list_pending_downloads(
     r#"
       SELECT asset_id, album_id, album_name, original_filename, capture_at, download_url, media_kind
       FROM assets
-      WHERE cloud_state = 'cloud_only'
+      WHERE cloud_state IN ('cloud_only', 'download_failed')
         AND (
           (download_url IS NOT NULL AND trim(download_url) != '')
           OR media_kind = 'video'
@@ -163,7 +201,7 @@ pub fn list_pending_downloads(
     r#"
       SELECT asset_id, album_id, album_name, original_filename, capture_at, download_url, media_kind
       FROM assets
-      WHERE cloud_state = 'cloud_only'
+      WHERE cloud_state IN ('cloud_only', 'download_failed')
         AND (
           (download_url IS NOT NULL AND trim(download_url) != '')
           OR media_kind = 'video'
@@ -268,7 +306,9 @@ pub fn reconcile_synced_missing_local_files(
 
 /**
  * 某相册（或全库）已下载 asset_id 集合：synced 且 dest_path 非空
+ * @note 生产路径改走 cloud_states_for_album；仅单测保留
  */
+#[cfg(test)]
 pub fn synced_asset_ids(
   conn: &Connection,
   album_id: Option<&str>,
@@ -303,6 +343,32 @@ pub fn synced_asset_ids(
       .collect::<Result<std::collections::HashSet<_>, _>>()
       .map_err(|e| format!("解析已下载失败: {e}"))?
   };
+  Ok(rows)
+}
+
+/**
+ * 某相册 asset_id → cloud_state（宫格四态角标）
+ * @note 无行时前端按 cloud_only 展示
+ */
+pub fn cloud_states_for_album(
+  conn: &Connection,
+  album_id: &str,
+) -> Result<std::collections::HashMap<String, String>, String> {
+  let mut stmt = conn
+    .prepare(
+      r#"
+      SELECT asset_id, cloud_state FROM assets
+      WHERE album_id = ?1
+      "#,
+    )
+    .map_err(|e| format!("准备 cloud_state 查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![album_id], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|e| format!("查询 cloud_state 失败: {e}"))?
+    .collect::<Result<std::collections::HashMap<_, _>, _>>()
+    .map_err(|e| format!("解析 cloud_state 失败: {e}"))?;
   Ok(rows)
 }
 

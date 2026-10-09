@@ -160,13 +160,14 @@ pub async fn qzone_sync_logout(app: AppHandle) -> Result<(), String> {
   .map_err(|e| format!("任务失败: {e}"))?
 }
 
-/// 同步到本地：catalog + 下载；`album_id` 为空则全部相册
+/// 同步到本地：catalog + 下载；`album_id` 为空则全部相册；`asset_ids` 有值则仅下载勾选子集
 #[tauri::command]
 pub async fn qzone_sync_start_job(
   app: AppHandle,
   album_id: Option<String>,
+  asset_ids: Option<Vec<String>>,
 ) -> Result<QzoneJobSnapshot, String> {
-  tokio::task::spawn_blocking(move || job::start_sync(app, album_id))
+  tokio::task::spawn_blocking(move || job::start_sync(app, album_id, asset_ids))
     .await
     .map_err(|e| format!("任务失败: {e}"))?
 }
@@ -214,14 +215,38 @@ pub async fn qzone_sync_list_photos(
       if let Ok(conn) = open_app_db(&app) {
         // 角标前先对账：库里 synced 但盘上没文件 → 回写未下载，避免虚标
         let _ = db::reconcile_synced_missing_local_files(&conn, Some(&album_id));
-        if let Ok(synced) = db::synced_asset_ids(&conn, Some(&album_id)) {
-          for v in &mut views {
-            v.downloaded = synced.contains(&v.asset_id);
-          }
+        let states = db::cloud_states_for_album(&conn, &album_id).unwrap_or_default();
+        for v in &mut views {
+          let state = states
+            .get(&v.asset_id)
+            .cloned()
+            .unwrap_or_else(|| "cloud_only".into());
+          v.cloud_state = state.clone();
+          v.downloaded = state == "synced";
         }
       }
       Ok(views)
     })
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
+}
+
+/**
+ * 仅读本机 sync 库四态（不打 QQ 网）；供下载进度回写时就地 patch 宫格角标
+ * @returns assetId → cloudState
+ */
+#[tauri::command]
+pub async fn qzone_sync_album_cloud_states(
+  app: AppHandle,
+  album_id: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+  if album_id.trim().is_empty() {
+    return Err("album_id 不能为空".into());
+  }
+  tokio::task::spawn_blocking(move || {
+    let conn = open_app_db(&app)?;
+    db::cloud_states_for_album(&conn, &album_id)
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?
@@ -241,12 +266,25 @@ pub async fn qzone_sync_delete_photos(
       deleted: 0,
       failed: 0,
       message: "未选择照片".into(),
+      failed_asset_ids: Vec::new(),
     });
   }
   tokio::task::spawn_blocking(move || {
-    // 按相册分组
     use std::collections::HashMap;
+    use tauri::Emitter;
+
+    let total = items.len() as u32;
+    let _ = app.emit(
+      "qzone-sync://cloud-delete-progress",
+      types::QzoneCloudDeleteProgress {
+        processed: 0,
+        total,
+      },
+    );
+
+    // 按相册分组；保留全局序以便进度按张累计
     let mut by_album: HashMap<(String, i32), Vec<(String, String)>> = HashMap::new();
+    let mut album_order: Vec<(String, i32)> = Vec::new();
     for it in &items {
       let album = it.album_id.trim();
       let aid = it.asset_id.trim();
@@ -258,16 +296,18 @@ pub async fn qzone_sync_delete_photos(
       } else {
         it.sloc.trim().to_string()
       };
-      by_album
-        .entry((album.to_string(), it.album_priv))
-        .or_default()
-        .push((aid.to_string(), sloc));
+      let key = (album.to_string(), it.album_priv);
+      if !by_album.contains_key(&key) {
+        album_order.push(key.clone());
+      }
+      by_album.entry(key).or_default().push((aid.to_string(), sloc));
     }
     if by_album.is_empty() {
       return Ok(types::QzoneDeletePhotosResult {
         deleted: 0,
         failed: items.len() as u32,
         message: "无效的删除项".into(),
+        failed_asset_ids: items.iter().map(|i| i.asset_id.clone()).collect(),
       });
     }
 
@@ -275,20 +315,37 @@ pub async fn qzone_sync_delete_photos(
     let mut failed = 0u32;
     let mut last_err = String::new();
     let mut ok_ids: Vec<String> = Vec::new();
+    let mut failed_ids: Vec<String> = Vec::new();
+    let mut base_processed = 0u32;
 
     with_qzone_session(&app, |sess| {
-      for ((album_id, priv_code), pairs) in &by_album {
-        match client::delete_photos(sess, album_id, *priv_code, pairs) {
-          Ok((d, f, ids, err)) => {
+      for key in &album_order {
+        let pairs = match by_album.get(key) {
+          Some(p) => p,
+          None => continue,
+        };
+        let (album_id, priv_code) = key;
+        let album_len = pairs.len() as u32;
+        match client::delete_photos(sess, album_id, *priv_code, pairs, |batch_done, _batch_total| {
+          let _ = app.emit(
+            "qzone-sync://cloud-delete-progress",
+            types::QzoneCloudDeleteProgress {
+              processed: base_processed + batch_done,
+              total,
+            },
+          );
+        }) {
+          Ok((d, f, ids, fail_ids, err)) => {
             deleted += d;
             failed += f;
             ok_ids.extend(ids);
+            failed_ids.extend(fail_ids);
             if !err.is_empty() {
               last_err = err;
             }
+            base_processed += album_len;
           }
           Err(e) => {
-            // 鉴权失效等硬错误：整批中止
             return Err(e);
           }
         }
@@ -313,6 +370,7 @@ pub async fn qzone_sync_delete_photos(
       deleted,
       failed,
       message,
+      failed_asset_ids: failed_ids,
     })
   })
   .await

@@ -104,6 +104,7 @@ pub fn run() {
       qzone_sync::qzone_sync_job_status,
       qzone_sync::qzone_sync_list_albums,
       qzone_sync::qzone_sync_list_photos,
+      qzone_sync::qzone_sync_album_cloud_states,
       qzone_sync::qzone_sync_delete_photos,
       qzone_sync::qzone_sync_upload_photos,
       qzone_sync::qzone_sync_fetch_media,

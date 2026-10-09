@@ -3,6 +3,7 @@
   职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
   主流程：hydrate → FAB → 工具栏（同步到本地 / 下载 / 移除）→ 宫格；
   意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消；删云失败项保留勾选
+  @note 方案 3：全量轻量元数据进内存 + 虚拟宫格（仅挂视口）；框选按几何命中全量 placements
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -11,8 +12,15 @@ import IcloudSyncFooter from "./IcloudSyncFooter.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
-import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
+import { MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import { scrollRevealInRoot } from "../scrollRevealInRoot";
+import {
+  buildIcloudCloudLayout,
+  computeIcloudCloudGrid,
+  hitTestIcloudCloudPlacements,
+  ICLOUD_CLOUD_GRID,
+  sliceVisibleIcloudCloudPlacements
+} from "../icloudSyncCloudLayout";
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
@@ -27,16 +35,15 @@ import {
   cloudListDisplayState,
   cloudListDisplayFilename,
   cloudStateLabel,
-  cloudStateColor,
+  cloudStateTagColor,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs, { type Dayjs } from "dayjs";
-import { useThrottleFn } from "@vueuse/core";
+import { useElementSize, useScroll, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { COLOR_NEUTRAL } from "@/utils/theme";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
@@ -46,7 +53,8 @@ type CloudIntent = null | "download" | "delete";
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
   displayStateLabel: string;
-  displayStateColor: string;
+  /** a-tag color：success / processing / error / default */
+  displayStateTagColor: string;
   /** 来自 iCloud Hidden 相册 */
   isHidden: boolean;
   /** 来自 Shared Photo Library */
@@ -88,24 +96,18 @@ const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
 });
 const selectMode = computed(() => intent.value != null);
 
-const cloudPage = ref(1);
-const cloudPageSize = ref(100);
+/** 轻量全量单次拉取上限（与 Rust clamp 一致） */
+const CLOUD_META_CHUNK = 2000;
 const cloudTotal = ref(0);
+/** 当前筛选下全量展示行（轻量元数据；DOM 仅挂可视切片） */
 const cloudRows = ref<CloudListDisplayRow[]>([]);
-/** 无限滚动：是否还有更多页 */
-const cloudHasMore = ref(false);
-/** 无限滚动：正在加载下一页 */
-const cloudLoadingMore = ref(false);
-/** 哨兵元素 + IO，触底自动加载下一页 */
-const cloudSentinelRef = ref<HTMLElement | null>(null);
-let cloudSentinelObserver: IntersectionObserver | null = null;
 const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deleteDialogOpen = ref(false);
 const deleteDialogItems = ref<IcloudSyncDeleteAssetItem[]>([]);
 const cloudSelectedKeys = ref<string[]>([]);
-/** 跨页勾选的行快照；无限滚动后当前页不含他页行，删云/子集下载须用此 Map */
+/** 勾选 row 快照（按 id；虚拟列表下 DOM 不全） */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
 
 function clearCloudSelection() {
@@ -187,11 +189,32 @@ function onCloudCellClick(row: CloudListDisplayRow) {
 
 const cloudGridScrollRef = ref<HTMLElement | null>(null);
 const cloudGridFrameRef = ref<HTMLElement | null>(null);
-/** 框选开始前的勾选（含跨页快照）；拖太短或取消时还原 */
+const { width: cloudGridWidth, height: cloudViewportHeight } = useElementSize(cloudGridScrollRef);
+const { y: cloudScrollTop } = useScroll(cloudGridScrollRef, { throttle: 60 });
+
+const cloudGridMetrics = computed(() => computeIcloudCloudGrid(Math.max(0, cloudGridWidth.value - 4)));
+const cloudFullLayout = computed(() =>
+  buildIcloudCloudLayout(cloudRows.value, cloudGridMetrics.value.cols, cloudGridMetrics.value.cellSize)
+);
+const cloudBufferPx = computed(() => Math.max(120, ICLOUD_CLOUD_GRID.bufferRows * (cloudGridMetrics.value.cellSize + ICLOUD_CLOUD_GRID.gap)));
+const cloudVisiblePlacements = computed(() =>
+  sliceVisibleIcloudCloudPlacements(cloudFullLayout.value.placements, cloudScrollTop.value, cloudViewportHeight.value, cloudBufferPx.value)
+);
+
+function cloudPlacementStyle(p: { left: number; top: number; width: number; height: number }): Record<string, string> {
+  return {
+    left: `${p.left}px`,
+    top: `${p.top}px`,
+    width: `${p.width}px`,
+    height: `${p.height}px`
+  };
+}
+
+/** 框选开始前的勾选快照；拖太短或取消时还原 */
 let cloudSelectSnapshot: { keys: string[]; rows: Map<string, CloudListDisplayRow> } | null = null;
 
 /**
- * 框选累加：本轮命中并入拖前快照；只收当前已加载且可删云的格
+ * 框选累加：几何命中全量 placements（不依赖虚拟未挂载的 DOM）
  */
 function applyCloudMarquee(keys: string[]) {
   const nextMap = new Map<string, CloudListDisplayRow>();
@@ -228,13 +251,11 @@ const {
     };
   },
   onUpdate(box) {
-    const frame = cloudGridFrameRef.value;
-    if (!frame) return;
     if (box.width < MIN_MARQUEE_PX && box.height < MIN_MARQUEE_PX) {
       restoreCloudSelectSnapshot();
       return;
     }
-    applyCloudMarquee(hitTestMarqueeKeys(frame, box));
+    applyCloudMarquee(hitTestIcloudCloudPlacements(cloudFullLayout.value.placements, box));
   },
   onEnd(committed) {
     if (!committed) restoreCloudSelectSnapshot();
@@ -306,8 +327,12 @@ function openCloudPreview(row: CloudListDisplayRow) {
 }
 
 function scrollCloudRowIntoView(rowKey: string) {
+  const root = cloudGridScrollRef.value;
+  const place = cloudFullLayout.value.placements.find(p => p.rowKey === rowKey);
+  if (root && place) {
+    root.scrollTop = Math.max(0, place.top + place.height / 2 - root.clientHeight / 2);
+  }
   nextTick(() => {
-    const root = cloudGridScrollRef.value;
     const cell = root?.querySelector<HTMLElement>(`.cloud-cell[data-row-key="${CSS.escape(rowKey)}"]`);
     scrollRevealInRoot(root, cell, { block: "center" });
   });
@@ -402,54 +427,6 @@ function formatSortKeyTime(sortKey: string | undefined | null): string {
   return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : raw;
 }
 
-async function refreshCloudAssets() {
-  if (!isLoggedIn.value) return;
-  loadingCloud.value = true;
-  try {
-    const summary = await getIcloudSyncCloudStateSummary();
-    cloudSummary.value = summary;
-    cloudPage.value = 1;
-    const list = await loadIcloudSyncCloudList({
-      offset: 0,
-      limit: cloudPageSize.value,
-      cloudState: cloudListState.value
-    });
-    cloudRows.value = list.items.map(toDisplayRow);
-    cloudTotal.value = list.total;
-    cloudHasMore.value = cloudRows.value.length < list.total;
-    refreshSelectedRowsFromPage(cloudRows.value);
-    resetCloudSentinel();
-  } catch (e) {
-    await reportBusinessError(e);
-  } finally {
-    loadingCloud.value = false;
-  }
-}
-
-/** 无限滚动：加载下一页 */
-async function loadMoreCloudAssets() {
-  if (!isLoggedIn.value || cloudLoadingMore.value || !cloudHasMore.value) return;
-  cloudLoadingMore.value = true;
-  try {
-    const next = cloudPage.value + 1;
-    const list = await loadIcloudSyncCloudList({
-      offset: (next - 1) * cloudPageSize.value,
-      limit: cloudPageSize.value,
-      cloudState: cloudListState.value
-    });
-    const rows = list.items.map(toDisplayRow);
-    cloudRows.value = [...cloudRows.value, ...rows];
-    cloudPage.value = next;
-    cloudTotal.value = list.total;
-    cloudHasMore.value = cloudRows.value.length < list.total;
-    refreshSelectedRowsFromPage(cloudRows.value);
-  } catch (e) {
-    await reportBusinessError(e);
-  } finally {
-    cloudLoadingMore.value = false;
-  }
-}
-
 function toDisplayRow(row: IcloudSyncCloudListRow): CloudListDisplayRow {
   const displayRow: IcloudSyncCloudListRow = { ...row, rowKey: row.assetId };
   const state = cloudListDisplayState(displayRow);
@@ -457,36 +434,61 @@ function toDisplayRow(row: IcloudSyncCloudListRow): CloudListDisplayRow {
     ...displayRow,
     displayFilename: cloudListDisplayFilename(displayRow),
     displayStateLabel: cloudStateLabel(state),
-    displayStateColor: cloudStateColor(state),
+    displayStateTagColor: cloudStateTagColor(state),
     isHidden: row.catalogScope === "hidden",
     isShared: row.catalogScope === "shared"
   };
 }
 
-/** 哨兵 IO：触底加载下一页 */
-function resetCloudSentinel() {
-  cloudSentinelObserver?.disconnect();
-  cloudSentinelObserver = null;
-  nextTick(() => {
-    const el = cloudSentinelRef.value;
-    const root = cloudGridScrollRef.value;
-    if (!el || !root) return;
-    cloudSentinelObserver = new IntersectionObserver(
-      entries => {
-        if (entries[0]?.isIntersecting && cloudHasMore.value && !cloudLoadingMore.value) {
-          void loadMoreCloudAssets();
-        }
-      },
-      { root, rootMargin: "200px 0px", threshold: 0 }
-    );
-    cloudSentinelObserver.observe(el);
-  });
+/**
+ * 拉取当前筛选下全量轻量元数据（跳过 is_file；分片直至完备）
+ */
+async function fetchAllCloudMeta(): Promise<CloudListDisplayRow[]> {
+  const acc: CloudListDisplayRow[] = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+  while (offset < total) {
+    const list = await loadIcloudSyncCloudList({
+      offset,
+      limit: CLOUD_META_CHUNK,
+      cloudState: cloudListState.value,
+      checkLocalFile: false
+    });
+    total = list.total;
+    acc.push(...list.items.map(toDisplayRow));
+    if (list.items.length === 0) break;
+    offset += list.items.length;
+    if (offset > 100_000) break;
+  }
+  return acc;
+}
+
+/**
+ * 刷新云列表（全量轻量元数据 → 虚拟宫格）
+ * @param silent 进度回写：不亮 loading，避免蒙层闪空
+ */
+async function refreshCloudAssets(opts?: { silent?: boolean }) {
+  if (!isLoggedIn.value) return;
+  const silent = opts?.silent === true;
+  if (!silent) loadingCloud.value = true;
+  try {
+    const summary = await getIcloudSyncCloudStateSummary();
+    cloudSummary.value = summary;
+    const rows = await fetchAllCloudMeta();
+    cloudRows.value = rows;
+    cloudTotal.value = rows.length;
+    refreshSelectedRowsFromPage(cloudRows.value);
+  } catch (e) {
+    if (!silent) await reportBusinessError(e);
+  } finally {
+    if (!silent) loadingCloud.value = false;
+  }
 }
 
 /** 抽屉打开且已登录时刷新列表 */
-function refreshCloudIfVisible() {
+function refreshCloudIfVisible(opts?: { silent?: boolean }) {
   if (!drawerOpen.value || !isLoggedIn.value) return;
-  void refreshCloudAssets();
+  void refreshCloudAssets(opts);
 }
 
 /** iCloud 移除说明：本地保留 + 最近删除（Modal 与提示共用） */
@@ -566,12 +568,13 @@ watch(previewIndex, index => {
   if (previewOpen.value && index < 0) closeCloudPreview();
 });
 
-watch(isLoggedIn, refreshCloudIfVisible);
+watch(isLoggedIn, () => refreshCloudIfVisible());
 
-watch(cloudStateTick, refreshCloudIfVisible);
+/** catalog / 完成等态变更：静默回写角标，不打断浏览 */
+watch(cloudStateTick, () => refreshCloudIfVisible({ silent: true }));
 
-/** 下载中 progress 事件驱动列表 refresh（cloud_state 仅在 catalog/完成时变） */
-const throttledRefreshOnDownload = useThrottleFn(refreshCloudIfVisible, 1200, true, true);
+/** 下载中 progress：静默刷新态，禁止 loading 蒙层整表闪 */
+const throttledRefreshOnDownload = useThrottleFn(() => refreshCloudIfVisible({ silent: true }), 1200, true, true);
 watch(downloadProgressTick, throttledRefreshOnDownload);
 
 const iconName = computed(() => {
@@ -605,10 +608,6 @@ onMounted(() => {
   if (isTauri()) void hydrateFromStorage();
 });
 
-onBeforeUnmount(() => {
-  cloudSentinelObserver?.disconnect();
-  cloudSentinelObserver = null;
-});
 </script>
 
 <template>
@@ -652,7 +651,7 @@ onBeforeUnmount(() => {
         <div class="cloud-toolbar">
           <div class="toolbar-actions">
             <div class="toolbar-left">
-              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
+              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }" placement="bottom">
                 <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">下载全部</a-button>
               </a-tooltip>
               <a-tooltip
@@ -663,6 +662,7 @@ onBeforeUnmount(() => {
                       ? { title: '请先取消当前操作' }
                       : { title: '挑选待下载项后再下' }
                 "
+                placement="bottom"
               >
                 <a-button
                   type="primary"
@@ -682,6 +682,7 @@ onBeforeUnmount(() => {
                       ? { title: '请先取消当前操作' }
                       : { title: '挑选已下载项后从 iCloud 移除' }
                 "
+                placement="bottom"
               >
                 <a-button
                   danger
@@ -722,36 +723,37 @@ onBeforeUnmount(() => {
             @pointerdown="onCloudPointerDown"
             @dragstart="onCloudDragStart"
           >
-            <div v-if="cloudRows.length" ref="cloudGridFrameRef" class="cloud-grid">
+            <div
+              v-if="cloudRows.length"
+              ref="cloudGridFrameRef"
+              class="cloud-grid-canvas"
+              :style="{ height: `${cloudFullLayout.totalHeight}px` }"
+            >
               <div
-                v-for="row in cloudRows"
-                :key="row.rowKey"
+                v-for="p in cloudVisiblePlacements"
+                :key="p.rowKey"
                 class="cloud-cell"
-                :data-row-key="row.rowKey"
-                :data-marquee-key="canSelectCloudRow(row) ? row.rowKey : undefined"
-                :class="{ selected: selectMode && isCloudRowSelected(row), 'select-mode': selectMode }"
-                :title="`${row.displayFilename}\n${formatSortKeyTime(row.captureAt ?? row.sortKey)} · ${row.displayStateLabel}`"
-                @click="onCloudCellClick(row)"
+                :data-row-key="p.rowKey"
+                :style="cloudPlacementStyle(p)"
+                :class="{ selected: selectMode && isCloudRowSelected(p.row), 'select-mode': selectMode }"
+                :title="`${p.row.displayFilename}\n${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`"
+                @click="onCloudCellClick(p.row)"
               >
                 <ProtocolLazyThumb
                   protocol="icloudimg"
-                  :asset-id="row.assetId"
-                  :local-path="cloudRowLocalImagePath(row)"
+                  :asset-id="p.row.assetId"
+                  :local-path="cloudRowLocalImagePath(p.row)"
                   :scroll-root="cloudGridScrollRef"
-                  :kind="row.mediaKind === 'video' ? 'video' : row.mediaKind === 'live' ? 'livephoto' : 'image'"
-                  :ext="row.displayFilename?.split('.').pop()"
+                  :kind="p.row.mediaKind === 'video' ? 'video' : p.row.mediaKind === 'live' ? 'livephoto' : 'image'"
+                  :ext="p.row.displayFilename?.split('.').pop()"
                 />
-                <span class="cell-state" :style="{ background: row.displayStateColor || COLOR_NEUTRAL }">{{ row.displayStateLabel }}</span>
-                <span v-if="row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
-                <span v-if="row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
+                <a-tag class="cell-state" :color="p.row.displayStateTagColor" :bordered="false">{{ p.row.displayStateLabel }}</a-tag>
+                <span v-if="p.row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
+                <span v-if="p.row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
               </div>
               <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
             </div>
             <a-empty v-else-if="!loadingCloud" description="当前筛选下暂无内容" :image="false" />
-            <!-- 无限滚动哨兵：触底自动加载下一页 -->
-            <div v-if="cloudRows.length" ref="cloudSentinelRef" class="cloud-grid-sentinel">
-              <a-spin v-if="cloudLoadingMore" />
-            </div>
           </div>
           <div class="cloud-grid-foot">
             <span v-if="cloudTotal > 0" class="cloud-grid-count">
@@ -888,11 +890,9 @@ onBeforeUnmount(() => {
     cursor: crosshair;
   }
 }
-.cloud-grid {
+.cloud-grid-canvas {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 8px;
+  width: 100%;
 }
 .sync-marquee {
   position: absolute;
@@ -903,8 +903,8 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .cloud-cell {
-  position: relative;
-  aspect-ratio: 1;
+  position: absolute;
+  box-sizing: border-box;
   border-radius: 8px;
   overflow: hidden;
   cursor: zoom-in;
@@ -934,20 +934,19 @@ onBeforeUnmount(() => {
     pointer-events: none;
   }
 }
+/* 左下角常驻；与 QQ 宫格 a-tag 角标同尺寸 */
 .cell-state {
   position: absolute;
   left: 4px;
   bottom: 4px;
   z-index: 5;
   max-width: calc(100% - 28px);
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: var(--color-text-light-solid);
+  margin: 0;
+  padding: 0 5px;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   pointer-events: none;
 }
 .cell-badge {
@@ -981,13 +980,6 @@ onBeforeUnmount(() => {
   line-height: 1;
   pointer-events: none;
   text-shadow: 0 0 2px var(--color-bg-mask-strong);
-}
-.cloud-grid-sentinel {
-  flex-shrink: 0;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .cloud-grid-foot {
   flex-shrink: 0;

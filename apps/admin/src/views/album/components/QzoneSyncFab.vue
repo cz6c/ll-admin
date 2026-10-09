@@ -1,17 +1,17 @@
 <!--
   QQ 空间同步浮动入口（第二备份源）
-  职责：扫码登录、左相册/右缩略图浏览、MediaLightboxShell 灯箱、全部下载；
-  本相册下载/上传；角标「已下载」+ 勾选后从 QQ 空间移除（本机文件保留）；左键拖拽框选复用相册宫格
-  适用：相册页与 IcloudSyncFab 并列；交互结构参考开源客户端，不嵌入 GPL 源码
-  @note 进度区对齐 IcloudSyncStatusCard：顶栏状态卡 + 进度条统计；账号放抽屉 #extra
+  职责：扫码登录、左相册/右缩略图；意图先行（批量下载/移除）；忙时底栏；FAB 进度
+  主流程：hydrate → FAB → 工具栏（全部下载 / 批量下载 / 批量移除）→ 宫格；
+  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消
+  保留：下载本相册 / 上传到本相册（QQ 产品差异）
 -->
 <script setup lang="ts">
 import {
   cancelQzoneSyncJob,
-  deleteQzonePhotos,
   getQzoneAuthState,
   getQzoneJobStatus,
   isQzoneAuthExpiredError,
+  getQzoneAlbumCloudStates,
   listQzoneAlbums,
   listQzonePhotos,
   logoutQzone,
@@ -24,24 +24,35 @@ import {
   startQzoneSyncJob,
   uploadQzonePhotos,
   type QzoneAlbumSummary,
+  type QzoneDeletePhotoItem,
   type QzoneJobSnapshot,
   type QzonePhotoView,
   type QzoneQrStatus
 } from "@/api/qzoneSync";
+import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
+import QzoneSyncDeleteDialog from "./QzoneSyncDeleteDialog.vue";
+import QzoneSyncFooter from "./QzoneSyncFooter.vue";
 import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import { scrollRevealInRoot } from "../scrollRevealInRoot";
+import { cloudStateLabel, cloudStateTagColor } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useThrottleFn } from "@vueuse/core";
 import dayjs from "dayjs";
 
 defineOptions({ name: "AlbumQzoneSyncFab" });
 
 const UNKNOWN_DAY = "__unknown__";
+
+/** 意图先行：null=混排浏览；download/delete=筛态勾选 */
+type CloudIntent = null | "download" | "delete";
+
+const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
 
 const drawerOpen = ref(false);
 const loggedIn = ref(false);
@@ -62,18 +73,22 @@ const photos = ref<QzonePhotoView[]>([]);
 const photosLoading = ref(false);
 const photoScrollRef = ref<HTMLElement | null>(null);
 
-/** 勾选模式：点格切换选中，用于从 QQ 空间移除（本机保留） */
-const selectMode = ref(false);
+const intent = ref<CloudIntent>(null);
+const selectMode = computed(() => intent.value != null);
 const selectedIds = ref<Set<string>>(new Set());
 const deletingCloud = ref(false);
-/** 上传到本相册进行中 */
+const deleteDialogOpen = ref(false);
+const deleteDialogItems = ref<QzoneDeletePhotoItem[]>([]);
 const uploadingAlbum = ref(false);
+const starting = ref(false);
+const pausing = ref(false);
+const resuming = ref(false);
+const cancelling = ref(false);
 
 const previewOpen = ref(false);
 const previewIndex = ref(0);
 const previewIsVideo = ref(false);
 const previewLoading = ref(false);
-/** 视频落盘后的 asset URL；图片仍走 qzoneProxiedSrc */
 const previewVideoSrc = ref("");
 let previewEpoch = 0;
 
@@ -88,48 +103,64 @@ const job = ref<QzoneJobSnapshot>({
 });
 
 const busy = computed(() => ["cataloging", "downloading", "paused"].includes(job.value.status));
+const canManageCloudSpace = computed(() => !busy.value);
 const percent = computed(() => {
   if (job.value.total <= 0) return 0;
   return Math.min(100, Math.round((job.value.done / job.value.total) * 100));
 });
 
-const statusHeadline = computed(() => {
-  switch (job.value.status) {
-    case "cataloging":
-      return "正在枚举相册…";
-    case "downloading":
-      return "正在下载到本地";
-    case "paused":
-      return "已暂停";
-    case "failed":
-      return "同步失败";
-    case "done":
-      return "本轮已完成";
-    default:
-      return "准备就绪";
-  }
-});
-
-const statusDescription = computed(() => {
-  if (job.value.message?.trim()) return job.value.message;
-  if (!busy.value) return "可全部下载；本相册的下载/上传在右侧标题旁";
-  return "";
-});
-
-const progressStatsText = computed(() => {
-  const j = job.value;
-  if (j.total <= 0) return "";
-  return `${j.total} · 完成 ${j.done} · 新增 ${j.updated} · 跳过 ${j.skipped} · 失败 ${j.failed}`;
-});
-
-const showProgressBar = computed(() => busy.value || job.value.total > 0);
+/** 忙时或失败时展示底栏（对齐 iCloud：done/idle 不挂） */
+const showSyncFooter = computed(() => busy.value || job.value.status === "failed" || starting.value);
 
 const activeAlbum = computed(() => albums.value.find(a => a.topicId === activeAlbumId.value));
-
 const selectedCount = computed(() => selectedIds.value.size);
+
+/** 归一四态；缺省按 downloaded 兼容旧数据 */
+function photoCloudState(photo: QzonePhotoView): string {
+  const raw = (photo.cloudState || "").trim();
+  if (raw) return raw;
+  return photo.downloaded ? "synced" : "cloud_only";
+}
+
+/** 意图下筛态：对齐 iCloud — 下载=待下载|失败；移除=已下载；空闲=全部 */
+const displayPhotos = computed(() => {
+  if (intent.value === "download") {
+    return photos.value.filter(p => {
+      const s = photoCloudState(p);
+      return s === "cloud_only" || s === "download_failed";
+    });
+  }
+  if (intent.value === "delete") return photos.value.filter(p => photoCloudState(p) === "synced");
+  return photos.value;
+});
+
+const downloadIntentLabel = computed(() => (intent.value === "download" ? `批量下载 (${selectedCount.value})` : "批量下载"));
+const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${selectedCount.value})` : "批量移除"));
 
 function isSelected(assetId: string) {
   return selectedIds.value.has(assetId);
+}
+
+/** 仅按意图+云态判断可勾（不含忙时护栏；进度刷新剪勾选时用） */
+function isSelectableInIntent(photo: QzonePhotoView): boolean {
+  if (!intent.value) return false;
+  const s = photoCloudState(photo);
+  if (intent.value === "delete") return s === "synced";
+  // 下载意图：待下载 / 失败可勾；下载中不可勾
+  return s === "cloud_only" || s === "download_failed";
+}
+
+function canSelectPhoto(photo: QzonePhotoView): boolean {
+  if (!canManageCloudSpace.value) return false;
+  return isSelectableInIntent(photo);
+}
+
+function photoStateLabel(photo: QzonePhotoView): string {
+  return cloudStateLabel(photoCloudState(photo));
+}
+
+function photoStateTagColor(photo: QzonePhotoView): string {
+  return cloudStateTagColor(photoCloudState(photo));
 }
 
 function toggleSelect(assetId: string) {
@@ -143,13 +174,50 @@ function clearSelection() {
   selectedIds.value = new Set();
 }
 
-function exitSelectMode() {
-  selectMode.value = false;
+function exitIntent() {
+  intent.value = null;
   clearSelection();
 }
 
+function removeSelectionKeys(keys: string[]) {
+  if (keys.length === 0) return;
+  const drop = new Set(keys);
+  const next = new Set(selectedIds.value);
+  for (const k of drop) next.delete(k);
+  selectedIds.value = next;
+}
+
+function guardCloudManageAction(): boolean {
+  if (canManageCloudSpace.value) return true;
+  $feedback.message.warning(TASK_BUSY_HINT);
+  return false;
+}
+
+/**
+ * 进入意图：仅空闲可进；已在其它意图时须先取消（禁止直接切换）
+ */
+function enterIntent(next: "download" | "delete"): boolean {
+  if (!guardCloudManageAction()) return false;
+  if (intent.value === next) return true;
+  if (intent.value != null) return false;
+  clearSelection();
+  intent.value = next;
+  return true;
+}
+
 function onCellClick(row: { photo: QzonePhotoView; index: number }) {
-  if (selectMode.value) {
+  if (intent.value) {
+    if (!canSelectPhoto(row.photo)) {
+      const s = photoCloudState(row.photo);
+      if (intent.value === "delete") {
+        $feedback.message.info("仅已下载到本地的项可勾选移除");
+      } else if (s === "downloading") {
+        $feedback.message.info("下载中的项不可勾选");
+      } else {
+        $feedback.message.info("仅待下载或失败项可勾选下载");
+      }
+      return;
+    }
     toggleSelect(row.photo.assetId);
     return;
   }
@@ -157,7 +225,6 @@ function onCellClick(row: { photo: QzonePhotoView; index: number }) {
 }
 
 const photoFrameRef = ref<HTMLElement | null>(null);
-/** 框选开始前的勾选；拖太短或取消时还原 */
 let qzoneSelectSnapshot: Set<string> | null = null;
 
 const {
@@ -176,77 +243,113 @@ const {
       if (qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);
       return;
     }
-    // 累加：本轮命中并入拖前快照，不清除框外已选项
     const next = new Set(qzoneSelectSnapshot ?? []);
-    for (const key of hitTestMarqueeKeys(frame, box)) {
-      next.add(key);
+    const want = new Set(hitTestMarqueeKeys(frame, box));
+    for (const photo of displayPhotos.value) {
+      if (!want.has(photo.assetId) || !canSelectPhoto(photo)) continue;
+      next.add(photo.assetId);
     }
     selectedIds.value = next;
-    if (next.size > 0) selectMode.value = true;
   },
   onEnd(committed) {
     if (!committed && qzoneSelectSnapshot) selectedIds.value = new Set(qzoneSelectSnapshot);
-    else if (committed && selectedIds.value.size > 0) selectMode.value = true;
     qzoneSelectSnapshot = null;
   }
 });
 
 function onPhotoPointerDown(event: PointerEvent) {
-  if (busy.value) return;
+  if (!canManageCloudSpace.value || !intent.value) return;
   const scroll = photoScrollRef.value;
   const frame = photoFrameRef.value;
   if (!scroll || !frame) return;
   onQzoneMarqueePointerDown(event, { scrollEl: scroll, frameEl: frame });
 }
 
-/**
- * 从 QQ 空间移除勾选（本机文件保留）；全屏蒙层 + 删完刷新相册列表与当前相册
- */
-async function onDeleteSelectedFromCloud() {
-  if (!isTauri() || deletingCloud.value || selectedCount.value === 0) return;
+/** 意图先行：下载 — 首次进入筛选；再次点击执行子集入队 */
+async function onDownloadIntentClick() {
+  if (!guardCloudManageAction()) return;
+  if (intent.value !== "download") {
+    enterIntent("download");
+    return;
+  }
+  if (selectedCount.value === 0) {
+    $feedback.message.warning("请先勾选要下载的照片");
+    return;
+  }
+  if (!activeAlbumId.value) {
+    $feedback.message.warning("请先选择相册");
+    return;
+  }
+  const picked = displayPhotos.value.filter(p => selectedIds.value.has(p.assetId) && isSelectableInIntent(p));
+  if (!picked.length) {
+    $feedback.message.warning("请先勾选要下载的照片");
+    return;
+  }
+  starting.value = true;
+  try {
+    const ids = picked.map(p => p.assetId);
+    job.value = await startQzoneSyncJob({ albumId: activeAlbumId.value, assetIds: ids });
+    removeSelectionKeys(ids);
+    $feedback.message.success(`已开始下载所选 ${ids.length} 项`);
+  } catch (e) {
+    await handleQzoneApiError(e, "启动失败");
+  } finally {
+    starting.value = false;
+  }
+}
+
+/** 意图先行：移除 — 首次进入筛选；再次点击走删云确认 */
+function onDeleteIntentClick() {
+  if (!guardCloudManageAction()) return;
+  if (intent.value !== "delete") {
+    enterIntent("delete");
+    return;
+  }
+  confirmDeleteCloud();
+}
+
+const CLOUD_DELETE_HINT = "只删除 QQ 空间云端副本，电脑里已下载的文件会保留。删除后通常无法在空间回收站恢复，请确认后再继续。";
+
+function confirmDeleteCloud() {
+  if (!guardCloudManageAction()) return;
   const album = activeAlbum.value;
   const albumId = activeAlbumId.value;
   if (!albumId) return;
-  const picked = photos.value.filter(p => selectedIds.value.has(p.assetId));
-  if (!picked.length) return;
-
-  const CLOUD_DELETE_HINT = "只删除 QQ 空间云端副本，电脑里已下载的文件会保留。删除后通常无法在空间回收站恢复，请确认后再继续。";
-  try {
-    await $feedback.confirm(CLOUD_DELETE_HINT, {
-      title: `确定从 QQ 空间移除所选 ${picked.length} 项？`,
-      okText: "确认移除",
-      cooldownMs: 1500
-    });
-  } catch {
+  const picked = displayPhotos.value.filter(p => selectedIds.value.has(p.assetId) && photoCloudState(p) === "synced");
+  if (!picked.length) {
+    $feedback.message.warning("请先勾选要从 QQ 空间移除的照片（须已下载到本地）");
     return;
   }
 
-  deletingCloud.value = true;
-  $feedback.loading("正在从 QQ 空间移除…");
-  try {
-    const result = await deleteQzonePhotos(
-      picked.map(p => ({
-        albumId: p.albumId || albumId,
-        assetId: p.assetId,
-        sloc: p.sloc || p.assetId,
-        albumPriv: album?.albumPriv ?? 1
-      }))
-    );
-    // 刷新左侧相册计数 + 当前相册相片（loadAlbums 内会 force select 当前册）
-    await loadAlbums();
-    $feedback.closeLoading();
-    if (result.failed > 0 && result.deleted === 0) {
-      $feedback.message.error(result.message || "移除失败");
-    } else if (result.failed > 0) {
-      $feedback.message.warning(result.message);
-    } else {
-      $feedback.message.success(result.message || `已移除 ${result.deleted} 项`);
+  void (async () => {
+    try {
+      await $feedback.confirm(CLOUD_DELETE_HINT, {
+        title: `从 QQ 空间移除所选 ${picked.length} 项？`,
+        okText: "确认从 QQ 空间移除",
+        cooldownMs: 1500
+      });
+    } catch {
+      return;
     }
-  } catch (e) {
-    $feedback.closeLoading();
-    await handleQzoneApiError(e, "移除失败");
+    if (deletingCloud.value) return;
+    deletingCloud.value = true;
+    deleteDialogItems.value = picked.map(p => ({
+      albumId: p.albumId || albumId,
+      assetId: p.assetId,
+      sloc: p.sloc || p.assetId,
+      albumPriv: album?.albumPriv ?? 1
+    }));
+    deleteDialogOpen.value = true;
+  })();
+}
+
+/** 删云结束：只保留失败项勾选，刷新列表；不退出意图 */
+async function onCloudDeleteFinished(keepAssetIds: string[]) {
+  const keep = new Set(keepAssetIds);
+  selectedIds.value = new Set([...selectedIds.value].filter(id => keep.has(id)));
+  try {
+    await loadAlbums();
   } finally {
-    $feedback.closeLoading();
     deletingCloud.value = false;
   }
 }
@@ -267,11 +370,11 @@ const previewMeta = computed(() => {
   const parts: string[] = [];
   const capture = formatQzoneCaptureAt(previewPhoto.value?.captureAt);
   if (capture) parts.push(capture);
+  if (previewPhoto.value) parts.push(photoStateLabel(previewPhoto.value));
   parts.push(`${previewIndex.value + 1} / ${photos.value.length}`);
   return parts.join(" · ");
 });
 
-/** 灯箱时间；与时间轴分组同一套数字时间戳兼容 */
 function formatQzoneCaptureAt(raw?: string | null): string | null {
   if (!raw?.trim()) return null;
   const s = raw.trim();
@@ -283,11 +386,14 @@ function formatQzoneCaptureAt(raw?: string | null): string | null {
   return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : null;
 }
 
-/** 按日分组时间轴；无时间归「未知时间」并沉底 */
+/** 按日分组；基于意图筛后的 displayPhotos，index 映射回 photos 全表以开灯箱 */
 const photoGroups = computed(() => {
   type Row = { photo: QzonePhotoView; index: number };
   const buckets = new Map<string, { key: string; label: string; sort: number; items: Row[] }>();
-  photos.value.forEach((photo, index) => {
+  const indexById = new Map(photos.value.map((p, i) => [p.assetId, i]));
+  displayPhotos.value.forEach(photo => {
+    const index = indexById.get(photo.assetId) ?? -1;
+    if (index < 0) return;
     const parsed = parseCaptureDay(photo.captureAt);
     const key = parsed?.key ?? UNKNOWN_DAY;
     const label = parsed?.label ?? "未知时间";
@@ -325,9 +431,6 @@ async function refreshJob() {
   job.value = await getQzoneJobStatus();
 }
 
-/**
- * 授权失效：清 UI 登录态（磁盘 session 多由 Rust 已清）；抽屉开着则回到扫码
- */
 let applyingAuthExpired = false;
 async function applyAuthExpiredUi(showToast = true) {
   if (applyingAuthExpired) return;
@@ -343,7 +446,7 @@ async function applyAuthExpiredUi(showToast = true) {
     albums.value = [];
     photos.value = [];
     activeAlbumId.value = "";
-    exitSelectMode();
+    exitIntent();
     closePreview();
     try {
       await refreshJob();
@@ -359,7 +462,6 @@ async function applyAuthExpiredUi(showToast = true) {
   }
 }
 
-/** API 错误：授权失效则退出登录，否则普通 toast */
 async function handleQzoneApiError(e: unknown, fallback: string) {
   if (isQzoneAuthExpiredError(e)) {
     await applyAuthExpiredUi(true);
@@ -388,9 +490,9 @@ async function loadAlbums() {
   }
 }
 
-/** 刷新远端相册目录与当前相册内容（不启动下载任务） */
 async function onRefreshCatalog() {
   if (!loggedIn.value || refreshingCatalog.value) return;
+  if (!guardCloudManageAction()) return;
   refreshingCatalog.value = true;
   try {
     await loadAlbums();
@@ -404,13 +506,22 @@ async function selectAlbum(topicId: string, force = false) {
   if (!topicId) return;
   if (!force && activeAlbumId.value === topicId && photos.value.length) return;
   closePreview();
-  // 不支持跨相册勾选：换册或强制刷新时退出勾选模式
-  exitSelectMode();
+  // 不支持跨相册勾选：换册退出意图；同册强制刷新保留意图（删云/下载后）
+  if (activeAlbumId.value !== topicId) exitIntent();
   activeAlbumId.value = topicId;
   photosLoading.value = true;
   photos.value = [];
   try {
     photos.value = await listQzonePhotos(topicId);
+    // 刷新后剪掉已不在当前筛态的勾选（勿用 canSelectPhoto：忙时会误清）
+    if (intent.value && selectedIds.value.size) {
+      selectedIds.value = new Set(
+        [...selectedIds.value].filter(id => {
+          const p = photos.value.find(x => x.assetId === id);
+          return !!p && isSelectableInIntent(p);
+        })
+      );
+    }
   } catch (e) {
     await handleQzoneApiError(e, "拉取相片失败");
   } finally {
@@ -546,6 +657,7 @@ async function onLogout() {
     albums.value = [];
     photos.value = [];
     activeAlbumId.value = "";
+    exitIntent();
     await refreshJob();
     if (drawerOpen.value) void refreshQr();
   } catch (e) {
@@ -554,30 +666,35 @@ async function onLogout() {
 }
 
 async function onSyncAll() {
+  if (!guardCloudManageAction()) return;
+  starting.value = true;
   try {
-    job.value = await startQzoneSyncJob(null);
+    job.value = await startQzoneSyncJob();
     $feedback.message.success("已开始全部下载");
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
+  } finally {
+    starting.value = false;
   }
 }
 
 async function onSyncAlbum() {
+  if (!guardCloudManageAction()) return;
   if (!activeAlbumId.value) {
     $feedback.message.warning("请先选择相册");
     return;
   }
+  starting.value = true;
   try {
-    job.value = await startQzoneSyncJob(activeAlbumId.value);
+    job.value = await startQzoneSyncJob({ albumId: activeAlbumId.value });
     $feedback.message.success(`已开始下载：${activeAlbum.value?.name || "本相册"}`);
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
+  } finally {
+    starting.value = false;
   }
 }
 
-/**
- * 系统文件框选本地图/视频，上传到当前 QQ 相册（本回合仅图片实际上传）
- */
 async function onUploadToAlbum() {
   if (!isTauri() || uploadingAlbum.value || busy.value) return;
   const albumId = activeAlbumId.value;
@@ -611,7 +728,6 @@ async function onUploadToAlbum() {
     if (result.uploaded > 0) {
       $feedback.message.success(result.message);
       await selectAlbum(albumId, true);
-      // 刷新左侧相册计数
       try {
         albums.value = await listQzoneAlbums();
       } catch {
@@ -628,30 +744,126 @@ async function onUploadToAlbum() {
 }
 
 async function onPause() {
+  pausing.value = true;
   try {
     job.value = await pauseQzoneSyncJob();
   } catch (e) {
     $feedback.message.error(e instanceof Error ? e.message : String(e) || "暂停失败");
+  } finally {
+    pausing.value = false;
   }
 }
 
 async function onResume() {
+  resuming.value = true;
   try {
     job.value = await resumeQzoneSyncJob();
   } catch (e) {
     $feedback.message.error(e instanceof Error ? e.message : String(e) || "继续失败");
+  } finally {
+    resuming.value = false;
   }
 }
 
 async function onCancel() {
   try {
+    await $feedback.confirm("将丢弃当前下载进度", {
+      title: "取消任务？",
+      okText: "取消任务"
+    });
+  } catch {
+    return;
+  }
+  cancelling.value = true;
+  try {
     job.value = await cancelQzoneSyncJob();
   } catch (e) {
     $feedback.message.error(e instanceof Error ? e.message : String(e) || "取消失败");
+  } finally {
+    cancelling.value = false;
   }
 }
 
-/** FAB 拖动与 Drawer / 灯箱壳见 SyncFabShell；此处仅业务监听 */
+/** FAB：下载中水波进度；其余按任务态图标 */
+const fabState = computed(() => {
+  const status = job.value.status;
+  const p = percent.value;
+  if (status === "downloading" || status === "cataloging") {
+    return { icon: "cloud" as const, color: "processing" as const, label: statusHeadlineForFab(status), percent: p, breathing: false };
+  }
+  if (status === "paused") {
+    return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: p, breathing: false };
+  }
+  if (status === "failed") {
+    return { icon: "warning" as const, color: "error" as const, label: "同步失败", percent: 0, breathing: false };
+  }
+  if (status === "done") {
+    return { icon: "check" as const, color: "success" as const, label: "本轮已完成", percent: 100, breathing: false };
+  }
+  return { icon: "qq" as const, color: "default" as const, label: "QQ 空间同步", percent: 0, breathing: false };
+});
+
+function statusHeadlineForFab(status: string) {
+  return status === "cataloging" ? "正在枚举相册…" : "正在下载到本地";
+}
+
+const showFabProgress = computed(
+  () => fabState.value.percent > 0 && fabState.value.percent < 100 && (job.value.status === "downloading" || job.value.status === "cataloging")
+);
+
+const fabIconName = computed(() => {
+  switch (fabState.value.icon) {
+    case "check":
+      return "mdi:check-circle";
+    case "warning":
+      return "mdi:alert-circle";
+    case "pause":
+      return "mdi:pause-circle";
+    case "cloud":
+      return "mdi:cloud-outline";
+    default:
+      return "ri:qq-fill";
+  }
+});
+
+/**
+ * 就地合并四态到现有宫格行（不清 photos、不打 QQ 网）
+ * @note 进度回写专用；整表重拉会空白闪一下
+ */
+async function patchPhotosCloudStates() {
+  const albumId = activeAlbumId.value;
+  if (!albumId || !photos.value.length) return;
+  try {
+    const states = await getQzoneAlbumCloudStates(albumId);
+    let changed = false;
+    const next = photos.value.map(p => {
+      const state = states[p.assetId] || p.cloudState || (p.downloaded ? "synced" : "cloud_only");
+      const downloaded = state === "synced";
+      if (p.cloudState === state && p.downloaded === downloaded) return p;
+      changed = true;
+      return { ...p, cloudState: state, downloaded };
+    });
+    if (changed) photos.value = next;
+    // 意图内勾选：剪掉已不可选（如刚变成 downloading / synced）
+    if (intent.value && selectedIds.value.size) {
+      selectedIds.value = new Set(
+        [...selectedIds.value].filter(id => {
+          const p = photos.value.find(x => x.assetId === id);
+          return !!p && isSelectableInIntent(p);
+        })
+      );
+    }
+  } catch {
+    /* 进度回写失败不打扰浏览 */
+  }
+}
+
+/** 下载进度驱动宫格角标就地更新（节流） */
+const throttledPatchPhotosOnProgress = useThrottleFn(() => {
+  if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
+    void patchPhotosCloudStates();
+  }
+}, 800, true, true);
 
 let unlisten: UnlistenFn | undefined;
 let unlistenAuthExpired: UnlistenFn | undefined;
@@ -665,22 +877,19 @@ onMounted(async () => {
       const prev = job.value.status;
       job.value = ev.payload;
       const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
-      // 下载任务结束：提示刷新本地相册（同步中不扰动底下宫格；点刷新才出图挂列表）
       if (wasActive && ev.payload.status === "done") {
         const n = ev.payload.updated ?? 0;
         if (n > 0) {
           $feedback.message.info(`有 ${n} 张新照片已下载到本地，点击「刷新」可在相册中查看`);
         }
       }
-      // 任务结束：刷新当前相册角标（reconcile 后 downloaded 会变）
-      if (
-        drawerOpen.value &&
-        loggedIn.value &&
-        activeAlbumId.value &&
-        (ev.payload.status === "done" || ev.payload.status === "failed" || ev.payload.status === "idle") &&
-        wasActive
-      ) {
-        void selectAlbum(activeAlbumId.value, true);
+      // 进度/终态一律就地 patch，禁止 selectAlbum 整表清空
+      if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
+        if (ev.payload.status === "downloading" || ev.payload.status === "cataloging") {
+          throttledPatchPhotosOnProgress();
+        } else if (wasActive && (ev.payload.status === "done" || ev.payload.status === "failed" || ev.payload.status === "idle" || ev.payload.status === "paused")) {
+          void patchPhotosCloudStates();
+        }
       }
     });
     unlistenAuthExpired = await listen("qzone-sync://auth-expired", () => {
@@ -700,13 +909,19 @@ onBeforeUnmount(() => {
 watch(drawerOpen, open => {
   if (!isTauri()) return;
   if (open) {
-    void refreshAuth().then(() => {
-      if (!loggedIn.value) void refreshQr();
-      else void loadAlbums();
-    });
+    // 关抽屉再开：保留已加载相册/宫格，不重拉；仅未登录或首开无数据时取数
+    if (loggedIn.value) {
+      if (!albums.value.length) void loadAlbums();
+    } else {
+      void refreshAuth().then(() => {
+        if (!loggedIn.value) void refreshQr();
+        else void loadAlbums();
+      });
+    }
     void refreshJob();
   } else {
     stopQrPoll();
+    if (intent.value) exitIntent();
     closePreview();
   }
 });
@@ -733,14 +948,17 @@ watch(drawerOpen, open => {
     @lightbox-next="previewNav(1)"
   >
     <template #fab>
-      <a-button class="fab-btn" shape="circle" size="large" title="QQ 空间同步">
-        <CcIconifyIcon icon="ri:qq-fill" width="28" height="28" />
+      <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
+        <IcloudSyncFabWave v-if="showFabProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
+        <CcIconifyIcon v-else :icon="fabIconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
       </a-button>
     </template>
 
     <template #drawer-extra>
-      <a-space v-if="loggedIn" :size="4" align="center">
-        <div class="drawer-extra-tag">QQ {{ uin || "—" }}</div>
+      <a-space v-if="loggedIn" :size="8" align="center">
+        <div class="drawer-extra-tag">
+          QQ <span>{{ uin || "—" }}</span>
+        </div>
         <a-button type="link" size="small" danger @click="onLogout">退出</a-button>
       </a-space>
     </template>
@@ -757,44 +975,67 @@ watch(drawerOpen, open => {
     </div>
 
     <div v-else class="browser">
-      <!-- 对齐 iCloud StatusCard：标题 + 主操作 / 进度统计 / 说明 -->
-      <section class="status-card">
-        <div class="status-head">
-          <div class="status-main">
-            <span class="status-title">{{ statusHeadline }}</span>
+      <div class="cloud-toolbar">
+        <div class="toolbar-actions">
+          <div class="toolbar-left">
+            <a-tooltip v-bind="canManageCloudSpace ? { title: '下载全部相册待同步项' } : { title: TASK_BUSY_HINT }" placement="bottom">
+              <a-button type="primary" :loading="starting && !intent" :disabled="!canManageCloudSpace" @click="onSyncAll">全部下载</a-button>
+            </a-tooltip>
+            <a-tooltip
+              v-bind="
+                !canManageCloudSpace
+                  ? { title: TASK_BUSY_HINT }
+                  : intent && intent !== 'download'
+                    ? { title: '请先取消当前操作' }
+                    : { title: '挑选未下载项后再下' }
+              "
+              placement="bottom"
+            >
+              <a-button
+                type="primary"
+                :ghost="intent !== 'download'"
+                :loading="starting && intent === 'download'"
+                :disabled="!canManageCloudSpace || (!!intent && intent !== 'download')"
+                @click="onDownloadIntentClick"
+              >
+                {{ downloadIntentLabel }}
+              </a-button>
+            </a-tooltip>
+            <a-tooltip
+              v-bind="
+                !canManageCloudSpace
+                  ? { title: TASK_BUSY_HINT }
+                  : intent && intent !== 'delete'
+                    ? { title: '请先取消当前操作' }
+                    : { title: '挑选已下载项后从 QQ 空间移除' }
+              "
+              placement="bottom"
+            >
+              <a-button
+                danger
+                :type="intent !== 'delete' ? 'default' : 'primary'"
+                :loading="deletingCloud"
+                :disabled="!canManageCloudSpace || (!!intent && intent !== 'delete')"
+                @click="onDeleteIntentClick"
+              >
+                {{ deleteIntentLabel }}
+              </a-button>
+            </a-tooltip>
+            <a-button v-if="intent" @click="exitIntent">取消</a-button>
           </div>
-          <div class="action-row">
-            <a-button type="primary" :disabled="busy" @click="onSyncAll">全部下载</a-button>
-            <a-button v-if="job.status === 'downloading'" danger @click="onPause">暂停</a-button>
-            <a-button v-if="job.status === 'paused'" type="primary" @click="onResume">继续</a-button>
-            <a-button v-if="busy" danger @click="onCancel">取消任务</a-button>
-          </div>
-        </div>
-        <div v-if="showProgressBar" class="progress-row">
-          <a-progress
-            class="progress-bar"
-            size="small"
-            :percent="percent"
-            :show-info="false"
-            :status="job.status === 'failed' ? 'exception' : job.status === 'done' ? 'success' : 'active'"
-          />
-          <span v-if="job.total > 0" class="progress-percent">{{ percent }}%</span>
-          <span class="progress-stats">{{ progressStatsText }}</span>
-        </div>
-        <p v-if="statusDescription" class="status-desc">{{ statusDescription }}</p>
-      </section>
-
-      <div class="browse-toolbar">
-        <span class="browse-hint">左侧选相册，右侧浏览；角标「已下载」表示本机已有；可勾选后从 QQ 空间移除（本机保留）</span>
-        <div class="browse-actions">
-          <a-button size="small" :loading="refreshingCatalog || albumsLoading" :disabled="busy" @click="onRefreshCatalog"> 刷新目录 </a-button>
-          <a-button v-if="!selectMode" size="small" :disabled="!activeAlbumId || !photos.length || busy" @click="selectMode = true"> 选择 </a-button>
-          <template v-else>
-            <a-button size="small" danger :loading="deletingCloud" :disabled="selectedCount === 0 || busy" @click="onDeleteSelectedFromCloud">
-              从 QQ 空间移除{{ selectedCount ? ` (${selectedCount})` : "" }}
+          <div class="toolbar-right">
+            <a-button
+              shape="circle"
+              :loading="refreshingCatalog || albumsLoading"
+              :disabled="!canManageCloudSpace"
+              :title="canManageCloudSpace ? '刷新目录' : TASK_BUSY_HINT"
+              @click="onRefreshCatalog"
+            >
+              <template #icon>
+                <CcIconifyIcon icon="ant-design:reload-outlined" width="16px" height="16px" />
+              </template>
             </a-button>
-            <a-button size="small" :disabled="deletingCloud" @click="exitSelectMode">取消选择</a-button>
-          </template>
+          </div>
         </div>
       </div>
 
@@ -819,14 +1060,20 @@ watch(drawerOpen, open => {
           <div class="photo-head">
             <div class="photo-head-main">
               <span class="photo-head-title">{{ activeAlbum?.name || "请选择相册" }}</span>
-              <span v-if="photos.length" class="sub">
-                已加载 {{ photos.length }} 张
-                <template v-if="activeAlbum && activeAlbum.total > 0 && photos.length !== activeAlbum.total"> · 云端申报 {{ activeAlbum.total }} </template>
+              <span v-if="displayPhotos.length || photos.length" class="sub">
+                <template v-if="selectMode && selectedCount">已选 {{ selectedCount }} · </template>
+                显示 {{ displayPhotos.length }}
+                <template v-if="intent"> / 本册 {{ photos.length }}</template>
+                <template v-else-if="activeAlbum && activeAlbum.total > 0 && photos.length !== activeAlbum.total">
+                  · 云端申报 {{ activeAlbum.total }}
+                </template>
               </span>
             </div>
             <div class="photo-head-actions">
-              <a-button size="small" type="primary" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onSyncAlbum"> 下载本相册 </a-button>
-              <a-button size="small" :loading="uploadingAlbum" :disabled="busy || !activeAlbumId || uploadingAlbum" @click="onUploadToAlbum">
+              <a-button size="small" type="primary" :disabled="busy || !activeAlbumId || uploadingAlbum || !!intent" @click="onSyncAlbum">
+                下载本相册
+              </a-button>
+              <a-button size="small" :loading="uploadingAlbum" :disabled="busy || !activeAlbumId || uploadingAlbum || !!intent" @click="onUploadToAlbum">
                 上传到本相册
               </a-button>
             </div>
@@ -849,8 +1096,8 @@ watch(drawerOpen, open => {
                       type="button"
                       class="cell"
                       :data-asset-id="row.photo.assetId"
-                      :data-marquee-key="row.photo.assetId"
-                      :class="{ selected: selectMode && isSelected(row.photo.assetId) }"
+                      :data-marquee-key="canSelectPhoto(row.photo) ? row.photo.assetId : undefined"
+                      :class="{ selected: selectMode && isSelected(row.photo.assetId), 'select-mode': selectMode }"
                       :title="row.photo.name"
                       @click="onCellClick(row)"
                     >
@@ -864,18 +1111,34 @@ watch(drawerOpen, open => {
                         :ext="row.photo.name?.split('.').pop()"
                       />
                       <div v-else class="cell-ph" />
-                      <!-- 角标：synced 且盘上文件仍在（拉列表前会 reconcile 缺盘） -->
-                      <span v-if="row.photo.downloaded" class="cell-badge">已下载</span>
+                      <a-tag class="cell-state" :color="photoStateTagColor(row.photo)" :bordered="false">
+                        {{ photoStateLabel(row.photo) }}
+                      </a-tag>
                     </button>
                   </div>
                 </section>
                 <div v-if="qzoneMarqueeStyle" class="sync-marquee" :style="qzoneMarqueeStyle" />
               </div>
-              <a-empty v-else-if="!photosLoading && activeAlbumId" description="此相册暂无内容" :image="false" />
+              <a-empty
+                v-else-if="!photosLoading && activeAlbumId"
+                :description="intent ? (intent === 'download' ? '当前相册没有待下载项' : '当前相册没有已下载项') : '此相册暂无内容'"
+                :image="false"
+              />
             </a-spin>
           </div>
         </section>
       </div>
+
+      <QzoneSyncFooter
+        v-if="showSyncFooter"
+        :job="job"
+        :pausing="pausing"
+        :resuming="resuming"
+        :cancelling="cancelling"
+        @pause="onPause"
+        @resume="onResume"
+        @cancel="onCancel"
+      />
     </div>
 
     <template #lightbox>
@@ -894,6 +1157,12 @@ watch(drawerOpen, open => {
       </div>
     </template>
   </SyncFabShell>
+  <QzoneSyncDeleteDialog
+    v-model:open="deleteDialogOpen"
+    :items="deleteDialogItems"
+    @finished="onCloudDeleteFinished"
+    @auth-expired="applyAuthExpiredUi(true)"
+  />
 </template>
 
 <style scoped lang="scss">
@@ -902,11 +1171,56 @@ watch(drawerOpen, open => {
   height: 58px;
   padding: 0;
   cursor: inherit;
+  background: var(--color-bg-container);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s;
+  &:hover,
+  &:active {
+    transform: scale(1.08);
+    background: var(--color-bg-container);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
 }
+.fab-default {
+  color: var(--color-text-tertiary);
+}
+.fab-processing {
+  color: var(--color-primary);
+}
+.fab-success {
+  color: var(--color-success);
+}
+.fab-warning {
+  color: var(--color-warning);
+}
+.fab-error {
+  color: var(--color-error);
+}
+.breathing {
+  animation: fab-breathe 2.2s ease-in-out infinite;
+}
+@keyframes fab-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .breathing {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 .login-block {
   display: flex;
   flex-direction: column;
@@ -917,6 +1231,9 @@ watch(drawerOpen, open => {
   font-size: 12px;
   color: var(--color-text-secondary);
   padding: 0 4px;
+  span {
+    color: var(--color-primary);
+  }
 }
 .mt {
   margin-top: 12px;
@@ -967,89 +1284,24 @@ watch(drawerOpen, open => {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  gap: 12px;
+  gap: 16px;
 }
-.status-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.cloud-toolbar {
   flex-shrink: 0;
 }
-.status-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.status-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding-top: 4px;
-}
-.status-title {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.status-desc {
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
-.progress-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 22px;
-}
-.progress-bar {
-  flex: 1;
-  min-width: 80px;
-  margin: 0;
-}
-.progress-percent {
-  flex-shrink: 0;
-  width: 32px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text);
-  text-align: right;
-}
-.progress-stats {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.browse-toolbar {
+.toolbar-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-shrink: 0;
-}
-.browse-hint {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  min-width: 0;
-  flex: 1;
-}
-.browse-actions {
-  display: flex;
   flex-wrap: wrap;
+}
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  flex-shrink: 0;
-  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .panes {
   display: flex;
@@ -1087,12 +1339,6 @@ watch(drawerOpen, open => {
   overflow: hidden;
   flex-shrink: 0;
   background: var(--bg-color-secondary);
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
 }
 .cover-ph {
   width: 100%;
@@ -1206,11 +1452,15 @@ watch(drawerOpen, open => {
   aspect-ratio: 1;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  cursor: pointer;
+  cursor: zoom-in;
   background: var(--bg-color-secondary);
-  /* 与本地相册宫格对齐：选中=压暗+主色环；未选无态；不用角标勾 */
+  /* 避免 button 继承 font-size:0 时角标文字不可见 */
+  font-size: 12px;
+  &.select-mode {
+    cursor: pointer;
+  }
   &.selected::before {
     content: "";
     position: absolute;
@@ -1231,12 +1481,6 @@ watch(drawerOpen, open => {
     border-radius: inherit;
     pointer-events: none;
   }
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
 }
 .cell-ph {
   width: 100%;
@@ -1244,29 +1488,20 @@ watch(drawerOpen, open => {
   background: linear-gradient(90deg, var(--color-fill-tertiary), var(--color-fill-secondary), var(--color-fill-tertiary));
   background-size: 200% 100%;
 }
-.cell-badge {
+/* 左下角常驻；尺寸压小以适配宫格 */
+.cell-state {
   position: absolute;
-  top: 4px;
   left: 4px;
-  z-index: 5;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--color-bg-mask-strong);
-  color: var(--color-text-light-solid);
-  font-size: 11px;
-  line-height: 1.6;
-  pointer-events: none;
-}
-.badge {
-  position: absolute;
-  right: 4px;
   bottom: 4px;
+  z-index: 5;
+  max-width: calc(100% - 28px);
+  margin: 0;
+  padding: 0 5px;
   font-size: 11px;
-  line-height: 1;
-  padding: 3px 5px;
-  border-radius: 4px;
-  color: var(--color-text-light-solid);
-  background: var(--color-bg-mask-strong);
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 .preview-empty {
   color: var(--color-text-tertiary);

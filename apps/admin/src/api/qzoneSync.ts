@@ -33,8 +33,10 @@ export interface QzonePhotoView {
   captureAt?: string | null;
   /** 删图定位串；缺省同 assetId */
   sloc?: string;
-  /** 本机已下载（sync synced + dest_path） */
+  /** 本机已下载（cloudState=synced）；兼容字段 */
   downloaded?: boolean;
+  /** 宫格四态：cloud_only / downloading / synced / download_failed */
+  cloudState?: string;
 }
 
 export interface QzoneDeletePhotoItem {
@@ -48,7 +50,17 @@ export interface QzoneDeletePhotosResult {
   deleted: number;
   failed: number;
   message: string;
+  /** 未移除成功的 assetId；删云结束后保留勾选 */
+  failedAssetIds?: string[];
 }
+
+/** 删云进度事件 payload */
+export interface QzoneCloudDeleteProgress {
+  processed: number;
+  total: number;
+}
+
+export const QZONE_CLOUD_DELETE_PROGRESS_EVENT = "qzone-sync://cloud-delete-progress";
 
 export interface QzoneUploadPhotosResult {
   uploaded: number;
@@ -117,10 +129,17 @@ export function isQzoneAuthExpiredError(err: unknown): boolean {
 /**
  * 同步到本地
  * @param albumId 有值则仅该相册；否则全部
+ * @param assetIds 有值则 catalog 后只下载勾选子集（须已为/将变为 cloud_only）
  */
-export async function startQzoneSyncJob(albumId?: string | null): Promise<QzoneJobSnapshot> {
+export async function startQzoneSyncJob(opts?: {
+  albumId?: string | null;
+  assetIds?: string[] | null;
+}): Promise<QzoneJobSnapshot> {
+  const albumId = opts?.albumId || null;
+  const assetIds = opts?.assetIds?.length ? opts.assetIds : null;
   return invoke<QzoneJobSnapshot>("qzone_sync_start_job", {
-    albumId: albumId || null
+    albumId,
+    assetIds
   });
 }
 
@@ -147,6 +166,14 @@ export async function listQzoneAlbums(): Promise<QzoneAlbumSummary[]> {
 /** 某相册相片浏览列表 */
 export async function listQzonePhotos(albumId: string): Promise<QzonePhotoView[]> {
   return invoke<QzonePhotoView[]>("qzone_sync_list_photos", { albumId });
+}
+
+/**
+ * 仅读本机四态（不拉 QQ 列表）；进度回写时 patch 宫格，避免整表清空重载
+ * @returns assetId → cloudState
+ */
+export async function getQzoneAlbumCloudStates(albumId: string): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>("qzone_sync_album_cloud_states", { albumId });
 }
 
 /**

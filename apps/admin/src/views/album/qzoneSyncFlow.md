@@ -58,21 +58,22 @@
 | 能力 | 命令 / 行为 |
 |------|-------------|
 | 相册列表 | `qzone_sync_list_albums` |
-| 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`downloaded`；右侧按日时间轴；角标「已下载」） |
+| 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`cloudState` 四态、`downloaded`；右侧按日时间轴；`a-tag` 角标） |
 | 缩略图/灯箱 | 图：`ProtocolLazyThumb`（`qzoneimg`）→`ThumbVisual`/`BaseImage`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
 | 全部下载 | `qzone_sync_start_job`（`albumId=null`） |
+| 批量下载所选 | 意图先行「批量下载」→ 筛未下载 → 勾选/框选 → 再点执行 → `qzone_sync_start_job`（`albumId` + `assetIds`） |
 | 本相册下载 | 右侧标题旁「下载本相册」→ `qzone_sync_start_job`（传入 `albumId`） |
 | 上传到本相册 | 右侧标题旁「上传到本相册」→ 系统文件框 → `qzone_sync_upload_photos`（`cgi_upload_image`；当前仅图片） |
-| 从 QQ 空间移除 | 勾选 → 确认（1.5s 冷却）→ `qzone_sync_delete_photos`；**只删云端**，本机文件与 media.db 保留；sync state 行硬删 |
+| 从 QQ 空间移除 | 意图先行「批量移除」→ 筛已下载 → 确认（1.5s 冷却）→ `QzoneSyncDeleteDialog` + `qzone_sync_delete_photos`；**只删云端**，本机保留；失败项保留勾选 |
 
 > **删图：** `cgi_delpic_multi_v2` 对齐 qzone_api——**每张单独 POST**（多张拼 `codelist` 常只删第一张仍返回成功）。
 
-> **已下载角标：** 以 state.db `synced`+`dest_path` 为准；拉列表与下载前会 **reconcile**（盘上文件缺失则回写 `cloud_only`）。  
+> **四态角标：** `cloud_only` 待下载 · `downloading` 下载中 · `synced` 已下载 · `download_failed` 失败；与 iCloud 文案/色一致。拉列表与下载前 **reconcile** 缺盘；任务取消/崩溃把 `downloading` 回退 `cloud_only`；失败项可再入队。  
 > **分页：** 以「本页条数 < pageNum」为主停页；`totalInAlbum` 缺失/为 0 时不得只拉第一页。
 
-抽屉约 960px；顶栏状态卡对齐 iCloud（标题/主操作/进度统计）；账号在抽屉右上角；「刷新目录」重拉相册列表与当前相册内容。下载中可暂停 / 继续 / 取消。
+抽屉约 960px；工具栏对齐 iCloud（全部下载 / 批量下载 / 批量移除 / 取消 + 刷新）；忙时底栏 `QzoneSyncFooter`（暂停/继续/取消）；FAB 水波进度；账号在抽屉右上角。保留左相册/右时间轴与「下载本相册 / 上传」。
 
-> **当前任务模型：** 全局**单 worker**（与 iCloud 类似）：`全部下载` = 一次 catalog 全相册再下载；`下载本相册` = 仅该 `albumId`。尚不支持「勾选多个相册排队并行/串行多任务」。
+> **当前任务模型：** 全局**单 worker**（与 iCloud 类似）：`全部下载` = catalog 全相册；`下载本相册` = 仅该 `albumId`；`批量下载` = 该相册 + `assetIds` 子集。不支持跨相册勾选排队。
 
 ## 命令一览
 
@@ -89,12 +90,12 @@
 | `qzone_sync_delete_photos` | 从 QQ 空间移除；本机保留；硬删 sync 行 |
 | `qzone_sync_fetch_media` | Cookie 代理媒体 |
 | `qzone_sync_prepare_preview` | 视频：floatview→MP4→落盘；返回本地路径 |
-| `qzone_sync_start_job` | catalog + 下载（可选相册） |
+| `qzone_sync_start_job` | catalog + 下载（可选 `albumId` / `assetIds` 子集） |
 | `qzone_sync_pause_job` / `resume` / `cancel` | 任务控制 |
 | `qzone_sync_job_status` | 快照 |
 | `qzone_sync_pending_count` | 待下载计数 |
 
-事件：`qzone-sync://progress` → `QzoneJobSnapshot`；`qzone-sync://auth-expired` → 回扫码态
+事件：`qzone-sync://progress` → `QzoneJobSnapshot`；`qzone-sync://cloud-delete-progress` → 删云进度；`qzone-sync://auth-expired` → 回扫码态
 
 > 下载循环 / `qzoneimg` 遇鉴权失效：清 session + 发事件 + 失败任务或 401（不只 failed++ / BAD_GATEWAY）。
 > 传输层 `error sending request`：常见于 Clash **fake-ip**（本机 DNS 落在 `198.18.0.0/15`）瞬时黑洞；客户端已 `http1_only` + 短重试；仍失败时把 QQ 域名直连或确认应用走 TUN。

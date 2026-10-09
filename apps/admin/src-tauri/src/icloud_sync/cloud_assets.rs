@@ -253,6 +253,7 @@ fn build_sync_asset_row(
   conn: &Connection,
   apple_id: &str,
   raw: CloudListRowRaw,
+  check_local_file: bool,
 ) -> Result<SyncAssetRow, String> {
   let (
     asset_id,
@@ -274,7 +275,12 @@ fn build_sync_asset_row(
   ) = raw;
   let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
   let display = derive_list_display_state(conn, apple_id, &asset_id, &part, cloud_state)?;
-  let local_file_present = dest_path_file_present(dest_path.as_deref());
+  // 全量轻量元数据：跳过逐行 is_file，避免大图库首开/静默刷被盘 I/O 拖死；缩略图走协议懒载
+  let local_file_present = if check_local_file {
+    dest_path_file_present(dest_path.as_deref())
+  } else {
+    false
+  };
   Ok(SyncAssetRow {
     asset_id,
     part,
@@ -316,6 +322,7 @@ fn count_download_failed(conn: &Connection, apple_id: &str) -> Result<u32, Strin
 }
 
 /// 分页加载云注册表行（只读；download_failed 为派生态）
+/// @param check_local_file false=全量轻量元数据（跳过 is_file；limit 上限放宽）
 pub fn load_sync_assets(
   conn: &Connection,
   apple_id: &str,
@@ -327,6 +334,7 @@ pub fn load_sync_assets(
   filename_keyword: Option<&str>,
   sync_hidden: bool,
   sync_shared: bool,
+  check_local_file: bool,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   let date_filter = SortKeyDateFilter::parse(date_from, date_to);
   let filter = cloud_state_filter
@@ -343,10 +351,13 @@ pub fn load_sync_assets(
       filename_keyword,
       sync_hidden,
       sync_shared,
+      check_local_file,
     );
   }
 
-  let lim = i64::from(limit.clamp(1, 200));
+  // 轻量全量：单次最多 2000；带盘检仍 200，避免首屏卡顿
+  let max_lim = if check_local_file { 200 } else { 2000 };
+  let lim = i64::from(limit.clamp(1, max_lim));
   let off = i64::from(offset);
 
   let mut where_parts = vec!["apple_id = ?".to_string()];
@@ -409,7 +420,7 @@ pub fn load_sync_assets(
   let mut items = Vec::new();
   for row in rows {
     let raw = row.map_err(|e| format!("解析云资产行失败: {e}"))?;
-    items.push(build_sync_asset_row(conn, apple_id, raw)?);
+    items.push(build_sync_asset_row(conn, apple_id, raw, check_local_file)?);
   }
 
   for item in &mut items {
@@ -432,8 +443,10 @@ fn load_sync_assets_download_failed(
   filename_keyword: Option<&str>,
   sync_hidden: bool,
   sync_shared: bool,
+  check_local_file: bool,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
-  let lim = i64::from(limit.clamp(1, 200));
+  let max_lim = if check_local_file { 200 } else { 2000 };
+  let lim = i64::from(limit.clamp(1, max_lim));
   let off = i64::from(offset);
 
   let mut where_parts = vec![
@@ -491,7 +504,7 @@ fn load_sync_assets_download_failed(
   let mut items = Vec::new();
   for row in rows {
     let raw = row.map_err(|e| format!("解析 download_failed 行失败: {e}"))?;
-    items.push(build_sync_asset_row(conn, apple_id, raw)?);
+    items.push(build_sync_asset_row(conn, apple_id, raw, check_local_file)?);
   }
 
   for item in &mut items {
@@ -579,6 +592,7 @@ pub fn get_cloud_state_summary(
 
 /// 抽屉云资产列表
 #[tauri::command]
+/// 抽屉云资产列表；`check_local_file=false` 跳过逐行 is_file（全量轻量元数据）
 pub async fn icloud_sync_load_assets(
   app: AppHandle,
   offset: Option<u32>,
@@ -587,6 +601,7 @@ pub async fn icloud_sync_load_assets(
   date_from: Option<String>,
   date_to: Option<String>,
   filename_keyword: Option<String>,
+  check_local_file: Option<bool>,
 ) -> Result<IcloudSyncLoadAssetsResult, String> {
   tokio::task::spawn_blocking(move || {
     let settings = load_settings(&app)?;
@@ -611,6 +626,7 @@ pub async fn icloud_sync_load_assets(
       filename_keyword.as_deref(),
       settings.sync_hidden_album,
       settings.sync_shared_library,
+      check_local_file.unwrap_or(true),
     )
   })
   .await
@@ -701,7 +717,7 @@ mod tests {
       )
       .expect("insert synced");
 
-    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true)
+    let result = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true, true)
       .expect("load");
     let by_id: std::collections::HashMap<_, _> = result
       .items
@@ -808,6 +824,7 @@ mod tests {
       None,
       true,
       true,
+      true,
     )
     .expect("jan");
     assert_eq!(jan.total, 1);
@@ -824,6 +841,7 @@ mod tests {
       None,
       true,
       true,
+      true,
     )
     .expect("feb_mar");
     assert_eq!(feb_mar.total, 2);
@@ -837,6 +855,7 @@ mod tests {
       None,
       None,
       Some("D2"),
+      true,
       true,
       true,
     )
@@ -898,7 +917,7 @@ mod tests {
         .expect("insert live with dest");
     }
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true, true).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L3").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_0027.MOV"));
 
@@ -922,7 +941,7 @@ mod tests {
         )
         .expect("insert live same name");
     }
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None, None, true, true).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, None, None, None, None, true, true, true).expect("page");
     let live = page.items.iter().find(|r| r.asset_id == "L2").expect("live row");
     assert_eq!(live.live_mov_filename.as_deref(), Some("IMG_1.MOV"));
     let _ = std::fs::remove_file(path);
@@ -953,7 +972,7 @@ mod tests {
     );
     insert_synced(&conn, "P1", "2024-06-02", still.to_str().unwrap());
 
-    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true).expect("page");
+    let page = load_sync_assets(&conn, "u@x.com", 0, 50, Some("synced"), None, None, None, true, true, true).expect("page");
     assert_eq!(page.total, 2, "live pair counts as one row");
     assert_eq!(page.items.len(), 2);
     assert!(page.items.iter().all(|r| r.part != "mov"));
@@ -999,7 +1018,7 @@ mod tests {
     assert_eq!(summary.download_failed, 1);
 
     let page =
-      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None, None, true, true).expect("page");
+      load_sync_assets(&conn, "u@x.com", 0, 50, Some("download_failed"), None, None, None, true, true, true).expect("page");
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].asset_id, "F1");
     assert_eq!(page.items[0].download_status.as_deref(), Some("failed"));

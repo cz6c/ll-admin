@@ -224,7 +224,7 @@ flowchart LR
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
 | `icloud_sync_logout` | 清 sidecar + session（**不**清内存 job；换号 discard） |
 | `icloud_sync_get_settings` / `save_settings` | 含 `syncHiddenAlbum`（CS 应用设置） |
-| `icloud_sync_load_assets` | 抽屉云列表（支持 cloud_state 筛选；UI 固定 `all`；按 settings 过滤 scope） |
+| `icloud_sync_load_assets` | 抽屉云列表（`cloud_state` 筛选；`checkLocalFile=false` 全量轻量元数据；前端虚拟宫格） |
 | `icloud_sync_get_cloud_state_summary` | summary 计数（逻辑资产；Live=1） |
 | `icloud_sync_delete_assets` | 一次性删云所选（本机保留） |
 

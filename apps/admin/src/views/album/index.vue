@@ -1,13 +1,15 @@
 <!--
   相册主页 — 按日分组照片墙
-  职责：扫描根目录；图库与目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年；勾选改拍摄时间
-  主流程：discover 全库 → 图库∩目录过滤 → 宫格只挂最新年 → 边缘滚动扩展邻年；勾选点格/框选；点击年份只挂该年
+  职责：扫描根目录；图库与目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年
+  主流程：discover 全库 → 图库∩目录过滤 → 宫格只挂最新年 → 边缘滚动扩展邻年；
+  意图先行：修改拍摄时间 / 批量删除（点按钮→勾选/框选→再点执行；成功不自动退出意图）；
+  右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import $feedback from "@/utils/feedback";
 import { dateUtil } from "@llcz/common";
-import { deleteAlbumLocal, openAlbumDir } from "@/api/album";
+import { deleteAlbumLocal, revealAlbumInExplorer, type AlbumPathRename } from "@/api/album";
 import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
 import { useElementSize, useScroll } from "@vueuse/core";
@@ -216,18 +218,16 @@ const viewerGroups = computed<MediaGroup[]>(() => {
   ];
 });
 
-/**
- * 在系统资源管理器中打开相册根目录（Rust 侧校验须在相册根下）
- */
-async function openAlbumRootInExplorer() {
+/** 右键：在资源管理器中显示并选中该文件 */
+async function onRevealInExplorer(file: MediaFile) {
   if (!inTauri) {
-    $feedback.message.warning("仅桌面端可打开本地目录");
+    $feedback.message.warning("仅桌面端可打开资源管理器");
     return;
   }
   try {
-    await openAlbumDir(".");
+    await revealAlbumInExplorer(file.path);
   } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "打开目录失败");
+    $feedback.message.error(e instanceof Error ? e.message : String(e) || "在资源管理器中显示失败");
   }
 }
 
@@ -307,25 +307,32 @@ const { loading, error, scanProgressPercent, scanProgressLabel, thumbsGenerating
   });
 
 const {
+  intent,
   selectMode,
   orderedPaths: selectedPaths,
   marqueeStyle,
   marqueeActive,
   isSelected,
-  enterSelectMode,
-  exitSelectMode,
+  enterIntent,
+  exitIntent,
   togglePath,
+  removePaths,
+  remapPaths,
   onPointerDown: onGridPointerDown,
   onDragStart: onGridDragStart
 } = useAlbumGridSelect(displayFiles, thumbPlacements);
 
-/** 换图库清空勾选，避免跨库误改拍摄时间 */
+/** 换图库清空勾选，避免跨库误改拍摄时间 / 误删 */
 watch(libraryFilter, () => {
-  exitSelectMode();
+  exitIntent();
 });
 
-/** 宫格勾选 → 修改拍摄时间弹窗候选 */
-const rewriteCandidateFiles = computed(() => selectedPaths.value.map(p => pathIndex.value.get(p)).filter((f): f is MediaFile => !!f));
+/** 宫格勾选 → 修改拍摄时间弹窗 / 批量删除候选 */
+const selectedFiles = computed(() => selectedPaths.value.map(p => pathIndex.value.get(p)).filter((f): f is MediaFile => !!f));
+const selectedCount = computed(() => selectedPaths.value.length);
+const captureAtIntentLabel = computed(() => (intent.value === "captureAt" ? `修改拍摄时间 (${selectedCount.value})` : "修改拍摄时间"));
+const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量删除 (${selectedCount.value})` : "批量删除"));
+const batchDeleting = ref(false);
 
 const canvasEl = ref<HTMLElement | null>(null);
 
@@ -338,6 +345,28 @@ function onAlbumPointerDown(event: PointerEvent) {
 
 function onThumbToggle(file: MediaFile) {
   togglePath(file.path);
+}
+
+/** 意图先行：修改拍摄时间 */
+function onCaptureAtIntentClick() {
+  if (intent.value !== "captureAt") {
+    enterIntent("captureAt");
+    return;
+  }
+  if (selectedCount.value === 0) {
+    $feedback.message.warning("请先勾选要修改拍摄时间的照片");
+    return;
+  }
+  captureRewriteOpen.value = true;
+}
+
+/** 意图先行：批量删除本地 */
+function onDeleteIntentClick() {
+  if (intent.value !== "delete") {
+    enterIntent("delete");
+    return;
+  }
+  void confirmBatchDeleteLocal();
 }
 
 const bufferPx = computed(() => Math.max(ALBUM_YEAR_EDGE_PX, BUFFER_ROWS * rowHeight.value));
@@ -362,6 +391,24 @@ function onDuplicatesDeleted() {
   void scan(true);
 }
 
+/** 从 groups 去掉已删 path（含 Live 成对仍存在的仍项由 path 过滤） */
+function removeFilesFromGroups(removedPaths: Set<string>) {
+  groups.value = groups.value.map(g => ({
+    ...g,
+    files: g.files.filter(f => !removedPaths.has(f.path))
+  }));
+}
+
+/** 收集删除用盘路径：主 path + 可选 videoPath（Live mov） */
+function collectDeleteDiskPaths(files: MediaFile[]): string[] {
+  const paths: string[] = [];
+  for (const file of files) {
+    paths.push(file.path);
+    if (file.videoPath?.trim()) paths.push(file.videoPath);
+  }
+  return paths;
+}
+
 /** 右键删除本地文件（不触碰 iCloud sync assets） */
 async function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
@@ -373,14 +420,47 @@ async function onDeleteLocal(file: MediaFile) {
   } catch {
     return;
   }
-  const paths = [file.path];
-  if (file.videoPath?.trim()) paths.push(file.videoPath);
-  await deleteAlbumLocal(paths);
+  await deleteAlbumLocal(collectDeleteDiskPaths([file]));
   $feedback.message.success("已删除本地文件");
-  groups.value = groups.value.map(g => ({
-    ...g,
-    files: g.files.filter(f => f.path !== file.path)
-  }));
+  removeFilesFromGroups(new Set([file.path]));
+}
+
+/**
+ * 批量删除本地：仅磁盘，不碰云端；确认后一次性 deleteAlbumLocal
+ */
+async function confirmBatchDeleteLocal() {
+  if (!isTauri()) return;
+  const files = selectedFiles.value;
+  if (files.length === 0) {
+    $feedback.message.warning("请先勾选要删除的照片");
+    return;
+  }
+  try {
+    await $feedback.confirm(`将从磁盘删除所选 ${files.length} 项。`, {
+      title: "批量删除本地文件？",
+      okText: "删除"
+    });
+  } catch {
+    return;
+  }
+  if (batchDeleting.value) return;
+  batchDeleting.value = true;
+  try {
+    const mediaPaths = files.map(f => f.path);
+    await deleteAlbumLocal(collectDeleteDiskPaths(files));
+    removeFilesFromGroups(new Set(mediaPaths));
+    removePaths(mediaPaths);
+    $feedback.message.success(`已删除 ${files.length} 项本地文件`);
+  } catch (e) {
+    $feedback.message.error(e instanceof Error ? e.message : String(e) || "删除失败");
+  } finally {
+    batchDeleting.value = false;
+  }
+}
+
+/** 改拍摄时间成功：同步勾选 path（可能因改名变化），不退出意图 */
+function onCaptureAtSaved(renames: AlbumPathRename[] = []) {
+  remapPaths(renames);
 }
 
 function placementStyle(item: { left: number; top: number; width: number; height: number }): Record<string, string> {
@@ -457,20 +537,20 @@ onBeforeUnmount(() => {
           <a-select v-model:value="libraryFilter" class="album-library-filter" allow-clear placeholder="全部图库" :options="librarySelectOptions" />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <template v-if="!selectMode">
-              <a-button size="small" :disabled="catalogFiles.length === 0" @click="enterSelectMode">选择</a-button>
-            </template>
-            <template v-else>
-              <a-button type="primary" size="small" :disabled="selectedPaths.length === 0" @click="captureRewriteOpen = true">
-                修改拍摄时间{{ selectedPaths.length ? ` (${selectedPaths.length})` : "" }}
-              </a-button>
-              <a-button size="small" @click="exitSelectMode">取消选择</a-button>
-            </template>
-            <a-button v-if="inTauri" shape="circle" title="打开相册根目录" @click="openAlbumRootInExplorer">
-              <template #icon>
-                <CcIconifyIcon icon="ant-design:folder-open-outlined" width="16px" height="16px" />
-              </template>
+            <a-button type="primary" :ghost="intent !== 'captureAt'" size="small" :disabled="catalogFiles.length === 0" @click="onCaptureAtIntentClick">
+              {{ captureAtIntentLabel }}
             </a-button>
+            <a-button
+              size="small"
+              danger
+              :type="intent !== 'delete' ? 'default' : 'primary'"
+              :loading="batchDeleting"
+              :disabled="catalogFiles.length === 0 || !inTauri"
+              @click="onDeleteIntentClick"
+            >
+              {{ deleteIntentLabel }}
+            </a-button>
+            <a-button v-if="intent" size="small" @click="exitIntent">取消</a-button>
             <a-button shape="circle" title="清理重复下载" @click="duplicateModalOpen = true">
               <template #icon>
                 <CcIconifyIcon icon="ant-design:clear-outlined" width="16px" height="16px" />
@@ -508,6 +588,7 @@ onBeforeUnmount(() => {
                   @open="openViewer"
                   @toggle="onThumbToggle"
                   @delete="onDeleteLocal"
+                  @reveal="onRevealInExplorer"
                 />
                 <div v-if="marqueeStyle" class="album-marquee" :style="marqueeStyle" />
               </div>
@@ -530,7 +611,7 @@ onBeforeUnmount(() => {
 
     <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
 
-    <CaptureAtRewriteModal v-model:open="captureRewriteOpen" :files="rewriteCandidateFiles" @saved="exitSelectMode" />
+    <CaptureAtRewriteModal v-model:open="captureRewriteOpen" :files="selectedFiles" @saved="onCaptureAtSaved" />
   </div>
 </template>
 

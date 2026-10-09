@@ -93,3 +93,11 @@ export async function getAlbumRootDir(): Promise<string> {
 export async function openAlbumDir(relPath: string): Promise<void> {
   await invoke("album_open_dir", { relPath });
 }
+
+/**
+ * 在系统资源管理器中定位并选中文件（须在相册根下）
+ * @param path 媒体绝对路径
+ */
+export async function revealAlbumInExplorer(path: string): Promise<void> {
+  await invoke("album_reveal_in_explorer", { path });
+}

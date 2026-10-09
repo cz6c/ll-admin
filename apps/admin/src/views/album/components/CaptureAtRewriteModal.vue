@@ -1,14 +1,14 @@
 <!--
   修改拍摄时间弹窗
   职责：按拖拽顺序，用起始时间 + 间隔生成每张拍摄时间；单行可手改且不带动其余行；提交后轻提示，全部成功关弹窗
-  适用：本地相册给老照片补拍摄时间。页面只负责打开、传入勾选，以及在 saved 后清勾选；不接 confirm
+  适用：本地相册给老照片补拍摄时间。页面打开并传入勾选；saved 带 renames 供父页同步勾选 path，不自动退出意图
   备注：列表用 SortableJS（forceFallback）。Modal destroy-on-close 时 open 当下 listEl 常为空，须重试/待 ref 出现后再挂载；antdv 无 afterOpenChange
 -->
 <script setup lang="ts">
 import { dateUtil, formatToDatetime } from "@llcz/common";
 import type { Dayjs } from "dayjs";
 import type Sortable from "sortablejs";
-import { setAlbumCaptureAt, type AlbumSetCaptureAtResult } from "@/api/album";
+import { setAlbumCaptureAt, type AlbumPathRename, type AlbumSetCaptureAtResult } from "@/api/album";
 import $feedback from "@/utils/feedback";
 import AlbumThumbMedia from "./AlbumThumbMedia.vue";
 import type { MediaFile } from "../types";
@@ -43,9 +43,9 @@ const props = defineProps<{
   files: MediaFile[];
 }>();
 
-/** 全部写入成功并关弹窗；父页据此清勾选 */
+/** 全部写入成功并关弹窗；父页用 renames 同步勾选 path，不退出意图 */
 const emit = defineEmits<{
-  saved: [];
+  saved: [renames: AlbumPathRename[]];
 }>();
 
 /**
@@ -308,7 +308,7 @@ async function onSave() {
     }
     $feedback.message.success(text);
     open.value = false;
-    emit("saved");
+    emit("saved", result.renames ?? []);
   } catch (e) {
     $feedback.message.error(e instanceof Error ? e.message : String(e) || "保存失败");
   } finally {

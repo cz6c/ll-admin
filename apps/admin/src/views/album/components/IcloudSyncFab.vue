@@ -2,7 +2,7 @@
   iCloud 下载浮动触发区
   职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
   主流程：hydrate → FAB → 工具栏（同步到本地 / 下载 / 移除）→ 宫格；
-  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；删云走进度弹窗；失败项保留勾选
+  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出意图；删云失败项保留勾选
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -111,6 +111,16 @@ const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
 function clearCloudSelection() {
   cloudSelectedKeys.value = [];
   cloudSelectedRowsByKey.value = new Map();
+}
+
+/** 从勾选中去掉指定 rowKey，不退出意图 */
+function removeCloudSelectionKeys(keys: string[]) {
+  if (keys.length === 0) return;
+  const drop = new Set(keys);
+  cloudSelectedKeys.value = cloudSelectedKeys.value.filter(k => !drop.has(k));
+  const nextMap = new Map(cloudSelectedRowsByKey.value);
+  for (const key of drop) nextMap.delete(key);
+  cloudSelectedRowsByKey.value = nextMap;
 }
 
 function exitIntent() {
@@ -331,10 +341,8 @@ function guardCloudManageAction(): boolean {
   return false;
 }
 
-const downloadIntentLabel = computed(() =>
-  intent.value === "download" && selectedCloudCount.value > 0 ? `批量下载 (${selectedCloudCount.value})` : "批量下载"
-);
-const deleteIntentLabel = computed(() => (intent.value === "delete" && selectedCloudCount.value > 0 ? `批量移除 (${selectedCloudCount.value})` : "批量移除"));
+const downloadIntentLabel = computed(() => (intent.value === "download" ? `批量下载 (${selectedCloudCount.value})` : "批量下载"));
+const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${selectedCloudCount.value})` : "批量移除"));
 
 /**
  * 进入或切换意图：清勾选并按意图重载列表
@@ -359,9 +367,15 @@ async function onDownloadIntentClick() {
     $feedback.message.warning("请先勾选要下载的照片");
     return;
   }
-  const ids = selectedCloudRows().map(r => r.assetId);
+  const selected = selectedCloudRows();
+  const ids = selected.map(r => r.assetId);
+  const keys = selected.map(r => r.rowKey);
   const ok = await onStartSelected(ids);
-  if (ok) exitIntent();
+  if (ok) {
+    // 已入队项移出勾选，保留下载意图，便于继续挑下一批（任务占用时执行仍会被挡）
+    removeCloudSelectionKeys(keys);
+    void refreshCloudAssets();
+  }
 }
 
 /** 意图先行：移除 — 首次进入筛选；再次点击走删云确认 */
@@ -515,7 +529,7 @@ function confirmDeleteCloud() {
   });
 }
 
-/** 删云结束：只保留未移除成功项的勾选（rowKey 即 assetId），再刷新列表 */
+/** 删云结束：只保留未移除成功项的勾选（rowKey 即 assetId），再刷新列表；不退出意图 */
 async function onCloudDeleteFinished(keepAssetIds: string[]) {
   const keep = new Set(keepAssetIds);
   const nextMap = new Map<string, CloudListDisplayRow>();
@@ -526,18 +540,10 @@ async function onCloudDeleteFinished(keepAssetIds: string[]) {
   cloudSelectedRowsByKey.value = nextMap;
   try {
     await refreshCloudAssets();
-    // 全部移除成功则退出意图，回到混排
-    if (intent.value === "delete" && cloudSelectedKeys.value.length === 0) {
-      exitIntent();
-    }
   } finally {
     deletingCloud.value = false;
   }
 }
-
-watch(canManageCloudSpace, ok => {
-  if (!ok && intent.value) exitIntent();
-});
 
 watch(drawerOpen, open => {
   if (open) {
@@ -628,8 +634,10 @@ onBeforeUnmount(() => {
     </template>
 
     <template #drawer-extra>
-      <a-space v-if="isLoggedIn" :size="4" align="center">
-        <div class="drawer-extra-tag">{{ maskedCurrentAppleId }}</div>
+      <a-space v-if="isLoggedIn" :size="8" align="center">
+        <div class="drawer-extra-tag">
+          当前登录：<span>{{ maskedCurrentAppleId }}</span>
+        </div>
         <a-button type="link" size="small" danger :loading="loggingOut" @click="onLogout">退出</a-button>
       </a-space>
     </template>
@@ -644,22 +652,42 @@ onBeforeUnmount(() => {
               <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
                 <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">下载全部</a-button>
               </a-tooltip>
-            </div>
-            <div class="toolbar-right">
-              <a-tooltip v-bind="canManageCloudSpace ? {} : { title: TASK_BUSY_HINT }">
-                <a-button :loading="refreshingCatalog" :disabled="!canManageCloudSpace" @click="onRefreshCatalogClick()">刷新状态</a-button>
-              </a-tooltip>
               <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选待下载项后再下' } : { title: TASK_BUSY_HINT }">
-                <a-button type="primary" ghost :loading="starting && intent === 'download'" :disabled="!canManageCloudSpace" @click="onDownloadIntentClick">
+                <a-button
+                  type="primary"
+                  :ghost="intent !== 'download'"
+                  :loading="starting && intent === 'download'"
+                  :disabled="!canManageCloudSpace"
+                  @click="onDownloadIntentClick"
+                >
                   {{ downloadIntentLabel }}
                 </a-button>
               </a-tooltip>
               <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选已下载项后从 iCloud 移除' } : { title: TASK_BUSY_HINT }">
-                <a-button danger :loading="deletingCloud" :disabled="!canManageCloudSpace" @click="onDeleteIntentClick">
+                <a-button
+                  danger
+                  :type="intent !== 'delete' ? 'default' : 'primary'"
+                  :loading="deletingCloud"
+                  :disabled="!canManageCloudSpace"
+                  @click="onDeleteIntentClick"
+                >
                   {{ deleteIntentLabel }}
                 </a-button>
               </a-tooltip>
               <a-button v-if="intent" @click="exitIntent">取消</a-button>
+            </div>
+            <div class="toolbar-right">
+              <a-button
+                shape="circle"
+                :loading="refreshingCatalog"
+                :disabled="!canManageCloudSpace"
+                :title="canManageCloudSpace ? '' : TASK_BUSY_HINT"
+                @click="onRefreshCatalogClick()"
+              >
+                <template #icon>
+                  <CcIconifyIcon icon="ant-design:reload-outlined" width="16px" height="16px" />
+                </template>
+              </a-button>
             </div>
           </div>
         </div>
@@ -782,7 +810,9 @@ onBeforeUnmount(() => {
 }
 
 .drawer-extra-tag {
-  margin: 0;
+  span {
+    color: var(--color-primary);
+  }
 }
 .drawer-body {
   display: flex;

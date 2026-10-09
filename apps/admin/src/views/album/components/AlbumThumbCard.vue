@@ -14,7 +14,7 @@ import type { MediaFile } from "../types";
 const props = withDefaults(
   defineProps<{
     file: MediaFile;
-    /** 勾选模式：点击切换选中，不开预览（对齐云同步宫格） */
+    /** 意图勾选态：点击切换选中，不开预览（对齐云同步意图先行） */
     selectMode?: boolean;
     /** 当前格已选 */
     selected?: boolean;
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   open: [file: MediaFile];
   toggle: [file: MediaFile];
   delete: [file: MediaFile];
+  reveal: [file: MediaFile];
 }>();
 
 defineOptions({ name: "AlbumThumbCard", inheritAttrs: false });
@@ -67,6 +68,10 @@ function onClick() {
 function onDelete() {
   emit("delete", props.file);
 }
+
+function onReveal() {
+  emit("reveal", props.file);
+}
 </script>
 
 <template>
@@ -81,6 +86,7 @@ function onDelete() {
       </div>
       <template #overlay>
         <a-menu>
+          <a-menu-item key="reveal-explorer" @click="onReveal">在文件资源管理器中显示</a-menu-item>
           <a-menu-item key="delete-local" danger @click="onDelete">删除本地</a-menu-item>
         </a-menu>
       </template>

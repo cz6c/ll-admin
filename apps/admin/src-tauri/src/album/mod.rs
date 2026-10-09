@@ -672,3 +672,52 @@ pub async fn album_open_dir(app: AppHandle, rel_path: String) -> Result<(), Stri
     .open_path(target.to_string_lossy().as_ref(), None::<&str>)
     .map_err(|e| format!("打开目录失败: {e}"))
 }
+
+/// 将绝对文件路径校验为相册根下的规范路径；拒绝越界与目录
+fn resolve_album_file(root: &std::path::Path, file_path: &str) -> Result<std::path::PathBuf, String> {
+  let raw = file_path.trim();
+  if raw.is_empty() {
+    return Err("文件路径为空".to_string());
+  }
+  let root_canon = root
+    .canonicalize()
+    .map_err(|e| format!("相册根目录无效: {e}"))?;
+  let target_canon = std::path::Path::new(raw)
+    .canonicalize()
+    .map_err(|e| format!("文件不存在或无法访问: {e}"))?;
+  if !target_canon.starts_with(&root_canon) {
+    return Err("路径超出相册根目录".to_string());
+  }
+  if !target_canon.is_file() {
+    return Err("目标不是文件".to_string());
+  }
+  Ok(target_canon)
+}
+
+/**
+ * 在系统资源管理器中定位并选中文件
+ * @note 走 opener.reveal_item_in_dir；路径须在相册根下
+ */
+#[tauri::command]
+pub async fn album_reveal_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
+  use tauri_plugin_opener::OpenerExt;
+
+  let target = {
+    let app = app.clone();
+    tokio::task::spawn_blocking(move || {
+      let settings = settings::load_settings(&app)?;
+      let root = settings.root_dir.trim();
+      if root.is_empty() {
+        return Err("相册根目录未设置".to_string());
+      }
+      resolve_album_file(std::path::Path::new(root), &path)
+    })
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
+  }?;
+
+  app
+    .opener()
+    .reveal_item_in_dir(&target)
+    .map_err(|e| format!("在资源管理器中显示失败: {e}"))
+}

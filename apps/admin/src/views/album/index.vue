@@ -1,8 +1,8 @@
 <!--
-  相册主页 — 按日分组照片墙
-  职责：扫描根目录；图库与目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年
-  主流程：discover 全库 → 图库∩目录过滤 → 宫格只挂最新年 → 边缘滚动扩展邻年；
-  意图先行：修改拍摄时间 / 批量删除（点按钮→勾选/框选→再点执行；成功不退出；其它意图禁用须先取消）；
+  相册主页 — 图库 / 文件资源双模式
+  职责：扫描根目录；图库模式按日宫格+图库筛+年份轴；文件模式面包屑+当前目录文件夹/媒体；两模式可切换
+  主流程：discover 全库 → 图库筛（仅图库模式）→ 宫格挂最新年或 cwd 列表；
+  意图先行（仅图库）：修改拍摄时间 / 批量删除；文件模式隐藏批量按钮，媒体仍可预览与右键单删；
   右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
@@ -14,7 +14,16 @@ import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
 import { useElementSize, useScroll } from "@vueuse/core";
 import AlbumThumbCard from "./components/AlbumThumbCard.vue";
+import AlbumFileBrowser from "./components/AlbumFileBrowser.vue";
 import AlbumYearAxis from "./components/AlbumYearAxis.vue";
+import {
+  albumDirExists,
+  buildAlbumBreadcrumb,
+  buildAlbumDirIndex,
+  listAlbumCwd,
+  normalizeAlbumRelDir,
+  type AlbumRelDir
+} from "./albumFileBrowser";
 import { collectLibraryOptions, matchesLibrary } from "./albumLibrary";
 import { buildAlbumYearAxis, filterFilesByYearKeys } from "./albumYearAxis";
 import { buildAlbumDayLayout, DAY_HEADER_HEIGHT, findDaySectionAt, sliceVisibleDayLayout } from "./albumDayLayout";
@@ -31,6 +40,11 @@ import type { MediaFile, MediaGroup } from "./types";
 
 defineOptions({ name: "AlbumGallery" });
 
+/** 图库按日墙 / 文件资源（Finder 味目录浏览） */
+type AlbumViewMode = "gallery" | "files";
+
+const VIEW_MODE_STORAGE_KEY = "album.viewMode";
+
 /** CS 桌面端才支持 opener 打开本地目录 */
 const inTauri = isTauri();
 const { open: openCsSettings } = useCsSettingsModal();
@@ -40,10 +54,22 @@ const rootDir = ref("");
 const { gridGap: GAP, gridPadding: GRID_PADDING, bufferRows: BUFFER_ROWS } = ALBUM_LAYOUT;
 const viewerState = ref<{ groupIdx: number; fileIdx: number } | null>(null);
 const duplicateModalOpen = ref(false);
-/** 目录筛选（空=全部；含子孙） */
-const dirFilter = ref<string | null>(null);
+
+function readStoredViewMode(): AlbumViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_STORAGE_KEY) === "files" ? "files" : "gallery";
+  } catch {
+    return "gallery";
+  }
+}
+
+const viewMode = ref<AlbumViewMode>(readStoredViewMode());
+
+/** 文件模式当前目录（`.` = 相册根） */
+const cwdRel = ref<AlbumRelDir>(".");
+
 /**
- * 图库筛选（null=全部图库）
+ * 图库筛选（null=全部图库；仅图库模式展示与生效）
  * allow-clear 会把 a-select 写成 undefined；matchesLibrary 只认 null 为全部，须收回 null
  */
 const libraryFilter = ref<string | null>(null);
@@ -91,88 +117,14 @@ function mediaTimeSortKey(file: MediaFile): number | null {
   return null;
 }
 
-/** 图库 ∩ 目录筛（均为空=全部；目录含子孙） */
-function matchesLocalSearch(file: MediaFile): boolean {
-  if (!matchesLibrary(file, libraryFilter.value)) return false;
-  const dir = dirFilter.value;
-  if (dir && !matchesDirOrDescendant(file.relDir, dir)) return false;
-  return true;
+/** 图库模式：仅图库筛（文件模式另用全库索引，无图库筛） */
+function matchesGalleryFilter(file: MediaFile): boolean {
+  return matchesLibrary(file, libraryFilter.value);
 }
 
-function normalizeRelDir(rel?: string): string {
-  const s = (rel ?? ".").trim().replace(/\\/g, "/") || ".";
-  return s === "" ? "." : s;
-}
-
-/**
- * 目录筛：命中自身或子孙
- * @note 与树下拉「选父含子孙」一致；清空=全部（不再提供「根目录」节点）
- */
-function matchesDirOrDescendant(fileRelDir: string | undefined, filter: string): boolean {
-  const dir = normalizeRelDir(fileRelDir);
-  const f = normalizeRelDir(filter);
-  if (!f || f === ".") return true;
-  return dir === f || dir.startsWith(`${f}/`);
-}
-
-/** Ant TreeSelect 节点（value=relPath；无「根目录」层，清空即全部） */
-interface AlbumDirTreeNode {
-  title: string;
-  value: string;
-  key: string;
-  children?: AlbumDirTreeNode[];
-}
-
-/** 目录树：仅有媒体的相对路径建林；补中间段；不挂 `.` 根节点 */
-const dirTree = computed<AlbumDirTreeNode[]>(() => {
-  const paths = new Set<string>();
-  for (const g of groups.value) {
-    const n = normalizeRelDir(g.relPath);
-    if (n === ".") continue;
-    paths.add(n);
-    const parts = n.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      paths.add(parts.slice(0, i).join("/"));
-    }
-  }
-
-  const roots: AlbumDirTreeNode[] = [];
-  const byPath = new Map<string, AlbumDirTreeNode>();
-
-  const sorted = [...paths].sort((a, b) => a.localeCompare(b, "zh"));
-  for (const path of sorted) {
-    const parts = path.split("/");
-    const node: AlbumDirTreeNode = {
-      title: parts[parts.length - 1]!,
-      value: path,
-      key: path,
-      children: []
-    };
-    byPath.set(path, node);
-    if (parts.length === 1) {
-      roots.push(node);
-      continue;
-    }
-    const parentPath = parts.slice(0, -1).join("/");
-    const parent = byPath.get(parentPath);
-    if (parent) (parent.children ??= []).push(node);
-    else roots.push(node);
-  }
-
-  const prune = (n: AlbumDirTreeNode) => {
-    if (!n.children?.length) {
-      delete n.children;
-      return;
-    }
-    for (const c of n.children) prune(c);
-  };
-  for (const r of roots) prune(r);
-  return roots;
-});
-
-/** 全库过滤 + 拍摄时间升序旧→新；无拍摄时间沉底再比文件名 */
+/** 图库过滤 + 拍摄时间升序旧→新；无拍摄时间沉底再比文件名 */
 const filteredFiles = computed<MediaFile[]>(() => {
-  return [...allMediaFiles.value].filter(matchesLocalSearch).sort((a, b) => {
+  return [...allMediaFiles.value].filter(matchesGalleryFilter).sort((a, b) => {
     const ta = mediaTimeSortKey(a);
     const tb = mediaTimeSortKey(b);
     if (ta != null && tb != null) {
@@ -185,19 +137,31 @@ const filteredFiles = computed<MediaFile[]>(() => {
   });
 });
 
+/** 文件模式：扫描索引派生的目录树（全库、不做图库筛） */
+const dirIndex = computed(() => buildAlbumDirIndex(allMediaFiles.value));
+const cwdListing = computed(() => listAlbumCwd(dirIndex.value, cwdRel.value));
+const cwdFolders = computed(() => cwdListing.value.folders);
+const cwdFiles = computed(() => cwdListing.value.files);
+const fileBreadcrumbs = computed(() => buildAlbumBreadcrumb(cwdRel.value));
+
+/** 当前模式用于统计 / 灯箱邻接的媒体列表 */
+const activeMediaFiles = computed(() =>
+  viewMode.value === "gallery" ? filteredFiles.value : cwdFiles.value
+);
+
 /**
- * 当前筛选结果统计：合计 + 图 / 视频 / 实况
+ * 当前列表统计：合计 + 图 / 视频 / 实况
  */
 const filteredStats = computed(() => {
   let image = 0;
   let video = 0;
   let live = 0;
-  for (const f of filteredFiles.value) {
+  for (const f of activeMediaFiles.value) {
     if (f.kind === "video") video += 1;
     else if (f.kind === "livephoto") live += 1;
     else image += 1;
   }
-  return { total: filteredFiles.value.length, image, video, live };
+  return { total: activeMediaFiles.value.length, image, video, live };
 });
 
 const filteredStatsText = computed(() => {
@@ -205,17 +169,22 @@ const filteredStatsText = computed(() => {
   return `合计 ${s.total} · 图片 ${s.image} · 视频 ${s.video} · 实况 ${s.live}`;
 });
 
-/** Viewer 单组「全部」，与宫格同一过滤结果，避免索引错位 */
+/** Viewer 单组，与当前模式列表一致，避免索引错位 */
 const viewerGroups = computed<MediaGroup[]>(() => {
-  if (filteredFiles.value.length === 0) return [];
+  if (activeMediaFiles.value.length === 0) return [];
   return [
     {
-      dirName: "全部",
+      dirName: viewMode.value === "gallery" ? "全部" : fileBreadcrumbs.value.at(-1)?.title ?? "当前文件夹",
       dirPath: rootDir.value || ".",
-      relPath: ".",
-      files: filteredFiles.value
+      relPath: viewMode.value === "gallery" ? "." : cwdRel.value,
+      files: activeMediaFiles.value
     }
   ];
+});
+
+/** cwd 被扫描结果掏空时退回根，避免停在幽灵路径 */
+watch(dirIndex, index => {
+  if (!albumDirExists(index, cwdRel.value)) cwdRel.value = ".";
 });
 
 /** 右键：在资源管理器中显示并选中该文件 */
@@ -264,7 +233,7 @@ const cols = computed(() => gridLayout.value.cols);
 const thumbSize = computed(() => gridLayout.value.thumbSize);
 const rowHeight = computed(() => gridLayout.value.rowHeight);
 
-/** 全库筛选结果（图库 ∩ 目录）；左侧轴与统计用这份，不随年份窗口变 */
+/** 图库全库筛选结果；左侧轴用这份，不随年份窗口变 */
 const catalogFiles = computed<MediaFile[]>(() => filteredFiles.value);
 const yearAxis = computed(() => buildAlbumYearAxis(catalogFiles.value));
 
@@ -290,7 +259,6 @@ const { resetYearWindowToLatest, focusYear, revealFilePath, onAlbumYearKey } = u
   scrollTop,
   viewportHeight,
   totalHeight,
-  dirFilter,
   libraryFilter,
   captureRewriteOpen,
   viewerOpen,
@@ -306,6 +274,10 @@ const { loading, error, scanProgressPercent, scanProgressLabel, thumbsGenerating
     onScanComplete: resetYearWindowToLatest
   });
 
+/** 勾选域：图库=已挂载年；文件=当前目录直属媒体（文件模式无框选坐标） */
+const selectFiles = computed(() => (viewMode.value === "gallery" ? displayFiles.value : cwdFiles.value));
+const selectPlacements = computed(() => (viewMode.value === "gallery" ? thumbPlacements.value : []));
+
 const {
   intent,
   selectMode,
@@ -320,12 +292,53 @@ const {
   remapPaths,
   onPointerDown: onGridPointerDown,
   onDragStart: onGridDragStart
-} = useAlbumGridSelect(displayFiles, thumbPlacements);
+} = useAlbumGridSelect(selectFiles, selectPlacements);
 
 /** 换图库清空勾选，避免跨库误改拍摄时间 / 误删 */
 watch(libraryFilter, () => {
   exitIntent();
 });
+
+/** 模式切换：记忆偏好并清空意图，避免跨视图误删 */
+watch(viewMode, mode => {
+  try {
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+  } catch {
+    /* 隐私模式等写失败可忽略 */
+  }
+  exitIntent();
+});
+
+/** 进子目录清空勾选（同层意图继续时再勾） */
+watch(cwdRel, () => {
+  if (viewMode.value === "files") exitIntent();
+});
+
+/** 意图按钮是否有可选媒体 */
+const intentCatalogCount = computed(() =>
+  viewMode.value === "gallery" ? catalogFiles.value.length : cwdFiles.value.length
+);
+
+function navigateFileCwd(relPath: AlbumRelDir) {
+  cwdRel.value = normalizeAlbumRelDir(relPath);
+}
+
+function onFileEnterFolder(relPath: string) {
+  navigateFileCwd(relPath);
+}
+
+/** 右侧单按钮：在图库 / 文件之间切换 */
+function toggleViewMode() {
+  viewMode.value = viewMode.value === "gallery" ? "files" : "gallery";
+}
+
+const viewModeToggleTitle = computed(() =>
+  viewMode.value === "gallery" ? "切换到文件模式" : "切换到图库模式"
+);
+
+const viewModeToggleIcon = computed(() =>
+  viewMode.value === "gallery" ? "ant-design:folder-outlined" : "ant-design:appstore-outlined"
+);
 
 /** 宫格勾选 → 修改拍摄时间弹窗 / 批量删除候选 */
 const selectedFiles = computed(() => selectedPaths.value.map(p => pathIndex.value.get(p)).filter((f): f is MediaFile => !!f));
@@ -375,16 +388,16 @@ const visibleSections = computed(() => visibleSlice.value.sections);
 const visiblePlacements = computed(() => visibleSlice.value.placements);
 
 function openViewer(file: MediaFile) {
-  const fi = filteredFiles.value.findIndex(f => f.path === file.path);
+  const fi = activeMediaFiles.value.findIndex(f => f.path === file.path);
   if (fi >= 0) {
     viewerState.value = { groupIdx: 0, fileIdx: fi };
   }
 }
 
-/** 灯箱关闭：滚回预览内最后浏览的文件（含切图后） */
+/** 灯箱关闭：图库模式滚回宫格；文件模式保持 cwd */
 function onViewerClose(filePath?: string) {
   viewerState.value = null;
-  if (filePath) void revealFilePath(filePath);
+  if (filePath && viewMode.value === "gallery") void revealFilePath(filePath);
 }
 
 function onDuplicatesDeleted() {
@@ -481,8 +494,14 @@ function dayHeaderStyle(headerTop: number): Record<string, string> {
 
 let unbindScanListeners: (() => void) | undefined;
 
+/** 年份快捷键仅图库模式 */
+function onAlbumKey(event: KeyboardEvent) {
+  if (viewMode.value !== "gallery") return;
+  onAlbumYearKey(event);
+}
+
 onMounted(async () => {
-  window.addEventListener("keydown", onAlbumYearKey);
+  window.addEventListener("keydown", onAlbumKey);
   unbindScanListeners = await bindScanListeners();
 
   await loadSettings();
@@ -492,7 +511,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("keydown", onAlbumYearKey);
+  window.removeEventListener("keydown", onAlbumKey);
   unbindScanListeners?.();
   cancelScan();
 });
@@ -523,38 +542,56 @@ onBeforeUnmount(() => {
     <div v-else class="album-layout">
       <main class="album-main">
         <div class="album-toolbar">
-          <a-tree-select
-            v-model:value="dirFilter"
-            class="album-dir-filter"
+          <a-select
+            v-if="viewMode === 'gallery'"
+            v-model:value="libraryFilter"
+            class="album-library-filter"
             allow-clear
-            show-search
-            tree-default-expand-all
-            placeholder="全部目录"
-            tree-node-filter-prop="title"
-            :tree-data="dirTree"
-            :dropdown-style="{ maxHeight: '360px', overflow: 'auto' }"
+            placeholder="全部图库"
+            :options="librarySelectOptions"
           />
-          <a-select v-model:value="libraryFilter" class="album-library-filter" allow-clear placeholder="全部图库" :options="librarySelectOptions" />
+          <nav v-else class="album-file-crumbs" aria-label="当前路径">
+            <template v-for="(crumb, idx) in fileBreadcrumbs" :key="crumb.relPath">
+              <span v-if="idx > 0" class="crumb-sep" aria-hidden="true">/</span>
+              <button
+                type="button"
+                class="crumb-btn"
+                :class="{ 'is-current': idx === fileBreadcrumbs.length - 1 }"
+                :disabled="idx === fileBreadcrumbs.length - 1"
+                @click="navigateFileCwd(crumb.relPath)"
+              >
+                {{ crumb.title }}
+              </button>
+            </template>
+          </nav>
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <a-button
-              type="primary"
-              :ghost="intent !== 'captureAt'"
-              :disabled="catalogFiles.length === 0 || (!!intent && intent !== 'captureAt')"
-              @click="onCaptureAtIntentClick"
-            >
-              {{ captureAtIntentLabel }}
+            <!-- 批量改拍摄时间 / 删除仅图库模式；文件模式无框选坐标，意图无效故隐藏 -->
+            <template v-if="viewMode === 'gallery'">
+              <a-button
+                type="primary"
+                :ghost="intent !== 'captureAt'"
+                :disabled="intentCatalogCount === 0 || (!!intent && intent !== 'captureAt')"
+                @click="onCaptureAtIntentClick"
+              >
+                {{ captureAtIntentLabel }}
+              </a-button>
+              <a-button
+                danger
+                :type="intent !== 'delete' ? 'default' : 'primary'"
+                :loading="batchDeleting"
+                :disabled="intentCatalogCount === 0 || !inTauri || (!!intent && intent !== 'delete')"
+                @click="onDeleteIntentClick"
+              >
+                {{ deleteIntentLabel }}
+              </a-button>
+              <a-button v-if="intent" size="small" @click="exitIntent">取消</a-button>
+            </template>
+            <a-button shape="circle" :title="viewModeToggleTitle" @click="toggleViewMode">
+              <template #icon>
+                <CcIconifyIcon :icon="viewModeToggleIcon" width="16px" height="16px" />
+              </template>
             </a-button>
-            <a-button
-              danger
-              :type="intent !== 'delete' ? 'default' : 'primary'"
-              :loading="batchDeleting"
-              :disabled="catalogFiles.length === 0 || !inTauri || (!!intent && intent !== 'delete')"
-              @click="onDeleteIntentClick"
-            >
-              {{ deleteIntentLabel }}
-            </a-button>
-            <a-button v-if="intent" size="small" @click="exitIntent">取消</a-button>
             <a-button shape="circle" title="清理重复下载" @click="duplicateModalOpen = true">
               <template #icon>
                 <CcIconifyIcon icon="ant-design:clear-outlined" width="16px" height="16px" />
@@ -573,7 +610,7 @@ onBeforeUnmount(() => {
           <a-progress :percent="scanProgressPercent" size="small" :show-info="false" class="thumb-progress-track" />
         </div>
 
-        <div class="album-body">
+        <div v-if="viewMode === 'gallery'" class="album-body">
           <AlbumYearAxis v-if="yearAxis.length > 0" :years="yearAxis" :active-year-key="activeYearKey" @select="focusYear" />
           <div class="album-grid-wrap">
             <div ref="scrollEl" class="album-scroll" :class="{ 'is-marquee': marqueeActive }" @pointerdown="onAlbumPointerDown" @dragstart="onGridDragStart">
@@ -599,6 +636,16 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+
+        <AlbumFileBrowser
+          v-else
+          :folders="cwdFolders"
+          :files="cwdFiles"
+          @enter-folder="onFileEnterFolder"
+          @open="openViewer"
+          @delete="onDeleteLocal"
+          @reveal="onRevealInExplorer"
+        />
       </main>
     </div>
 
@@ -668,12 +715,47 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.album-dir-filter {
+.album-library-filter {
   width: 220px;
 }
 
-.album-library-filter {
-  width: 220px;
+.album-file-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(480px, 40vw);
+  font-size: 14px;
+}
+
+.crumb-sep {
+  color: var(--color-text-quaternary);
+  user-select: none;
+}
+
+.crumb-btn {
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-current,
+  &:disabled {
+    color: var(--color-text);
+    cursor: default;
+  }
+
+  &:not(:disabled):hover {
+    background: var(--color-fill-secondary);
+  }
 }
 
 .thumb-progress-bar {

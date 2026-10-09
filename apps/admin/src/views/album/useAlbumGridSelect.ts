@@ -2,7 +2,7 @@
  * 相册宫格勾选（意图先行）
  * 职责：点「修改拍摄时间 / 删除」进入意图后点格切换 + 左键框选累加；空闲不可框选
  * 适用：album/index.vue 按日分组虚拟滚动宫格
- * @note 对齐 iCloud 抽屉意图先行；拖拽手势在 useMarqueeDrag；命中用缩略图绝对矩形
+ * @note 对齐 iCloud：意图互斥须先取消再进另一意图；框选仅意图内
  */
 import type { Ref } from "vue";
 import type { AlbumThumbPlacement } from "./albumDayLayout";
@@ -52,13 +52,16 @@ export function useAlbumGridSelect(files: Ref<MediaFile[]>, placements: Ref<Albu
   }
 
   /**
-   * 进入或切换意图：清勾选
+   * 进入意图：仅空闲可进；已在其它意图时须先取消（禁止直接切换）
    * @param next captureAt | delete
+   * @returns 是否已进入该意图
    */
-  function enterIntent(next: "captureAt" | "delete") {
-    if (intent.value === next) return;
+  function enterIntent(next: "captureAt" | "delete"): boolean {
+    if (intent.value === next) return true;
+    if (intent.value != null) return false;
     clearSelection();
     intent.value = next;
+    return true;
   }
 
   function exitIntent() {

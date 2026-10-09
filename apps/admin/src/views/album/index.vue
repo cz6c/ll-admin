@@ -2,7 +2,7 @@
   相册主页 — 按日分组照片墙
   职责：扫描根目录；图库与目录筛选；左侧年份轴；右侧按日分组宫格；首屏只挂最新一年，滚到顶/底挂邻年
   主流程：discover 全库 → 图库∩目录过滤 → 宫格只挂最新年 → 边缘滚动扩展邻年；
-  意图先行：修改拍摄时间 / 批量删除（点按钮→勾选/框选→再点执行；成功不自动退出意图）；
+  意图先行：修改拍摄时间 / 批量删除（点按钮→勾选/框选→再点执行；成功不退出；其它意图禁用须先取消）；
   右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
@@ -347,7 +347,7 @@ function onThumbToggle(file: MediaFile) {
   togglePath(file.path);
 }
 
-/** 意图先行：修改拍摄时间 */
+/** 意图先行：修改拍摄时间（其它意图进行中时按钮禁用，须先取消） */
 function onCaptureAtIntentClick() {
   if (intent.value !== "captureAt") {
     enterIntent("captureAt");
@@ -360,7 +360,7 @@ function onCaptureAtIntentClick() {
   captureRewriteOpen.value = true;
 }
 
-/** 意图先行：批量删除本地 */
+/** 意图先行：批量删除本地（其它意图进行中时按钮禁用，须先取消） */
 function onDeleteIntentClick() {
   if (intent.value !== "delete") {
     enterIntent("delete");
@@ -537,15 +537,19 @@ onBeforeUnmount(() => {
           <a-select v-model:value="libraryFilter" class="album-library-filter" allow-clear placeholder="全部图库" :options="librarySelectOptions" />
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <a-button type="primary" :ghost="intent !== 'captureAt'" size="small" :disabled="catalogFiles.length === 0" @click="onCaptureAtIntentClick">
+            <a-button
+              type="primary"
+              :ghost="intent !== 'captureAt'"
+              :disabled="catalogFiles.length === 0 || (!!intent && intent !== 'captureAt')"
+              @click="onCaptureAtIntentClick"
+            >
               {{ captureAtIntentLabel }}
             </a-button>
             <a-button
-              size="small"
               danger
               :type="intent !== 'delete' ? 'default' : 'primary'"
               :loading="batchDeleting"
-              :disabled="catalogFiles.length === 0 || !inTauri"
+              :disabled="catalogFiles.length === 0 || !inTauri || (!!intent && intent !== 'delete')"
               @click="onDeleteIntentClick"
             >
               {{ deleteIntentLabel }}

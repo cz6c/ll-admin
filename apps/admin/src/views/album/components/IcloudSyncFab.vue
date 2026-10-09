@@ -2,7 +2,7 @@
   iCloud 下载浮动触发区
   职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
   主流程：hydrate → FAB → 工具栏（同步到本地 / 下载 / 移除）→ 宫格；
-  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出意图；删云失败项保留勾选
+  意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消；删云失败项保留勾选
 -->
 <script setup lang="ts">
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
@@ -345,15 +345,18 @@ const downloadIntentLabel = computed(() => (intent.value === "download" ? `批�
 const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${selectedCloudCount.value})` : "批量移除"));
 
 /**
- * 进入或切换意图：清勾选并按意图重载列表
+ * 进入意图：仅空闲可进；已在其它意图时须先取消（禁止直接切换）
  * @param next download | delete
+ * @returns 是否已进入该意图
  */
-function enterIntent(next: "download" | "delete") {
-  if (!guardCloudManageAction()) return;
-  if (intent.value === next) return;
+function enterIntent(next: "download" | "delete"): boolean {
+  if (!guardCloudManageAction()) return false;
+  if (intent.value === next) return true;
+  if (intent.value != null) return false;
   clearCloudSelection();
   intent.value = next;
   void refreshCloudAssets();
+  return true;
 }
 
 /** 意图先行：下载 — 首次进入筛选；再次点击执行子集入队 */
@@ -652,23 +655,39 @@ onBeforeUnmount(() => {
               <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }">
                 <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">下载全部</a-button>
               </a-tooltip>
-              <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选待下载项后再下' } : { title: TASK_BUSY_HINT }">
+              <a-tooltip
+                v-bind="
+                  !canManageCloudSpace
+                    ? { title: TASK_BUSY_HINT }
+                    : intent && intent !== 'download'
+                      ? { title: '请先取消当前操作' }
+                      : { title: '挑选待下载项后再下' }
+                "
+              >
                 <a-button
                   type="primary"
                   :ghost="intent !== 'download'"
                   :loading="starting && intent === 'download'"
-                  :disabled="!canManageCloudSpace"
+                  :disabled="!canManageCloudSpace || (!!intent && intent !== 'download')"
                   @click="onDownloadIntentClick"
                 >
                   {{ downloadIntentLabel }}
                 </a-button>
               </a-tooltip>
-              <a-tooltip v-bind="canManageCloudSpace ? { title: '挑选已下载项后从 iCloud 移除' } : { title: TASK_BUSY_HINT }">
+              <a-tooltip
+                v-bind="
+                  !canManageCloudSpace
+                    ? { title: TASK_BUSY_HINT }
+                    : intent && intent !== 'delete'
+                      ? { title: '请先取消当前操作' }
+                      : { title: '挑选已下载项后从 iCloud 移除' }
+                "
+              >
                 <a-button
                   danger
                   :type="intent !== 'delete' ? 'default' : 'primary'"
                   :loading="deletingCloud"
-                  :disabled="!canManageCloudSpace"
+                  :disabled="!canManageCloudSpace || (!!intent && intent !== 'delete')"
                   @click="onDeleteIntentClick"
                 >
                   {{ deleteIntentLabel }}

@@ -2,7 +2,7 @@
   相册主页 — 图库 / 文件资源双模式
   职责：扫描根目录；图库模式按日宫格+图库筛+年份轴；文件模式面包屑+当前目录文件夹/媒体；两模式可切换
   主流程：discover 全库 → 图库筛（仅图库模式）→ 宫格挂最新年或 cwd 列表；
-  意图先行（仅图库）：修改拍摄时间 / 批量删除；文件模式隐藏批量按钮，媒体仍可预览与右键单删；
+  意图先行（仅文件模式）：改拍摄时间 / 批量删除；勾选仅当前层同级项，文件夹执行时再展开子孙；意图内不可进目录；
   右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
@@ -20,6 +20,7 @@ import {
   albumDirExists,
   buildAlbumBreadcrumb,
   buildAlbumDirIndex,
+  collectMediaUnderDir,
   listAlbumCwd,
   normalizeAlbumRelDir,
   type AlbumRelDir
@@ -27,13 +28,14 @@ import {
 import { collectLibraryOptions, matchesLibrary } from "./albumLibrary";
 import { buildAlbumYearAxis, filterFilesByYearKeys } from "./albumYearAxis";
 import { buildAlbumDayLayout, DAY_HEADER_HEIGHT, findDaySectionAt, sliceVisibleDayLayout } from "./albumDayLayout";
+import type { AlbumFilePlacement } from "./albumFileLayout";
 import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
 import MediaViewer from "./components/MediaViewer.vue";
 import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import QzoneSyncFab from "./components/QzoneSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
-import { useAlbumGridSelect } from "./useAlbumGridSelect";
+import { useAlbumFileSelect } from "./useAlbumFileSelect";
 import { useAlbumScan } from "./useAlbumScan";
 import { ALBUM_YEAR_EDGE_PX, useAlbumYearWindow } from "./useAlbumYearWindow";
 import type { MediaFile, MediaGroup } from "./types";
@@ -274,9 +276,8 @@ const { loading, error, scanProgressPercent, scanProgressLabel, thumbsGenerating
     onScanComplete: resetYearWindowToLatest
   });
 
-/** 勾选域：图库=已挂载年；文件=当前目录直属媒体（文件模式无框选坐标） */
-const selectFiles = computed(() => (viewMode.value === "gallery" ? displayFiles.value : cwdFiles.value));
-const selectPlacements = computed(() => (viewMode.value === "gallery" ? thumbPlacements.value : []));
+/** 文件模式框选用：子组件回传全量格子坐标 */
+const filePlacements = ref<AlbumFilePlacement[]>([]);
 
 const {
   intent,
@@ -285,21 +286,18 @@ const {
   marqueeStyle,
   marqueeActive,
   isSelected,
+  isFolderSelected,
   enterIntent,
   exitIntent,
   togglePath,
+  toggleFolder,
   removePaths,
   remapPaths,
-  onPointerDown: onGridPointerDown,
-  onDragStart: onGridDragStart
-} = useAlbumGridSelect(selectFiles, selectPlacements);
+  onPointerDown: onFilePointerDown,
+  onDragStart: onFileDragStart
+} = useAlbumFileSelect(allMediaFiles, dirIndex, filePlacements, cwdFolders, cwdFiles);
 
-/** 换图库清空勾选，避免跨库误改拍摄时间 / 误删 */
-watch(libraryFilter, () => {
-  exitIntent();
-});
-
-/** 模式切换：记忆偏好并清空意图，避免跨视图误删 */
+/** 模式切换：记忆偏好并清空意图 */
 watch(viewMode, mode => {
   try {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
@@ -309,15 +307,13 @@ watch(viewMode, mode => {
   exitIntent();
 });
 
-/** 进子目录清空勾选（同层意图继续时再勾） */
+/** 面包屑换目录清空意图（3A：不可跨目录累积勾选） */
 watch(cwdRel, () => {
   if (viewMode.value === "files") exitIntent();
 });
 
-/** 意图按钮是否有可选媒体 */
-const intentCatalogCount = computed(() =>
-  viewMode.value === "gallery" ? catalogFiles.value.length : cwdFiles.value.length
-);
+/** 文件模式：当前目录树（含子孙）有媒体才可开意图 */
+const intentCatalogCount = computed(() => collectMediaUnderDir(dirIndex.value, cwdRel.value).length);
 
 function navigateFileCwd(relPath: AlbumRelDir) {
   cwdRel.value = normalizeAlbumRelDir(relPath);
@@ -347,17 +343,19 @@ const captureAtIntentLabel = computed(() => (intent.value === "captureAt" ? `修
 const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量删除 (${selectedCount.value})` : "批量删除"));
 const batchDeleting = ref(false);
 
-const canvasEl = ref<HTMLElement | null>(null);
-
-function onAlbumPointerDown(event: PointerEvent) {
-  const scroll = scrollEl.value;
-  const canvas = canvasEl.value;
-  if (!scroll || !canvas) return;
-  onGridPointerDown(event, { scrollEl: scroll, canvasEl: canvas });
+function onFileToggle(file: MediaFile) {
+  togglePath(file.path);
 }
 
-function onThumbToggle(file: MediaFile) {
-  togglePath(file.path);
+function onFileToggleFolder(relPath: string) {
+  toggleFolder(relPath);
+}
+
+function onFileBrowserPointerDown(
+  event: PointerEvent,
+  host: { scrollEl: HTMLElement; canvasEl: HTMLElement }
+) {
+  onFilePointerDown(event, host);
 }
 
 /** 意图先行：修改拍摄时间（其它意图进行中时按钮禁用，须先取消） */
@@ -566,8 +564,8 @@ onBeforeUnmount(() => {
           </nav>
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <!-- 批量改拍摄时间 / 删除仅图库模式；文件模式无框选坐标，意图无效故隐藏 -->
-            <template v-if="viewMode === 'gallery'">
+            <!-- 批量仅文件模式：文件夹勾选=含子孙；意图内不可进目录 -->
+            <template v-if="viewMode === 'files'">
               <a-button
                 type="primary"
                 :ghost="intent !== 'captureAt'"
@@ -613,9 +611,9 @@ onBeforeUnmount(() => {
         <div v-if="viewMode === 'gallery'" class="album-body">
           <AlbumYearAxis v-if="yearAxis.length > 0" :years="yearAxis" :active-year-key="activeYearKey" @select="focusYear" />
           <div class="album-grid-wrap">
-            <div ref="scrollEl" class="album-scroll" :class="{ 'is-marquee': marqueeActive }" @pointerdown="onAlbumPointerDown" @dragstart="onGridDragStart">
+            <div ref="scrollEl" class="album-scroll">
               <a-empty v-if="catalogFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
-              <div v-else ref="canvasEl" class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
+              <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
                 <div v-for="section in visibleSections" :key="`day-${section.key}`" class="day-header" :style="dayHeaderStyle(section.headerTop)">
                   {{ section.label }}
                 </div>
@@ -623,15 +621,11 @@ onBeforeUnmount(() => {
                   v-for="item in visiblePlacements"
                   :key="item.file.path"
                   :file="item.file"
-                  :select-mode="selectMode"
-                  :selected="isSelected(item.file.path)"
                   :style="placementStyle(item)"
                   @open="openViewer"
-                  @toggle="onThumbToggle"
                   @delete="onDeleteLocal"
                   @reveal="onRevealInExplorer"
                 />
-                <div v-if="marqueeStyle" class="album-marquee" :style="marqueeStyle" />
               </div>
             </div>
           </div>
@@ -641,10 +635,20 @@ onBeforeUnmount(() => {
           v-else
           :folders="cwdFolders"
           :files="cwdFiles"
+          :select-mode="selectMode"
+          :is-selected="isSelected"
+          :is-folder-selected="isFolderSelected"
+          :marquee-style="marqueeStyle"
+          :marquee-active="marqueeActive"
+          @update:placements="filePlacements = $event"
           @enter-folder="onFileEnterFolder"
           @open="openViewer"
           @delete="onDeleteLocal"
           @reveal="onRevealInExplorer"
+          @toggle-file="onFileToggle"
+          @toggle-folder="onFileToggleFolder"
+          @pointer-down="onFileBrowserPointerDown"
+          @drag-start="onFileDragStart"
         />
       </main>
     </div>

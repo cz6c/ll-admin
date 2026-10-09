@@ -153,3 +153,22 @@ export function buildAlbumBreadcrumb(cwd: AlbumRelDir): AlbumBreadcrumbCrumb[] {
 export function albumDirExists(index: AlbumDirIndex, cwd: AlbumRelDir): boolean {
   return index.knownDirs.has(normalizeAlbumRelDir(cwd));
 }
+
+/**
+ * 收集文件夹下全部媒体（含子孙目录）
+ * @note `.` 表示相册根下全部已索引媒体
+ */
+export function collectMediaUnderDir(index: AlbumDirIndex, folderRel: AlbumRelDir): MediaFile[] {
+  const key = normalizeAlbumRelDir(folderRel);
+  const out: MediaFile[] = [];
+  if (key === ".") {
+    for (const files of index.filesByDir.values()) out.push(...files);
+    return out;
+  }
+  const prefix = `${key}/`;
+  for (const [dir, files] of index.filesByDir) {
+    if (dir === key || dir.startsWith(prefix)) out.push(...files);
+  }
+  return out;
+}
+

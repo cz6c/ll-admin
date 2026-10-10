@@ -6,12 +6,14 @@
   @note 方案 3：全量轻量元数据进内存 + 虚拟宫格（仅挂视口）；框选按几何命中全量 placements
 -->
 <script setup lang="ts">
+import CloudSyncDeleteDialog from "./CloudSyncDeleteDialog.vue";
 import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
-import IcloudSyncDeleteDialog from "./IcloudSyncDeleteDialog.vue";
 import IcloudSyncFooter from "./IcloudSyncFooter.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
+import type { CloudSyncDeleteNormalizedResult } from "../cloudSyncDelete";
+import { useCloudSyncIntent } from "../useCloudSyncIntent";
 import { MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import {
   buildIcloudCloudLayout,
@@ -21,9 +23,12 @@ import {
   sliceVisibleIcloudCloudPlacements
 } from "../icloudSyncCloudLayout";
 import {
+  deleteIcloudSyncAssets,
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
+  isIcloudSessionAuthFailure,
   loadIcloudSyncCloudList,
+  ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
   type IcloudSyncDeleteAssetItem
@@ -43,9 +48,6 @@ import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
-
-/** 意图先行：null=混排浏览；download/delete=筛态勾选 */
-type CloudIntent = null | "download" | "delete";
 
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
@@ -84,15 +86,6 @@ const loggingOut = ref(false);
 /** 抽屉打开且未登录：内嵌登录面板（替代原弹窗） */
 const authPanelActive = computed(() => drawerOpen.value && !isLoggedIn.value);
 
-/** 意图筛选：idle=全部；下载=待下载；移除=已下载（失败并进待下载筛选语义由展示态覆盖） */
-const intent = ref<CloudIntent>(null);
-const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
-  if (intent.value === "download") return "cloud_only";
-  if (intent.value === "delete") return "synced";
-  return "all";
-});
-const selectMode = computed(() => intent.value != null);
-
 /** 轻量全量单次拉取上限（与 Rust clamp 一致） */
 const CLOUD_META_CHUNK = 2000;
 const cloudTotal = ref(0);
@@ -122,12 +115,6 @@ function removeCloudSelectionKeys(keys: string[]) {
   cloudSelectedRowsByKey.value = nextMap;
 }
 
-function exitIntent() {
-  intent.value = null;
-  clearCloudSelection();
-  void refreshCloudAssets();
-}
-
 /** 用当前页最新行刷新已选快照（catalog 刷新后 cloudState 可能已变） */
 function refreshSelectedRowsFromPage(rows: CloudListDisplayRow[]) {
   if (cloudSelectedRowsByKey.value.size === 0) return;
@@ -144,6 +131,33 @@ function selectedCloudRows(): CloudListDisplayRow[] {
 }
 
 const selectedCloudCount = computed(() => cloudSelectedKeys.value.length);
+
+const {
+  intent,
+  selectMode,
+  downloadIntentLabel,
+  deleteIntentLabel,
+  guardManageAction: guardCloudManageAction,
+  enterIntent,
+  exitIntent
+} = useCloudSyncIntent({
+  canManage: canManageCloudSpace,
+  selectedCount: selectedCloudCount,
+  clearSelection: clearCloudSelection,
+  onAfterEnter: () => {
+    void refreshCloudAssets();
+  },
+  onAfterExit: () => {
+    void refreshCloudAssets();
+  }
+});
+
+/** 意图筛选：idle=全部；下载=待下载；移除=已下载 */
+const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
+  if (intent.value === "download") return "cloud_only";
+  if (intent.value === "delete") return "synced";
+  return "all";
+});
 
 /** 当前意图下该行是否可勾选 */
 function canSelectCloudRow(row: CloudListDisplayRow): boolean {
@@ -264,37 +278,12 @@ function onCloudPointerDown(event: PointerEvent) {
   if (!scroll || !frame) return;
   onCloudMarqueePointerDown(event, { scrollEl: scroll, frameEl: frame });
 }
-/** 未完成任务占用时，禁用云列表操作的提示（已暂停时不再引导「暂停」） */
+/** 工具栏禁用提示（与 useCloudSyncIntent 默认文案一致） */
 const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
 
 function onRefreshCatalogClick() {
   if (!guardCloudManageAction()) return;
   void onRefreshCatalog();
-}
-
-/** 有任务进行中时禁止删云 / 刷新 catalog */
-function guardCloudManageAction(): boolean {
-  if (canManageCloudSpace.value) return true;
-  $feedback.message.warning(TASK_BUSY_HINT);
-  return false;
-}
-
-const downloadIntentLabel = computed(() => (intent.value === "download" ? `批量下载 (${selectedCloudCount.value})` : "批量下载"));
-const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${selectedCloudCount.value})` : "批量移除"));
-
-/**
- * 进入意图：仅空闲可进；已在其它意图时须先取消（禁止直接切换）
- * @param next download | delete
- * @returns 是否已进入该意图
- */
-function enterIntent(next: "download" | "delete"): boolean {
-  if (!guardCloudManageAction()) return false;
-  if (intent.value === next) return true;
-  if (intent.value != null) return false;
-  clearCloudSelection();
-  intent.value = next;
-  void refreshCloudAssets();
-  return true;
 }
 
 /** 意图先行：下载 — 首次进入筛选；再次点击执行子集入队 */
@@ -445,6 +434,21 @@ function confirmDeleteCloud() {
       deleteDialogOpen.value = true;
     }
   });
+}
+
+/** 适配共享删云弹窗的归一化结果 */
+async function runIcloudCloudDelete(items: { assetId: string }[]): Promise<CloudSyncDeleteNormalizedResult> {
+  const res = await deleteIcloudSyncAssets(items as IcloudSyncDeleteAssetItem[]);
+  return {
+    deleted: res.deleted,
+    failed: res.failed,
+    message: res.message,
+    failedAssetIds: res.failedAssetIds,
+    rejected: res.rejected,
+    rejectedLocalMissing: res.rejectedLocalMissing,
+    rejectedMissingCpl: res.rejectedMissingCpl,
+    rejectedAssetIds: res.rejectedAssetIds
+  };
 }
 
 /** 删云结束：只保留未移除成功项的勾选（rowKey 即 assetId），再刷新列表；不退出意图 */
@@ -662,7 +666,19 @@ onMounted(() => {
     </div>
 
   </SyncFabShell>
-  <IcloudSyncDeleteDialog v-model:open="deleteDialogOpen" :items="deleteDialogItems" @finished="onCloudDeleteFinished" />
+  <CloudSyncDeleteDialog
+    v-model:open="deleteDialogOpen"
+    title="从 iCloud 移除"
+    connecting-tip="正在校验并连接 iCloud…"
+    :progress-event="ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT"
+    :items="deleteDialogItems"
+    :delete-fn="runIcloudCloudDelete"
+    :format-error="formatIcloudSyncError"
+    :is-auth-failure="isIcloudSessionAuthFailure"
+    :on-auth-failure="reportBusinessError"
+    warn-on-no-deletable
+    @finished="onCloudDeleteFinished"
+  />
 </template>
 
 <style scoped lang="scss">

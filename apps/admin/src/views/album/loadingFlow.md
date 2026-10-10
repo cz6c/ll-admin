@@ -23,7 +23,7 @@
 ④ 播放 playback     H.264 代理 `_play.mp4`                   → 时机见下表
 ```
 
-宫格：扁平时间线无目录树（`groups` 全部 files flatMap）；**排序/筛选只在前端** `filteredFiles`（`capture_at` 升序旧→新，同秒/无拍摄时间再比文件名；**不用** `modified`；无拍摄时间沉底）；Rust discover/DB 不排拍摄序。工具栏含目录筛选（含子孙）与图库筛选（默认全部图库；图库键为 `origin`+`origin_account`）与统计，无文件名筛选、无拍摄日区间。左侧年份轴（仅年）跟可视区高亮；点击或上下键只挂该年。右侧按**日历日**分组（日标题 + 当日宫格，未满行不借给下一天）。discover 仍全库；首屏宫格只挂**最新一年**并钉底，滚到顶/底再挂邻年。勾选模式点格切换（对齐云同步）；鼠标左键拖拽即框选（只命中缩略图）。勾选后「修改拍摄时间」可覆盖已有值，写到时分秒（`media.capture_at`+`source=user`，同步风格文件名改前缀；EXIF 勾选才写）。
+双模式：`gallery` 按日宫格 + 图库筛 + 年份轴；`files` 面包屑 + 当前层文件夹/媒体（`AlbumFileBrowser`）。discover 仍全库扁平；**排序/筛选只在前端**（`capture_at` 升序；无拍摄时间沉底；**不用** `modified`）；Rust 不排拍摄序。图库键 `origin`+`origin_account`。批量：更多菜单进意图 → 勾选/框选 → 执行（`useAlbumModeSelect`）。改拍摄时间可覆盖已有值（`source=user`，同步风格文件名前缀；EXIF 勾选才写）。
 
 | 对象 | ④ 时机 | 说明 |
 |------|--------|------|

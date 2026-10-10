@@ -9,6 +9,7 @@
 <script setup lang="ts">
 import {
   cancelQzoneSyncJob,
+  deleteQzonePhotos,
   getQzoneAuthState,
   getQzoneJobStatus,
   isQzoneAuthExpiredError,
@@ -22,17 +23,20 @@ import {
   startQzoneQrLogin,
   startQzoneSyncJob,
   uploadQzonePhotos,
+  QZONE_CLOUD_DELETE_PROGRESS_EVENT,
   type QzoneAlbumSummary,
   type QzoneDeletePhotoItem,
   type QzoneJobSnapshot,
   type QzonePhotoView,
   type QzoneQrStatus
 } from "@/api/qzoneSync";
+import CloudSyncDeleteDialog from "./CloudSyncDeleteDialog.vue";
 import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
-import QzoneSyncDeleteDialog from "./QzoneSyncDeleteDialog.vue";
 import QzoneSyncFooter from "./QzoneSyncFooter.vue";
 import SyncFabShell from "./SyncFabShell.vue";
+import type { CloudSyncDeleteNormalizedResult } from "../cloudSyncDelete";
+import { useCloudSyncIntent } from "../useCloudSyncIntent";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import { cloudStateLabel, cloudStateTagColor } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
@@ -46,9 +50,7 @@ defineOptions({ name: "AlbumQzoneSyncFab" });
 
 const UNKNOWN_DAY = "__unknown__";
 
-/** 意图先行：null=混排浏览；download/delete=筛态勾选 */
-type CloudIntent = null | "download" | "delete";
-
+/** 工具栏禁用提示（与 useCloudSyncIntent 默认文案一致） */
 const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
 
 const drawerOpen = ref(false);
@@ -70,8 +72,6 @@ const photos = ref<QzonePhotoView[]>([]);
 const photosLoading = ref(false);
 const photoScrollRef = ref<HTMLElement | null>(null);
 
-const intent = ref<CloudIntent>(null);
-const selectMode = computed(() => intent.value != null);
 const selectedIds = ref<Set<string>>(new Set());
 const deletingCloud = ref(false);
 const deleteDialogOpen = ref(false);
@@ -105,6 +105,24 @@ const showSyncFooter = computed(() => busy.value || job.value.status === "failed
 const activeAlbum = computed(() => albums.value.find(a => a.topicId === activeAlbumId.value));
 const selectedCount = computed(() => selectedIds.value.size);
 
+function clearSelection() {
+  selectedIds.value = new Set();
+}
+
+const {
+  intent,
+  selectMode,
+  downloadIntentLabel,
+  deleteIntentLabel,
+  guardManageAction: guardCloudManageAction,
+  enterIntent,
+  exitIntent
+} = useCloudSyncIntent({
+  canManage: canManageCloudSpace,
+  selectedCount,
+  clearSelection
+});
+
 /** 归一四态；缺省按 downloaded 兼容旧数据 */
 function photoCloudState(photo: QzonePhotoView): string {
   const raw = (photo.cloudState || "").trim();
@@ -123,9 +141,6 @@ const displayPhotos = computed(() => {
   if (intent.value === "delete") return photos.value.filter(p => photoCloudState(p) === "synced");
   return photos.value;
 });
-
-const downloadIntentLabel = computed(() => (intent.value === "download" ? `批量下载 (${selectedCount.value})` : "批量下载"));
-const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${selectedCount.value})` : "批量移除"));
 
 function isSelected(assetId: string) {
   return selectedIds.value.has(assetId);
@@ -160,39 +175,12 @@ function toggleSelect(assetId: string) {
   selectedIds.value = next;
 }
 
-function clearSelection() {
-  selectedIds.value = new Set();
-}
-
-function exitIntent() {
-  intent.value = null;
-  clearSelection();
-}
-
 function removeSelectionKeys(keys: string[]) {
   if (keys.length === 0) return;
   const drop = new Set(keys);
   const next = new Set(selectedIds.value);
   for (const k of drop) next.delete(k);
   selectedIds.value = next;
-}
-
-function guardCloudManageAction(): boolean {
-  if (canManageCloudSpace.value) return true;
-  $feedback.message.warning(TASK_BUSY_HINT);
-  return false;
-}
-
-/**
- * 进入意图：仅空闲可进；已在其它意图时须先取消（禁止直接切换）
- */
-function enterIntent(next: "download" | "delete"): boolean {
-  if (!guardCloudManageAction()) return false;
-  if (intent.value === next) return true;
-  if (intent.value != null) return false;
-  clearSelection();
-  intent.value = next;
-  return true;
 }
 
 /** 意图内点格勾选；空闲不预览（同步抽屉灯箱已去掉） */
@@ -329,6 +317,21 @@ function confirmDeleteCloud() {
     }));
     deleteDialogOpen.value = true;
   })();
+}
+
+/** 适配共享删云弹窗；缺 failedAssetIds 时失败则整批保留勾选（对齐旧行为） */
+async function runQzoneCloudDelete(items: { assetId: string }[]): Promise<CloudSyncDeleteNormalizedResult> {
+  const res = await deleteQzonePhotos(items as QzoneDeletePhotoItem[]);
+  let failedAssetIds = res.failedAssetIds?.length ? [...res.failedAssetIds] : [];
+  if (res.failed > 0 && failedAssetIds.length === 0) {
+    failedAssetIds = items.map(i => i.assetId);
+  }
+  return {
+    deleted: res.deleted,
+    failed: res.failed,
+    message: res.message,
+    failedAssetIds
+  };
 }
 
 /** 删云结束：只保留失败项勾选，刷新列表；不退出意图 */
@@ -1015,9 +1018,14 @@ watch(drawerOpen, open => {
       />
     </div>
   </SyncFabShell>
-  <QzoneSyncDeleteDialog
+  <CloudSyncDeleteDialog
     v-model:open="deleteDialogOpen"
+    title="从 QQ 空间移除"
+    connecting-tip="正在连接 QQ 空间…"
+    :progress-event="QZONE_CLOUD_DELETE_PROGRESS_EVENT"
     :items="deleteDialogItems"
+    :delete-fn="runQzoneCloudDelete"
+    :is-auth-failure="isQzoneAuthExpiredError"
     @finished="onCloudDeleteFinished"
     @auth-expired="applyAuthExpiredUi(true)"
   />

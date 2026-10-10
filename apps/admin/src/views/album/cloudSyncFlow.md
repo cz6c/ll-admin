@@ -2,16 +2,15 @@
 
 > **产品目的：** iCloud 空间不够 → **单向同步到本地** → **显式删云腾空间** → 再 **同步到本地**，如此往复。  
 > **职责：** catalog 落库 → 可续传下载 → 抽屉云管理 → 用户显式删云。  
-> **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncFooter` · `useIcloudSyncJob`  
-> **UI 改版：** 2026-10-08 — 收掉顶部 StatusCard；忙时底栏；意图先行「下载/移除」；宫格四态（待下载/下载中/已下载/失败）；`start_job` 可选 `assetIds` 子集入队（见 `docs/superpowers/specs/2026-10-08-icloud-sync-drawer-download-ux-design.md`）
-> **实现：** `src-tauri/src/icloud_sync/*` · sidecar `agent.py` / `ipdPhotos.py` · `api/icloudSync.ts`  
+> **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncFooter` / `SyncJobFooter` · `CloudSyncDeleteDialog` · `useIcloudSyncJob` · `useCloudSyncIntent`  
+> **UI：** 忙时底栏；意图先行「下载/移除」；宫格四态；抽屉**无灯箱**；`start_job` 可选 `assetIds`  
+> **实现：** `src-tauri/src/icloud_sync/*` · sidecar · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
-> **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。  
-> **对齐：** 2026-09-29（任务在 `job_mem` 进程内存，无 `jobs` 表；抽屉无云态 Tab，固定拉全量；删云一次性 + `$feedback.loading` 蒙层；可选 Hidden 相册混排同步）
+> **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。
 
-姊妹文档：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [表目录](./schemaCatalog.md) · [Shared Library 草案](./sharedLibraryDesign.md)
+姊妹：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [QQ 空间](./qzoneSyncFlow.md) · [表目录](./schemaCatalog.md)
 
-> 本文为 iCloud 同步唯一流程/设计文档。改代码以本文硬规则 / 不变量为准。
+> **运行真相：** 硬规则 / 不变量以本文 + 代码为准。
 
 ---
 
@@ -232,7 +231,7 @@ flowchart LR
 
 | 事件 | 用途 |
 |------|------|
-| `icloud-sync://progress` | FAB 水球 / StatusCard 进度条（仅 sync/catalog） |
+| `icloud-sync://progress` | FAB 水球 / 忙时底栏进度（仅 sync/catalog） |
 | `icloud-sync://job-status` | 状态卡 / 后台通知 |
 | `icloud-sync://cloud-state-changed` | 抽屉云列表 / summary 刷新 |
 
@@ -313,8 +312,10 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 
 | 组件 | 职责 |
 |------|------|
-| `IcloudSyncFab` | FAB；抽屉云态筛选 + 列表 + 工具栏删云（一次性 toast） |
-| `IcloudSyncFooter` | 忙时底栏：四态词标题、进度、暂停/继续/取消/重新开始（替代原顶部 StatusCard） |
+| `IcloudSyncFab` | FAB；抽屉宫格 + 意图工具栏；虚拟列表/框选 |
+| `useCloudSyncIntent` | 下载/移除意图互斥与按钮文案（与 QQ 共用） |
+| `IcloudSyncFooter` → `SyncJobFooter` | 忙时底栏展示壳 + iCloud 主按钮/暂停/取消 |
+| `CloudSyncDeleteDialog` | 删云进度/结果弹窗（与 QQ 共用；适配层映射结果） |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
 | `icloudSyncCloudList.ts` | 状态文案 / Live 行合并 / `download_failed` 展示覆盖 |
@@ -341,7 +342,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 ### 在线预览（网格）
 
 - 协议：`icloudimg`（`http://icloudimg.localhost/?id=<asset_id>&k=thumb`）→ sidecar `preview_probe` **仅 thumb**
-- UI：抽屉为宫格 + 灯箱（无左侧相册栏）；缺衍生不回落 ORIGINAL
+- UI：抽屉仅 thumb 宫格（**无灯箱**；预览走本地相册）；缺衍生不回落 ORIGINAL
 - 删云：网格上仅 `synced` 可勾选；工具栏危险区逻辑不变
 - 缓存：`<appData>/icloud-sync/media-cache`；并发门闩 4
 
@@ -351,7 +352,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 
 - 「检查新照片」/ `incremental` 同步模式 / sidecar **真增量** catalog（无 native delta API）
 - **Shared Albums / 共享相册**（与 Hidden 智能相册不同 API）
-- 在线 **medium** / 未同步原片灯箱（产品锁定只做 thumb）
+- 抽屉内灯箱 / 在线 **medium** / 未同步原片预览（产品锁定只做 thumb；大图看本地相册）
 - diff 层 Live **成对合并判态**（still/mov 分行 classify 即可；列表已合并展示；仅边缘脏数据可能 part 不一致）
 - 任务内 per-file 列表 UI（`list_asset_tasks` 保留供诊断）
 - 双向同步 / 上传 / 本地指纹冲突检测

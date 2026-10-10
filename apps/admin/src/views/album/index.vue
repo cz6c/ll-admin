@@ -36,16 +36,12 @@ import IcloudSyncFab from "./components/IcloudSyncFab.vue";
 import QzoneSyncFab from "./components/QzoneSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
-import { useAlbumFileSelect } from "./useAlbumFileSelect";
-import { useAlbumGridSelect } from "./useAlbumGridSelect";
+import { useAlbumModeSelect, type AlbumViewMode } from "./useAlbumModeSelect";
 import { useAlbumScan } from "./useAlbumScan";
 import { ALBUM_YEAR_EDGE_PX, useAlbumYearWindow } from "./useAlbumYearWindow";
 import type { MediaFile, MediaGroup } from "./types";
 
 defineOptions({ name: "AlbumGallery" });
-
-/** 图库按日墙 / 文件资源（Finder 味目录浏览） */
-type AlbumViewMode = "gallery" | "files";
 
 const VIEW_MODE_STORAGE_KEY = "album.viewMode";
 
@@ -282,68 +278,34 @@ const filePlacements = ref<AlbumFilePlacement[]>([]);
 const canvasEl = ref<HTMLElement | null>(null);
 
 const {
-  intent: galleryIntent,
-  selectMode: gallerySelectMode,
-  orderedPaths: gallerySelectedPaths,
-  marqueeStyle: galleryMarqueeStyle,
-  marqueeActive: galleryMarqueeActive,
-  isSelected: isGallerySelected,
-  enterIntent: enterGalleryIntent,
-  exitIntent: exitGalleryIntent,
-  togglePath: toggleGalleryPath,
-  removePaths: removeGalleryPaths,
-  remapPaths: remapGalleryPaths,
-  onPointerDown: onGalleryPointerDown,
-  onDragStart: onGalleryDragStart
-} = useAlbumGridSelect(displayFiles, thumbPlacements);
-
-const {
-  intent: fileIntent,
-  selectMode: fileSelectMode,
-  orderedPaths: fileSelectedPaths,
-  marqueeStyle: fileMarqueeStyle,
-  marqueeActive: fileMarqueeActive,
-  isSelected: isFileSelected,
+  intent,
+  selectMode,
+  selectedPaths,
+  marqueeStyle,
+  marqueeActive,
+  isSelected,
   isFolderSelected,
-  enterIntent: enterFileIntent,
-  exitIntent: exitFileIntent,
-  togglePath: toggleFilePath,
+  enterIntent,
+  exitIntent,
+  removePaths,
+  remapPaths,
+  toggleGalleryPath,
+  onGalleryPointerDown,
+  onGalleryDragStart,
+  toggleFilePath,
   toggleFolder,
-  removePaths: removeFilePaths,
-  remapPaths: remapFilePaths,
-  onPointerDown: onFilePointerDown,
-  onDragStart: onFileDragStart
-} = useAlbumFileSelect(allMediaFiles, dirIndex, filePlacements, cwdFolders, cwdFiles);
-
-/** 当前模式意图 / 勾选（两套 composable 互斥使用，切换时一并清空） */
-const intent = computed(() => (viewMode.value === "gallery" ? galleryIntent.value : fileIntent.value));
-const selectMode = computed(() => (viewMode.value === "gallery" ? gallerySelectMode.value : fileSelectMode.value));
-const selectedPaths = computed(() => (viewMode.value === "gallery" ? gallerySelectedPaths.value : fileSelectedPaths.value));
-const marqueeStyle = computed(() => (viewMode.value === "gallery" ? galleryMarqueeStyle.value : fileMarqueeStyle.value));
-const marqueeActive = computed(() => (viewMode.value === "gallery" ? galleryMarqueeActive.value : fileMarqueeActive.value));
-
-function isSelected(path: string) {
-  return viewMode.value === "gallery" ? isGallerySelected(path) : isFileSelected(path);
-}
-
-function enterIntent(next: "captureAt" | "delete") {
-  return viewMode.value === "gallery" ? enterGalleryIntent(next) : enterFileIntent(next);
-}
-
-function exitIntent() {
-  exitGalleryIntent();
-  exitFileIntent();
-}
-
-function removePaths(paths: string[]) {
-  if (viewMode.value === "gallery") removeGalleryPaths(paths);
-  else removeFilePaths(paths);
-}
-
-function remapPaths(renames: AlbumPathRename[]) {
-  if (viewMode.value === "gallery") remapGalleryPaths(renames);
-  else remapFilePaths(renames);
-}
+  onFilePointerDown,
+  onFileDragStart
+} = useAlbumModeSelect({
+  viewMode,
+  galleryFiles: displayFiles,
+  galleryPlacements: thumbPlacements,
+  allFiles: allMediaFiles,
+  dirIndex,
+  filePlacements,
+  cwdFolders,
+  cwdFiles
+});
 
 /** 模式切换：记忆偏好并清空意图 */
 watch(viewMode, mode => {

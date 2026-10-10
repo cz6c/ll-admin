@@ -1,13 +1,12 @@
 # QQ 空间同步 — 第二备份源（MVP）
 
 > **产品目的：** 与 iCloud 并列，把 **本人** QQ 空间相册与本地互通：云端原图/视频可下载到本地；也可将本机图片上传到指定相册。  
-> **页面：** `index.vue` + `QzoneSyncFab.vue`  
+> **页面：** `index.vue` + `QzoneSyncFab.vue` · `useCloudSyncIntent` · `CloudSyncDeleteDialog` · `QzoneSyncFooter`/`SyncJobFooter`  
 > **实现：** `src-tauri/src/qzone_sync/*` · `api/qzoneSync.ts`  
 > **不涉及：** 好友相册、动态；**不嵌入** GPL 第三方客户端源码。  
-> **删云：** 支持从 QQ 空间移除勾选项；**本机已下载文件与 media.db 保留**；同步 state 行硬删。  
-> **对齐决策：** 平行 Tauri 模块 + **扫码登录** + 独立 FAB；浏览交互参考开源客户端左右布局  
+> **删云：** 勾选移除；**本机文件与 media.db 保留**；抽屉**无灯箱**（预览走本地相册）。  
 
-姊妹文档：[iCloud 同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
+姊妹：[iCloud 同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
 
 ---
 
@@ -29,7 +28,7 @@
 ```text
 扫码登录
   → 抽屉内浏览：左相册 / 右缩略图（媒体经 Tauri Cookie 代理）
-  → 灯箱预览 / 全部下载 / 下载本相册
+  → 全部下载 / 下载本相册（无抽屉灯箱；预览走本地相册）
   → catalog → state.db（cloud_only → synced）
   → 落盘 {albumRoot}/QzoneSync/<uin>/<相册名>/{yyyyMMdd}_{HHmmss}_{id16}.ext
   → 静默 upsert media.db（origin）；刷新 album_scan 再挂宫格并出图
@@ -59,12 +58,12 @@
 |------|-------------|
 | 相册列表 | `qzone_sync_list_albums` |
 | 相片列表 | `qzone_sync_list_photos`（含 `captureAt`、`cloudState` 四态、`downloaded`；右侧按日时间轴；`a-tag` 角标） |
-| 缩略图/灯箱 | 图：`ProtocolLazyThumb`（`qzoneimg`）→`ThumbVisual`/`BaseImage`；视频：`cgi_floatview_photo_list_v2` 取 MP4 `download_url` → `prepare_preview` 落盘 → `convertFileSrc`（列表 URL 常为封面/m3u8，勿直接塞 `<video>`） |
+| 缩略图 | 图：`ProtocolLazyThumb`（`qzoneimg`）→`ThumbVisual`/`CcImage`；抽屉**无灯箱**（预览走本地相册） |
 | 全部下载 | `qzone_sync_start_job`（`albumId=null`） |
 | 批量下载所选 | 意图先行「批量下载」→ 筛未下载 → 勾选/框选 → 再点执行 → `qzone_sync_start_job`（`albumId` + `assetIds`） |
 | 本相册下载 | 右侧标题旁「下载本相册」→ `qzone_sync_start_job`（传入 `albumId`） |
 | 上传到本相册 | 右侧标题旁「上传到本相册」→ 系统文件框 → `qzone_sync_upload_photos`（`cgi_upload_image`；当前仅图片） |
-| 从 QQ 空间移除 | 意图先行「批量移除」→ 筛已下载 → 确认（1.5s 冷却）→ `QzoneSyncDeleteDialog` + `qzone_sync_delete_photos`；**只删云端**，本机保留；失败项保留勾选 |
+| 从 QQ 空间移除 | 意图先行「批量移除」→ 筛已下载 → 确认（1.5s 冷却）→ `CloudSyncDeleteDialog` + `qzone_sync_delete_photos`；**只删云端**，本机保留；失败项保留勾选 |
 
 > **删图：** `cgi_delpic_multi_v2` 对齐 qzone_api——**每张单独 POST**（多张拼 `codelist` 常只删第一张仍返回成功）。
 
@@ -113,7 +112,7 @@
 ## 验收
 
 1. 扫码登录后左侧出现相册，点选右侧出缩略图  
-2. 点击缩略图可灯箱预览（含视频控件）  
+2. 空闲点缩略图不预览（无抽屉灯箱）；进意图后点格勾选  
 3. 「全部下载」/「下载本相册」落盘到 `QzoneSync/`，刷新相册可见  
 4. 再次同步跳过已下文件；iCloud 不受影响  
 5. 已下载项角标「已下载」；勾选「从 QQ 空间移除」后云端消失、本机文件仍在  

@@ -1,6 +1,6 @@
 <!--
   相册文件资源模式主区（虚拟滚动 + 意图勾选）
-  职责：当前目录文件夹+媒体宫格；可视区切片；空闲双击进目录/预览；
+  职责：当前目录文件夹+媒体宫格；可视区切片；空闲单击进目录/预览；
   意图内勾选仅当前层同级文件夹/文件（可多选）；执行时文件夹再展开媒体；禁止意图内进目录
   适用：album/index.vue「文件」模式
 -->
@@ -109,24 +109,21 @@ watch(gridItems, async () => {
   scrollTop.value = 0;
 });
 
+/** 空闲单击进目录；意图内改为勾选（禁止进目录） */
 function onFolderClick(folder: AlbumFileFolder) {
-  if (!props.selectMode) return;
-  emit("toggleFolder", folder.relPath);
-}
-
-function onFolderActivate(folder: AlbumFileFolder) {
-  // 意图内禁止进目录（3A）
-  if (props.selectMode) return;
+  if (props.selectMode) {
+    emit("toggleFolder", folder.relPath);
+    return;
+  }
   emit("enterFolder", folder.relPath);
 }
 
+/** 空闲单击预览；意图内改为勾选 */
 function onFileClick(file: MediaFile) {
-  if (!props.selectMode) return;
-  emit("toggleFile", file);
-}
-
-function onFileActivate(file: MediaFile) {
-  if (props.selectMode) return;
+  if (props.selectMode) {
+    emit("toggleFile", file);
+    return;
+  }
   emit("open", file);
 }
 
@@ -191,8 +188,7 @@ function folderGlyphClass(folder: AlbumFileFolder): Record<string, boolean> {
           :title="p.item.folder.name"
           :style="placementStyle(p)"
           @click="onFolderClick(p.item.folder)"
-          @dblclick="onFolderActivate(p.item.folder)"
-          @keydown.enter.prevent="onFolderActivate(p.item.folder)"
+          @keydown.enter.prevent="onFolderClick(p.item.folder)"
         >
           <span class="folder-glyph-host" :class="folderGlyphClass(p.item.folder)">
             <AlbumFolderGlyph :cover-src="visibleCoverUrls.get(p.item.folder.relPath)" />
@@ -206,7 +202,6 @@ function folderGlyphClass(folder: AlbumFileFolder): Record<string, boolean> {
           :title="p.item.file.name"
           :style="placementStyle(p)"
           @click="onFileClick(p.item.file)"
-          @dblclick="onFileActivate(p.item.file)"
         >
           <!-- selected 只驱动压暗+主色环；单击勾选由外层处理，避免与 Card 内 toggle 双触发 -->
           <AlbumThumbCard

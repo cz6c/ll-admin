@@ -4,6 +4,7 @@
   主流程：hydrate → FAB → 工具栏（全部下载 / 批量下载 / 批量移除）→ 宫格；
   意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消
   保留：下载本相册 / 上传到本相册（QQ 产品差异）
+  @note 同步抽屉不提供灯箱（非大图且无完整视频能力）；预览请用本地相册
 -->
 <script setup lang="ts">
 import {
@@ -17,8 +18,6 @@ import {
   logoutQzone,
   pauseQzoneSyncJob,
   pollQzoneQrLogin,
-  prepareQzonePreview,
-  qzoneProxiedSrc,
   resumeQzoneSyncJob,
   startQzoneQrLogin,
   startQzoneSyncJob,
@@ -35,11 +34,9 @@ import QzoneSyncDeleteDialog from "./QzoneSyncDeleteDialog.vue";
 import QzoneSyncFooter from "./QzoneSyncFooter.vue";
 import SyncFabShell from "./SyncFabShell.vue";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
-import { scrollRevealInRoot } from "../scrollRevealInRoot";
 import { cloudStateLabel, cloudStateTagColor } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useThrottleFn } from "@vueuse/core";
@@ -84,13 +81,6 @@ const starting = ref(false);
 const pausing = ref(false);
 const resuming = ref(false);
 const cancelling = ref(false);
-
-const previewOpen = ref(false);
-const previewIndex = ref(0);
-const previewIsVideo = ref(false);
-const previewLoading = ref(false);
-const previewVideoSrc = ref("");
-let previewEpoch = 0;
 
 const job = ref<QzoneJobSnapshot>({
   status: "idle",
@@ -205,23 +195,21 @@ function enterIntent(next: "download" | "delete"): boolean {
   return true;
 }
 
-function onCellClick(row: { photo: QzonePhotoView; index: number }) {
-  if (intent.value) {
-    if (!canSelectPhoto(row.photo)) {
-      const s = photoCloudState(row.photo);
-      if (intent.value === "delete") {
-        $feedback.message.info("仅已下载到本地的项可勾选移除");
-      } else if (s === "downloading") {
-        $feedback.message.info("下载中的项不可勾选");
-      } else {
-        $feedback.message.info("仅待下载或失败项可勾选下载");
-      }
-      return;
+/** 意图内点格勾选；空闲不预览（同步抽屉灯箱已去掉） */
+function onCellClick(row: { photo: QzonePhotoView }) {
+  if (!intent.value) return;
+  if (!canSelectPhoto(row.photo)) {
+    const s = photoCloudState(row.photo);
+    if (intent.value === "delete") {
+      $feedback.message.info("仅已下载到本地的项可勾选移除");
+    } else if (s === "downloading") {
+      $feedback.message.info("下载中的项不可勾选");
+    } else {
+      $feedback.message.info("仅待下载或失败项可勾选下载");
     }
-    toggleSelect(row.photo.assetId);
     return;
   }
-  openPreview(row.index);
+  toggleSelect(row.photo.assetId);
 }
 
 const photoFrameRef = ref<HTMLElement | null>(null);
@@ -354,46 +342,11 @@ async function onCloudDeleteFinished(keepAssetIds: string[]) {
   }
 }
 
-const previewImageSrc = computed(() => {
-  if (previewIsVideo.value) return "";
-  const photo = photos.value[previewIndex.value];
-  if (!photo) return "";
-  return qzoneProxiedSrc(photo.previewUrl || photo.thumbUrl, "preview");
-});
-
-const previewPhoto = computed(() => photos.value[previewIndex.value] ?? null);
-
-const previewTitle = computed(() => previewPhoto.value?.name?.trim() || "预览");
-
-const previewMeta = computed(() => {
-  if (!previewOpen.value || !photos.value.length || previewIndex.value < 0) return "";
-  const parts: string[] = [];
-  const capture = formatQzoneCaptureAt(previewPhoto.value?.captureAt);
-  if (capture) parts.push(capture);
-  if (previewPhoto.value) parts.push(photoStateLabel(previewPhoto.value));
-  parts.push(`${previewIndex.value + 1} / ${photos.value.length}`);
-  return parts.join(" · ");
-});
-
-function formatQzoneCaptureAt(raw?: string | null): string | null {
-  if (!raw?.trim()) return null;
-  const s = raw.trim();
-  let d = dayjs(s);
-  if (!d.isValid() && /^\d+$/.test(s)) {
-    const n = Number(s);
-    d = dayjs(n > 1e12 ? n : n * 1000);
-  }
-  return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : null;
-}
-
-/** 按日分组；基于意图筛后的 displayPhotos，index 映射回 photos 全表以开灯箱 */
+/** 按日分组；基于意图筛后的 displayPhotos */
 const photoGroups = computed(() => {
-  type Row = { photo: QzonePhotoView; index: number };
+  type Row = { photo: QzonePhotoView };
   const buckets = new Map<string, { key: string; label: string; sort: number; items: Row[] }>();
-  const indexById = new Map(photos.value.map((p, i) => [p.assetId, i]));
   displayPhotos.value.forEach(photo => {
-    const index = indexById.get(photo.assetId) ?? -1;
-    if (index < 0) return;
     const parsed = parseCaptureDay(photo.captureAt);
     const key = parsed?.key ?? UNKNOWN_DAY;
     const label = parsed?.label ?? "未知时间";
@@ -403,7 +356,7 @@ const photoGroups = computed(() => {
       g = { key, label, sort, items: [] };
       buckets.set(key, g);
     }
-    g.items.push({ photo, index });
+    g.items.push({ photo });
   });
   return [...buckets.values()].sort((a, b) => b.sort - a.sort);
 });
@@ -447,7 +400,6 @@ async function applyAuthExpiredUi(showToast = true) {
     photos.value = [];
     activeAlbumId.value = "";
     exitIntent();
-    closePreview();
     try {
       await refreshJob();
     } catch {
@@ -505,7 +457,6 @@ async function onRefreshCatalog() {
 async function selectAlbum(topicId: string, force = false) {
   if (!topicId) return;
   if (!force && activeAlbumId.value === topicId && photos.value.length) return;
-  closePreview();
   // 不支持跨相册勾选：换册退出意图；同册强制刷新保留意图（删云/下载后）
   if (activeAlbumId.value !== topicId) exitIntent();
   activeAlbumId.value = topicId;
@@ -527,70 +478,6 @@ async function selectAlbum(topicId: string, force = false) {
   } finally {
     photosLoading.value = false;
   }
-}
-
-async function openPreview(index: number) {
-  const photo = photos.value[index];
-  if (!photo) return;
-  const epoch = ++previewEpoch;
-  previewIndex.value = index;
-  previewIsVideo.value = photo.mediaKind === "video";
-  previewVideoSrc.value = "";
-  previewOpen.value = true;
-
-  if (photo.mediaKind !== "video") {
-    previewLoading.value = false;
-    return;
-  }
-
-  const albumId = photo.albumId || activeAlbumId.value;
-  const remote = photo.downloadUrl || photo.previewUrl || "";
-  if (!albumId && !remote) {
-    $feedback.message.error("无视频地址");
-    closePreview();
-    return;
-  }
-
-  previewLoading.value = true;
-  try {
-    const localPath = await prepareQzonePreview({
-      url: remote,
-      albumId,
-      assetId: photo.assetId,
-      mediaKind: "video"
-    });
-    if (epoch !== previewEpoch) return;
-    previewVideoSrc.value = convertFileSrc(localPath);
-  } catch (e) {
-    if (epoch !== previewEpoch) return;
-    await handleQzoneApiError(e, "视频预览失败");
-    closePreview();
-  } finally {
-    if (epoch === previewEpoch) previewLoading.value = false;
-  }
-}
-
-function scrollQzoneCellIntoView(assetId: string) {
-  nextTick(() => {
-    const root = photoScrollRef.value;
-    const cell = root?.querySelector<HTMLElement>(`.cell[data-asset-id="${CSS.escape(assetId)}"]`);
-    scrollRevealInRoot(root, cell, { block: "center" });
-  });
-}
-
-function closePreview() {
-  const assetId = previewPhoto.value?.assetId;
-  previewEpoch++;
-  previewOpen.value = false;
-  previewVideoSrc.value = "";
-  previewLoading.value = false;
-  if (assetId) scrollQzoneCellIntoView(assetId);
-}
-
-function previewNav(delta: number) {
-  const next = previewIndex.value + delta;
-  if (next < 0 || next >= photos.value.length) return;
-  void openPreview(next);
 }
 
 function stopQrPoll() {
@@ -922,7 +809,6 @@ watch(drawerOpen, open => {
   } else {
     stopQrPoll();
     if (intent.value) exitIntent();
-    closePreview();
   }
 });
 </script>
@@ -934,18 +820,6 @@ watch(drawerOpen, open => {
     default-edge="left"
     drawer-title="QQ 空间同步"
     drawer-class="qzone-sync-drawer"
-    :lightbox-open="previewOpen"
-    :lightbox-title="previewTitle"
-    :lightbox-meta="previewMeta"
-    :lightbox-loading="previewLoading"
-    lightbox-loading-tip="正在准备视频…"
-    :lightbox-can-prev="previewIndex > 0"
-    :lightbox-can-next="previewIndex < photos.length - 1"
-    :lightbox-zoomable="!previewIsVideo && !!previewImageSrc"
-    :lightbox-zoom-reset-key="previewPhoto?.assetId"
-    @lightbox-close="closePreview"
-    @lightbox-prev="previewNav(-1)"
-    @lightbox-next="previewNav(1)"
   >
     <template #fab>
       <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
@@ -1140,22 +1014,6 @@ watch(drawerOpen, open => {
         @cancel="onCancel"
       />
     </div>
-
-    <template #lightbox>
-      <video v-if="previewIsVideo && previewVideoSrc" class="viewer-media" controls autoplay playsinline :src="previewVideoSrc" />
-      <CcImage
-        v-else-if="!previewIsVideo && previewImageSrc"
-        class="viewer-media viewer-img"
-        :src="previewImageSrc"
-        fit="contain"
-        width="100%"
-        max-height="100%"
-        :lazy="false"
-      />
-      <div v-else-if="!previewLoading" class="preview-empty">
-        {{ previewIsVideo ? "视频准备中或无法播放" : "暂无预览" }}
-      </div>
-    </template>
   </SyncFabShell>
   <QzoneSyncDeleteDialog
     v-model:open="deleteDialogOpen"
@@ -1454,7 +1312,7 @@ watch(drawerOpen, open => {
   border: none;
   border-radius: 8px;
   overflow: hidden;
-  cursor: zoom-in;
+  cursor: default;
   background: var(--bg-color-secondary);
   /* 避免 button 继承 font-size:0 时角标文字不可见 */
   font-size: 12px;
@@ -1502,9 +1360,5 @@ watch(drawerOpen, open => {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-}
-.preview-empty {
-  color: var(--color-text-tertiary);
-  padding: 48px;
 }
 </style>

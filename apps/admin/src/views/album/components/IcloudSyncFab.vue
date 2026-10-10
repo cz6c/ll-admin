@@ -13,7 +13,6 @@ import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
 import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
 import SyncFabShell from "./SyncFabShell.vue";
 import { MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
-import { scrollRevealInRoot } from "../scrollRevealInRoot";
 import {
   buildIcloudCloudLayout,
   computeIcloudCloudGrid,
@@ -24,7 +23,6 @@ import {
 import {
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
-  icloudProxiedThumbSrc,
   loadIcloudSyncCloudList,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
@@ -39,11 +37,10 @@ import {
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
-import dayjs, { type Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { useElementSize, useScroll, useThrottleFn } from "@vueuse/core";
 import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 defineOptions({ name: "AlbumIcloudSyncFab" });
 
@@ -174,17 +171,14 @@ function toggleCloudRowSelect(row: CloudListDisplayRow) {
   cloudSelectedRowsByKey.value = nextMap;
 }
 
-/** 意图选择态点格切换；否则开灯箱 */
+/** 意图内点格切换勾选；空闲不预览（同步抽屉灯箱已去掉：非大图且无实况/视频） */
 function onCloudCellClick(row: CloudListDisplayRow) {
-  if (intent.value) {
-    if (!canSelectCloudRow(row)) {
-      $feedback.message.info(intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载");
-      return;
-    }
-    toggleCloudRowSelect(row);
+  if (!intent.value) return;
+  if (!canSelectCloudRow(row)) {
+    $feedback.message.info(intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载");
     return;
   }
-  openCloudPreview(row);
+  toggleCloudRowSelect(row);
 }
 
 const cloudGridScrollRef = ref<HTMLElement | null>(null);
@@ -270,87 +264,6 @@ function onCloudPointerDown(event: PointerEvent) {
   if (!scroll || !frame) return;
   onCloudMarqueePointerDown(event, { scrollEl: scroll, frameEl: frame });
 }
-const previewOpen = ref(false);
-/** 用 rowKey 锚定灯箱，列表刷新后仍能对上同一行 */
-const previewRowKey = ref<string | null>(null);
-
-const previewIndex = computed(() => {
-  if (!previewRowKey.value) return -1;
-  return cloudRows.value.findIndex(row => row.rowKey === previewRowKey.value);
-});
-
-const previewRow = computed(() => {
-  const i = previewIndex.value;
-  return i >= 0 ? cloudRows.value[i] : null;
-});
-
-/** 灯箱标题只用 still 原名；displayFilename 会把 Live 的 HEIC/MOV 拼进一行 */
-const previewTitle = computed(() => previewRow.value?.originalFilename?.trim() || "预览");
-
-const previewMeta = computed(() => {
-  const row = previewRow.value;
-  if (!row || previewIndex.value < 0) return "";
-  const parts = [formatSortKeyTime(row.captureAt ?? row.sortKey), row.displayStateLabel];
-  if (row.isHidden) parts.push("隐藏");
-  if (row.isShared) parts.push("共享图库");
-  parts.push(`${previewIndex.value + 1} / ${cloudRows.value.length}`);
-  return parts.join(" · ");
-});
-
-/** 网格/灯箱优先本地可读图，避免整页打满 sidecar */
-function cloudRowLocalImagePath(row: CloudListDisplayRow | null | undefined): string | null {
-  if (!row?.localFilePresent) return null;
-  const path = row.destPath?.trim() ?? "";
-  return path || null;
-}
-
-const previewSrc = computed(() => {
-  const row = previewRow.value;
-  if (!row?.assetId) return "";
-  const local = cloudRowLocalImagePath(row);
-  if (local) {
-    const ext = local.slice(local.lastIndexOf(".") + 1).toLowerCase();
-    if (["jpg", "jpeg", "png", "webp", "gif", "bmp"].includes(ext)) {
-      try {
-        return convertFileSrc(local);
-      } catch {
-        /* online fallback */
-      }
-    }
-  }
-  return icloudProxiedThumbSrc(row.assetId);
-});
-
-function openCloudPreview(row: CloudListDisplayRow) {
-  previewRowKey.value = row.rowKey;
-  previewOpen.value = true;
-}
-
-function scrollCloudRowIntoView(rowKey: string) {
-  const root = cloudGridScrollRef.value;
-  const place = cloudFullLayout.value.placements.find(p => p.rowKey === rowKey);
-  if (root && place) {
-    root.scrollTop = Math.max(0, place.top + place.height / 2 - root.clientHeight / 2);
-  }
-  nextTick(() => {
-    const cell = root?.querySelector<HTMLElement>(`.cloud-cell[data-row-key="${CSS.escape(rowKey)}"]`);
-    scrollRevealInRoot(root, cell, { block: "center" });
-  });
-}
-
-function closeCloudPreview() {
-  const rowKey = previewRowKey.value;
-  previewOpen.value = false;
-  previewRowKey.value = null;
-  if (rowKey) scrollCloudRowIntoView(rowKey);
-}
-
-function navCloudPreview(delta: number) {
-  const next = previewIndex.value + delta;
-  if (next < 0 || next >= cloudRows.value.length) return;
-  previewRowKey.value = cloudRows.value[next].rowKey;
-}
-
 /** 未完成任务占用时，禁用云列表操作的提示（已暂停时不再引导「暂停」） */
 const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
 
@@ -555,17 +468,10 @@ watch(drawerOpen, open => {
     // A′：开抽屉只刷 settings 展示，不 auth_probe
     void refreshAccountSettings();
     refreshCloudIfVisible();
-  } else {
-    if (intent.value) {
-      intent.value = null;
-      clearCloudSelection();
-    }
-    closeCloudPreview();
+  } else if (intent.value) {
+    intent.value = null;
+    clearCloudSelection();
   }
-});
-
-watch(previewIndex, index => {
-  if (previewOpen.value && index < 0) closeCloudPreview();
 });
 
 watch(isLoggedIn, () => refreshCloudIfVisible());
@@ -617,16 +523,6 @@ onMounted(() => {
     default-edge="right"
     drawer-title="iCloud 下载"
     drawer-class="icloud-sync-drawer"
-    :lightbox-open="previewOpen"
-    :lightbox-title="previewTitle"
-    :lightbox-meta="previewMeta"
-    :lightbox-can-prev="previewIndex > 0"
-    :lightbox-can-next="previewIndex >= 0 && previewIndex < cloudRows.length - 1"
-    :lightbox-zoomable="!!previewSrc"
-    :lightbox-zoom-reset-key="previewRowKey"
-    @lightbox-close="closeCloudPreview"
-    @lightbox-prev="navCloudPreview(-1)"
-    @lightbox-next="navCloudPreview(1)"
   >
     <template #fab>
       <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
@@ -742,7 +638,6 @@ onMounted(() => {
                 <ProtocolLazyThumb
                   protocol="icloudimg"
                   :asset-id="p.row.assetId"
-                  :local-path="cloudRowLocalImagePath(p.row)"
                   :scroll-root="cloudGridScrollRef"
                   :kind="p.row.mediaKind === 'video' ? 'video' : p.row.mediaKind === 'live' ? 'livephoto' : 'image'"
                   :ext="p.row.displayFilename?.split('.').pop()"
@@ -766,10 +661,6 @@ onMounted(() => {
       </template>
     </div>
 
-    <template #lightbox>
-      <CcImage v-if="previewSrc" class="viewer-media viewer-img" :src="previewSrc" fit="contain" width="100%" max-height="100%" :lazy="false" />
-      <a-empty v-else description="无法加载预览" :image="false" />
-    </template>
   </SyncFabShell>
   <IcloudSyncDeleteDialog v-model:open="deleteDialogOpen" :items="deleteDialogItems" @finished="onCloudDeleteFinished" />
 </template>
@@ -907,7 +798,7 @@ onMounted(() => {
   box-sizing: border-box;
   border-radius: 8px;
   overflow: hidden;
-  cursor: zoom-in;
+  cursor: default;
   background: var(--color-fill-quaternary);
   &.select-mode {
     cursor: pointer;

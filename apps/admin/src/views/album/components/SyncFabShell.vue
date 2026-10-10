@@ -1,11 +1,11 @@
 <!--
   双云同步 FAB 共享壳
-  职责：可拖 FAB（位姿 localStorage / CS 顶栏避让）+ Drawer + MediaLightboxShell 插槽托管
+  职责：可拖 FAB（位姿 localStorage / CS 顶栏避让）+ Drawer
   适用：IcloudSyncFab / QzoneSyncFab；业务 Panel、删云、框选逻辑留在调用方
   @note 默认落点 left=左下（QQ）、right=右下（iCloud），避免两球叠在一起
+  @note 同步抽屉不提供灯箱（能力不完整：非大图且无实况/视频），预览请用本地相册
 -->
 <script setup lang="ts">
-import MediaLightboxShell from "./MediaLightboxShell.vue";
 import { useDraggable, useEventListener } from "@vueuse/core";
 
 const props = withDefaults(
@@ -18,38 +18,13 @@ const props = withDefaults(
     /** 追加到壳层 class `sync-fab-drawer` 之后 */
     drawerClass?: string;
     drawerWidth?: number;
-    /** 灯箱打开时禁用 Drawer 键盘关闭，避免 Esc 双关 */
-    lightboxOpen?: boolean;
-    lightboxTitle?: string;
-    lightboxMeta?: string;
-    lightboxLoading?: boolean;
-    lightboxLoadingTip?: string;
-    lightboxCanPrev?: boolean;
-    lightboxCanNext?: boolean;
-    lightboxZoomable?: boolean;
-    lightboxZoomResetKey?: string | number | null;
   }>(),
   {
     defaultEdge: "right",
     drawerClass: "",
-    drawerWidth: 1024,
-    lightboxOpen: false,
-    lightboxTitle: "",
-    lightboxMeta: "",
-    lightboxLoading: false,
-    lightboxLoadingTip: "加载中…",
-    lightboxCanPrev: false,
-    lightboxCanNext: false,
-    lightboxZoomable: false,
-    lightboxZoomResetKey: null
+    drawerWidth: 1024
   }
 );
-
-const emit = defineEmits<{
-  "lightbox-close": [];
-  "lightbox-prev": [];
-  "lightbox-next": [];
-}>();
 
 defineOptions({ name: "AlbumSyncFabShell" });
 
@@ -174,7 +149,6 @@ const mergedDrawerClass = computed(() => {
     placement="right"
     :width="drawerWidth"
     :class="mergedDrawerClass"
-    :keyboard="!lightboxOpen"
     :body-style="{ padding: '16px 20px', height: '100%', overflow: 'hidden' }"
   >
     <template #extra>
@@ -182,23 +156,6 @@ const mergedDrawerClass = computed(() => {
     </template>
     <slot />
   </a-drawer>
-
-  <MediaLightboxShell
-    :open="lightboxOpen"
-    :title="lightboxTitle"
-    :meta="lightboxMeta"
-    :loading="lightboxLoading"
-    :loading-tip="lightboxLoadingTip"
-    :can-prev="lightboxCanPrev"
-    :can-next="lightboxCanNext"
-    :zoomable="lightboxZoomable"
-    :zoom-reset-key="lightboxZoomResetKey"
-    @close="emit('lightbox-close')"
-    @prev="emit('lightbox-prev')"
-    @next="emit('lightbox-next')"
-  >
-    <slot name="lightbox" />
-  </MediaLightboxShell>
 </template>
 
 <style scoped lang="scss">

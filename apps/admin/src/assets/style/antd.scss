@@ -75,6 +75,16 @@ html.cs-shell {
     height: calc(100% - var(--cs-shell-bar-height)) !important;
   }
 
+  /*
+   * 盖在相册灯箱等全屏层上的确认：灯箱已盖住 ToolsBar，遮罩再扣顶会露出灯箱顶栏。
+   * wrapClassName=feedback-confirm-fullscreen（$feedback.confirm）
+   */
+  .ant-modal-root:has(.ant-modal-wrap.feedback-confirm-fullscreen) .ant-modal-mask,
+  .ant-modal-root .ant-modal-wrap.feedback-confirm-fullscreen {
+    top: 0 !important;
+    height: 100% !important;
+  }
+
   /* 贴顶提示：message 默认 top 8px，notification 默认 24px */
   .ant-message {
     top: calc(var(--cs-shell-bar-height) + 8px) !important;

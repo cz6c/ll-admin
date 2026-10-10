@@ -1,13 +1,12 @@
 <!--
   灯箱内图片缩放/平移/旋转
-  职责：滚轮缩放、双击放大/还原、拖拽平移、90° 旋转；工具栏 Teleport 至灯箱顶栏
-  适用：MediaLightboxShell 包裹静态图；视频/Live 播放态不启用
+  职责：滚轮缩放、双击放大/还原、拖拽平移、90° 旋转；工具栏 Teleport 至父传入挂载点
+  适用：MediaViewer 包裹静态图/Live 静帧；单独视频不启用
   @note 平移与旋转/缩放分层：拖拽始终沿屏幕方向，避免 rotate 后拖动手感错位
   @note 工具栏不在图片上绘制，避免与 Live 长按播放抢操作
   @note 滚轮/按钮/缩放均以视口正中为锚点，避免随鼠标位置漂移
 -->
 <script setup lang="ts">
-import { MEDIA_LIGHTBOX_TOOLBAR_KEY } from "./mediaLightboxContext";
 import { useEventListener } from "@vueuse/core";
 
 const props = withDefaults(
@@ -16,6 +15,8 @@ const props = withDefaults(
     resetKey?: string | number | null;
     /** 灯箱是否打开；关闭时重置变换 */
     active?: boolean;
+    /** 顶栏缩放工具挂载点（MediaViewer 顶栏 zoom 槽） */
+    toolbarTarget?: HTMLElement | null;
     minScale?: number;
     maxScale?: number;
     /** 工具栏步进、滚轮单次倍率 */
@@ -24,6 +25,7 @@ const props = withDefaults(
   {
     resetKey: null,
     active: true,
+    toolbarTarget: null,
     minScale: 1,
     maxScale: 5,
     step: 0.25
@@ -32,9 +34,8 @@ const props = withDefaults(
 
 defineOptions({ name: "MediaPreviewZoom" });
 
-/** 挂载到灯箱顶栏，与关闭按钮对齐，避免工具栏叠在 Live 图上 */
-const toolbarTarget = inject(MEDIA_LIGHTBOX_TOOLBAR_KEY, null);
-const toolbarMount = computed(() => toolbarTarget?.value ?? null);
+/** Teleport 目标；无挂载点则不渲染顶栏工具 */
+const toolbarMount = computed(() => props.toolbarTarget ?? null);
 
 const scale = ref(1);
 const rotation = ref(0);

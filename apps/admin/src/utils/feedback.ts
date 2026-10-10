@@ -20,6 +20,16 @@ export type FeedbackConfirmOptions = {
    * @note 用于不可轻易撤销的删云等操作
    */
   cooldownMs?: number;
+  /**
+   * 叠层；须高于调用方遮罩（如相册灯箱 9999），与全屏 loading 同档 11000
+   * @note 省略则用 antd Modal 默认（1000）
+   */
+  zIndex?: number;
+  /**
+   * 传给 Modal.confirm 的 wrapClassName
+   * @note 盖在全屏灯箱上时配合 `feedback-confirm-fullscreen`，遮罩铺满视口（见 antd.scss）
+   */
+  wrapClassName?: string;
 };
 
 let loadingClose: (() => void) | null = null;
@@ -53,6 +63,8 @@ export default {
         cancelText,
         okType,
         okButtonProps: cooldownMs > 0 ? { disabled: true } : undefined,
+        ...(options?.zIndex != null ? { zIndex: options.zIndex } : {}),
+        ...(options?.wrapClassName ? { wrapClassName: options.wrapClassName } : {}),
         onOk: () => resolve(),
         onCancel: () => reject()
       });

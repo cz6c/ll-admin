@@ -2,7 +2,8 @@
   相册主页 — 图库 / 文件资源双模式
   职责：扫描根目录；图库模式按日宫格+图库筛+年份轴；文件模式面包屑+当前目录文件夹/媒体；两模式可切换
   主流程：discover 全库 → 图库筛（仅图库模式）→ 宫格挂最新年或 cwd 列表；
-  意图先行（仅文件模式）：改拍摄时间 / 批量删除；勾选仅当前层同级项，文件夹执行时再展开子孙；意图内不可进目录；
+  意图先行（双模式）：更多菜单进「改拍摄时间 / 批量删除」→ 左侧展开执行按钮+取消；
+  图库勾选宫格；文件勾选当前层同级（文件夹执行时再展开子孙，意图内不可进目录）；
   右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
@@ -36,6 +37,7 @@ import QzoneSyncFab from "./components/QzoneSyncFab.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
 import { useAlbumFileSelect } from "./useAlbumFileSelect";
+import { useAlbumGridSelect } from "./useAlbumGridSelect";
 import { useAlbumScan } from "./useAlbumScan";
 import { ALBUM_YEAR_EDGE_PX, useAlbumYearWindow } from "./useAlbumYearWindow";
 import type { MediaFile, MediaGroup } from "./types";
@@ -147,9 +149,7 @@ const cwdFiles = computed(() => cwdListing.value.files);
 const fileBreadcrumbs = computed(() => buildAlbumBreadcrumb(cwdRel.value));
 
 /** 当前模式用于统计 / 灯箱邻接的媒体列表 */
-const activeMediaFiles = computed(() =>
-  viewMode.value === "gallery" ? filteredFiles.value : cwdFiles.value
-);
+const activeMediaFiles = computed(() => (viewMode.value === "gallery" ? filteredFiles.value : cwdFiles.value));
 
 /**
  * 当前列表统计：合计 + 图 / 视频 / 实况
@@ -176,7 +176,7 @@ const viewerGroups = computed<MediaGroup[]>(() => {
   if (activeMediaFiles.value.length === 0) return [];
   return [
     {
-      dirName: viewMode.value === "gallery" ? "全部" : fileBreadcrumbs.value.at(-1)?.title ?? "当前文件夹",
+      dirName: viewMode.value === "gallery" ? "全部" : (fileBreadcrumbs.value.at(-1)?.title ?? "当前文件夹"),
       dirPath: rootDir.value || ".",
       relPath: viewMode.value === "gallery" ? "." : cwdRel.value,
       files: activeMediaFiles.value
@@ -278,24 +278,72 @@ const { loading, error, scanProgressPercent, scanProgressLabel, thumbsGenerating
 
 /** 文件模式框选用：子组件回传全量格子坐标 */
 const filePlacements = ref<AlbumFilePlacement[]>([]);
+/** 图库框选宿主：thumb-canvas */
+const canvasEl = ref<HTMLElement | null>(null);
 
 const {
-  intent,
-  selectMode,
-  orderedPaths: selectedPaths,
-  marqueeStyle,
-  marqueeActive,
-  isSelected,
+  intent: galleryIntent,
+  selectMode: gallerySelectMode,
+  orderedPaths: gallerySelectedPaths,
+  marqueeStyle: galleryMarqueeStyle,
+  marqueeActive: galleryMarqueeActive,
+  isSelected: isGallerySelected,
+  enterIntent: enterGalleryIntent,
+  exitIntent: exitGalleryIntent,
+  togglePath: toggleGalleryPath,
+  removePaths: removeGalleryPaths,
+  remapPaths: remapGalleryPaths,
+  onPointerDown: onGalleryPointerDown,
+  onDragStart: onGalleryDragStart
+} = useAlbumGridSelect(displayFiles, thumbPlacements);
+
+const {
+  intent: fileIntent,
+  selectMode: fileSelectMode,
+  orderedPaths: fileSelectedPaths,
+  marqueeStyle: fileMarqueeStyle,
+  marqueeActive: fileMarqueeActive,
+  isSelected: isFileSelected,
   isFolderSelected,
-  enterIntent,
-  exitIntent,
-  togglePath,
+  enterIntent: enterFileIntent,
+  exitIntent: exitFileIntent,
+  togglePath: toggleFilePath,
   toggleFolder,
-  removePaths,
-  remapPaths,
+  removePaths: removeFilePaths,
+  remapPaths: remapFilePaths,
   onPointerDown: onFilePointerDown,
   onDragStart: onFileDragStart
 } = useAlbumFileSelect(allMediaFiles, dirIndex, filePlacements, cwdFolders, cwdFiles);
+
+/** 当前模式意图 / 勾选（两套 composable 互斥使用，切换时一并清空） */
+const intent = computed(() => (viewMode.value === "gallery" ? galleryIntent.value : fileIntent.value));
+const selectMode = computed(() => (viewMode.value === "gallery" ? gallerySelectMode.value : fileSelectMode.value));
+const selectedPaths = computed(() => (viewMode.value === "gallery" ? gallerySelectedPaths.value : fileSelectedPaths.value));
+const marqueeStyle = computed(() => (viewMode.value === "gallery" ? galleryMarqueeStyle.value : fileMarqueeStyle.value));
+const marqueeActive = computed(() => (viewMode.value === "gallery" ? galleryMarqueeActive.value : fileMarqueeActive.value));
+
+function isSelected(path: string) {
+  return viewMode.value === "gallery" ? isGallerySelected(path) : isFileSelected(path);
+}
+
+function enterIntent(next: "captureAt" | "delete") {
+  return viewMode.value === "gallery" ? enterGalleryIntent(next) : enterFileIntent(next);
+}
+
+function exitIntent() {
+  exitGalleryIntent();
+  exitFileIntent();
+}
+
+function removePaths(paths: string[]) {
+  if (viewMode.value === "gallery") removeGalleryPaths(paths);
+  else removeFilePaths(paths);
+}
+
+function remapPaths(renames: AlbumPathRename[]) {
+  if (viewMode.value === "gallery") remapGalleryPaths(renames);
+  else remapFilePaths(renames);
+}
 
 /** 模式切换：记忆偏好并清空意图 */
 watch(viewMode, mode => {
@@ -307,13 +355,23 @@ watch(viewMode, mode => {
   exitIntent();
 });
 
-/** 面包屑换目录清空意图（3A：不可跨目录累积勾选） */
+/** 换图库清空勾选，避免跨库误改 / 误删 */
+watch(libraryFilter, () => {
+  if (viewMode.value === "gallery") exitIntent();
+});
+
+/** 面包屑换目录清空意图（不可跨目录累积勾选） */
 watch(cwdRel, () => {
   if (viewMode.value === "files") exitIntent();
 });
 
-/** 文件模式：当前目录树（含子孙）有媒体才可开意图 */
-const intentCatalogCount = computed(() => collectMediaUnderDir(dirIndex.value, cwdRel.value).length);
+/**
+ * 可开意图的媒体数：图库=当前图库筛结果；文件=cwd 含子树
+ * 为 0 时禁用更多菜单两项
+ */
+const intentCatalogCount = computed(() =>
+  viewMode.value === "gallery" ? catalogFiles.value.length : collectMediaUnderDir(dirIndex.value, cwdRel.value).length
+);
 
 function navigateFileCwd(relPath: AlbumRelDir) {
   cwdRel.value = normalizeAlbumRelDir(relPath);
@@ -328,56 +386,61 @@ function toggleViewMode() {
   viewMode.value = viewMode.value === "gallery" ? "files" : "gallery";
 }
 
-const viewModeToggleTitle = computed(() =>
-  viewMode.value === "gallery" ? "切换到文件模式" : "切换到图库模式"
-);
+const viewModeToggleTitle = computed(() => (viewMode.value === "gallery" ? "切换到文件模式" : "切换到图库模式"));
 
-const viewModeToggleIcon = computed(() =>
-  viewMode.value === "gallery" ? "ant-design:folder-outlined" : "ant-design:appstore-outlined"
-);
+const viewModeToggleIcon = computed(() => (viewMode.value === "gallery" ? "ant-design:folder-outlined" : "ant-design:appstore-outlined"));
 
-/** 宫格勾选 → 修改拍摄时间弹窗 / 批量删除候选 */
+/** 勾选 → 修改拍摄时间弹窗 / 批量删除候选 */
 const selectedFiles = computed(() => selectedPaths.value.map(p => pathIndex.value.get(p)).filter((f): f is MediaFile => !!f));
 const selectedCount = computed(() => selectedPaths.value.length);
-const captureAtIntentLabel = computed(() => (intent.value === "captureAt" ? `修改拍摄时间 (${selectedCount.value})` : "修改拍摄时间"));
-const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量删除 (${selectedCount.value})` : "批量删除"));
+/** 意图内左侧执行按钮文案（含已勾数量） */
+const activeIntentLabel = computed(() => {
+  if (intent.value === "captureAt") return `修改拍摄时间 (${selectedCount.value})`;
+  if (intent.value === "delete") return `批量删除 (${selectedCount.value})`;
+  return "";
+});
 const batchDeleting = ref(false);
 
+function onThumbToggle(file: MediaFile) {
+  toggleGalleryPath(file.path);
+}
+
+function onAlbumPointerDown(event: PointerEvent) {
+  const scroll = scrollEl.value;
+  const canvas = canvasEl.value;
+  if (!scroll || !canvas) return;
+  onGalleryPointerDown(event, { scrollEl: scroll, canvasEl: canvas });
+}
+
 function onFileToggle(file: MediaFile) {
-  togglePath(file.path);
+  toggleFilePath(file.path);
 }
 
 function onFileToggleFolder(relPath: string) {
   toggleFolder(relPath);
 }
 
-function onFileBrowserPointerDown(
-  event: PointerEvent,
-  host: { scrollEl: HTMLElement; canvasEl: HTMLElement }
-) {
+function onFileBrowserPointerDown(event: PointerEvent, host: { scrollEl: HTMLElement; canvasEl: HTMLElement }) {
   onFilePointerDown(event, host);
 }
 
-/** 意图先行：修改拍摄时间（其它意图进行中时按钮禁用，须先取消） */
-function onCaptureAtIntentClick() {
-  if (intent.value !== "captureAt") {
-    enterIntent("captureAt");
-    return;
-  }
-  if (selectedCount.value === 0) {
-    $feedback.message.warning("请先勾选要修改拍摄时间的照片");
-    return;
-  }
-  captureRewriteOpen.value = true;
+/** 更多菜单：进入意图（执行须再点左侧文字按钮） */
+function onBatchMenuClick(info: { key: string | number }) {
+  const key = String(info.key);
+  if (key === "captureAt" || key === "delete") enterIntent(key);
 }
 
-/** 意图先行：批量删除本地（其它意图进行中时按钮禁用，须先取消） */
-function onDeleteIntentClick() {
-  if (intent.value !== "delete") {
-    enterIntent("delete");
+/** 意图内：左侧文字按钮执行当前批量操作 */
+function onActiveIntentClick() {
+  if (intent.value === "captureAt") {
+    if (selectedCount.value === 0) {
+      $feedback.message.warning("请先勾选要修改拍摄时间的照片");
+      return;
+    }
+    captureRewriteOpen.value = true;
     return;
   }
-  void confirmBatchDeleteLocal();
+  if (intent.value === "delete") void confirmBatchDeleteLocal();
 }
 
 const bufferPx = computed(() => Math.max(ALBUM_YEAR_EDGE_PX, BUFFER_ROWS * rowHeight.value));
@@ -424,9 +487,13 @@ function collectDeleteDiskPaths(files: MediaFile[]): string[] {
 async function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
   try {
+    // 灯箱已全屏盖住 ToolsBar：确认须抬 z-index，且 fullscreen 类取消 CS 扣顶，否则遮罩露顶栏
     await $feedback.confirm(`将从磁盘删除「${file.name}」。`, {
       title: "删除本地文件？",
-      okText: "删除"
+      okText: "删除",
+      ...(viewerState.value
+        ? { zIndex: 11000, wrapClassName: "feedback-confirm-fullscreen" }
+        : {})
     });
   } catch {
     return;
@@ -564,27 +631,33 @@ onBeforeUnmount(() => {
           </nav>
           <span class="album-stats" :title="filteredStatsText">{{ filteredStatsText }}</span>
           <div class="album-toolbar-actions">
-            <!-- 批量仅文件模式：文件夹勾选=含子孙；意图内不可进目录 -->
-            <template v-if="viewMode === 'files'">
+            <!-- 意图内：左侧展开当前操作 + 取消；空闲收进「更多」圆形按钮 -->
+            <template v-if="intent">
               <a-button
+                size="small"
                 type="primary"
-                :ghost="intent !== 'captureAt'"
-                :disabled="intentCatalogCount === 0 || (!!intent && intent !== 'captureAt')"
-                @click="onCaptureAtIntentClick"
+                :danger="intent === 'delete'"
+                :loading="intent === 'delete' && batchDeleting"
+                :disabled="intent === 'delete' && !inTauri"
+                @click="onActiveIntentClick"
               >
-                {{ captureAtIntentLabel }}
+                {{ activeIntentLabel }}
               </a-button>
-              <a-button
-                danger
-                :type="intent !== 'delete' ? 'default' : 'primary'"
-                :loading="batchDeleting"
-                :disabled="intentCatalogCount === 0 || !inTauri || (!!intent && intent !== 'delete')"
-                @click="onDeleteIntentClick"
-              >
-                {{ deleteIntentLabel }}
-              </a-button>
-              <a-button v-if="intent" size="small" @click="exitIntent">取消</a-button>
+              <a-button size="small" @click="exitIntent">取消</a-button>
             </template>
+            <a-dropdown v-else :trigger="['click']">
+              <a-button shape="circle" title="批量操作" @click.prevent>
+                <template #icon>
+                  <CcIconifyIcon icon="ant-design:more-outlined" width="16px" height="16px" />
+                </template>
+              </a-button>
+              <template #overlay>
+                <a-menu @click="onBatchMenuClick">
+                  <a-menu-item key="captureAt" :disabled="intentCatalogCount === 0">修改拍摄时间</a-menu-item>
+                  <a-menu-item key="delete" danger :disabled="intentCatalogCount === 0 || !inTauri">批量删除</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
             <a-button shape="circle" :title="viewModeToggleTitle" @click="toggleViewMode">
               <template #icon>
                 <CcIconifyIcon :icon="viewModeToggleIcon" width="16px" height="16px" />
@@ -611,9 +684,9 @@ onBeforeUnmount(() => {
         <div v-if="viewMode === 'gallery'" class="album-body">
           <AlbumYearAxis v-if="yearAxis.length > 0" :years="yearAxis" :active-year-key="activeYearKey" @select="focusYear" />
           <div class="album-grid-wrap">
-            <div ref="scrollEl" class="album-scroll">
+            <div ref="scrollEl" class="album-scroll" :class="{ 'is-marquee': marqueeActive }" @pointerdown="onAlbumPointerDown" @dragstart="onGalleryDragStart">
               <a-empty v-if="catalogFiles.length === 0" description="无匹配的媒体文件" class="state-empty-inline" />
-              <div v-else class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
+              <div v-else ref="canvasEl" class="thumb-canvas" :style="{ height: totalHeight + 'px' }">
                 <div v-for="section in visibleSections" :key="`day-${section.key}`" class="day-header" :style="dayHeaderStyle(section.headerTop)">
                   {{ section.label }}
                 </div>
@@ -621,11 +694,15 @@ onBeforeUnmount(() => {
                   v-for="item in visiblePlacements"
                   :key="item.file.path"
                   :file="item.file"
+                  :select-mode="selectMode"
+                  :selected="isSelected(item.file.path)"
                   :style="placementStyle(item)"
                   @open="openViewer"
+                  @toggle="onThumbToggle"
                   @delete="onDeleteLocal"
                   @reveal="onRevealInExplorer"
                 />
+                <div v-if="marqueeStyle" class="album-marquee" :style="marqueeStyle" />
               </div>
             </div>
           </div>
@@ -659,6 +736,7 @@ onBeforeUnmount(() => {
       :initial-group-idx="viewerState.groupIdx"
       :initial-file-idx="viewerState.fileIdx"
       @close="onViewerClose"
+      @delete="onDeleteLocal"
     />
 
     <IcloudSyncFab />

@@ -8,6 +8,7 @@ description: >-
 # admin-edit-modal
 
 > **约束权威**：`vue-admin.mdc`、`antd-design-system.mdc`（含 CS 浮层避让）。  
+> 原则解说（可选）：[../admin-ui-principles/SKILL.md](../admin-ui-principles/SKILL.md)。  
 > 样板：`apps/admin/src/views/system/user/components/EditUserForm.vue` + 列表页 `a-modal` 接线。
 
 ## 结构

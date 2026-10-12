@@ -12,6 +12,8 @@
 - 约束全文只在 rule；skill 只写 **一句门禁提醒 + 规则名**，禁止再贴对照表。  
 - 流程、必问、完成检查只在 skill；不要写进 rule。
 
+**撰写 / 拆分 / 文档蒸馏 / 可选 GENERATION 追踪** → [skillAuthoring.md](skillAuthoring.md)（方法论；不安装第三方 skill 包）。
+
 ## 入口与治理
 
 | 任务 | Skill |
@@ -38,9 +40,13 @@
 | Uni wot 表单 | [uni-wot-form](uni-wot-form/SKILL.md) | `vue-uni` wot 节 |
 | Uni HTTP / API | [uni-api-http](uni-api-http/SKILL.md) | `vue-uni` |
 
-## 设计 / 动画（已有）
+## UI 原则（本仓蒸馏）
 
-`animation-vocabulary` · `apple-design` · `emil-design-eng` · `find-animation-opportunities` · `improve-animations` · `review-animations` · `prototype` · `pick-ui-library`
+| 用途 | Skill |
+|------|--------|
+| Ant Design 原则解说（硬约束仍在 `antd-design-system.mdc`） | [admin-ui-principles](admin-ui-principles/SKILL.md) |
+
+> 已移除 `emilkowalski/skills` 外部包（动效/原型/选库等）；Admin UI 以 rule + 上表为准。
 
 ## 推荐阅读顺序（新功能）
 

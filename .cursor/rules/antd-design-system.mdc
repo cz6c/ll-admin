@@ -8,95 +8,83 @@ alwaysApply: false
 
 实现栈：**ant-design-vue 4** ≈ Ant Design React **5.x**。列表数据区仍用 **VXE Table**；CS 壳遵守 `--cs-shell-bar-height`。工程/路由/权限见 **`vue-admin.mdc`**；主题见 `theme.scss`、`a-config-provider`。
 
+原则解说与场景映射（on-demand）→ skill **`admin-ui-principles`**。**本文件为硬约束权威**；与 skill 冲突时以本 rule 为准。
+
 **CS 顶栏避让**：`html.cs-shell` 下，全屏浮层（Drawer / Modal / Image 预览）与贴顶反馈（message / notification / nprogress）须相对 `--cs-shell-bar-height` 下移或扣高，集中写在 `assets/style/antd.scss`；message/notification 的 inline `top` 由 `App.vue` `syncCsOverlayOffset` 对齐。禁止抬 z-index 盖住 `ToolsBar`（窗口拖拽/关闭）。
 
-有争议时以官方为准（下列为原则全文入口，规则正文是可执行摘要）：
+有争议时以官方为准：
 
 | 类别 | 文档 |
 |------|------|
 | 价值观 | https://5x-ant-design.antgroup.com/docs/spec/values-cn |
 | 布局 | https://5x-ant-design.antgroup.com/docs/spec/layout-cn |
 | 色彩 / 字体 / 图标 / 暗黑 / 阴影 | 官网「全局样式」对应页（规则只收落地约束，不抄色板/字号表） |
-| 亲密性 | https://5x-ant-design.antgroup.com/docs/spec/proximity-cn |
-| 对齐 | https://5x-ant-design.antgroup.com/docs/spec/alignment-cn |
-| 对比 | https://5x-ant-design.antgroup.com/docs/spec/contrast-cn |
-| 重复 | https://5x-ant-design.antgroup.com/docs/spec/repetition-cn |
-| 直截了当 | https://5x-ant-design.antgroup.com/docs/spec/direct-cn |
-| 足不出户 | https://5x-ant-design.antgroup.com/docs/spec/stay-cn |
-| 简化交互 | https://5x-ant-design.antgroup.com/docs/spec/lightweight-cn |
-| 提供邀请 | https://5x-ant-design.antgroup.com/docs/spec/invitation-cn |
-| 巧用过渡 | https://5x-ant-design.antgroup.com/docs/spec/transition-cn |
-| 即时反应 | https://5x-ant-design.antgroup.com/docs/spec/reaction-cn |
+| 亲密性～即时反应等原则 | 官网「设计原则」对应页；本仓解说见 `admin-ui-principles` |
 
 ---
 
 ## 价值观（决策滤镜）
 
-改 UI / 交互时用这四条判断「该不该做」：
+1. **自然**：符合既有认知；少打断、少强迫记忆。
+2. **确定性**：克制、模块化、跨页一致；能复用 `FormView` / `ToolButtons` / `feedback` / `card-*` 就不新造。
+3. **意义感**：服务任务目标；有结果就要有反馈；勿为装饰分散注意。
+4. **生长性**：可发现，但不靠漫游引导掩盖烂信息架构。
 
-1. **自然**：视觉与行为符合用户既有认知；少打断、少强迫记忆。
-2. **确定性**：克制、模块化、跨页一致；能复用 `FormView` / `ToolButtons` / `feedback` / `card-*` 就不新造一套。
-3. **意义感**：每个操作服务任务目标；有结果就要有反馈；勿为装饰分散注意力。
-4. **生长性**：新功能可发现，但不靠漫游引导掩盖糟糕信息架构。
-
-5.0 视觉方向（MasterGo / 官方 5.0）：**更聚焦、去干扰、轻松感**——少多层阴影与装饰边框，用留白与字重分层。
+5.0 方向：**更聚焦、去干扰、轻松感**——少多层阴影与装饰边框，用留白与字重分层。
 
 ---
 
 ## 布局与模度
 
 - 网格基数 **8**；布局尺寸尽量 **8 的倍数**。
-- 内容区按 **24 栅格** 思路做响应（`a-row`/`a-col` 或等价 Grid）；Gutter 用固定档位（常用 8/16/24），勿随手改。
-- 左右布局：侧栏固定、主工作区伸缩（本仓 Sidebar + 内容区已是此模式，勿改成「整页一起挤扁导航」）。
-- 区块容器：Uno `card-panel` / `card-section` / `card-meta`；圆角 **8** / 内嵌 **6**（`radius-card` / `radius-inner`）。
+- 内容区按 **24 栅格**；Gutter 固定档（常用 8/16/24）。
+- 左右布局：侧栏固定、主工作区伸缩；勿整页挤扁导航。
+- 区块：Uno `card-panel` / `card-section` / `card-meta`；圆角 **8** / 内嵌 **6**。
 
 ---
 
 ## 全局样式（落地约束）
 
-官方色板、完整字号阶梯、阴影层级表**不入库**；以下只约束 admin 怎么用。
+官方色板、完整字号阶梯、阴影层级表**不入库**。
 
 ### 色彩
 
-- **克制**：色服务于信息传递、操作引导、反馈；业务页勿大面积装饰色。
-- **品牌色**：唯一来源 `theme.scss` / `utils/theme.ts` → `--color-primary` + `a-config-provider` token；禁止组件内再写死另一套 Hex。
-- **功能色**：成功 / 警告 / 错误 / 信息用 `--color-success|warning|error|info`（或 JS 侧 `COLOR_SUCCESS` 等）；antd 组件用 `type`/`status` 语义，勿自造「差不多绿/红」。
-- **中性色**：正文、次要文案、边框、分割、布局底用 `--color-text*` / `--bg-color` / `--fill-color` / `--border-color`；悬停/填充用 `--color-fill*` / `--color-overlay-*`。
-- **桥接**：业务 SCSS 优先自有 `--color-*`；需要与 antd 文档对齐时可写 `--ant-color-*`（已在 `theme.scss` 与自有 token 同值绑定）。禁止依赖 cssinjs 哈希类名上的私有色。
-- **例外**：ECharts 数据色板、扫码白底、照片上的实心白图标等可保留字面色，并在旁注释 why。
-- **图表**：ECharts 等可视化优先 `COLOR_*` 常量或主题 token；演示页可参考 AntV 色板。
+- **克制**：色服务于信息、引导、反馈；业务页勿大面积装饰色。
+- **品牌色**：唯一来源 `theme.scss` / `utils/theme.ts` → `--color-primary` + `a-config-provider`；禁止组件内另写死 Hex。
+- **功能色**：`--color-success|warning|error|info`（或 `COLOR_*`）；antd 用 `type`/`status`，勿自造「差不多绿/红」。
+- **中性色**：`--color-text*` / `--bg-color` / `--fill-color` / `--border-color` 等。
+- **桥接**：可写 `--ant-color-*`（已与自有 token 绑定）；禁止依赖 cssinjs 哈希私有色。
+- **例外**：ECharts、扫码白底、照片上实心白图标等可字面色，旁注 why。
 
 ### 字体
 
-- 字族、默认 **14px** 正文跟 `reset.scss` + antd；页面**禁止**另起 `font-family` 或私设字号阶梯。
-- 层次靠 antd 标题/正文层级或有限字重（400/500/600），勿用花哨展示字体。
-- 数字/代码可用现有 mono 栈；金额列表仍配合「右对齐 + 同位小数」。
+- 跟 `reset.scss` + antd（默认 **14px**）；禁止页内另起 `font-family` / 私设字号阶梯。
+- 层次靠标题/正文层级或有限字重（400/500/600）。
+- 金额列表：右对齐 + 同位小数。
 
 ### 图标
 
-- 统一走 **Iconify**（`IconifyIcon` / `IconSelect` / `useRenderIcon`），图标集固定为 **`ant-design:`**（[Iconify Ant Design](https://icon-sets.iconify.design/ant-design/)）。
-- 同场景尺寸一致（工具栏约 16–18、表格内约 14）；语义清晰，勿用图标代替必要文案（尤其危险操作）。
-- 菜单 `meta.icon` / 种子数据写 `ant-design:xxx`；禁止再写 `ep:` / `ri:`。
-- 同页勿混第三套 icon 体系（不要直接上 `@ant-design/icons-vue` 组件当主路径）。
+- **Iconify**，集固定 **`ant-design:`**；工具栏约 16–18、表格内约 14。
+- 菜单 `meta.icon` 写 `ant-design:xxx`；禁止 `ep:` / `ri:`；勿以 `@ant-design/icons-vue` 为主路径。
 
 ### 阴影
 
-- 卡片/面板默认**轻或无阴影**，靠边框 + 底色分层（契合 5.0 去干扰）；需要抬升时用 antd 浮层默认（Dropdown / Modal / Popover），勿手写多层 `box-shadow`。
-- Uno `card-shadow` 仅用于确需抬升的表面；列表行、侧栏、Tags **不加**装饰阴影。
-- 禁止发光描边、彩色 glow 冒充层次。
+- 卡片/面板默认轻或无阴影；抬升用 antd 浮层默认，勿手写多层 `box-shadow`。
+- `card-shadow` 仅确需抬升；列表行/侧栏/Tags 不加装饰阴影；禁止 glow。
 
 ### 暗黑模式
 
-- **@apps/admin 全局强制暗黑**（无开关）：根 `ConfigProvider` 使用 `theme.darkAlgorithm`，**只传 seed**（`colorPrimary` / `fontFamily` 等）；中性字色/面色/边框交给算法派生，自有 `--color-*` 与 dark map 对齐（见 `theme.scss`）。
-- **VXE**：启动时 `VxeUI.setTheme("dark")`，色板经 `vxeThemeBridge.scss` 桥到 `--color-*`；禁止只改字体变量却不切 VXE theme（会白底浅字）。
-- 禁止再做页面级「半套暗黑岛」或嵌套第二套暗黑 ConfigProvider（相册壳已并入全局）。
-- 禁止手调偏亮字色 alpha 覆盖算法中性盘（对比度问题应改 seed 或换算法，不另起一套灰阶）。
+- **全局强制暗黑**：`theme.darkAlgorithm`，只传 seed；中性盘交给算法；`--color-*` 与 dark map 对齐。
+- **VXE**：`VxeUI.setTheme("dark")` + `vxeThemeBridge.scss`；禁止半套暗黑岛或嵌套第二套 ConfigProvider。
+- 禁止手调偏亮字色 alpha 覆盖算法中性盘。
 
 ---
 
-## 原则 1 · 亲密性
+## 原则硬约束（摘要）
 
-关联越高越近，越像一个视觉单元。
+细则与场景 → **`admin-ui-principles`**。下列数字与禁令不可违反。
+
+### 亲密性（间距档）
 
 | 档位 | 值 | 用途 |
 |------|-----|------|
@@ -104,160 +92,46 @@ alwaysApply: false
 | 中 | **16px** | 同组表单项、工具栏↔表格、卡片内区块 |
 | 大 | **24px** | 页边、查询区↔列表、卡片↔卡片 |
 
-- 纵向尽量 `y = 8 + 8n`（`n >= 0`）。Uno 用 `gap-8px` / `16` / `24`；**禁止**随意 13/15/18（现有 shortcut 如 `py-14px` 除外）。
-- 三档不够：加减 8 的倍数，或加 **分割线** 拉开层次。
+- 纵向尽量 `y = 8 + 8n`；Uno `gap-8px` / `16` / `24`；**禁止**随意 13/15/18（现有 shortcut 如 `py-14px` 除外）。
 - 组件内部间距 < 组件之间间距。
 
----
+### 对齐 / 对比 / 重复
 
-## 原则 2 · 对齐
+- 文案左对齐单一起点；表单标签冒号对齐优先；金额同列右对齐、小数位一致。
+- 一操作区通常一个 `type="primary"`；慎重决策勿用主色诱导；状态靠 Tag/字典色与明显 hover。
+- 列表固定 **VXE + SearchForm + ToolButtons**；禁止同功能换反馈皮肤。
 
-- **文案**：标题与正文统一左对齐（单一视觉起点）；短字段散落时也要定同一起点。
-- **表单**：标签冒号对齐（右对齐标签 + 左对齐控件）优先，提高扫视填写效率；同页勿混用多种标签对齐。
-- **数字 / 金额**：同列右对齐、小数位一致；单位放表头，单元格不重复带单位（VXE 列 `align: 'right'` + formatter）。
+### 直截了当 / 足不出户 / 简化 / 邀请 / 过渡
 
----
+- 优先抽屉/弹窗/行内；勿仅为单字段整页跳（既有详情路由除外）。
+- 能本页解决勿跳页；删除可撤销优先 Message「撤销」；不可撤销用 `Popconfirm` / 明确确认。
+- 高频操作常驻 ToolButtons；次要可 hover；扩大热区优于盲目加大按钮。
+- 邀请补示能，漫游引导不是烂交互创可贴。
+- 过渡解释变化：用 `--ease-out`、`--dur-*`；尊重 `prefers-reduced-motion`；禁止侧栏/Tags/大表无意义动效。
 
-## 原则 3 · 对比
+### 即时反应 · 反馈 API（强制）
 
-对比必须**强烈**，否则等于没有。
-
-- **主次**：一操作区通常一个 `type="primary"`；可用弱化次项代替再加一个主色。
-- **慎重决策**（通过/驳回、不可撤销删除）：系统保持中立，勿用主色诱导；双方次按钮，或危险用 `danger` + 确认。
-- **总分**：标题 > 正文 > 辅助，靠字号/字重/颜色，不靠再套重阴影卡片。
-- **状态**：静态用 Tag/色点/字典色；动态靠 hover/active 明显区分（可复用 `--dur-press`）。
-
----
-
-## 原则 4 · 重复
-
-相同元素在全站重复 → 降低学习成本、建立关联。
-
-- 列表页固定模式：**VXE + SearchForm + ToolButtons**（见 `vue-admin.mdc`）。
-- 反馈、空状态、危险操作、卡片圆角、间距档位全仓统一；禁止同功能换皮肤（例如有的页 Message、有的页自绘 Toast）。
-- 文案格式、状态色、操作列位置保持重复一致。
-
----
-
-## 原则 5 · 直截了当
-
-「需要在哪里输出，就要允许在哪里输入。」
-
-- 优先上下文编辑：抽屉 / 弹窗 / 行内；勿仅为改单字段整页跳转（现有独立详情路由除外）。
-- **行内编辑**：易读优先 → 单击编辑；需强调可编 → 文字链/图标；多字段切换时列宽勿跳动。
-- **拖放**（若做）：单维度（仅上下或仅左右）；悬停出手柄；可放置区给主色描边反馈。
-
----
-
-## 原则 6 · 足不出户
-
-能在本页解决就不要跳页刷新，避免打断心流。
-
-| 模式 | 用法 | Admin 映射 |
-|------|------|------------|
-| 覆盖层 | 详情 Popover、少量字段输入、不可撤销用 Popconfirm | `a-popover` / `a-popconfirm`；悬停激活约 **0.5s** 延迟，移出立即关 |
-| 嵌入层 | 列表展开行、Tabs 分组 | 详情/设置用 Tabs；勿为平级信息连环开页 |
-| 流程 | 渐进展现、配置向导 | 复杂流程可用 Modal 内 Steps，仍尽量同页 |
-
-- **删除等可撤销操作**：优先直接执行 + Message「撤销」，勿滥用 Modal 二次确认（狼来了）。
-- **不可撤销**：当前页 `Popconfirm` / 明确确认，仍避免无上下文的大 Modal 打断。
-
----
-
-## 原则 7 · 简化交互（上下文工具）
-
-按费茨法则：目标更大、更近更好点。
-
-- **实时可见**：高频/关键操作常驻（ToolButtons 主操作）。
-- **悬停即现**：次要行操作可 hover 再出，避免干扰阅读。
-- **开关显示**：点「编辑」才进入输入态（表格编辑模式）。
-- **热区**：文字链可点整格（VXE 单元格点击），不必只点短文本；增强响应靠扩大热区而非盲目加大按钮。
-
----
-
-## 原则 8 · 提供邀请
-
-富交互缺易发现性时，用邀请补示能。
-
-- **静态**：空状态说明下一步、未完成引导、首次功能探索点（须可退出、可重开、文案极短）。
-- **动态**：hover 露出可点文字链/按钮；推论邀请（完成 A 后提示相关 B）勿刷屏。
-- 漫游引导**不是**烂交互的创可贴；信息架构优先。
-
----
-
-## 原则 9 · 巧用过渡
-
-动态帮助沟通，不是装饰。
-
-- **保持上下文**：滑入抽屉、折叠面板、页内切换优于整页硬切。
-- **解释发生了什么**：增/删/改行可用短暂高亮或过渡；呼出对象（抽屉）与触发源有空间关联。
-- **感知性能**：长请求用加载态转移注意，但不能代替真实进度。
-- 运动用现有 token：`--ease-out`、`--dur-press` / `--dur-fade` / `--dur-panel`；尊重 `prefers-reduced-motion`。
-- **禁止**：侧栏/Tags/大表格整表无意义动效；为动而动。
-
----
-
-## 原则 10 · 即时反应
-
-交互前有邀请、中有过渡、**后必须有反馈**；输入量级越大反馈越重。
-
-### 反馈 API（强制）
-
-统一入口：`import $feedback from "@/utils/feedback"`（实现见 `src/utils/feedback.ts`）。
+统一入口：`import $feedback from "@/utils/feedback"`。
 
 | 场景 | 必须用 | 禁止 |
 |------|--------|------|
-| 一次消费的成功/失败/警告/提示 | `$feedback.message.success/error/warning/info` | 直调 `message`（antd）、用 `a-alert` / 页面 `errorMsg` ref 粘住结果 |
-| 需用户确认的危险/不可轻易撤销操作 | `$feedback.confirm(content, options?)` | 直调 `Modal.confirm` |
-| 带输入的确认（如重置密码） | `$feedback.confirmInput` | 页内自拼 Modal + Input |
-| 全屏长时间等待 | `$feedback.loading` / `closeLoading` | 另起一套全局 loading 皮肤 |
+| 一次消费的成功/失败/警告/提示 | `$feedback.message.*` | 直调 antd `message`；用 sticky `a-alert` / `errorMsg` 粘住结果 |
+| 危险/不可轻易撤销确认 | `$feedback.confirm` | 直调 `Modal.confirm` |
+| 带输入确认 | `$feedback.confirmInput` | 页内自拼 Modal + Input |
+| 全屏长等待 | `$feedback.loading` / `closeLoading` | 另起全局 loading 皮肤 |
 
-`$feedback.confirm` 可选：`title` / `okText` / `cancelText` / `okType` / `cooldownMs`（如删云 1.5s 冷却）；缺省与历史「系统提示 + 危险确定」一致。确定 resolve、取消 reject。
+`$feedback.confirm` 可选：`title` / `okText` / `cancelText` / `okType` / `cooldownMs`。确定 resolve、取消 reject。
 
-```ts
-// ✅
-await $feedback.confirm("将丢弃进度", { title: "取消任务？", okText: "取消任务" });
-$feedback.message.error(formatIcloudSyncError(e));
+`a-alert` **仅**作当前步骤上下文说明（登录 checklist、风险旁注、媒体区内嵌失败态等）；**禁止**展示一次操作成败。
 
-// ❌
-import { message, Modal } from "ant-design-vue";
-message.error(e);
-Modal.confirm({ title, content, onOk });
-```
-
-### 何时仍可用 `a-alert`（非常驻操作结果）
-
-仅当文案是**当前步骤的上下文说明**、需对照界面阅读时：
-
-- 登录前 checklist、切换账号警示、2FA 说明
-- 列表/表单旁的风险提示（如「部分组存在多落库」）
-- 媒体区内就地失败态（播放器内嵌）
-
-**禁止**用 `a-alert` 展示一次操作的成败（登录结果、同步失败 toast、扫描/删除失败等）——这类走 `$feedback.message`；任务态标题+主按钮（如「刷新失败」+「重新开始」）留在状态条，不要整块换成 alert 盖住操作。
-
-### 其它即时反应
-
-- **查询**：自动完成、实时搜索按类目是否确定选用对应下拉；避免无反馈的静默失败。
-- **录入**：提交前实时校验/强度预览优于提交后才报错；提示渐进展现，勿一次堆满。
-- **进度**：按钮 loading、表格/列表 loading、整页 loading 按操作量级选用（`v-loading` / `a-spin`）。
-- **刷新**：有新内容可「点击刷新」或定时刷新 + 新行短暂高亮。
-
----
-
-## 全局规则拾要（录入 / 展示）
-
-与原则配合，改表单与列表时遵守：
-
-- **数据录入**：标签面向用户角色（新手通俗 / 专家术语）；敏感信息用暗提示说明原因；提供默认值、结构化格式、placeholder、校验提醒，避免空白猜测。
-- **数据展示**：金额数量右对齐；空值有统一占位，勿各页不同。
-- 详细全局规则全文：反馈、导航、按钮、数据列表、文案等见官网「设计模式 → 全局规则」目录，本文件不重复粘贴；落地时优先现有组件 API。
+进度：按钮 / 表格 / 整页 loading 按量级选用。
 
 ---
 
 ## 明确禁止
 
 - 散落魔法间距、页内私设品牌色、多套反馈皮肤。
-- 业务页直调 antd `message` / `Modal.confirm`（须走 `$feedback`，见原则 10）。
+- 业务页直调 antd `message` / `Modal.confirm`（须走 `$feedback`）。
 - 用 sticky `a-alert` / `errorMsg` 展示一次消费的操作结果。
 - 用 MasterGo 逐像素标注覆盖 antd 组件默认尺寸。
 - 滥用 Modal 确认、整页跳转完成本可页内完成的事。
@@ -267,11 +141,11 @@ Modal.confirm({ title, content, onOk });
 
 ## 改 UI 自检
 
-1. 价值观：是否克制、可复用、服务任务目标？
-2. 模度：间距/尺寸是否 8n？常用是否 8/16/24？
-3. 色彩/字体/图标/阴影是否走 token 与现有入口，无魔法值与多层阴影？
-4. 亲密性 / 对齐 / 对比 / 重复是否成立？
-5. 反馈：一次消费结果用 `$feedback.message`、确认用 `$feedback.confirm`（未直调 antd message/Modal；未用 sticky alert 顶操作结果）？
-6. 交互：能否足不出户？工具是否按重要性可见？有无邀请与即时反馈？
-7. 过渡是否解释变化、是否尊重 reduced-motion？
-8. 是否仍符合 `vue-admin.mdc` 列表页模式？
+1. 价值观：克制、可复用、服务任务？
+2. 模度：8n？常用 8/16/24？
+3. 色彩/字体/图标/阴影走 token，无魔法值与多层阴影？
+4. 亲密性 / 对齐 / 对比 / 重复成立？
+5. 一次消费结果用 `$feedback.message`、确认用 `$feedback.confirm`？
+6. 能否足不出户？工具按重要性可见？有邀请与即时反馈？
+7. 过渡解释变化、尊重 reduced-motion？
+8. 仍符合 `vue-admin.mdc` 列表页模式？

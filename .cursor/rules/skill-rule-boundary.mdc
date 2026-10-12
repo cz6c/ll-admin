@@ -36,6 +36,11 @@ alwaysApply: true
 - 发现 rule 在写「第 1 步…第 2 步…抄 XX 页」：挪到 skill，rule 只留约束句。
 - 改 skill 时同步 `.cursor/skills` 与 `.agents/skills`；索引见 skills `README.md`。
 
+## 撰写 / 蒸馏
+
+写新 skill、拆 references、从文档蒸馏、可选 `GENERATION.md` 追踪 → `.cursor/skills/skillAuthoring.md`（与 `.agents/skills/` 同步）。  
+**不**通过第三方 skill 包覆盖本仓 rules。
+
 ## 入口
 
 功能任务流程入口：`c-page` skill。约束索引见 `monorepo-core.mdc`。

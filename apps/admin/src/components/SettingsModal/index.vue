@@ -150,7 +150,7 @@ watch(visible, open => {
     <a-spin :spinning="loading">
       <div class="cs-settings-body">
         <div class="flex flex-col gap-16px">
-          <a-card class="section-card card-rounded" :bordered="true">
+          <a-card class="section-card" :bordered="true">
             <template #title>
               <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
                 <span>客户端</span>
@@ -170,7 +170,7 @@ watch(visible, open => {
             </a-form>
           </a-card>
 
-          <a-card class="section-card card-rounded" :bordered="true">
+          <a-card class="section-card" :bordered="true">
             <template #title>
               <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
                 <span>AI 接入</span>
@@ -194,7 +194,7 @@ watch(visible, open => {
             </a-form>
           </a-card>
 
-          <a-card class="section-card card-rounded" :bordered="true">
+          <a-card class="section-card" :bordered="true">
             <template #title>
               <div class="flex flex-wrap items-center justify-between gap-16px text-14px font-600">
                 <span>相册</span>

@@ -149,3 +149,5 @@ alwaysApply: false
 6. 能否足不出户？工具按重要性可见？有邀请与即时反馈？
 7. 过渡解释变化、尊重 reduced-motion？
 8. 仍符合 `vue-admin.mdc` 列表页模式？
+
+接线步骤 → `admin-list-page` / `admin-edit-modal`；原则解说 → `admin-ui-principles`。

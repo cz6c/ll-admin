@@ -141,3 +141,7 @@ export class DeptController {
   }
 }
 ```
+
+## 接线
+
+CRUD 装配步骤 → skill `nest-crud-module`；防御边界 → `c-defense`；验收 → `c-verify`。migration **全文**只在本 rule。

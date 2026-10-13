@@ -108,3 +108,7 @@ easycom 已配置，**无需 import**。能用 wot-ui 必须用，禁止原生�
 - **表单与校验**（`wd-form` + `schema`）：非标准校验规则、与后端字段不一致的转换逻辑，注释业务原因。
 - **页面 `.vue`**：复杂页面（如 `verify.vue`）在 `script` 顶部用简短块注释说明页面职责与主流程；模板里不写注释，逻辑放 script。
 - **勿注释**：wot-ui 常规用法、UnoCSS 类名含义、`definePage` 路由元数据等自解释代码。
+
+## 接线
+
+开页 → `uni-new-page`；表单 → `uni-wot-form`；HTTP → `uni-api-http`。验收只跑 uni filter → `c-verify`（禁止无必要全仓 `pnpm check`）。

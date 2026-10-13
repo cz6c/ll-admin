@@ -13,8 +13,10 @@ description: >-
 1. 产品需求/原型/前后端混写 → 先读 [../c-requirement/SKILL.md](../c-requirement/SKILL.md)，完成分析报告后再继续。
 2. 歧义、反绕过、范围过宽、**或报告/方案中仍有互斥分叉未拍板** → [../c-clarify/SKILL.md](../c-clarify/SKILL.md)（硬约束 `clarify-gate.mdc`）；未放行前不写代码、不派实现、不出实施蓝图。
 3. 读 [profiles.md](profiles.md) 确认画像；再读 [anchors.md](anchors.md)。
-4. 改代码 → [../c-workflow/SKILL.md](../c-workflow/SKILL.md)。纯查询可跳过。
-5. 输出下方「任务概览」，再按路由表读子 skill。**本 skill 不进入代码实现。**
+4. 可能造新 util/依赖 → [../c-search-first/SKILL.md](../c-search-first/SKILL.md)（先 `rg` 本仓）。  
+5. 改代码 → [../c-workflow/SKILL.md](../c-workflow/SKILL.md)。纯查询可跳过。  
+6. 输出下方「任务概览」，再按路由表读子 skill。**本 skill 不进入代码实现。**  
+7. 改完 → `c-verify`（命令证据）→ `c-review`（只读对账）。
 
 ## 技能路由
 
@@ -24,6 +26,9 @@ description: >-
 | 歧义 / 绕过确认 | `c-clarify` |
 | 蓝图 / 最小改动 / 纠错 | `c-workflow` |
 | 防御边界 / 吞异常 | `c-defense` |
+| 先搜本仓再写 | `c-search-first` |
+| 按端验收命令 | `c-verify` |
+| 只读审 diff | `c-review` |
 | Admin 列表页 | `admin-list-page` |
 | Admin 编辑弹窗 | `admin-edit-modal` |
 | Admin HTTP API 薄封装 | `admin-api-wire` |
@@ -43,7 +48,7 @@ description: >-
 参与当前模块 Git 修改人：<当前 identity；相关 author；无法确认则待确认>
 预计改动文件/行数：<估算>
 现成可复用能力：
-  - utils / hook / 同构页面：<路径，或无>
+  - utils / hook / 同构页面：<路径，或无；未搜则先 c-search-first>
 ```
 
 无法唯一确定时写「待确认」，不得猜测。

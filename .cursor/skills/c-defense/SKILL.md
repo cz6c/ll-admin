@@ -10,6 +10,10 @@ description: >-
 
 只解决一个问题：**防御应该设在哪里**。
 
+## Trigger
+
+判空 / try-catch / 接口返回可不可信。接线步骤不在本 skill（走装配）。**不用**当通用 OWASP 清单。
+
 ## 核心公理
 
 1. **静态类型 ≠ 运行时保证** — 外部流入数据不受 TS/类型注解保护。  
@@ -47,3 +51,8 @@ HTTP 响应 · JSON 反序列化 · 文件 · 配置 · DB 结果 · 环境变�
 5. 有无 `as` 强转欺骗编译器？
 
 分语言正反例 → [reference.md](reference.md)。
+
+## 反模式 + 交接
+
+- 可信域层层 `?.`；`catch` 返回默认值。  
+- 边界校验细节：Nest DTO → `nestjs-server.mdc`；验收 → `c-verify`。

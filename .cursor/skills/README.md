@@ -12,7 +12,7 @@
 - 约束全文只在 rule；skill 只写 **一句门禁提醒 + 规则名**，禁止再贴对照表。  
 - 流程、必问、完成检查只在 skill；不要写进 rule。
 
-**撰写 / 拆分 / 文档蒸馏 / 可选 GENERATION 追踪** → [skillAuthoring.md](skillAuthoring.md)（方法论；不安装第三方 skill 包）。
+**撰写 / 拆分 / 文档蒸馏 / 场景八段 / 可选 GENERATION 追踪** → [skillAuthoring.md](skillAuthoring.md)（方法论；不安装第三方 skill 包）。
 
 ## 入口与治理
 
@@ -23,6 +23,9 @@
 | 蓝图 / 最小改动 / 纠错 | [c-workflow](c-workflow/SKILL.md) |
 | 产品需求拆分 | [c-requirement](c-requirement/SKILL.md) |
 | 防御设在哪里 | [c-defense](c-defense/SKILL.md) |
+| 先搜本仓再写 | [c-search-first](c-search-first/SKILL.md) |
+| 按端验收命令 | [c-verify](c-verify/SKILL.md) |
+| 只读审 diff | [c-review](c-review/SKILL.md) |
 
 单一事实源（流程侧）：[profiles](c-page/profiles.md) · [anchors](c-page/anchors.md)
 
@@ -48,4 +51,4 @@
 
 ## 推荐阅读顺序（新功能）
 
-`c-page` →（必要时 `c-requirement`）→ **有互斥未决则 `c-clarify`**（硬约束 `clarify-gate.mdc`）→ `c-workflow` → 装配 skill → **按对应 app rule 验收约束**。
+`c-page` →（必要时 `c-requirement`）→ **有互斥未决则 `c-clarify`**（硬约束 `clarify-gate.mdc`）→ `c-search-first`（新能力）→ `c-workflow` → 装配 skill → **`c-verify` → `c-review`** → 按对应 app rule 验收约束。

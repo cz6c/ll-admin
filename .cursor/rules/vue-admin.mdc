@@ -67,21 +67,12 @@ alwaysApply: false
   - **允许例外**（勿硬套）：品牌 Logo、404 等装饰静态图、扫码二维码 data URL、裁剪器实时预览、视频/`LivePhotoPlayer` 静帧等与播控强耦合画面。
   - **远端需协议/可视区挂载**（如 QQ `qzoneimg`）：薄封装先完成 src 改写与 IO，**展示仍交给 `CcImage`**（参考 `ProtocolLazyThumb`）；禁止平行造「第二套带 loading 的图片组件」。
 - **样式优先 UnoCSS**（原子类 / shortcuts）；仅 `:deep`、复杂伪类或难表达布局保留少量 scoped SCSS。
-- **卡片圆角**：区块统一 **8px**，内嵌面（列表行、pre 块）**6px**。优先用 `uno.config.ts` shortcuts，勿散落手写 `rounded-8px border …`：
-
-| shortcut | 用途 |
-|----------|------|
-| `radius-card` / `card-rounded` | 圆角 token / a-card 与壳层 |
-| `card-panel` | 带边框底色的卡片面 |
-| `card-section` | 内容区块（含内边距） |
-| `card-meta` | 状态条等横向元信息条 |
-| `radius-inner` | 卡片内嵌小圆角 |
-
-- **逻辑复用优先**：日期用 `@llcz/common`（`dateUtil` / `formatToDate` / `formatToDatetime` 等），其它优先现有 utils、composables、插件；禁止重复造轮子。
+- **卡片圆角 / 间距档 / `$feedback` 数字与禁令**只维护在 **`antd-design-system.mdc`**（区块 8 / 内嵌 6、`card-*` shortcut）；此处不重复表。
+- **逻辑复用优先**：优先现有 utils、composables、插件；禁止重复造轮子。新 util 前先 `c-search-first`。
 
 ## 共享库
 
-- 可从 **`@llcz/common`** 引入纯工具（如 `isArray` 用于权限判断）；勿在 common 中引入 Vue/UI。
+- 可从 **`@llcz/common`** 引入纯工具（如 `isArray` / `dateUtil` / `formatToDate` / `formatToDatetime` 等）；勿在 common 中引入 Vue/UI。
 
 ## 注释约定
 
@@ -94,3 +85,7 @@ alwaysApply: false
 - **动态路由**：`permission.ts` / `router/guard.ts` 中绕开常规流程的分支（白名单、外链、404 回退）必须注释「为什么」。
 - **复杂组件**（`FormView`、`ToolButtons`、图表页）：props 默认值或 hack（如表格高度、resize 监听）注释平台/布局原因。
 - **勿注释**：Ant Design Vue / VXE 常规用法、已有类型的 API 入参字段名复述。
+
+## 接线（步骤在 skill，不在本 rule）
+
+列表 → `admin-list-page`；弹窗 → `admin-edit-modal`；HTTP API → `admin-api-wire`；路由权限 → `admin-route-permission`；UI 原则解说 → `admin-ui-principles`。验收 → `c-verify`。

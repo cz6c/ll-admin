@@ -15,6 +15,25 @@
 
 Skill 需要门禁时：只写 **一句提醒 + 规则文件名**，禁止再贴对照表或条文全文。
 
+## 场景 skill 骨架（开发动作 · 推荐）
+
+治理 / 装配 / 验收类 `SKILL.md` 按此八段裁剪（可省略空段，**禁止**为凑齐而注水）。灵感来自通用 agent 工作流写法；**内容必须是本仓库事实**，禁止贴 Vue/TS 百科或外部 TDD/安全包全文。
+
+| # | 段 | 写什么 |
+|---|-----|--------|
+| 1 | **Trigger** | 何时用；与 description 一致；一句「何时不用」防抢触发 |
+| 2 | **约束权威** | 一句 + 规则文件名；禁止再贴对照表 |
+| 3 | **探测** | 样板路径、先读哪份 scripts；禁止臆造 `npm test` / 默认全仓 `pnpm check` |
+| 4 | **步骤关卡** | 按序可执行；停下来要问的点链 `c-clarify` |
+| 5 | **分叉表** | 互斥路径用表；≥2 条未拍板 → `c-clarify` |
+| 6 | **FAIL / PASS** | 各 1 段**本仓**代码或路径（invent 字段、直调 `message`、手改 `pages.json` 等） |
+| 7 | **完成检查 / 证据** | 勾选 + 实际跑过的命令与结果（命令白名单见 `c-verify`） |
+| 8 | **反模式 + 交接** | 看起来像对其实错；下一步读哪个 skill |
+
+**优先级**：产品正确（权限码、url、migration 同意、`$feedback`）先于语言常识（Composition API 细节）。
+
+**端 rule 对称**：硬约束留 rule；文末一句「接线步骤 → 某 skill」。冲突时 **app rule > 通用原则**。分层轴是 **app**（admin/server/uni/tauri），不要改成 ECC 式 language pack。
+
 ## 推荐结构：短入口 + 按需 references
 
 入口 `SKILL.md` 保持可扫读；细则放同目录 `reference.md` 或 `references/*.md`，由入口表格链接。

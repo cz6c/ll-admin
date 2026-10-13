@@ -92,3 +92,7 @@ pub async fn example(app: AppHandle, /* owned args */) -> Result<T, String> {
 - Rust **模块/文件名** 用 `snake_case`（见 `file-naming.mdc` 例外条款）。
 - 不要为消警告做无关重构；**最小 diff 修到 0 warning**。
 - 全仓 `pnpm check` 不一定覆盖 Tauri；**改 src-tauri 后以上述 `cargo` 命令为准**。
+
+## 接线
+
+command 全链路步骤 → skill `tauri-command-wire`；验收命令白名单 → `c-verify`（admin-cs）。

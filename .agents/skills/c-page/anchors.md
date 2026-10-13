@@ -68,3 +68,5 @@ Swagger dump、截图、MCP 大 JSON 只用临时目录；用完删除；不得�
 | 命名、注释、栈/模块约定、UI 模度、migration/`cargo` 等硬门禁 | 澄清、蓝图、纠错、画像路由、装配步骤、样板路径、完成检查 |
 
 skill 触达硬门禁时：**一句 + 规则文件名**；约束变更只改 `.cursor/rules/`。
+
+改完验证命令白名单 → `c-verify`；diff 对账 → `c-review`（只读）。

@@ -60,4 +60,4 @@ alwaysApply: true
 | docs | `vitepress-docs.mdc` |
 | common | `shared-common.mdc` |
 
-流程类能力在 **`.cursor/skills/`**（如 `c-page`）；**命名/注释/栈约定归 rules，流程归 skills**，细则见 `skill-rule-boundary.mdc`。
+流程类能力在 **`.cursor/skills/`**（入口 `c-page`；搜现成 `c-search-first`；验收 `c-verify`；只读审 `c-review`）。**命名/注释/栈约定归 rules，流程归 skills**，细则见 `skill-rule-boundary.mdc`。场景 skill 八段写法见 `skillAuthoring.md`。

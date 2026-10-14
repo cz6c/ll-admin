@@ -28,18 +28,19 @@ description: >-
 ## 步骤
 
 1. 列「改了哪些端」。多端则分端跑，结果分行写。  
-2. 按白名单执行；记录 **命令原文 + 退出码 + 与本次 diff 相关的失败**。  
-3. Admin UI 再扫一眼 `antd-design-system.mdc` 自检（`$feedback`、间距 8n）；不在此复述模度表。  
-4. 未跑项写「未验证」及原因（环境无 Rust、用户未装依赖等）。
+2. 按白名单执行；**lint 优先定向路径且不加 `--fix`**（细则 [reference.md](reference.md)「lint 与 --fix」）。记录 **命令原文 + 退出码 + 与本次 diff 相关的失败**。  
+3. 若跑过带 `--fix` 的包级 lint：立刻核对 `git status`，范围外改动必须还原后再交证据。  
+4. Admin UI 再扫一眼 `antd-design-system.mdc` 自检（`$feedback`、间距 8n）；不在此复述模度表。  
+5. 未跑项写「未验证」及原因（环境无 Rust、用户未装依赖等）。
 
 ## 分叉表
 
 | 画像 | 跑什么 |
 |------|--------|
-| admin-bs（vue/ts/scss，非 tauri） | `@apps/admin` lint + typecheck |
+| admin-bs（vue/ts/scss，非 tauri） | 定向 eslint（无 `--fix`）+ typecheck；包级 lint 仅补充且须清理 `--fix` 误改 |
 | admin-cs（改了 `src-tauri`） | 上一项 + `cargo check` 0 warning |
-| server | `@apps/server` lint + typecheck；**不**生成 migration |
-| uni | **仅** `@apps/uni` lint / type-check |
+| server | 同上 lint 策略 + typecheck；**不**生成 migration |
+| uni | **仅** uni 定向/包级 lint（同 `--fix` 规则）+ type-check |
 | 多端 | 分端执行，禁止图省事一条 `pnpm check` 掩盖 uni 既有失败 |
 
 ## 完成检查 / 证据
@@ -56,5 +57,6 @@ description: >-
 
 - 写「应该没问题」却没跑命令。  
 - 默认 `pnpm check` 或 `npm test`。  
+- 默认跑带 `--fix` 的全 app lint，把无关格式化带进 diff/提交。  
 - 用 `--no-verify` / 改 lint 规则消红。  
 - 失败后的修复 → 回到装配 skill / `c-workflow`；范围对账 → `c-review`。

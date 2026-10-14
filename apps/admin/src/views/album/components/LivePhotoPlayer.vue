@@ -132,8 +132,9 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  max-width: 90vw;
-  max-height: 85vh;
+  /* 上限交给父级（灯箱内容区）；不写死 vw/vh，避免裁切或超出 */
+  max-width: 100%;
+  max-height: 100%;
   cursor: pointer;
   touch-action: manipulation;
   line-height: 0;
@@ -148,8 +149,8 @@ onBeforeUnmount(() => {
 
 .live-photo-still {
   display: block;
-  max-width: 90vw;
-  max-height: 85vh;
+  max-width: 100%;
+  max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -158,8 +159,8 @@ onBeforeUnmount(() => {
 
 .live-photo-motion {
   display: block;
-  max-width: 90vw;
-  max-height: 85vh;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   border-radius: 4px;
   position: absolute;

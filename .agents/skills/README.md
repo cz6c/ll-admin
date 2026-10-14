@@ -18,7 +18,7 @@
 
 | 任务 | Skill |
 |------|--------|
-| 不确定用哪个 / 跨端路由 | [c-page](c-page/SKILL.md) |
+| 不确定用哪个 / 跨端路由 | [c-entry](c-entry/SKILL.md) |
 | 歧义 / 绕过确认 | [c-clarify](c-clarify/SKILL.md) |
 | 蓝图 / 最小改动 / 纠错 | [c-workflow](c-workflow/SKILL.md) |
 | 产品需求拆分 | [c-requirement](c-requirement/SKILL.md) |
@@ -27,7 +27,7 @@
 | 按端验收命令 | [c-verify](c-verify/SKILL.md) |
 | 只读审 diff | [c-review](c-review/SKILL.md) |
 
-单一事实源（流程侧）：[profiles](c-page/profiles.md) · [anchors](c-page/anchors.md)
+单一事实源（流程侧）：[profiles](c-entry/profiles.md) · [anchors](c-entry/anchors.md)
 
 ## 装配（Admin / Server / Tauri / Uni）
 
@@ -51,4 +51,4 @@
 
 ## 推荐阅读顺序（新功能）
 
-`c-page` →（必要时 `c-requirement`）→ **有互斥未决则 `c-clarify`**（硬约束 `clarify-gate.mdc`）→ `c-search-first`（新能力）→ `c-workflow` → 装配 skill → **`c-verify` → `c-review`** → 按对应 app rule 验收约束。
+`c-entry` →（必要时 `c-requirement`）→ **有互斥未决则 `c-clarify`**（硬约束 `clarify-gate.mdc`）→ `c-search-first`（新能力）→ `c-workflow` → 装配 skill → **`c-verify` → `c-review`** → 按对应 app rule 验收约束。

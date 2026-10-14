@@ -9,7 +9,7 @@ description: >-
 # c-search-first
 
 > **约束权威**：`monorepo-core.mdc`（禁重复造轮子）、`skill-rule-boundary.mdc`。  
-> 入口：[../c-page/SKILL.md](../c-page/SKILL.md) · 蓝图：[../c-workflow/SKILL.md](../c-workflow/SKILL.md)
+> 入口：[../c-entry/SKILL.md](../c-entry/SKILL.md) · 蓝图：[../c-workflow/SKILL.md](../c-workflow/SKILL.md)
 
 ## Trigger
 

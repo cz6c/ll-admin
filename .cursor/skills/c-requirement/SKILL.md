@@ -17,7 +17,7 @@ description: >-
 ## 分析顺序
 
 1. 提取目标、角色、触发、操作、状态变化、预期结果；不自行补需求。  
-2. 读 [../c-page/profiles.md](../c-page/profiles.md)，只读搜索源码定位模块/路由/API（复用探测同 `c-search-first`）。  
+2. 读 [../c-entry/profiles.md](../c-entry/profiles.md)，只读搜索源码定位模块/路由/API（复用探测同 `c-search-first`）。  
 3. 接口契约：优先本仓 Swagger / Controller+DTO；禁止凭经验补字段。  
 4. 逐条分类：**前端(admin/uni)** / **server** / **Tauri** / **联调** / **待确认** / **非本次范围**。  
 5. 输出下方报告。若 §6 仍有互斥未决：**同一回合必须转入 `c-clarify` 提问收尾**（确认前不进 `c-workflow` / 实施蓝图；`clarify-gate.mdc`）。

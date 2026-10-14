@@ -3,12 +3,12 @@ name: c-workflow
 description: >-
   tsb monorepo 改代码工作流：任务概览、要改/不改蓝图、必问单选、纠错复原、最小充分实现、
   范围外报告。Use when 改代码、修 bug、新需求、删功能、蓝图、最小改动、用户纠错、擅自扩展。
-  可由 c-page 路由进入；非页面类改代码也可直接使用。
+  可由 c-entry 路由进入；非页面类改代码也可直接使用。
 ---
 
 # c-workflow
 
-> 入口：[../c-page/SKILL.md](../c-page/SKILL.md) · 画像：[../c-page/profiles.md](../c-page/profiles.md) · 锚点：[../c-page/anchors.md](../c-page/anchors.md) · 细则：[reference.md](reference.md)
+> 入口：[../c-entry/SKILL.md](../c-entry/SKILL.md) · 画像：[../c-entry/profiles.md](../c-entry/profiles.md) · 锚点：[../c-entry/anchors.md](../c-entry/anchors.md) · 细则：[reference.md](reference.md)
 
 ## 前置
 

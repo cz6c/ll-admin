@@ -8,7 +8,7 @@ description: >-
 
 # c-review
 
-> **约束权威**：对应 app rule + `c-page/anchors.md`（范围/纠错）。  
+> **约束权威**：对应 app rule + `c-entry/anchors.md`（范围/纠错）。  
 > 验证命令不在此执行 → [../c-verify/SKILL.md](../c-verify/SKILL.md)
 
 **只读。** 不得为「审查顺手」改文件、补功能、跑 formatter 扫全仓。

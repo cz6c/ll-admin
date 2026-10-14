@@ -10,7 +10,7 @@ description: >-
 
 > **约束权威**：`vue-admin.mdc`、`antd-design-system.mdc`、`comment-standards.mdc`。  
 > 原则解说（可选）：[../admin-ui-principles/SKILL.md](../admin-ui-principles/SKILL.md)。  
-> 画像：[../c-page/profiles.md](../c-page/profiles.md) · 样板：`apps/admin/src/views/system/user/index.vue`
+> 画像：[../c-entry/profiles.md](../c-entry/profiles.md) · 样板：`apps/admin/src/views/system/user/index.vue`
 
 ## Trigger
 

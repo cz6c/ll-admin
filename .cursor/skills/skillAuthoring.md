@@ -1,6 +1,6 @@
 # Skill 撰写与维护（方法论）
 
-本文件约定 **如何写/拆/同步 skill**，不替代业务流程入口（`c-page`）或约束权威（`.cursor/rules`）。
+本文件约定 **如何写/拆/同步 skill**，不替代业务流程入口（`c-entry`）或约束权威（`.cursor/rules`）。
 
 灵感来自开源 skill 集合的「按需加载 + 文档蒸馏」做法；**本仓不安装、不 vendoring 第三方 skill 包**。栈约定与禁止项仍以对应 rule 为准。
 
@@ -50,7 +50,7 @@ mySkill/
 | 入口顺序 / 停止关卡 | 字段对照、完成检查细表 |
 | 要改/不改边界（短） | 多场景分支说明 |
 
-已有范例：`c-workflow` + `reference.md`、`c-defense` + `reference.md`、`c-page` + `profiles.md` / `anchors.md`。
+已有范例：`c-workflow` + `reference.md`、`c-defense` + `reference.md`、`c-entry` + `profiles.md` / `anchors.md`。
 
 **description 写法**：写清「何时用」与触发词，避免与兄弟 skill 抢触发；治理类（`c-*`）优先于装配类。
 
@@ -68,7 +68,7 @@ mySkill/
 
 ## 可选：GENERATION.md（可追溯同步）
 
-仅当 skill **明确从某文档源生成/同步**时使用；手写业务流程 skill（如 `c-page`、装配类）**不必**建此文件。
+仅当 skill **明确从某文档源生成/同步**时使用；手写业务流程 skill（如 `c-entry`、装配类）**不必**建此文件。
 
 ```markdown
 # Generation Info

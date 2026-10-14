@@ -10,7 +10,7 @@ description: >-
 # c-verify
 
 > **约束权威**：`monorepo-core.mdc`（脚本）、`rust-tauri.mdc`、`vue-uni.mdc` 检查注意。  
-> 命令白名单：[reference.md](reference.md) · 画像：[../c-page/profiles.md](../c-page/profiles.md)
+> 命令白名单：[reference.md](reference.md) · 画像：[../c-entry/profiles.md](../c-entry/profiles.md)
 
 **本 skill 只验证、不修代码。** 失败则把命令与首段错误交回实现回合；不要为消红而改无关文件。
 

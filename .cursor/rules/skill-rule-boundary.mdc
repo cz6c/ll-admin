@@ -43,4 +43,4 @@ alwaysApply: true
 
 ## 入口
 
-功能任务流程入口：`c-page` skill。约束索引见 `monorepo-core.mdc`。
+功能任务流程入口：`c-entry` skill。约束索引见 `monorepo-core.mdc`。

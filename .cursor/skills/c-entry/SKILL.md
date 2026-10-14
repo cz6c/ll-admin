@@ -1,12 +1,12 @@
 ---
-name: c-page
+name: c-entry
 description: >-
   tsb monorepo 功能任务统一入口与路由器。判定 admin-bs / admin-cs / server / uni 画像，
   输出任务概览后路由到澄清、工作流或装配 skill。Use when 不确定用哪个 c- skill、
-  新功能跨端、改页面/模块/路由/权限/Tauri 命令，或提到 c-page、页面任务、业务闭环。
+  新功能跨端、改页面/模块/路由/权限/Tauri 命令，或提到 c-entry、c-page（旧名）、业务闭环。
 ---
 
-# c-page
+# c-entry
 
 ## 入口顺序
 

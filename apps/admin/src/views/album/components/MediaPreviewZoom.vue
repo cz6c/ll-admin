@@ -2,12 +2,12 @@
   灯箱内图片缩放/平移/旋转
   职责：滚轮缩放、双击放大/还原、拖拽平移、90° 旋转；工具栏 Teleport 至父传入挂载点
   适用：MediaViewer 包裹静态图/Live 静帧；单独视频不启用
-  @note 平移与旋转/缩放分层：拖拽始终沿屏幕方向，避免 rotate 后拖动手感错位
+  @note 平移与旋转分层：拖拽始终沿屏幕方向，避免 rotate 后拖动手感错位
   @note 工具栏不在图片上绘制，避免与 Live 长按播放抢操作
-  @note 滚轮/按钮/缩放均以视口正中为锚点，避免随鼠标位置漂移
+  @note 放大把旋转层写成「适配尺寸 × 倍率」的像素框，子节点拉满该框。transform:scale 会糊；只抬 max-width 会在原图或内容区停住
 -->
 <script setup lang="ts">
-import { useEventListener } from "@vueuse/core";
+import { useEventListener, useResizeObserver } from "@vueuse/core";
 
 const props = withDefaults(
   defineProps<{
@@ -43,6 +43,13 @@ const translateX = ref(0);
 const translateY = ref(0);
 const dragging = ref(false);
 const transitionEnabled = ref(false);
+const stageRef = ref<HTMLElement | null>(null);
+/** 当前图固有像素；未读到时仍走 max 上限，避免首帧无尺寸 */
+const naturalW = ref(0);
+const naturalH = ref(0);
+/** 100% 时放进内容区的布局宽高（不超过固有像素） */
+const fitW = ref(0);
+const fitH = ref(0);
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -59,10 +66,66 @@ const panStyle = computed(() => ({
   transition: transitionEnabled.value ? "transform 0.18s ease-out" : "none"
 }));
 
-const zoomRotateStyle = computed(() => ({
-  transform: `rotate(${rotation.value}deg) scale(${scale.value})`,
-  transition: transitionEnabled.value ? "transform 0.18s ease-out" : "none"
-}));
+/**
+ * 旋转层的像素框 = 100% 适配尺寸 × 倍率，允许大于原图像素。
+ * 子节点再被拉满该框；只提高 max-width 时，布局到原图或内容区就会停。
+ */
+const zoomRotateStyle = computed(() => {
+  const style: Record<string, string> = {
+    transform: `rotate(${rotation.value}deg)`,
+    transition: transitionEnabled.value ? "transform 0.18s ease-out" : "none"
+  };
+  if (fitW.value >= 2 && fitH.value >= 2) {
+    style.width = `${fitW.value * scale.value}px`;
+    style.height = `${fitH.value * scale.value}px`;
+  }
+  return style;
+});
+
+/** 用内容区当前像素算 100% 适配框；ratio 封顶 1，小图在 100% 时不先拉满 */
+function updateFit() {
+  const stage = stageRef.value;
+  if (!stage || naturalW.value < 2 || naturalH.value < 2) return;
+  const maxW = stage.clientWidth;
+  const maxH = stage.clientHeight;
+  if (maxW < 2 || maxH < 2) return;
+  const ratio = Math.min(maxW / naturalW.value, maxH / naturalH.value, 1);
+  fitW.value = naturalW.value * ratio;
+  fitH.value = naturalH.value * ratio;
+}
+
+/** 读静帧固有尺寸。占位图不是 ant-image-img / live-photo-still，避免把 loading 图当成原图 */
+function captureNatural() {
+  const stage = stageRef.value;
+  if (!stage) return;
+  const img = stage.querySelector<HTMLImageElement>("img.ant-image-img, img.live-photo-still");
+  if (!img?.complete || img.naturalWidth < 2 || img.naturalHeight < 2) return;
+  naturalW.value = img.naturalWidth;
+  naturalH.value = img.naturalHeight;
+  updateFit();
+}
+
+/** 灯箱和全局 img 有 width:auto / max-width:100%，会把放大卡在内容区或原图像素 */
+const FIT_FILL_SELECTOR = ".viewer-media, .viewer-img, .base-image, .live-container, .live-photo-player, .live-photo-frame, .live-photo-still, .ant-image, .ant-image-img, img";
+
+function applyFittedBox() {
+  const stage = stageRef.value;
+  if (!stage) return;
+  const ready = fitW.value >= 2 && fitH.value >= 2;
+  stage.querySelectorAll<HTMLElement>(FIT_FILL_SELECTOR).forEach(el => {
+    if (!ready) {
+      el.style.removeProperty("width");
+      el.style.removeProperty("height");
+      el.style.removeProperty("max-width");
+      el.style.removeProperty("max-height");
+      return;
+    }
+    el.style.setProperty("width", "100%", "important");
+    el.style.setProperty("height", "100%", "important");
+    el.style.setProperty("max-width", "none", "important");
+    el.style.setProperty("max-height", "none", "important");
+  });
+}
 
 /** 切图 / 关闭后恢复默认视图 */
 function resetTransform() {
@@ -77,13 +140,10 @@ function clampScale(next: number) {
   return Math.min(props.maxScale, Math.max(props.minScale, next));
 }
 
-/**
- * 以视口正中为锚点缩放；已有平移时同步校正 translate，保持画面中心稳定
- */
+/** 以视口正中为锚点缩放；回到 1× 时清掉平移 */
 function applyScale(nextScale: number, animate = false) {
-  const oldScale = scale.value;
   const clamped = clampScale(nextScale);
-  if (Math.abs(clamped - oldScale) < 0.001) return;
+  if (Math.abs(clamped - scale.value) < 0.001) return;
   transitionEnabled.value = animate;
   if (clamped <= props.minScale) {
     scale.value = props.minScale;
@@ -92,9 +152,7 @@ function applyScale(nextScale: number, animate = false) {
     if (rotation.value % 360 === 0) rotation.value = 0;
     return;
   }
-  const ratio = clamped / oldScale;
-  translateX.value = ratio * translateX.value;
-  translateY.value = ratio * translateY.value;
+  // 布局放大围绕视口中心长大，平移是屏幕像素，不必再乘倍率
   scale.value = clamped;
 }
 
@@ -178,9 +236,24 @@ watch(
   () => props.resetKey,
   () => {
     transitionEnabled.value = false;
+    naturalW.value = 0;
+    naturalH.value = 0;
+    fitW.value = 0;
+    fitH.value = 0;
     resetTransform();
+    void nextTick(() => captureNatural());
   }
 );
+
+watch([scale, fitW, fitH], () => {
+  void nextTick(() => applyFittedBox());
+});
+
+useResizeObserver(stageRef, () => updateFit());
+useEventListener(stageRef, "load", captureNatural, { capture: true });
+onMounted(() => {
+  void nextTick(() => captureNatural());
+});
 
 watch(
   () => props.active,
@@ -196,7 +269,7 @@ useEventListener(window, "pointercancel", onPointerUp);
 </script>
 
 <template>
-  <div class="media-preview-zoom">
+  <div class="media-preview-zoom" :class="{ 'is-fitted': fitW > 0 }">
     <Teleport v-if="toolbarMount" :to="toolbarMount">
       <div class="media-preview-zoom__toolbar">
         <a-space :size="0" align="center">
@@ -232,6 +305,7 @@ useEventListener(window, "pointercancel", onPointerUp);
     </Teleport>
 
     <div
+      ref="stageRef"
       class="media-preview-zoom__stage"
       :class="{ 'is-grabbing': dragging, 'is-pannable': canPan }"
       @wheel="onWheel"
@@ -303,6 +377,26 @@ useEventListener(window, "pointercancel", onPointerUp);
     -webkit-user-drag: none;
     user-select: none;
   }
+
+}
+
+/* 像素框在 zoom-rotate 上；这里清掉内容区 max-width，避免子级 100% 仍被卡住 */
+.media-preview-zoom.is-fitted {
+  :deep(.viewer-media),
+  :deep(.viewer-img),
+  :deep(.base-image),
+  :deep(.live-container),
+  :deep(.live-photo-player),
+  :deep(.live-photo-frame),
+  :deep(.live-photo-still),
+  :deep(.ant-image),
+  :deep(.ant-image-img) {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: contain;
+  }
 }
 
 .media-preview-zoom__pan,
@@ -310,8 +404,9 @@ useEventListener(window, "pointercancel", onPointerUp);
   display: flex;
   align-items: center;
   justify-content: center;
-  max-width: 100%;
-  max-height: 100%;
-  will-change: transform;
+  width: max-content;
+  height: max-content;
+  max-width: none;
+  max-height: none;
 }
 </style>

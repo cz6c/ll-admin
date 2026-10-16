@@ -21,7 +21,7 @@ export type FeedbackConfirmOptions = {
    */
   cooldownMs?: number;
   /**
-   * 叠层；须高于调用方遮罩（如相册灯箱 9999），与全屏 loading 同档 11000
+   * 叠层；须高于调用方遮罩。相册灯箱为 1500（低于 ToolsBar 2000），确认用 1800
    * @note 省略则用 antd Modal 默认（1000）
    */
   zIndex?: number;

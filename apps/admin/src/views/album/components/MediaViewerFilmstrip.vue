@@ -174,19 +174,18 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   pointer-events: auto;
   scrollbar-width: thin;
-  padding: 4px 0;
 }
 
 .filmstrip-item {
   flex: 0 0 auto;
-  /* 56 = 8n；灯箱胶片条专用，与宫格 targetThumb 无关 */
-  width: 56px;
-  height: 56px;
+  /* 60 = 8n；灯箱胶片条专用，与宫格 targetThumb 无关 */
+  width: 60px;
+  height: 60px;
   padding: 0;
   border: 2px solid transparent;
   border-radius: 6px;

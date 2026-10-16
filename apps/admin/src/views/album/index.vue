@@ -449,13 +449,11 @@ function collectDeleteDiskPaths(files: MediaFile[]): string[] {
 async function onDeleteLocal(file: MediaFile) {
   if (!isTauri()) return;
   try {
-    // 灯箱已全屏盖住 ToolsBar：确认须抬 z-index，且 fullscreen 类取消 CS 扣顶，否则遮罩露顶栏
+    // 灯箱 z-index 1500 且已让出 CS 顶栏：确认只需高于灯箱，遮罩仍走 antd.scss 的扣顶
     await $feedback.confirm(`将从磁盘删除「${file.name}」。`, {
       title: "删除本地文件？",
       okText: "删除",
-      ...(viewerState.value
-        ? { zIndex: 11000, wrapClassName: "feedback-confirm-fullscreen" }
-        : {})
+      ...(viewerState.value ? { zIndex: 1800 } : {})
     });
   } catch {
     return;

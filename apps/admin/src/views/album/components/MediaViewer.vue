@@ -2,7 +2,7 @@
   本地相册全屏预览灯箱
   职责：图/视频/实况预览；Esc/方向键；缩放顶栏（静态图/Live）+ 信息/删除；底栏胶片条（含左右切）
   适用：album/index.vue（同步抽屉不提供灯箱）
-  @note Teleport body，z-index 9999；信息 Tooltip 须 z-index>9999；删除确认须配合 feedback-confirm-fullscreen
+  @note Teleport body；CS 下 top/高度扣 --cs-shell-bar-height，z-index 低于 ToolsBar(2000)；信息 Tooltip 介于灯箱与顶栏之间
 -->
 <script setup lang="ts">
 import LivePhotoPlayer from "./LivePhotoPlayer.vue";
@@ -264,8 +264,8 @@ onMounted(() => {
         <div class="viewer-top-toolbar__center">
           <div ref="zoomToolbarRef" class="viewer-top-toolbar__zoom" />
           <div class="viewer-top-toolbar__extra">
-            <!-- z-index 须 > overlay(9999)：Tooltip 默认挂 body，层级约 1030 会被灯箱挡住；勿挂 overlay 内（overflow:hidden 会裁切） -->
-            <a-tooltip placement="bottomLeft" :mouse-enter-delay="0.15" :z-index="10050">
+            <!-- Tooltip 默认约 1030，低于灯箱 1500；抬到 1900 仍低于 ToolsBar(2000)。勿挂 overlay 内（overflow:hidden 会裁切） -->
+            <a-tooltip placement="bottomLeft" :mouse-enter-delay="0.15" :z-index="1900">
               <template #title>
                 <div class="viewer-info-tip">
                   <div v-for="row in infoRows" :key="row.label" class="viewer-info-tip__row">
@@ -327,12 +327,7 @@ onMounted(() => {
           <a-result v-if="loadFailed" status="error" title="无法加载该文件" :sub-title="current.file.name" class="viewer-result" />
 
           <div v-else-if="current.file.kind === 'video'" class="video-container">
-            <img
-              v-if="videoPlaybackLoading && current.file.thumbPath"
-              :src="getMediaSrc(current.file.thumbPath)"
-              class="viewer-media viewer-video"
-              alt=""
-            />
+            <img v-if="videoPlaybackLoading && current.file.thumbPath" :src="getMediaSrc(current.file.thumbPath)" class="viewer-media viewer-video" alt="" />
             <a-spin v-if="videoPlaybackLoading" class="video-prepare" tip="正在准备播放…" />
             <a-result v-else-if="videoPlaybackError" status="error" :title="videoPlaybackError" :sub-title="current.file.name" class="viewer-result" />
             <video
@@ -366,21 +361,25 @@ onMounted(() => {
 <style scoped lang="scss">
 .viewer-overlay {
   position: fixed;
-  inset: 0;
-  z-index: 9999;
+  /* Web 下 --cs-shell-bar-height 为 0；CS 避开 ToolsBar，不盖窗口拖拽/关闭 */
+  top: var(--cs-shell-bar-height, 0px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1500;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   /* 相册灯箱深底衬媒体，避免浅罩抢对比 */
   background: var(--color-bg-spotlight);
-  /* 内容区只相对顶栏 / 底栏预留；左右切已并入胶片条，侧向仅留小边距 */
+  /* 内容区只相对灯箱顶栏 / 底栏预留；左右切已并入胶片条 */
   --viewer-side-gutter: 16px;
   --viewer-top-gutter: 52px;
   --viewer-bottom-gutter: 80px; /* 胶片条 + 两侧导航 */
-  /* 媒体上限与内容区同尺寸（用明确 calc，避免缩放层百分比循环导致裁切） */
+  /* 媒体上限 = 灯箱可视区（已扣 CS 顶栏）减去灯箱自身顶/底操作区 */
   --viewer-media-max-w: calc(100vw - 2 * var(--viewer-side-gutter));
-  --viewer-media-max-h: calc(100vh - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
+  --viewer-media-max-h: calc(100vh - var(--cs-shell-bar-height, 0px) - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
 }
 .viewer-top-toolbar {
   position: absolute;
@@ -428,10 +427,10 @@ onMounted(() => {
 /* 关闭仍在右上角原位（top 12 / right 16 / 40 圆钮），仅 DOM 归入顶栏 */
 .viewer-top-toolbar__close {
   position: absolute;
-  top: 6px;
+  top: 8px;
   right: 16px;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   pointer-events: auto;
   background: var(--color-overlay-hover);
   color: var(--color-text-secondary);
@@ -448,8 +447,8 @@ onMounted(() => {
 .viewer-content {
   width: calc(100vw - 2 * var(--viewer-side-gutter));
   max-width: calc(100vw - 2 * var(--viewer-side-gutter));
-  height: calc(100vh - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
-  max-height: calc(100vh - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
+  height: calc(100vh - var(--cs-shell-bar-height, 0px) - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
+  max-height: calc(100vh - var(--cs-shell-bar-height, 0px) - var(--viewer-top-gutter) - var(--viewer-bottom-gutter));
   margin-top: var(--viewer-top-gutter);
   margin-bottom: var(--viewer-bottom-gutter);
   display: flex;

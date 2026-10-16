@@ -107,8 +107,6 @@ fn emit_video_probe_ready(
 const META_PARALLEL: usize = 4;
 /// 视频时长 ffprobe 并行度：单次只读容器头，进程启动为主要开销，4 路足够且不抢缩略图 CPU
 const VIDEO_PROBE_PARALLEL: usize = 4;
-/// Live 预热转码并行度：每路 HEVC→H.264 吃满多核+大内存；>2 易拖垮整机
-const LIVE_PROXY_PARALLEL: usize = 2;
 
 /// 缩略图已就绪后：EXIF/sync 仅补空字段，并总是落探测标记
 fn persist_meta_for_paths(
@@ -169,6 +167,7 @@ fn has_post_thumb_work(conn: &rusqlite::Connection, root: &str) -> bool {
     || db::has_missing_image_dimensions(conn, root).unwrap_or(false)
     || db::has_video_missing_duration(conn, root).unwrap_or(false)
     || db::has_live_missing_playback(conn, root).unwrap_or(false)
+    || db::has_video_missing_playback(conn, root).unwrap_or(false)
 }
 
 /// 对「已有缩略图但缺元数据」的行回填
@@ -194,8 +193,19 @@ fn backfill_missing_image_dimensions(
   };
   let mut updates: Vec<(String, u32, u32)> = Vec::new();
   for path in paths {
-    let Ok((w, h)) = image::image_dimensions(std::path::Path::new(&path)) else {
-      continue;
+    // 优先文件头；HEIC 读不到时用已落盘的全尺寸预览 JPEG，避免为尺寸再解一遍
+    let header = image::image_dimensions(std::path::Path::new(&path)).ok();
+    let (w, h) = if let Some(dim) = header {
+      dim
+    } else {
+      let preview = db::get_media_companion_paths(conn, &path)
+        .ok()
+        .and_then(|(_, preview, _, _)| preview)
+        .unwrap_or_default();
+      let Ok(dim) = image::image_dimensions(std::path::Path::new(&preview)) else {
+        continue;
+      };
+      dim
     };
     if w == 0 || h == 0 {
       continue;
@@ -297,7 +307,34 @@ fn live_proxy_jobs(conn: &rusqlite::Connection, root: &str) -> Vec<(String, Stri
   db::list_live_missing_playback(conn, root).unwrap_or_default()
 }
 
-/// 为单个 mov 生成或复用 `_play.mp4` 代理路径
+/// 为单个视频生成或复用 `_play.mp4`；H.264 且非 MOV 时直接返回源路径（表示无需代理）
+fn resolve_playback_source(
+  ffmpeg_bin: Option<&Path>,
+  ffprobe_bin: Option<&Path>,
+  cache_dir: &Path,
+  source: &str,
+) -> Option<String> {
+  let ext = Path::new(source)
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("")
+    .to_lowercase();
+  if !ffmpeg::prefer_playback_proxy(&ext) {
+    if let Some(ffprobe) = ffprobe_bin {
+      if let Some(codec) = ffmpeg::probe_video_codec(ffprobe, Path::new(source)) {
+        if !ffmpeg::needs_playback_transcode(&codec) {
+          return Some(source.to_string());
+        }
+      } else {
+        // 探测失败不转码，也不把源路径记成可播，留给下次
+        return None;
+      }
+    }
+  }
+  ensure_live_proxy_file(ffmpeg_bin, cache_dir, source)
+}
+
+/// 为单个 mov / HEVC 生成或复用 `_play.mp4` 代理路径
 fn ensure_live_proxy_file(
   ffmpeg_bin: Option<&Path>,
   cache_dir: &Path,
@@ -320,7 +357,15 @@ fn ensure_live_proxy_file(
     let _ = std::fs::remove_file(&partial);
     return None;
   }
-  if !partial.is_file() {
+  // 单飞等待方可能没有自己的 partial，成品已由先到的进程改名
+  if cache_file.is_file()
+    && std::fs::metadata(&cache_file).map(|m| m.len() > 0).unwrap_or(false)
+  {
+    let _ = std::fs::remove_file(&partial);
+    return Some(cache_file.to_string_lossy().into_owned());
+  }
+  let partial_ok = std::fs::metadata(&partial).map(|m| m.len() > 0).unwrap_or(false);
+  if !partial_ok {
     return None;
   }
   if cache_file.is_file() {
@@ -333,17 +378,24 @@ fn ensure_live_proxy_file(
   Some(cache_file.to_string_lossy().into_owned())
 }
 
-/// Live mov 扫描期预热 H.264 代理（限并发；单独视频仍懒转码）
+/// 实况 MOV 与普通 HEVC 的播放代理后台预热（限并发，不挡宫格）
+/// @note 邻项插在每条扫描任务之前；H.264 非 MOV 把源路径写入 playback_path，避免反复 ffprobe
 fn prewarm_live_playback(
   app: &AppHandle,
   conn: &rusqlite::Connection,
   root: &str,
   cache_dir: &Path,
   ffmpeg_bin: Option<&Path>,
+  ffprobe_bin: Option<&Path>,
   cancel: &ScanCancelToken,
   still_current: &(dyn Fn() -> bool + Sync),
 ) {
-  let jobs = live_proxy_jobs(conn, root);
+  let mut jobs = live_proxy_jobs(conn, root);
+  if let Ok(videos) = db::list_videos_missing_playback(conn, root) {
+    for path in videos {
+      jobs.push((path.clone(), path));
+    }
+  }
   if jobs.is_empty() {
     return;
   }
@@ -352,43 +404,64 @@ fn prewarm_live_playback(
     emit_scan_progress(app, "live-proxy", 0, total);
   }
 
-  let parallelism = LIVE_PROXY_PARALLEL.min(jobs.len()).max(1);
+  let parallelism = ffmpeg::transcode_parallelism(jobs.len());
   let chunk_size = jobs.len().div_ceil(parallelism);
   let done_counter = AtomicU32::new(0);
   let done_ref = &done_counter;
-  // (still_path, mov_path, proxy_path)
   let mut outcomes: Vec<(String, String, String)> = Vec::new();
+  let mut failed: Vec<String> = Vec::new();
 
+  ffmpeg::set_prewarm_active(true);
   std::thread::scope(|s| {
     let handles: Vec<_> = jobs
       .chunks(chunk_size)
       .map(|chunk| {
         let token = cancel.clone();
         let app_progress = app.clone();
-        // done_ref / still_current 为 Copy 引用，可安全进多路 move 闭包
         s.spawn(move || {
           let mut ok: Vec<(String, String, String)> = Vec::new();
-          for (still_path, mov_path) in chunk {
+          let mut bad: Vec<String> = Vec::new();
+          let mut rest = chunk.to_vec();
+          loop {
             if token.is_cancelled() {
               break;
             }
-            if let Some(proxy) = ensure_live_proxy_file(ffmpeg_bin, cache_dir, mov_path) {
-              ok.push((still_path.clone(), mov_path.clone(), proxy));
+            if let Some(nudged) = ffmpeg::pop_playback_nudge() {
+              if let Some(proxy) =
+                resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &nudged)
+              {
+                ok.push((nudged.clone(), nudged, proxy));
+              } else {
+                bad.push(nudged);
+              }
+              continue;
             }
-            // 每完成一条就推进度（与缩略图一致），避免并行后只在首尾跳动
+            let Some((still_path, mov_path)) = rest.pop() else {
+              break;
+            };
+            if let Some(proxy) =
+              resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &mov_path)
+            {
+              ok.push((still_path, mov_path, proxy));
+            } else {
+              bad.push(still_path);
+            }
             let done = done_ref.fetch_add(1, Ordering::Relaxed) + 1;
             if still_current() {
               emit_scan_progress(&app_progress, "live-proxy", done, total);
             }
           }
-          ok
+          (ok, bad)
         })
       })
       .collect();
     for handle in handles {
-      outcomes.extend(handle.join().unwrap_or_default());
+      let (ok, bad) = handle.join().unwrap_or_default();
+      outcomes.extend(ok);
+      failed.extend(bad);
     }
   });
+  ffmpeg::set_prewarm_active(false);
 
   if !still_current() || cancel.is_cancelled() {
     return;
@@ -399,6 +472,9 @@ fn prewarm_live_playback(
     .map(|(_, mov, proxy)| (mov.clone(), proxy.clone()))
     .collect();
   let _ = db::update_playback_path_batch(conn, &playback_batch);
+  for path in &failed {
+    let _ = db::mark_thumb_failed(conn, path);
+  }
 
   for (still_path, _, proxy) in &outcomes {
     emit_thumb_ready(
@@ -1155,6 +1231,7 @@ pub fn run_thumbnail_pipeline(
           &root,
           &cache_dir,
           ffmpeg_bin.as_deref(),
+          ffprobe_bin.as_deref(),
           &cancel,
           &still_current,
         );

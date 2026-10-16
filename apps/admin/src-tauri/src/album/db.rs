@@ -1211,6 +1211,7 @@ pub fn has_live_missing_playback(conn: &Connection, root: &str) -> Result<bool, 
          AND kind = 'livephoto'
          AND video_path IS NOT NULL AND trim(video_path) != ''
          AND (playback_path IS NULL OR trim(playback_path) = '')
+         AND fail_count < 2
        LIMIT 1",
       params![root],
       |_| Ok(true),
@@ -1231,7 +1232,8 @@ pub fn list_live_missing_playback(
        WHERE root = ?1
          AND kind = 'livephoto'
          AND video_path IS NOT NULL AND trim(video_path) != ''
-         AND (playback_path IS NULL OR trim(playback_path) = '')",
+         AND (playback_path IS NULL OR trim(playback_path) = '')
+         AND fail_count < 2",
     )
     .map_err(|e| format!("准备缺 Live 代理查询失败: {e}"))?;
   let rows = stmt
@@ -1244,6 +1246,73 @@ pub fn list_live_missing_playback(
     .map(|(still, mov)| (still, mov.trim().to_string()))
     .collect();
   Ok(rows)
+}
+
+/// 普通视频缺播放结论：尚未写入代理，也未标记为可直接播放
+pub fn list_videos_missing_playback(
+  conn: &Connection,
+  root: &str,
+) -> Result<Vec<String>, String> {
+  let mut stmt = conn
+    .prepare(
+      "SELECT path FROM media
+       WHERE root = ?1
+         AND kind = 'video'
+         AND (playback_path IS NULL OR trim(playback_path) = '')
+         AND fail_count < 2",
+    )
+    .map_err(|e| format!("准备缺视频代理查询失败: {e}"))?;
+  let rows = stmt
+    .query_map(params![root], |row| row.get::<_, String>(0))
+    .map_err(|e| format!("查询缺视频代理失败: {e}"))?
+    .filter_map(|r| r.ok())
+    .filter(|path| Path::new(path).is_file())
+    .collect();
+  Ok(rows)
+}
+
+/// 是否存在普通视频尚未写入播放结论
+pub fn has_video_missing_playback(conn: &Connection, root: &str) -> Result<bool, String> {
+  conn
+    .query_row(
+      "SELECT 1 FROM media
+       WHERE root = ?1
+         AND kind = 'video'
+         AND (playback_path IS NULL OR trim(playback_path) = '')
+         AND fail_count < 2
+       LIMIT 1",
+      params![root],
+      |_| Ok(true),
+    )
+    .optional()
+    .map(|o| o.unwrap_or(false))
+    .map_err(|e| format!("探测缺视频代理失败: {e}"))
+}
+
+/// 库内已登记的派生缓存绝对路径（孤儿清理用）
+pub fn list_referenced_cache_paths(conn: &Connection) -> Result<Vec<String>, String> {
+  let mut stmt = conn
+    .prepare("SELECT thumb_path, preview_path, playback_path FROM media")
+    .map_err(|e| format!("准备缓存引用查询失败: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| {
+      Ok((
+        row.get::<_, Option<String>>(0)?,
+        row.get::<_, Option<String>>(1)?,
+        row.get::<_, Option<String>>(2)?,
+      ))
+    })
+    .map_err(|e| format!("查询缓存引用失败: {e}"))?;
+  let mut out = Vec::new();
+  for row in rows.filter_map(|r| r.ok()) {
+    for p in [row.0, row.1, row.2].into_iter().flatten() {
+      let p = p.trim();
+      if !p.is_empty() {
+        out.push(p.to_string());
+      }
+    }
+  }
+  Ok(out)
 }
 
 /// 写入 HEVC 播放代理路径；普通视频绑 path 行，Live mov 绑 video_path 匹配的行

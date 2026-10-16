@@ -68,6 +68,7 @@ pub fn run() {
       album::album_find_local_duplicates,
       album::album_resolve_duplicate_thumb,
       album::album_ensure_playback,
+      album::album_nudge_playback,
       album::album_open_dir,
       album::album_reveal_in_explorer,
       icloud_sync::icloud_sync_ping,

@@ -105,6 +105,40 @@ pub fn purge_derived_cache_paths(paths: &[PathBuf]) {
   }
 }
 
+/**
+ * 清掉缓存目录里 0 字节文件，以及数据库不再引用的成品
+ * @note 不删 `.partial`（可能正被写入）；不删缓存目录以外的路径（含「源文件即可播放」）
+ */
+pub fn sweep_orphan_caches(album_data_dir: &Path, referenced: &[String]) {
+  use std::collections::HashSet;
+  let cache_dir = album_data_dir
+    .join("thumbs")
+    .join(format!("v{ALBUM_CACHE_VERSION}"));
+  let referenced: HashSet<String> = referenced.iter().map(|p| normalize_cache_key(Path::new(p))).collect();
+  let Ok(entries) = std::fs::read_dir(&cache_dir) else {
+    return;
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if !path.is_file() {
+      continue;
+    }
+    let name = entry.file_name();
+    let name = name.to_string_lossy();
+    if name.ends_with(".partial") {
+      continue;
+    }
+    let empty = std::fs::metadata(&path).map(|m| m.len() == 0).unwrap_or(false);
+    if empty || !referenced.contains(&normalize_cache_key(&path)) {
+      purge_cache_file(&path);
+    }
+  }
+}
+
+fn normalize_cache_key(path: &Path) -> String {
+  path.to_string_lossy().replace('\\', "/").to_lowercase()
+}
+
 #[cfg(windows)]
 fn move_to_recycle_bin(path: &Path) -> Result<(), String> {
   use std::os::windows::ffi::OsStrExt;

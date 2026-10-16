@@ -22,6 +22,15 @@ export async function ensureAlbumPlayback(path: string): Promise<AlbumPlaybackRe
 }
 
 /**
+ * 查看器邻项提前进播放预热队列（全库预热仍是主路径）
+ * @param paths 源视频或实况 MOV 绝对路径
+ */
+export async function nudgeAlbumPlayback(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  return invoke<void>("album_nudge_playback", { paths });
+}
+
+/**
  * 扫描相册根全量重复组（组内落库优先正本；不删盘）
  */
 export async function findAlbumLocalDuplicates(): Promise<DuplicateGroup[]> {

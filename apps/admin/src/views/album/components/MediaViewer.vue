@@ -9,6 +9,7 @@ import LivePhotoPlayer from "./LivePhotoPlayer.vue";
 import MediaPreviewZoom from "./MediaPreviewZoom.vue";
 import MediaViewerFilmstrip from "./MediaViewerFilmstrip.vue";
 import { useAlbumPlaybackSrc } from "@/composables/useAlbumPlayback";
+import { nudgeAlbumPlayback } from "@/api/album";
 import { isTauri } from "@/utils/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEventListener } from "@vueuse/core";
@@ -49,6 +50,22 @@ const flatFiles = computed<FlatFile[]>(() => {
 });
 
 const current = computed<FlatFile | null>(() => flatFiles.value[currentIndex.value] ?? null);
+
+/** 邻项提前转码；当前张仍走打开兜底，全库预热才是主路径 */
+function nudgeNeighbors() {
+  if (!isTauri()) return;
+  const files = flatFiles.value;
+  const paths: string[] = [];
+  for (const delta of [-2, -1, 1, 2]) {
+    const file = files[currentIndex.value + delta]?.file;
+    if (!file || file.playbackPath) continue;
+    if (file.kind === "video" && file.path) paths.push(file.path);
+    else if (file.kind === "livephoto" && file.videoPath) paths.push(file.videoPath);
+  }
+  if (paths.length > 0) void nudgeAlbumPlayback(paths);
+}
+
+watch(currentIndex, nudgeNeighbors);
 
 const canPrev = computed(() => currentIndex.value > 0);
 const canNext = computed(() => currentIndex.value < flatFiles.value.length - 1);
@@ -235,6 +252,7 @@ useEventListener(window, "keydown", onKeydown, { capture: true });
 
 onMounted(() => {
   currentIndex.value = calcInitialIndex();
+  nudgeNeighbors();
 });
 </script>
 
@@ -309,7 +327,13 @@ onMounted(() => {
           <a-result v-if="loadFailed" status="error" title="无法加载该文件" :sub-title="current.file.name" class="viewer-result" />
 
           <div v-else-if="current.file.kind === 'video'" class="video-container">
-            <a-spin v-if="videoPlaybackLoading" tip="正在准备播放…" />
+            <img
+              v-if="videoPlaybackLoading && current.file.thumbPath"
+              :src="getMediaSrc(current.file.thumbPath)"
+              class="viewer-media viewer-video"
+              alt=""
+            />
+            <a-spin v-if="videoPlaybackLoading" class="video-prepare" tip="正在准备播放…" />
             <a-result v-else-if="videoPlaybackError" status="error" :title="videoPlaybackError" :sub-title="current.file.name" class="viewer-result" />
             <video
               v-else-if="videoPlaybackSrc"
@@ -516,10 +540,15 @@ onMounted(() => {
   }
 }
 .video-container {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   max-width: var(--viewer-media-max-w);
   max-height: var(--viewer-media-max-h);
+}
+
+.video-prepare {
+  position: absolute;
 }
 </style>

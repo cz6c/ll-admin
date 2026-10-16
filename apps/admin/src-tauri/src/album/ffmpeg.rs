@@ -4,9 +4,11 @@
 //!
 //! Apple HEIC 为 512×512 瓦片网格；`-map 0:v:0` 只会解出单块瓦片，必须让 demuxer 自行拼合全图。
 
+use std::collections::{HashSet, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager};
@@ -17,6 +19,12 @@ pub const FFPROBE_BUNDLE_PATH: &str = "resources/ffprobe.exe";
 
 /// HEVC 转 H.264 播放代理超时（秒）；实况 MOV 通常数秒，长片需更久
 pub const PLAYBACK_TRANSCODE_TIMEOUT_SECS: u64 = 180;
+
+/// 播放代理最长边。不超过此值保持源分辨率；超出才缩小，CRF / preset 不变
+pub const PLAYBACK_MAX_EDGE: u32 = 3840;
+
+/// 可用物理内存低于此值时，转码与 HEIC 全尺寸解码并发降到 1
+const MEMORY_PRESSURE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// 解析可用于 HEIC 解码的 ffmpeg 可执行文件路径
 pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Option<PathBuf> {
@@ -207,10 +215,164 @@ pub fn prefer_playback_proxy(ext: &str) -> bool {
   ext == "mov"
 }
 
+/// 可用内存是否吃紧（仅用于降低转码 / HEIC 并发，不改画质、不改成打开才解码）
+pub fn under_memory_pressure() -> bool {
+  available_memory_bytes().is_some_and(|n| n < MEMORY_PRESSURE_BYTES)
+}
+
+/// 转码并发：常态 2，内存吃紧为 1
+pub fn transcode_parallelism(jobs: usize) -> usize {
+  let cap = if under_memory_pressure() { 1 } else { 2 };
+  cap.min(jobs).max(1)
+}
+
+/// 播放代理滤镜：最长边超过 3840 才缩小，并保证 yuv420p 偶数尺寸
+pub fn playback_video_filter() -> String {
+  let edge = PLAYBACK_MAX_EDGE;
+  format!(
+    "scale=w='min({edge},iw)':h='min({edge},ih)':force_original_aspect_ratio=decrease,\
+     scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"
+  )
+}
+
+#[cfg(windows)]
+fn available_memory_bytes() -> Option<u64> {
+  use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+  unsafe {
+    let mut status = MEMORYSTATUSEX::default();
+    status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+    GlobalMemoryStatusEx(&mut status).ok()?;
+    Some(status.ullAvailPhys)
+  }
+}
+
+#[cfg(not(windows))]
+fn available_memory_bytes() -> Option<u64> {
+  None
+}
+
+struct TranscodeGate {
+  used: usize,
+}
+
+fn transcode_gate() -> &'static (Mutex<TranscodeGate>, Condvar) {
+  static GATE: std::sync::OnceLock<(Mutex<TranscodeGate>, Condvar)> = std::sync::OnceLock::new();
+  GATE.get_or_init(|| {
+    (
+      Mutex::new(TranscodeGate { used: 0 }),
+      Condvar::new(),
+    )
+  })
+}
+
+/// 全局转码槽：扫描预热与打开兜底共用，避免两池叠满 CPU
+fn with_transcode_permit<T>(work: impl FnOnce() -> T) -> T {
+  let limit = if under_memory_pressure() { 1 } else { 2 };
+  let (lock, cv) = transcode_gate();
+  {
+    let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    while guard.used >= limit {
+      guard = cv.wait(guard).unwrap_or_else(|e| e.into_inner());
+    }
+    guard.used += 1;
+  }
+  let result = work();
+  {
+    let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    guard.used = guard.used.saturating_sub(1);
+    cv.notify_one();
+  }
+  result
+}
+
+fn flight_key(output: &Path) -> String {
+  output.to_string_lossy().trim_end_matches(".partial").to_string()
+}
+
+fn nonempty_file(path: &Path) -> bool {
+  path.is_file() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
+}
+
+struct FlightState {
+  inflight: HashSet<String>,
+}
+
+fn flight_state() -> &'static (Mutex<FlightState>, Condvar) {
+  static FLIGHT: std::sync::OnceLock<(Mutex<FlightState>, Condvar)> = std::sync::OnceLock::new();
+  FLIGHT.get_or_init(|| (Mutex::new(FlightState { inflight: HashSet::new() }), Condvar::new()))
+}
+
+/// 同一输出路径只允许一个 ffmpeg 转码；后者等待完成后直接复用成品
+fn with_transcode_single_flight(output: &Path, work: impl FnOnce() -> bool) -> bool {
+  let key = flight_key(output);
+  let final_path = PathBuf::from(&key);
+  let (lock, cv) = flight_state();
+  {
+    let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    while guard.inflight.contains(&key) {
+      guard = cv.wait(guard).unwrap_or_else(|e| e.into_inner());
+    }
+    if nonempty_file(&final_path) || nonempty_file(output) {
+      return true;
+    }
+    guard.inflight.insert(key.clone());
+  }
+  let result = work();
+  {
+    let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    guard.inflight.remove(&key);
+    cv.notify_all();
+  }
+  result
+}
+
+static NUDGE: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
+static PREWARM_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 查看器邻项插到预热队列头；预热进行中由扫描循环消化，否则由调用方自己 drain
+pub fn push_playback_nudge(paths: &[String]) {
+  let mut queue = NUDGE.lock().unwrap_or_else(|e| e.into_inner());
+  for path in paths.iter().rev() {
+    let path = path.trim();
+    if path.is_empty() || queue.iter().any(|p| p == path) {
+      continue;
+    }
+    queue.push_front(path.to_string());
+  }
+}
+
+/// 取出一条队首播放预热；无则 None
+pub fn pop_playback_nudge() -> Option<String> {
+  NUDGE.lock().unwrap_or_else(|e| e.into_inner()).pop_front()
+}
+
+pub fn set_prewarm_active(active: bool) {
+  PREWARM_ACTIVE.store(active, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn prewarm_is_active() -> bool {
+  PREWARM_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// HEVC 等 → H.264 MP4，供 WebView 原生播放
 /// @note Live Photo MOV 常无音轨：`-map 0:a?` 可选；`-tag:v avc1` 提升 WebView 兼容
 /// @note `-threads 2`：预热多路并行时限制单进程线程数，避免嵌套打满 CPU/内存
+/// @note 单飞 + 全局槽：同一代理不会双开 ffmpeg，扫描与打开兜底合计不超过 2 路
 pub fn transcode_for_web_playback(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
+  let owned_out = output.to_path_buf();
+  let owned_in = input.to_path_buf();
+  let owned_ff = ffmpeg.to_path_buf();
+  with_transcode_single_flight(&owned_out, || {
+    let final_path = PathBuf::from(flight_key(&owned_out));
+    if nonempty_file(&final_path) || nonempty_file(&owned_out) {
+      return true;
+    }
+    with_transcode_permit(|| transcode_for_web_playback_inner(&owned_ff, &owned_in, &owned_out))
+  })
+}
+
+fn transcode_for_web_playback_inner(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
+  let vf = playback_video_filter();
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
     "-nostdin",
@@ -235,7 +397,9 @@ pub fn transcode_for_web_playback(ffmpeg: &Path, input: &Path, output: &Path) ->
     "-threads",
     "2",
     "-vf",
-    "format=yuv420p",
+  ]);
+  cmd.arg(&vf);
+  cmd.args([
     "-tag:v",
     "avc1",
     "-movflags",
@@ -273,7 +437,7 @@ pub fn decode_raster_via_ffmpeg(
   input: &Path,
   max_side: Option<u32>,
 ) -> Option<image::DynamicImage> {
-  let tmp = temp_jpeg_path();
+  // 管道出一帧 JPEG，避免临时文件再读回
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
     "-nostdin",
@@ -293,15 +457,22 @@ pub fn decode_raster_via_ffmpeg(
       &format!("scale={side}:{side}:force_original_aspect_ratio=decrease"),
     ]);
   }
-  cmd.args(["-frames:v", "1", "-q:v", "3"]);
-  cmd.arg(&tmp);
-  if !run_ffmpeg(cmd) {
-    let _ = std::fs::remove_file(&tmp);
+  cmd.args([
+    "-frames:v",
+    "1",
+    "-f",
+    "image2pipe",
+    "-c:v",
+    "mjpeg",
+    "-q:v",
+    "3",
+    "pipe:1",
+  ]);
+  let (ok, bytes) = run_ffmpeg_capturing(cmd, FFMPEG_TIMEOUT);
+  if !ok || bytes.is_empty() {
     return None;
   }
-  let img = image::open(&tmp).ok();
-  let _ = std::fs::remove_file(&tmp);
-  img
+  image::load_from_memory(&bytes).ok()
 }
 
 /// HEIC/HEIF → JPEG 全尺寸落盘（不 `-map`，Apple HEIC 多路 512 瓦片需 demuxer 自拼完整画布）
@@ -323,8 +494,8 @@ pub fn convert_heif_to_jpeg(ffmpeg: &Path, input: &Path, output: &Path) -> bool 
   run_ffmpeg(cmd)
 }
 
-/// 视频首帧海报图（网格缩略图用）
-pub fn extract_video_poster(ffmpeg: &Path, input: &Path, output: &Path) -> bool {
+/// 视频首帧直接进内存（管道 JPEG），供宫格 WebP，不落临时海报文件
+pub fn decode_video_poster(ffmpeg: &Path, input: &Path) -> Option<image::DynamicImage> {
   let mut cmd = Command::new(ffmpeg);
   cmd.args([
     "-nostdin",
@@ -334,14 +505,27 @@ pub fn extract_video_poster(ffmpeg: &Path, input: &Path, output: &Path) -> bool 
     "-threads",
     "2",
     "-y",
+    "-ss",
+    "0",
     "-i",
   ]);
   cmd.arg(input);
   cmd.args([
-    "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "-q:v", "3",
+    "-frames:v",
+    "1",
+    "-f",
+    "image2pipe",
+    "-c:v",
+    "mjpeg",
+    "-q:v",
+    "3",
+    "pipe:1",
   ]);
-  cmd.arg(output);
-  run_ffmpeg_with_timeout(cmd, FFMPEG_TIMEOUT)
+  let (ok, bytes) = run_ffmpeg_capturing(cmd, FFMPEG_TIMEOUT);
+  if !ok || bytes.is_empty() {
+    return None;
+  }
+  image::load_from_memory(&bytes).ok()
 }
 
 /// ffmpeg 子进程超时上限（秒）：大视频首帧 / 大 HEIC 解码通常数秒内完成，60s 兜底损坏文件卡死
@@ -352,9 +536,13 @@ fn run_ffmpeg(cmd: Command) -> bool {
   run_ffmpeg_with_timeout(cmd, FFMPEG_TIMEOUT)
 }
 
-/// 运行 ffmpeg 子进程：带超时与 stderr 捕获，返回是否成功
+fn run_ffmpeg_with_timeout(cmd: Command, timeout: Duration) -> bool {
+  run_ffmpeg_capturing(cmd, timeout).0
+}
+
+/// 运行 ffmpeg 子进程：带超时与 stderr 捕获；`stdout` 供管道解码
 /// 失败 / 超时均记录日志，便于定位损坏文件与环境问题
-fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
+fn run_ffmpeg_capturing(mut cmd: Command, timeout: Duration) -> (bool, Vec<u8>) {
   #[cfg(windows)]
   {
     use std::os::windows::process::CommandExt;
@@ -370,7 +558,7 @@ fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
     Ok(c) => c,
     Err(e) => {
       log::warn!("album: ffmpeg 启动失败: {e}");
-      return false;
+      return (false, Vec::new());
     }
   };
 
@@ -389,6 +577,7 @@ fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
     if let Some(s) = stdout.as_mut() {
       let _ = s.read_to_end(&mut buf);
     }
+    buf
   });
 
   let start = Instant::now();
@@ -405,7 +594,7 @@ fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
             timeout.as_secs(),
             String::from_utf8_lossy(&err).trim()
           );
-          return false;
+          return (false, Vec::new());
         }
         std::thread::sleep(Duration::from_millis(50));
       }
@@ -417,12 +606,12 @@ fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
           "album: ffmpeg 等待失败: {e}；stderr: {}",
           String::from_utf8_lossy(&err).trim()
         );
-        return false;
+        return (false, Vec::new());
       }
     }
   };
 
-  let _ = stdout_handle.join();
+  let stdout_bytes = stdout_handle.join().unwrap_or_default();
   let err = stderr_handle.join().unwrap_or_default();
   if !status.success() {
     log::warn!(
@@ -431,7 +620,7 @@ fn run_ffmpeg_with_timeout(mut cmd: Command, timeout: Duration) -> bool {
       String::from_utf8_lossy(&err).trim()
     );
   }
-  status.success()
+  (status.success(), stdout_bytes)
 }
 
 #[cfg(test)]
@@ -470,6 +659,14 @@ mod tests {
   fn prefer_playback_proxy_mov_only() {
     assert!(prefer_playback_proxy("mov"));
     assert!(!prefer_playback_proxy("mp4"));
+  }
+
+  #[test]
+  fn playback_filter_caps_edge_without_raising_crf() {
+    let vf = playback_video_filter();
+    assert!(vf.contains("3840"));
+    assert!(vf.contains("yuv420p"));
+    assert!(vf.contains("force_original_aspect_ratio=decrease"));
   }
 
   /// 有捆绑 ffmpeg 时：带 max_side 的栅格解码须缩到边长上限内

@@ -2,7 +2,7 @@
 
 > **职责：** 陈列 `media.db` / `state.db` 各表作用（给人与可视化工具对照用）。  
 > **不合并：** 两库职责分离，见下文边界。  
-> **对齐：** 2026-09-29  
+> **对齐：** 2026-10-16  
 > 流程：[本地扫描](./loadingFlow.md) · [云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
 
 SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
@@ -38,18 +38,18 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `rel_dir` / `name` / `ext` | 相对目录、文件名、扩展名 |
 | `kind` | `image` / `video` / `livephoto` |
 | `size` / `modified` | 增量扫描指纹；变则清缓存字段 |
-| `thumb_path` / `preview_path` | 宫格 WebP；HEIC 全尺寸 JPEG |
+| `thumb_path` / `preview_path` | 宫格 WebP（约 316 边）；HEIC 全尺寸预览 JPEG |
 | `video_path` | Live 配对 mov 路径 |
-| `playback_path` | H.264 播放代理（单独视频或 Live mov） |
+| `playback_path` | HEVC/MOV 的 H.264 代理；或等于源路径（H.264 且非 MOV，表示可直接播放、不必再探测） |
 | `capture_at` / `camera` | 拍摄时间 / 机型（仅补空：本表已有 → origin → EXIF → 文件名前缀；用户可覆盖写 `capture_at`） |
 | `capture_at_source` | `origin` / `exif` / `filename` / `user` |
 | `capture_at_probed` | 已探测拍摄时间 |
 | `origin` / `origin_account` | 同步下载入库时的来源身份（catalog 刷新后仍留在本表）；**兼作图库键**，`(origin, origin_account)` 唯一标识一个来源图库：`icloud`+Apple ID、`qzone`+uin、纯本地文件 `local`+`_local` |
 | `origin_asset_id` / `origin_album` | 云侧资产 id（去重/正本等）；子范围提示（如 `Hidden` / `Shared`，**不参与**图库切换键） |
 | `added_at` / `latitude` / `longitude` | 下载时从云侧 catalog 带入（仅补空） |
-| `width` / `height` | 图=解码；单独视频=打开时 ffprobe |
+| `width` / `height` | 栅格=文件头或解码；HEIC=预览 JPEG；单独视频=ffprobe（时长回填或打开兜底） |
 | `content_hash` / `hash_algo` | 重复清理用 BLAKE3 |
-| `fail_count` | 缩略图连续失败；≥2 跳过 |
+| `fail_count` | 缩略图或播放预热连续失败；≥2 跳过 |
 | `scanned_at` | 最近索引时间 |
 
 清库：可删整个 `media.db` 后 force 重扫（不碰 `state.db`）。

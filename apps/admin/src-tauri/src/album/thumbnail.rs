@@ -195,13 +195,15 @@ pub fn probe_playback_cache(cache_dir: &Path, source_path: &str) -> Option<Strin
   }
 }
 
-/// 保存全尺寸 RGB JPEG 供预览
+/// 保存全尺寸 RGB JPEG 供预览（先写 partial 再改名，空文件不当命中）
 pub fn save_preview_jpeg(img: &image::DynamicImage, preview_file: &Path) -> Option<String> {
+  let partial = partial_sibling(preview_file);
   let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
-  match rgb.save(preview_file) {
-    Ok(()) => Some(preview_file.to_string_lossy().into_owned()),
-    Err(_) => None,
+  if rgb.save_with_format(&partial, ImageFormat::Jpeg).is_err() {
+    let _ = std::fs::remove_file(&partial);
+    return None;
   }
+  publish_partial(&partial, preview_file)
 }
 
 fn thumb_cache_file(cache_dir: &Path, path: &str, modified: i64, target: u32) -> PathBuf {
@@ -210,14 +212,42 @@ fn thumb_cache_file(cache_dir: &Path, path: &str, modified: i64, target: u32) ->
 }
 
 fn save_thumb_webp(img: &image::DynamicImage, cache_file: &Path) -> Option<String> {
+  let partial = partial_sibling(cache_file);
   let rgb = image::DynamicImage::ImageRgb8(img.to_rgb8());
-  match rgb.save_with_format(cache_file, ImageFormat::WebP) {
-    Ok(()) => Some(cache_file.to_string_lossy().into_owned()),
-    Err(_) => None,
+  if rgb.save_with_format(&partial, ImageFormat::WebP).is_err() {
+    let _ = std::fs::remove_file(&partial);
+    return None;
   }
+  publish_partial(&partial, cache_file)
 }
 
-/// 生成网格 WebP + HEIC 全尺寸预览（一次解码两用）
+fn partial_sibling(path: &Path) -> PathBuf {
+  let mut name = path.file_name().unwrap_or_default().to_os_string();
+  name.push(".partial");
+  path.with_file_name(name)
+}
+
+fn nonempty_file(path: &Path) -> bool {
+  path.is_file() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false)
+}
+
+/// 成品非空才改名；失败删除 partial，避免半截文件被当成缓存命中
+fn publish_partial(partial: &Path, final_path: &Path) -> Option<String> {
+  if !nonempty_file(partial) {
+    let _ = std::fs::remove_file(partial);
+    return None;
+  }
+  if final_path.is_file() {
+    let _ = std::fs::remove_file(final_path);
+  }
+  if std::fs::rename(partial, final_path).is_err() {
+    let _ = std::fs::remove_file(partial);
+    return None;
+  }
+  Some(final_path.to_string_lossy().into_owned())
+}
+
+/// 生成网格 WebP。HEIC 另见 `generate_heif_thumbnail`：先落全尺寸预览 JPEG，再边解边缩缩略图
 pub fn generate_thumbnail(
   path: &str,
   cache_dir: &Path,
@@ -245,11 +275,13 @@ pub fn generate_thumbnail(
     .map(|e| e.to_lowercase())
     .unwrap_or_default();
   let is_heif = is_heif_ext(&ext);
+  if is_heif {
+    return generate_heif_thumbnail(path, file_path, &cache_file, &preview_file, target, ffmpeg_bin);
+  }
 
-  let thumb_ready = cache_file.is_file();
-  let preview_ready = !is_heif || preview_file.is_file();
+  let thumb_ready = nonempty_file(&cache_file);
 
-  if thumb_ready && preview_ready {
+  if thumb_ready {
     // 缓存命中未解码：栅格轻量探测尺寸；视频正式分辨率改打开时 ffprobe，此处不写
     let (width, height) = if is_video_ext(&ext) {
       (None, None)
@@ -261,21 +293,13 @@ pub fn generate_thumbnail(
     };
     return ThumbnailOutcome {
       thumb_path: Some(cache_file.to_string_lossy().into_owned()),
-      preview_path: if is_heif {
-        Some(preview_file.to_string_lossy().into_owned())
-      } else {
-        None
-      },
       width,
       height,
       ..Default::default()
     };
   }
 
-  let need_decode = !thumb_ready || (is_heif && !preview_file.is_file());
-
-  let img = if need_decode {
-    if is_video_ext(&ext) {
+  let img = if is_video_ext(&ext) {
       let ffmpeg = match ffmpeg_bin {
         Some(f) => f,
         None => {
@@ -283,55 +307,18 @@ pub fn generate_thumbnail(
           return ThumbnailOutcome::default();
         }
       };
-      let tmp_jpg = std::env::temp_dir().join(format!(
-        "album_vid_thumb_{}.jpg",
-        std::time::SystemTime::now()
-          .duration_since(std::time::UNIX_EPOCH)
-          .map(|d| d.as_nanos())
-          .unwrap_or(0)
-      ));
-      if !ffmpeg::extract_video_poster(ffmpeg, file_path, &tmp_jpg) {
-        log::warn!("album: 视频首帧提取失败 ({})", file_path.display());
-        let _ = std::fs::remove_file(&tmp_jpg);
-        return ThumbnailOutcome::default();
-      }
-      match image::open(&tmp_jpg) {
-        Ok(img) => {
-          let _ = std::fs::remove_file(&tmp_jpg);
-          Some(img)
-        }
-        Err(e) => {
-          log::warn!("album: 视频缩略图解码失败 ({}, {})", file_path.display(), e);
-          let _ = std::fs::remove_file(&tmp_jpg);
+      match ffmpeg::decode_video_poster(ffmpeg, file_path) {
+        Some(img) => Some(img),
+        None => {
+          log::warn!("album: 视频首帧提取失败 ({})", file_path.display());
           return ThumbnailOutcome::default();
         }
       }
     } else {
       open_raster_image(file_path, ffmpeg_bin, target)
-    }
-  } else {
-    None
   };
 
-  let preview_path = if is_heif {
-    if preview_file.is_file() {
-      Some(preview_file.to_string_lossy().into_owned())
-    } else if let Some(ref full) = img {
-      save_preview_jpeg(full, &preview_file)
-    } else if let Some(full) = open_raster_image(file_path, ffmpeg_bin, target) {
-      // HEIF 在 open_raster_image 内仍走全尺寸 heic 路径；target 仅对非 HEIF 生效
-      save_preview_jpeg(&full, &preview_file)
-    } else {
-      None
-    }
-  } else {
-    None
-  };
-
-  // 解码链：缓存命中 → WebP → 仅小图可回退原路径（禁止大图/GIF 回退，否则宫格卡死）
-  let thumb_path = if thumb_ready {
-    Some(cache_file.to_string_lossy().into_owned())
-  } else if let Some(ref decoded) = img {
+  let thumb_path = if let Some(ref decoded) = img {
     let thumb = decoded.thumbnail(target, target);
     save_thumb_webp(&thumb, &cache_file)
   } else if may_reuse_origin_as_thumb(&ext, file_path) {
@@ -369,6 +356,78 @@ pub fn generate_thumbnail(
 
   ThumbnailOutcome {
     thumb_path,
+    width,
+    height,
+    ..Default::default()
+  }
+}
+
+/**
+ * HEIC/HEIF：ffmpeg 直接写全尺寸预览 JPEG，再从该 JPEG 边解边缩出宫格 WebP
+ * @note 1200 万～2400 万不缩小预览。无 ffmpeg 时才 WIC 全尺寸位图，同时写出两份产物
+ */
+fn generate_heif_thumbnail(
+  _path: &str,
+  file_path: &Path,
+  cache_file: &Path,
+  preview_file: &Path,
+  target: u32,
+  ffmpeg_bin: Option<&Path>,
+) -> ThumbnailOutcome {
+  let mut preview_path = if nonempty_file(preview_file) {
+    Some(preview_file.to_string_lossy().into_owned())
+  } else if let Some(ffmpeg) = ffmpeg_bin {
+    let partial = partial_sibling(preview_file);
+    if ffmpeg::convert_heif_to_jpeg(ffmpeg, file_path, &partial) {
+      publish_partial(&partial, preview_file)
+    } else {
+      let _ = std::fs::remove_file(&partial);
+      None
+    }
+  } else {
+    None
+  };
+
+  if preview_path.is_none() {
+    // ffmpeg 失败或缺失：平台解码一次，预览与缩略图都从这份位图写出
+    if let Some(full) = heic_decode::decode_heif_file(file_path, None) {
+      preview_path = save_preview_jpeg(&full, preview_file);
+      let thumb = full.thumbnail(target, target);
+      let thumb_path = save_thumb_webp(&thumb, cache_file);
+      return ThumbnailOutcome {
+        thumb_path,
+        preview_path,
+        width: Some(full.width()),
+        height: Some(full.height()),
+        ..Default::default()
+      };
+    }
+    log::warn!("album: HEIC 全尺寸预览失败 ({})", file_path.display());
+    return ThumbnailOutcome::default();
+  }
+
+  let thumb_path = if nonempty_file(cache_file) {
+    Some(cache_file.to_string_lossy().into_owned())
+  } else if let Some(ffmpeg) = ffmpeg_bin {
+    ffmpeg::decode_raster_via_ffmpeg(ffmpeg, preview_file, Some(target))
+      .and_then(|img| save_thumb_webp(&img, cache_file))
+  } else {
+    image::open(preview_file)
+      .ok()
+      .and_then(|img| save_thumb_webp(&img.thumbnail(target, target), cache_file))
+  };
+
+  // 预览 JPEG 与源同分辨率；HEIC 文件头 image crate 读不到时用预览尺寸
+  let (width, height) = image::image_dimensions(preview_file)
+    .ok()
+    .map(|(w, h)| (Some(w), Some(h)))
+    .unwrap_or((None, None));
+
+  if thumb_path.is_none() && preview_path.is_none() {
+    return ThumbnailOutcome::default();
+  }
+  ThumbnailOutcome {
+    thumb_path,
     preview_path,
     width,
     height,
@@ -377,6 +436,7 @@ pub fn generate_thumbnail(
 }
 
 /// 带进度回调的批量缩略图生成（并行）
+/// @note HEIC 单独限流，不与小图缩略图共用满核；结果顺序与 `paths` 对齐
 pub fn generate_thumbnails_batch_with_progress(
   paths: &[String],
   cache_dir: &Path,
@@ -391,48 +451,84 @@ pub fn generate_thumbnails_batch_with_progress(
   }
 
   let total = u32::try_from(paths.len()).unwrap_or(u32::MAX);
-  let parallelism = std::thread::available_parallelism()
-    .map(|n| n.get())
-    .unwrap_or(4)
-    // 上限 4：每路可能起 ffmpeg 解 HEIC/抽帧，过高易内存尖峰拖垮系统
-    .clamp(2, 4)
-    .min(paths.len());
-  let chunk_size = paths.len().div_ceil(parallelism);
+  let mut results = vec![ThumbnailOutcome::default(); paths.len()];
+  let heif_cap = if ffmpeg::under_memory_pressure() { 1 } else { 2 };
+  let mut raster_cap = if ffmpeg::under_memory_pressure() {
+    2
+  } else {
+    std::thread::available_parallelism()
+      .map(|n| n.get())
+      .unwrap_or(4)
+      .clamp(2, 4)
+  };
 
-  let mut results: Vec<Vec<ThumbnailOutcome>> = Vec::with_capacity(parallelism);
+  let mut heif_idx = Vec::new();
+  let mut raster_idx = Vec::new();
+  for (i, path) in paths.iter().enumerate() {
+    let ext = Path::new(path)
+      .extension()
+      .and_then(|e| e.to_str())
+      .map(|e| e.to_lowercase())
+      .unwrap_or_default();
+    if is_heif_ext(&ext) {
+      heif_idx.push(i);
+    } else {
+      raster_idx.push(i);
+    }
+  }
+  if !heif_idx.is_empty() {
+    // 与 HEIC 全尺寸解码同时跑时，小图池再让出核，避免两池叠满
+    raster_cap = raster_cap.min(2);
+  }
 
   std::thread::scope(|s| {
-    let handles: Vec<_> = paths
-      .chunks(chunk_size)
-      .map(|chunk| {
-        let progress = Arc::clone(&on_progress);
-        let token = cancel.clone();
-        s.spawn(move || {
-          chunk
-            .iter()
-            .map(|p| {
+    let progress = &on_progress;
+    let spawn_pool = |indices: Vec<usize>, cap: usize| {
+      if indices.is_empty() {
+        return Vec::new();
+      }
+      let parallelism = cap.min(indices.len()).max(1);
+      let chunk_size = indices.len().div_ceil(parallelism);
+      indices
+        .chunks(chunk_size)
+        .map(|chunk| {
+          let chunk = chunk.to_vec();
+          let progress = Arc::clone(progress);
+          let token = cancel.clone();
+          s.spawn(move || {
+            let mut local = Vec::with_capacity(chunk.len());
+            for index in chunk {
               if token.is_cancelled() {
-                return ThumbnailOutcome {
-                  cancelled: true,
-                  ..Default::default()
-                };
+                local.push((
+                  index,
+                  ThumbnailOutcome {
+                    cancelled: true,
+                    ..Default::default()
+                  },
+                ));
+                continue;
               }
-              let result = generate_thumbnail(p, cache_dir, size, ffmpeg_bin);
+              let result = generate_thumbnail(&paths[index], cache_dir, size, ffmpeg_bin);
               let done = done_counter.fetch_add(1, Ordering::Relaxed) + 1;
               progress(done, total);
-              result
-            })
-            .collect::<Vec<_>>()
+              local.push((index, result));
+            }
+            local
+          })
         })
-      })
-      .collect();
+        .collect::<Vec<_>>()
+    };
 
-    for handle in handles {
-      results.push(handle.join().unwrap_or_default());
+    let raster_handles = spawn_pool(raster_idx, raster_cap);
+    let heif_handles = spawn_pool(heif_idx, heif_cap);
+    for handle in raster_handles.into_iter().chain(heif_handles) {
+      for (index, outcome) in handle.join().unwrap_or_default() {
+        results[index] = outcome;
+      }
     }
   });
 
-  results.into_iter().flatten().collect()
+  results
 }
 
 #[cfg(test)]

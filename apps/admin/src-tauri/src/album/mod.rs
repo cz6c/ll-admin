@@ -169,6 +169,18 @@ pub async fn album_scan(
     );
   }
 
+  let sweep_dir = album_data_dir.clone();
+  let _ = tokio::task::spawn_blocking(move || {
+    let Ok(conn) = db::open_db(&sweep_dir) else {
+      return;
+    };
+    let Ok(referenced) = db::list_referenced_cache_paths(&conn) else {
+      return;
+    };
+    fs_delete::sweep_orphan_caches(&sweep_dir, &referenced);
+  })
+  .await;
+
   // 全量路径：先认领当前 dirty（cancel/wait 期间 watcher 再置脏仍留给下次），再停旧 pipeline
   if need_full_discover {
     dirty_flag.store(false, Ordering::SeqCst);
@@ -487,6 +499,15 @@ pub async fn album_ensure_playback(
   app: AppHandle,
   path: String,
 ) -> Result<types::AlbumPlaybackResult, String> {
+  tauri::async_runtime::spawn_blocking(move || prepare_playback(app, path))
+    .await
+    .map_err(|e| format!("播放准备任务失败: {e}"))?
+}
+
+fn prepare_playback(
+  app: AppHandle,
+  path: String,
+) -> Result<types::AlbumPlaybackResult, String> {
   use std::path::PathBuf;
   use std::time::UNIX_EPOCH;
 
@@ -526,8 +547,25 @@ pub async fn album_ensure_playback(
   std::fs::create_dir_all(&cache_dir).map_err(|e| format!("创建播放缓存目录失败: {e}"))?;
 
   let cache_file = thumbnail::playback_cache_file(&cache_dir, &path, modified);
+  if let Ok(conn) = db::open_db(&album_data_dir) {
+    if let Ok((_, _, _, Some(saved))) = db::get_media_companion_paths(&conn, &path) {
+      let saved = saved.trim().to_string();
+      let saved_path = PathBuf::from(&saved);
+      let saved_ok = saved_path.is_file()
+        && std::fs::metadata(&saved_path).map(|m| m.len() > 0).unwrap_or(false);
+      // 源路径入库表示已确认可直接播放；代理路径则命中磁盘缓存。都不再 ffprobe
+      if saved_ok && (saved == path || saved_path == cache_file) {
+        return Ok(types::AlbumPlaybackResult {
+          path: saved,
+          width: None,
+          height: None,
+        });
+      }
+    }
+  }
+
   let ffprobe_bin = ffmpeg::resolve_ffprobe_binary(&app);
-  // 一次 ffprobe：分辨率落库 + codec 决定是否转码（避免二次起进程）
+  log::info!("album: 播放缓存未命中，准备兜底 ({path})");
   let (width, height, codec) =
     probe_and_persist_video_stream(&album_data_dir, &path, ffprobe_bin.as_deref());
 
@@ -562,6 +600,7 @@ pub async fn album_ensure_playback(
   };
 
   if !needs_transcode {
+    persist_playback_path(&album_data_dir, &path, &path);
     return Ok(types::AlbumPlaybackResult {
       path,
       width,
@@ -574,28 +613,28 @@ pub async fn album_ensure_playback(
   })?;
 
   let partial = cache_file.with_extension("mp4.partial");
-  let src_for_task = src.clone();
-  let cache_for_task = cache_file.clone();
-  let partial_for_task = partial.clone();
   let path_for_err = path.clone();
-
-  let ok = tokio::task::spawn_blocking(move || {
-    if !ffmpeg::transcode_for_web_playback(&ffmpeg_bin, &src_for_task, &partial_for_task) {
-      let _ = std::fs::remove_file(&partial_for_task);
-      return false;
+  let ok = if !ffmpeg::transcode_for_web_playback(&ffmpeg_bin, &src, &partial) {
+    let _ = std::fs::remove_file(&partial);
+    false
+  } else if cache_file.is_file()
+    && std::fs::metadata(&cache_file).map(|m| m.len() > 0).unwrap_or(false)
+  {
+    let _ = std::fs::remove_file(&partial);
+    true
+  } else if std::fs::metadata(&partial).map(|m| m.len() > 0).unwrap_or(false) {
+    if cache_file.is_file() {
+      let _ = std::fs::remove_file(&cache_file);
     }
-    if !partial_for_task.is_file() {
-      return false;
-    }
-    if cache_for_task.is_file() {
-      let _ = std::fs::remove_file(&cache_for_task);
-    }
-    std::fs::rename(&partial_for_task, &cache_for_task).is_ok()
-  })
-  .await
-  .map_err(|e| format!("转码任务失败: {e}"))?;
+    std::fs::rename(&partial, &cache_file).is_ok()
+  } else {
+    false
+  };
 
   if !ok {
+    if let Ok(conn) = db::open_db(&album_data_dir) {
+      let _ = db::mark_thumb_failed(&conn, &path_for_err);
+    }
     return Err(format!("HEVC 转码失败: {path_for_err}"));
   }
   if let Some(ref ffprobe) = ffprobe_bin {
@@ -611,6 +650,21 @@ pub async fn album_ensure_playback(
     width,
     height,
   })
+}
+
+/// 把查看器邻项插到播放预热队首。扫描预热进行中由预热循环消化；否则后台补做
+#[tauri::command]
+pub async fn album_nudge_playback(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+  ffmpeg::push_playback_nudge(&paths);
+  if ffmpeg::prewarm_is_active() {
+    return Ok(());
+  }
+  tauri::async_runtime::spawn_blocking(move || {
+    while let Some(path) = ffmpeg::pop_playback_nudge() {
+      let _ = prepare_playback(app.clone(), path);
+    }
+  });
+  Ok(())
 }
 
 /// 将树节点相对路径解析为相册根下的绝对目录；拒绝 `..` 与越界

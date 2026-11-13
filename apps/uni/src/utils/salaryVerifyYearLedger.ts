@@ -6,6 +6,7 @@ import type { Dayjs } from 'dayjs'
  * @note 计入累计 = 修正金额 | 应发−其他扣款（见 effectivePreTaxForCumulative）
  */
 import type { PayslipVerifyRecord } from '@/store/salaryHistory'
+import type { PayslipVerifyResult } from '@/utils/salaryCalculator'
 import dayjs from 'dayjs'
 import { buildPayPeriod, parsePayPeriod, previousPayPeriod } from '@/utils/payPeriod'
 import { computeVerifyForRecord, effectivePreTaxForCumulative } from '@/utils/payslipVerify'
@@ -32,6 +33,11 @@ export interface YearLedgerRow {
   cumulativePreTax: number | null
   /** 工资条个税；待核/未到为 null */
   slipTax: number | null
+  /**
+   * 有差异时的总差额（带符号）
+   * @note 口径同详情：优先实发差，实发一致则用个税差；正数=工资条偏高；其它状态为 null
+   */
+  diffAmount: number | null
   /** 是否报税修正口径（计入累计用警告色） */
   useDeclared: boolean
 }
@@ -60,13 +66,20 @@ export function resolveLastDueMonthForYear(year: number, now: Dayjs = dayjs()): 
   return prev.year() === year ? prev.month() + 1 : 0
 }
 
-/** 台账状态短文案 */
-export function yearLedgerStatusLabel(status: YearLedgerRowStatus): string {
-  switch (status) {
+/**
+ * 台账状态短文案
+ * @note 有差异用「+12.30 / -12.30」，不带 ¥，列更短
+ */
+export function yearLedgerStatusLabel(row: Pick<YearLedgerRow, 'status' | 'diffAmount'>): string {
+  switch (row.status) {
     case 'matched':
       return '无误'
-    case 'mismatched':
+    case 'mismatched': {
+      const amount = row.diffAmount
+      if (amount != null && Number.isFinite(amount))
+        return formatLedgerDiffLabel(amount)
       return '有差异'
+    }
     case 'declared':
       return '已按报税'
     case 'missing':
@@ -74,6 +87,25 @@ export function yearLedgerStatusLabel(status: YearLedgerRowStatus): string {
     case 'future':
       return '未到'
   }
+}
+
+/**
+ * 状态列差额：强制带正负号 + 两位小数、无千分位、无货币符
+ * @example +12.30 / -0.50 / +0.00
+ */
+function formatLedgerDiffLabel(value: number): string {
+  const n = Math.round(value * 100) / 100
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '+'
+  return `${sign}${Math.abs(n).toFixed(2)}`
+}
+
+/**
+ * 与详情顶卡选维一致：优先实发差，实发已对齐则用个税差（保留符号）
+ */
+function resolveLedgerDiffAmount(result: PayslipVerifyResult): number {
+  if (!result.postTaxMatch)
+    return result.postTaxDiff
+  return result.taxDiff
 }
 
 /**
@@ -109,6 +141,7 @@ export function buildYearVerifyLedger(
         status: 'future',
         cumulativePreTax: null,
         slipTax: null,
+        diffAmount: null,
         useDeclared: false,
       })
       continue
@@ -122,6 +155,7 @@ export function buildYearVerifyLedger(
         status: 'missing',
         cumulativePreTax: null,
         slipTax: null,
+        diffAmount: null,
         useDeclared: false,
       })
       continue
@@ -146,6 +180,7 @@ export function buildYearVerifyLedger(
       recordId: record.id,
       cumulativePreTax,
       slipTax: record.personalIncomeTax,
+      diffAmount: status === 'mismatched' ? resolveLedgerDiffAmount(result) : null,
       useDeclared,
     })
     sumCumulativePreTax += cumulativePreTax

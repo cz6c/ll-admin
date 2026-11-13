@@ -189,8 +189,8 @@ function goEmptyVerify() {
               <text class="ledger-row__col tabular-nums">
                 {{ fmt(row.slipTax) }}
               </text>
-              <text class="ledger-row__col" :class="statusClass(row.status)">
-                {{ yearLedgerStatusLabel(row.status) }}
+              <text class="ledger-row__col ledger-row__status" :class="statusClass(row.status)">
+                {{ yearLedgerStatusLabel(row) }}
               </text>
             </view>
 
@@ -291,12 +291,19 @@ function goEmptyVerify() {
   background: color-mix(in srgb, var(--wot-primary-6) 8%, transparent);
 }
 
+.ledger-row__status {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ledger-row__status--matched {
   color: var(--wot-success-main);
 }
 
 .ledger-row__status--mismatched {
   color: var(--wot-warning-main);
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-row__status--declared {

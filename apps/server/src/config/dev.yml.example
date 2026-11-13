@@ -77,7 +77,13 @@ aliyun:
     # baseUrl: ''              # 可选；未配时从 aliyun.baseUrl 推导 workspace api/v1
   # 工资条 VLM 结构化抽取（兼容模式 chat/completions + 图片）
   vlm:
-    model: qwen3-vl-plus
+    # 优先级串行兜底：额度用尽/过期/不可用时切下一个；解析失败与超时不切
+    models:
+      - deepseek-v4.1-flash
+      - qwen3.8-omni-flash
+      - deepseek-v4.1-flash-1017
+      - kimi-k3.1-pro
+    # model: qwen3-vl-plus   # 兼容旧配置；配了 models 时忽略
     # timeout: 120000
     # baseUrl: ''              # 可选；未配则用 aliyun.baseUrl
 

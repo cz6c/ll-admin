@@ -39,15 +39,7 @@ export class VlmRecognizeStrategy implements SalarySlipRecognizeStrategy {
       const ocr = buildOcrLogSnapshot({
         ok: true,
         provider: `vlm:${extracted.provider}`,
-        providerMeta: extracted.meta
-          ? {
-              model: extracted.meta.model,
-              baseUrl: extracted.meta.baseUrl,
-              timeoutMs: extracted.meta.timeoutMs,
-              failReason: extracted.meta.failReason,
-              responsePreview: extracted.meta.responsePreview
-            }
-          : undefined
+        providerMeta: extracted.meta ? toOcrProviderMeta(extracted.meta) : undefined
       });
 
       if (!extracted.line_items.length) {
@@ -58,7 +50,11 @@ export class VlmRecognizeStrategy implements SalarySlipRecognizeStrategy {
           httpStatus: 400,
           message: "未识别到金额明细，请重新拍摄",
           timing,
-          ocr: buildOcrLogSnapshot({ ok: false, error: "vlm_empty", providerMeta: extracted.meta }),
+          ocr: buildOcrLogSnapshot({
+            ok: false,
+            error: "vlm_empty",
+            providerMeta: extracted.meta ? toOcrProviderMeta(extracted.meta) : undefined
+          }),
           result,
           resultSnapshot
         };
@@ -88,19 +84,30 @@ export class VlmRecognizeStrategy implements SalarySlipRecognizeStrategy {
           ok: false,
           error: code,
           provider: "vlm",
-          providerMeta: providerMeta
-            ? {
-                model: providerMeta.model,
-                baseUrl: providerMeta.baseUrl,
-                timeoutMs: providerMeta.timeoutMs,
-                failReason: providerMeta.failReason,
-                responsePreview: providerMeta.responsePreview
-              }
-            : undefined
+          providerMeta: providerMeta ? toOcrProviderMeta(providerMeta) : undefined
         })
       };
     }
   }
+}
+
+/** 将 VLM meta 压进 OCR 日志槽位，保留 triedModels 便于对账模型链兜底 */
+function toOcrProviderMeta(meta: {
+  model?: string;
+  baseUrl?: string;
+  timeoutMs?: number;
+  failReason?: string;
+  responsePreview?: string;
+  triedModels?: string[];
+}) {
+  return {
+    model: meta.model,
+    baseUrl: meta.baseUrl,
+    timeoutMs: meta.timeoutMs,
+    failReason: meta.failReason,
+    responsePreview: meta.responsePreview,
+    triedModels: meta.triedModels
+  };
 }
 
 function mapVlmError(code: string): { httpStatus: number; message: string } {

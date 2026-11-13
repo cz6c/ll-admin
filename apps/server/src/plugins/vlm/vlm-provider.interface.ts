@@ -13,6 +13,8 @@ export interface VlmProviderMeta {
   timeoutMs?: number;
   failReason?: string;
   responsePreview?: string;
+  /** 本请求按优先级尝试过的模型（含最终命中或最后失败的） */
+  triedModels?: string[];
 }
 
 /** 单条明细（与工资条 LineItem / DTO 对齐） */

@@ -1,7 +1,7 @@
 /**
  * VLM 能力门面（plugins）
  * 职责：调用 Qwen VLM 抽取工资条结构化明细
- * 适用：业务侧 VLM 策略；配置见 aliyun.vlm.*；跨模态主备由 salary-slip 编排
+ * 适用：业务侧 VLM 策略；配置见 aliyun.vlm.*（含 models 优先级链）；跨模态主备由 salary-slip 编排
  */
 import { Injectable } from "@nestjs/common";
 import { QwenVlmProvider } from "./qwen-vlm.provider";

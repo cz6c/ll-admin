@@ -18,6 +18,8 @@ export interface OcrProviderMeta {
   responsePreview?: string;
   remoteCode?: string;
   remoteMessage?: string;
+  /** VLM 模型链兜底时写入，便于对账 */
+  triedModels?: string[];
 }
 
 /** 降级前一次引擎尝试的快照（跨模态编排日志复用） */

@@ -1,7 +1,7 @@
 /**
- * Qwen 多模态 VLM：兼容模式 chat/completions + 图片，结构化抽取工资条明细
- * 配置：aliyun.vlm.*，apiKey/baseUrl 可回退 aliyun.*
- * 模型链：aliyun.vlm.models 按优先级串行；额度用尽/过期/不可用时切下一个并粘性跳过
+ * 多模态 VLM：OpenAI 兼容 chat/completions + 图片，结构化抽取工资条明细
+ * 配置：aliyun.vlm.*（百炼优先）+ zhipu.vlm.*（免费视觉兜底）
+ * 模型链：额度用尽/过期/不可用时切下一档并粘性跳过；解析失败与超时不切
  */
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -16,13 +16,15 @@ import {
   type VlmProviderMeta
 } from "./vlm-provider.interface";
 
-/** 未配 models/model 时的默认优先级链（先烧短效，长效垫底） */
-const DEFAULT_MODELS = [
+/** 未配 aliyun.vlm.models/model 时的默认百炼链（先烧短效） */
+const DEFAULT_ALIYUN_MODELS = [
   "deepseek-v4.1-flash",
   "qwen3.8-omni-flash",
   "deepseek-v4.1-flash-1017",
   "kimi-k3.1-pro"
 ];
+const DEFAULT_ZHIPU_MODEL = "glm-4.6v-flash";
+const DEFAULT_ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const RESPONSE_PREVIEW_MAX = 1200;
 
 const EXTRACT_SYSTEM_PROMPT = `你是工资条识别助手。根据图片提取薪资明细，只输出 JSON，不要 markdown。
@@ -38,8 +40,20 @@ interface ChatCompletionsResponse {
   choices?: Array<{
     message?: { content?: string | Array<{ type?: string; text?: string }> };
   }>;
-  code?: string;
+  code?: string | number;
   message?: string;
+  error?: { code?: string | number; message?: string };
+}
+
+/** 单档调用端点（同协议、不同厂商 Key/Base） */
+interface VlmEndpoint {
+  vendor: "aliyun" | "zhipu";
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  timeoutMs: number;
+  /** 智谱默认关 thinking，避免推理噪音污染 JSON */
+  disableThinking?: boolean;
 }
 
 @Injectable()
@@ -62,40 +76,28 @@ export class QwenVlmProvider implements VlmProvider {
    * @note 仅额度用尽、试用过期、模型无权限/不存在时切下一档；空结果与解析错误不切换
    */
   async extractSalarySlip(buffer: Buffer, mimeType = "image/jpeg"): Promise<VlmProviderExtractResult> {
-    const apiKey = this.config.get<string>("aliyun.vlm.apiKey") || this.config.get<string>("aliyun.apiKey");
-    if (!apiKey) {
+    const endpoints = this.resolveEndpoints();
+    if (!endpoints.length) {
       throw new VlmProviderError("vlm_not_configured");
     }
 
-    const baseUrl = (this.config.get<string>("aliyun.vlm.baseUrl") || this.config.get<string>("aliyun.baseUrl") || "").replace(
-      /\/$/,
-      ""
-    );
-    if (!baseUrl) {
-      throw new VlmProviderError("vlm_not_configured");
-    }
-
-    const models = this.resolveModels();
-    const timeout = this.config.get<number>("aliyun.vlm.timeout") ?? this.config.get<number>("aliyun.timeout") ?? 120000;
     const imageDataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
 
-    if (this.modelCursor >= models.length) {
+    if (this.modelCursor >= endpoints.length) {
       this.modelCursor = 0;
     }
 
     const triedModels: string[] = [];
     let lastError: VlmProviderError | undefined;
 
-    for (let index = this.modelCursor; index < models.length; index++) {
-      const model = models[index];
-      triedModels.push(model);
+    for (let index = this.modelCursor; index < endpoints.length; index++) {
+      const endpoint = endpoints[index];
+      const label = `${endpoint.vendor}:${endpoint.model}`;
+      triedModels.push(label);
 
       try {
         const extracted = await this.extractWithModel({
-          apiKey,
-          baseUrl,
-          model,
-          timeout,
+          ...endpoint,
           imageDataUrl
         });
         this.modelCursor = index;
@@ -107,12 +109,16 @@ export class QwenVlmProvider implements VlmProvider {
           }
         };
       } catch (error: unknown) {
-        const wrapped = this.toVlmProviderError(error, { model, baseUrl, timeoutMs: timeout });
+        const wrapped = this.toVlmProviderError(error, {
+          vendor: endpoint.vendor,
+          model: endpoint.model,
+          baseUrl: endpoint.baseUrl,
+          timeoutMs: endpoint.timeoutMs
+        });
         lastError = wrapped;
 
-        const canFallback = isQuotaOrModelUnavailable(wrapped) && index < models.length - 1;
+        const canFallback = isQuotaOrModelUnavailable(wrapped) && index < endpoints.length - 1;
         if (canFallback) {
-          // 当前档已不可用：游标推进到下一档，后续请求直接从那里开始
           this.modelCursor = index + 1;
           continue;
         }
@@ -131,9 +137,60 @@ export class QwenVlmProvider implements VlmProvider {
   }
 
   /**
-   * 解析模型列表：优先 aliyun.vlm.models；否则单 model；再否则默认长效链
+   * 组装调用链：百炼 models → 智谱 glm-4.6v-flash（配了 apiKey 才追加）
    */
-  private resolveModels(): string[] {
+  private resolveEndpoints(): VlmEndpoint[] {
+    const endpoints: VlmEndpoint[] = [];
+    const aliyunTimeout =
+      this.config.get<number>("aliyun.vlm.timeout") ?? this.config.get<number>("aliyun.timeout") ?? 120000;
+
+    const aliyunApiKey = this.config.get<string>("aliyun.vlm.apiKey") || this.config.get<string>("aliyun.apiKey");
+    const aliyunBaseUrl = (
+      this.config.get<string>("aliyun.vlm.baseUrl") ||
+      this.config.get<string>("aliyun.baseUrl") ||
+      ""
+    ).replace(/\/$/, "");
+
+    if (aliyunApiKey && aliyunBaseUrl) {
+      for (const model of this.resolveAliyunModels()) {
+        endpoints.push({
+          vendor: "aliyun",
+          model,
+          apiKey: aliyunApiKey,
+          baseUrl: aliyunBaseUrl,
+          timeoutMs: aliyunTimeout
+        });
+      }
+    }
+
+    const zhipuApiKey = this.config.get<string>("zhipu.vlm.apiKey") || this.config.get<string>("zhipu.apiKey");
+    if (zhipuApiKey) {
+      const zhipuBaseUrl = (
+        this.config.get<string>("zhipu.vlm.baseUrl") ||
+        this.config.get<string>("zhipu.baseUrl") ||
+        DEFAULT_ZHIPU_BASE_URL
+      ).replace(/\/$/, "");
+      const zhipuModel = this.config.get<string>("zhipu.vlm.model")?.trim() || DEFAULT_ZHIPU_MODEL;
+      const zhipuTimeout =
+        this.config.get<number>("zhipu.vlm.timeout") ??
+        this.config.get<number>("zhipu.timeout") ??
+        aliyunTimeout;
+
+      endpoints.push({
+        vendor: "zhipu",
+        model: zhipuModel,
+        apiKey: zhipuApiKey,
+        baseUrl: zhipuBaseUrl,
+        timeoutMs: zhipuTimeout,
+        disableThinking: true
+      });
+    }
+
+    return endpoints;
+  }
+
+  /** 百炼模型列表：优先 models；否则单 model；再否则默认长效链 */
+  private resolveAliyunModels(): string[] {
     const configured = this.config.get<unknown>("aliyun.vlm.models");
     if (Array.isArray(configured)) {
       const list = configured.map(item => String(item ?? "").trim()).filter(Boolean);
@@ -147,30 +204,26 @@ export class QwenVlmProvider implements VlmProvider {
       return [single];
     }
 
-    return [...DEFAULT_MODELS];
+    return [...DEFAULT_ALIYUN_MODELS];
   }
 
-  /** 单模型一次 chat/completions 抽取 */
-  private async extractWithModel(params: {
-    apiKey: string;
-    baseUrl: string;
-    model: string;
-    timeout: number;
-    imageDataUrl: string;
-  }): Promise<VlmProviderExtractResult> {
+  /** 单档一次 chat/completions 抽取 */
+  private async extractWithModel(params: VlmEndpoint & { imageDataUrl: string }): Promise<VlmProviderExtractResult> {
     const requestMeta: VlmProviderMeta = {
+      vendor: params.vendor,
       model: params.model,
       baseUrl: params.baseUrl,
-      timeoutMs: params.timeout
+      timeoutMs: params.timeoutMs
     };
 
     const data = await this.callChatCompletions(params);
 
-    const remoteCode = data.code;
-    if (remoteCode) {
+    const remoteCode = data.code ?? data.error?.code;
+    const remoteMessage = data.message || data.error?.message;
+    if (remoteCode != null && remoteCode !== 0 && String(remoteCode) !== "200") {
       throw new VlmProviderError(`vlm_remote_${remoteCode}`, {
         ...requestMeta,
-        failReason: `remote_code:${remoteCode}${data.message ? `:${data.message}` : ""}`,
+        failReason: `remote_code:${remoteCode}${remoteMessage ? `:${remoteMessage}` : ""}`,
         responsePreview: truncateJson(data)
       });
     }
@@ -203,7 +256,7 @@ export class QwenVlmProvider implements VlmProvider {
 
   private toVlmProviderError(
     error: unknown,
-    requestMeta: Pick<VlmProviderMeta, "model" | "baseUrl" | "timeoutMs">
+    requestMeta: Pick<VlmProviderMeta, "vendor" | "model" | "baseUrl" | "timeoutMs">
   ): VlmProviderError {
     if (error instanceof VlmProviderError) {
       return error;
@@ -215,50 +268,46 @@ export class QwenVlmProvider implements VlmProvider {
         failReason: "vlm_timeout"
       });
     }
-    const remoteData = err?.response?.data as { code?: string; message?: string } | undefined;
+    const remoteData = err?.response?.data as
+      | { code?: string | number; message?: string; error?: { code?: string | number; message?: string } }
+      | undefined;
+    const remoteCode = remoteData?.code ?? remoteData?.error?.code;
+    const remoteMessage = remoteData?.message || remoteData?.error?.message;
     const statusHint = err?.response?.status ? `http_${err.response.status}` : undefined;
-    return new VlmProviderError(remoteData?.message ? `vlm_error:${remoteData.message}` : "vlm_error", {
+    return new VlmProviderError(remoteMessage ? `vlm_error:${remoteMessage}` : "vlm_error", {
       ...requestMeta,
-      failReason: remoteData?.code
-        ? `remote_code:${remoteData.code}`
-        : statusHint
-          ? statusHint
-          : "vlm_error",
+      failReason: remoteCode != null ? `remote_code:${remoteCode}` : statusHint ? statusHint : "vlm_error",
       responsePreview: remoteData ? truncateJson(remoteData) : undefined
     });
   }
 
-  private async callChatCompletions(params: {
-    apiKey: string;
-    baseUrl: string;
-    model: string;
-    timeout: number;
-    imageDataUrl: string;
-  }): Promise<ChatCompletionsResponse> {
-    const response = await firstValueFrom(
-      this.httpService.post<ChatCompletionsResponse>(
-        `${params.baseUrl}/chat/completions`,
+  private async callChatCompletions(params: VlmEndpoint & { imageDataUrl: string }): Promise<ChatCompletionsResponse> {
+    const body: Record<string, unknown> = {
+      model: params.model,
+      messages: [
+        { role: "system", content: EXTRACT_SYSTEM_PROMPT },
         {
-          model: params.model,
-          messages: [
-            { role: "system", content: EXTRACT_SYSTEM_PROMPT },
-            {
-              role: "user",
-              content: [
-                { type: "image_url", image_url: { url: params.imageDataUrl } },
-                { type: "text", text: "请识别这张工资条并按约定输出 JSON。" }
-              ]
-            }
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: params.imageDataUrl } },
+            { type: "text", text: "请识别这张工资条并按约定输出 JSON。" }
           ]
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${params.apiKey}`,
-            "Content-Type": "application/json"
-          },
-          timeout: params.timeout
         }
-      )
+      ]
+    };
+    // 智谱默认常开思考；抽结构化 JSON 时关掉，降低延迟与杂质
+    if (params.disableThinking) {
+      body.thinking = { type: "disabled" };
+    }
+
+    const response = await firstValueFrom(
+      this.httpService.post<ChatCompletionsResponse>(`${params.baseUrl}/chat/completions`, body, {
+        headers: {
+          Authorization: `Bearer ${params.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        timeout: params.timeoutMs
+      })
     );
     return response.data;
   }
@@ -296,6 +345,11 @@ function isQuotaOrModelUnavailable(error: VlmProviderError): boolean {
     /does.?not.?exist/,
     /not.?authorized/,
     /http_403/,
+    /http_401/,
+    /http_429/,
+    /rate.?limit/,
+    /1302/,
+    /1113/,
     /额度/,
     /已过期/,
     /欠费/,

@@ -91,8 +91,9 @@ export class VlmRecognizeStrategy implements SalarySlipRecognizeStrategy {
   }
 }
 
-/** 将 VLM meta 压进 OCR 日志槽位，保留 triedModels 便于对账模型链兜底 */
+/** 将 VLM meta 压进 OCR 日志槽位，保留 vendor/triedModels 便于对账模型链兜底 */
 function toOcrProviderMeta(meta: {
+  vendor?: string;
   model?: string;
   baseUrl?: string;
   timeoutMs?: number;
@@ -101,6 +102,7 @@ function toOcrProviderMeta(meta: {
   triedModels?: string[];
 }) {
   return {
+    vendor: meta.vendor,
     model: meta.model,
     baseUrl: meta.baseUrl,
     timeoutMs: meta.timeoutMs,

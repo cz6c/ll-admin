@@ -87,6 +87,14 @@ aliyun:
     # timeout: 120000
     # baseUrl: ''              # 可选；未配则用 aliyun.baseUrl
 
+# 智谱：百炼额度/过期失败后的免费视觉兜底（OpenAI 兼容）
+zhipu:
+  apiKey: 'your_zhipu_api_key'
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
+  vlm:
+    model: glm-4.6v-flash
+    # timeout: 120000
+
 # 工资条识别编排：主/备路径只在此配置，能力模块互不感知
 salarySlip:
   recognize:

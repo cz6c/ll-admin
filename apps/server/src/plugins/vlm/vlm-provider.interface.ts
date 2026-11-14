@@ -8,12 +8,14 @@ export type VlmProviderName = "qwen";
 
 /** 引擎调用参数与诊断信息 */
 export interface VlmProviderMeta {
+  /** 厂商：aliyun（百炼）/ zhipu（智谱）等 */
+  vendor?: string;
   model?: string;
   baseUrl?: string;
   timeoutMs?: number;
   failReason?: string;
   responsePreview?: string;
-  /** 本请求按优先级尝试过的模型（含最终命中或最后失败的） */
+  /** 本请求按优先级尝试过的档位（如 aliyun:xxx / zhipu:glm-4.6v-flash） */
   triedModels?: string[];
 }
 

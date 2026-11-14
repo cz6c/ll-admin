@@ -9,6 +9,7 @@ export type OcrProviderName = "qwen";
 
 /** 引擎调用参数与诊断信息（写入 salary_slip_recognize.ocr 日志） */
 export interface OcrProviderMeta {
+  vendor?: string;
   model?: string;
   task?: string;
   baseUrl?: string;

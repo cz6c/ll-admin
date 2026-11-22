@@ -610,6 +610,22 @@ fn batch_timeout_secs(batch_size: usize) -> u64 {
   (120 + batch_size as u64 * 180).min(600)
 }
 
+/// catalog 超时：sidecar 全量 CloudKit 枚举，无中间进度行；Hidden/共享会多次往返
+/// @note 曾用默认 120s，大图库（数千项 + hidden + shared）易误判 sidecar_crashed
+fn catalog_timeout_secs(view: JobView, include_hidden: bool, include_shared_library: bool) -> u64 {
+  let mut secs = match view {
+    JobView::Recents => 180,
+    JobView::Library => 300,
+  };
+  if include_hidden && view == JobView::Library {
+    secs += 120;
+  }
+  if include_shared_library && view == JobView::Library {
+    secs += 180;
+  }
+  secs.min(900)
+}
+
 #[derive(Debug, Clone)]
 struct BatchItemResult {
   row_id: i64,
@@ -638,18 +654,24 @@ fn fetch_catalog(
   include_hidden: bool,
   include_shared_library: bool,
 ) -> Result<Vec<CatalogItem>, String> {
+  let cmd = serde_json::json!({
+    "cmd": "catalog",
+    "view": view.as_str(),
+    "include_hidden": include_hidden && view == JobView::Library,
+    "include_shared_library": include_shared_library && view == JobView::Library,
+    "apple_id": apple_id,
+    "session_dir": session_path.to_string_lossy(),
+  });
+  let timeout_secs = catalog_timeout_secs(view, include_hidden, include_shared_library);
+  log::info!(
+    "icloud catalog: sidecar request timeout={}s view={} hidden={} shared={}",
+    timeout_secs,
+    view.as_str(),
+    include_hidden,
+    include_shared_library
+  );
   let event = client
-    .request(
-      app,
-      serde_json::json!({
-        "cmd": "catalog",
-        "view": view.as_str(),
-        "include_hidden": include_hidden && view == JobView::Library,
-        "include_shared_library": include_shared_library && view == JobView::Library,
-        "apple_id": apple_id,
-        "session_dir": session_path.to_string_lossy(),
-      }),
-    )
+    .request_with_timeout(app, cmd, Duration::from_secs(timeout_secs))
     .map_err(|e| e.to_string())?;
 
   if event.event_type == "error" {
@@ -1681,6 +1703,16 @@ mod tests {
     let err = catalog_to_asset_rows(JobView::Library, std::slice::from_ref(&item))
       .expect_err("must fail");
     assert_eq!(err, error_codes::LIVE_BIND_MISSING);
+  }
+
+  #[test]
+  fn catalog_timeout_scales_with_hidden_and_shared() {
+    assert_eq!(
+      catalog_timeout_secs(JobView::Library, true, true),
+      600
+    );
+    assert_eq!(catalog_timeout_secs(JobView::Library, false, false), 300);
+    assert_eq!(catalog_timeout_secs(JobView::Recents, true, true), 180);
   }
 
   #[test]

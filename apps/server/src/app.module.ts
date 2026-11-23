@@ -19,6 +19,7 @@ import { PushTaskModule } from "./modules/pushtask/pushtask.module";
 import { AreaModule } from "./modules/area/area.module";
 import { UploadModule } from "./modules/upload/upload.module";
 import { SalarySlipModule } from "./modules/salary-slip/salary-slip.module";
+import { DriveScoreModule } from "./modules/drive-score/drive-score.module";
 
 import { AuthModule } from "./modules/system/auth/auth.module";
 import { UserModule } from "./modules/system/user/user.module";
@@ -88,6 +89,7 @@ import { ServerModule } from "./modules/monitor/server/server.module";
     AreaModule,
     UploadModule,
     SalarySlipModule,
+    DriveScoreModule,
     AuthModule,
     UserModule,
     DeptModule,

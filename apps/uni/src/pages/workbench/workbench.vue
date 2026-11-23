@@ -47,6 +47,12 @@ const sections: ToolSection[] = [
         icon: 'i-carbon-restaurant',
         url: '/pages-sub/foodPurineInquiry/index',
       },
+      {
+        title: '试驾体验打分',
+        desc: '按维度记录试驾感受',
+        icon: 'i-carbon-car',
+        url: '/pages-sub/driveScore/list',
+      },
     ],
   },
 ]

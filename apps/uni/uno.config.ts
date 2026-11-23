@@ -72,6 +72,7 @@ export default defineConfig({
     'i-carbon-wifi',
     'i-carbon-camera',
     'i-carbon-restaurant',
+    'i-carbon-car',
   ],
   rules: [
     [

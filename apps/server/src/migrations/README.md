@@ -18,6 +18,7 @@ $ pnpm run migration:generate
 
 说明：
 - 先改好 `src/modules/**/entities/*.entity.ts`
+- 需要重新pnpm build运行一遍更新dist目录
 - 再执行 `migration:generate` 生成差异 SQL
 - 生成后务必检查一次 SQL 是否符合预期
 

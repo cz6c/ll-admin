@@ -336,8 +336,11 @@ fn upsert_media_impl(
       ON CONFLICT(path) DO UPDATE SET
         root=excluded.root, rel_dir=excluded.rel_dir, name=excluded.name,
         kind=excluded.kind, size=excluded.size, modified=excluded.modified,
-        ext=excluded.ext, thumb_path=excluded.thumb_path,
-        preview_path=excluded.preview_path, playback_path=excluded.playback_path,
+        ext=excluded.ext,
+        -- discover 传 NULL 时保留 pipeline 已落库的缓存路径，避免 force 刷新把进度打回全量
+        thumb_path = COALESCE(excluded.thumb_path, media.thumb_path),
+        preview_path = COALESCE(excluded.preview_path, media.preview_path),
+        playback_path = COALESCE(excluded.playback_path, media.playback_path),
         video_path=excluded.video_path,
         scanned_at=excluded.scanned_at,
         fail_count = CASE

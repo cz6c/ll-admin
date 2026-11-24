@@ -70,10 +70,13 @@ Viewer / LivePhotoPlayer：**优先**已有 `playbackPath`。查看器把前后�
 ```text
 收集：缺 thumb / HEIC 缺 preview / Live 或视频缺播放结论
   → 并行②：小图池与 HEIC 池分开（HEIC 常态 ≤2，内存吃紧 ≤1）
-  → 成功：写路径 + 尺寸 + emit（成品先 partial 再改名）
-  → ③：仅补 capture_at、camera；非视频缺尺寸则文件头 / 预览 JPEG
+  → 成功：磁盘 partial→rename；emit thumb-ready
+  → 【落库②】每 8 条 flush：thumb_path/preview/width/height + 同批 meta 元数据
+  → ③：仅补 capture_at、camera；非视频缺尺寸；视频 ffprobe 时长/分辨率
+  → 【落库③】meta 16 / 尺寸 32 / ffprobe 12 条一批
   → ④：实况 MOV + 缺结论的普通视频；HEVC/MOV 转代理，H.264 非 MOV 写源路径
-  → 末尾回填：缺 meta / 缺播放结论
+  → 【落库④】每段 8 条转码后 flush playback_path（刷新只续剩余项）
+  → 末尾回填：缺 meta / 缺播放结论（仍按上列批量）
 打开：缓存命中直接播；未命中 ensure_playback 兜底（打日志）
 查看器：前后各 2 张 album_nudge_playback 插到队首
 ```
@@ -108,14 +111,60 @@ flowchart LR
   B --> C{force / dirty / root变 / 首次 / 迁移}
   C -->|需全扫| D[discover WalkDir]
   C -->|缓存命中| E[load_groups 秒返]
-  D --> F[宫格可见]
-  E --> F
-  F --> G[pipeline：②展示 → ③元数据 → ④预热]
-  G --> H[thumb-ready]
+  D --> Ddb[落库① sync_media_index]
+  E --> F[宫格可见]
+  Ddb --> F
+  F --> G[pipeline ②→③→④]
+  G --> H[thumb-ready 事件]
   F --> I[MediaViewer]
   I -->|邻项| J[nudge 队首]
   I -->|未命中| K[ensure_playback 兜底]
 ```
+
+**管线内落库**（常量见 `scanner.rs`；完整分叉见下节流程图）：
+
+```mermaid
+flowchart TB
+  subgraph idx["① discover / load_groups（阻塞 invoke 返回前）"]
+    I1[WalkDir 或读 media 表] --> I2[复用索引 thumb / preview / playback]
+    I2 --> I3[Live 配对 + 分组]
+    I3 --> I4["落库：sync_media_index 单事务 upsert<br/>缓存列 COALESCE 保留已落库路径"]
+  end
+
+  subgraph p2["② 展示 thumb（后台）"]
+    T0[收集缺 thumb / HEIC preview] --> T1[并行生成缓存文件]
+    T1 --> T2["落库：每 8 条 update_cache_paths_batch<br/>+ 同批 EXIF 元数据 persist_meta"]
+    T2 --> T3["中断：cancel / epoch 前 flush 缓冲"]
+    T1 -.->|失败| T4["落库：mark_thumb_failed"]
+  end
+
+  subgraph p3["③ 元数据 / 尺寸 / 时长（② 段落后顺序执行）"]
+    M1[缺 capture / camera] --> M2["落库：每 16 条 update_meta_fill_batch"]
+    M3[非视频缺 width / height] --> M4["落库：每 32 条 update_dimensions_batch"]
+    M5[视频缺 duration_ms] --> M6["落库：每 12 条 ffprobe 后 duration + 分辨率"]
+  end
+
+  subgraph p4["④ 播放预热 live-proxy（进度文案「组装实况」）"]
+    P1[list_*_missing_playback] --> P2["段内并行转码，每段 8 条"]
+    P2 --> P3["落库：段末 update_playback_path_batch<br/>失败 mark_thumb_failed"]
+  end
+
+  idx --> F[返回 groups · 宫格可见]
+  F --> p2
+  p2 --> p3
+  p3 --> p4
+  p4 --> Done[进度 done=全完成]
+```
+
+| 阶段 | 写入表字段 | 批量 | 触发时机 |
+|------|-----------|------|----------|
+| ① discover | 索引行 + 缓存路径列 | 全库一事务 | WalkDir 结束 `sync_media_index`；冲突行 **COALESCE** 不抹掉已写缓存 |
+| ② thumb | `thumb_path` `preview_path` `width` `height` + 元数据 | **8** | 缓冲满 8 / 本 pending 结束 / **刷新取消前 flush** |
+| ③ meta | `capture_at` `camera` `capture_at_probed` | **16** | 每批 EXIF 解析完 |
+| ③ 尺寸 | `width` `height` | **32** | 文件头探测累积满批 |
+| ③ 时长 | `duration_ms`（顺带分辨率） | **12** | 每批 ffprobe worker 结束 |
+| ④ playback | `playback_path` | **8**（段） | 每段转码 join 后；刷新已落库项不再入队 |
+| 打开兜底 | `playback_path` 等 | 单条 | `album_ensure_playback`（非正常扫库主路径） |
 
 | 步 | 发生什么 | 用户看到 |
 |----|----------|----------|
@@ -123,9 +172,10 @@ flowchart LR
 | 2a | **discover**：WalkDir → 复用缓存 → Live 配对 → upsert；开始前清零 dirty | 全页 loading |
 | 2b | **load_groups** 秒返；不打断在跑 pipeline | 几乎无感 |
 | 3 | 返回列表 + watcher（2s debounce→dirty） | **宫格出现** |
-| 4 | pipeline：全扫必起；cache_hit 仅旧任务结束时补跑 | 进度条；占位→实图 |
-| 5 | ②路径+尺寸 → ③时间/机型 → ④代理或可播结论 + emit | 卡片/信息条更新 |
-| 5b | 末尾回填缺 meta / 缺播放结论 | 旧库补全 |
+| 4 | pipeline：全扫必起；cache_hit 仅旧任务结束时补跑；各阶段**分批量落库**（见上表） | 进度条；占位→实图 |
+| 5 | ②路径+尺寸 → ③时间/机型 → ④代理或可播结论 + emit（与落库同批或紧接） | 卡片/信息条更新 |
+| 5b | 末尾回填缺 meta / 缺播放结论（仍按 ③④ 批量写库） | 旧库补全 |
+| — | **刷新/取消**：epoch 失效前 flush；重启只扫 `media.db` 仍缺项 | total ≈ 剩余量，非全库重算 |
 | 6 | Viewer 读缓存；未命中才兜底转码，先出缩略图 | 全屏预览 |
 | 6b | 工具栏可打开相册根目录 | 系统文件夹 |
 
@@ -216,6 +266,7 @@ hash ← stem + modified + size（目录代际在 v{N}）
 5. ④ 预热实况 MOV 与缺结论的普通视频。全局转码槽常态 2、内存吃紧 1；同一输出单飞；单进程 `-threads 2`。最长边 &gt; 3840 才收到 3840，CRF 23 / `veryfast` 不变。H.264 非 MOV 把源路径写入 `playback_path`。转码失败同样 `fail_count++`。  
 6. 打开时缓存命中直接返回。未命中才 `ensure_playback`（日志 + 至多一次 ffprobe）。  
 7. 写副作用前校验 `pipeline_epoch`。
+8. **分阶段小批量落库**（`scanner.rs` 常量）：② thumb **8**、③ meta **16** / 尺寸 **32** / ffprobe **12**、④ 播放代理每段 **8** 条转码后 flush；取消/刷新前 flush 缓冲，刷新后只排 `media.db` 仍缺的项。
 
 ### 清理重复下载
 

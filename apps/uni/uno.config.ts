@@ -73,6 +73,7 @@ export default defineConfig({
     'i-carbon-camera',
     'i-carbon-restaurant',
     'i-carbon-car',
+    'i-carbon-chart-line',
   ],
   rules: [
     [

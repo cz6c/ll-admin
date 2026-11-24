@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
- * 工作台：生活类实用工具入口
- * 主流程：分组列表进入分包工具；薪资能力在首页，此处不再重复
+ * 工作台：实用工具入口（隐藏路由，verifyYear 顶卡长按等进入）
+ * 主流程：薪资工具（年薪测算等）+ 生活类分包工具；月薪核对主路径在首页
  */
 defineOptions({ name: 'Workbench' })
 
@@ -24,8 +24,18 @@ interface ToolSection {
   tools: ToolEntry[]
 }
 
-/** 仅保留首页未承载的生活工具；薪资测算/核对已去重 */
 const sections: ToolSection[] = [
+  {
+    title: '薪资工具',
+    tools: [
+      {
+        title: '年薪测算',
+        desc: '输入月薪，一键估算全年到手',
+        icon: 'i-carbon-chart-line',
+        url: '/pages/salary/calc',
+      },
+    ],
+  },
   {
     title: '生活工具',
     tools: [

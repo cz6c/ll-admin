@@ -1,15 +1,17 @@
 <script lang="ts" setup>
 /**
  * 薪算狮首页
- * 主流程：未同意协议则 redirect 门禁页 → 核对模块（入口+进度同组）→ 测算次卡
+ * 主流程：未同意协议则 redirect 门禁页 → 月薪核对（入口+年进度）→ 底部个税知识点轮播（点按弹详情）
  */
+import type { SalaryKnowledgeTip } from '@/constants/salaryKnowledgeTips'
 import type { YearMonthCell } from '@/utils/salaryVerifyYearProgress'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import SalaryVerifyYearProgress from '@/components/salary/SalaryVerifyYearProgress.vue'
 import { usePageHeight } from '@/composables/usePageHeight'
 import { hasPrivacyAgreed, PRIVACY_GATE_PATH } from '@/constants/privacy'
+import { SALARY_KNOWLEDGE_TIPS } from '@/constants/salaryKnowledgeTips'
 import { useSalaryHistoryStore } from '@/store/salaryHistory'
 import { captureChannelFromQuery } from '@/utils/channelFrom'
 import { buildYearVerifyProgress } from '@/utils/salaryVerifyYearProgress'
@@ -29,83 +31,66 @@ definePage({
   },
 })
 
-/** 本地记录上次点击的功能入口 key（calc/verify） */
+/** 本地记录上次进入月薪核对 */
 const LAST_ENTRY_KEY = 'salary-home-last-entry'
 const { tabBarHeight } = usePageHeight()
+const popupZIndex = 1100
 
-/** 首页功能卡片配置 */
-interface HomeFeature {
-  key: string
-  title: string
-  desc: string
-  url: string
-  theme: 'blue' | 'green'
-  icon: string
-  /** 拉新主路径：视觉加重 */
-  primary?: boolean
-}
-
-const features: HomeFeature[] = [
-  {
-    key: 'verify',
-    title: '月薪核对',
-    desc: '识别工资条，自动核对应发与扣款',
-    url: '/pages/salary/verify',
-    theme: 'green',
-    icon: 'check-square',
-    primary: true,
-  },
-  {
-    key: 'calc',
-    title: '年薪测算',
-    desc: '输入月薪，一键算出全年税后收入',
-    url: '/pages/salary/calc',
-    theme: 'blue',
-    icon: 'file',
-  },
-]
+const verifyFeature = {
+  key: 'verify',
+  title: '月薪核对',
+  desc: '识别工资条，自动核对应发与扣款',
+  url: '/pages/salary/verify',
+  icon: 'check-square',
+} as const
 
 const salaryHistoryStore = useSalaryHistoryStore()
-
-const latestCalcUpdateMs = computed(() => {
-  return salaryHistoryStore.calcItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
-})
 
 const latestVerifyUpdateMs = computed(() => {
   return salaryHistoryStore.verifyItems.reduce((max, item) => Math.max(max, new Date(item.updateTime).getTime() || 0), 0)
 })
 
-const featureStats = computed(() => {
+const verifyStats = computed(() => {
+  const latestDate = latestVerifyUpdateMs.value ? dayjs(latestVerifyUpdateMs.value).format('YYYY-MM-DD') : ''
   return {
-    calc: {
-      latestDate: latestCalcUpdateMs.value ? dayjs(latestCalcUpdateMs.value).format('YYYY-MM-DD') : '',
-      count: salaryHistoryStore.calcItems.length,
-    },
-    verify: {
-      latestDate: latestVerifyUpdateMs.value ? dayjs(latestVerifyUpdateMs.value).format('YYYY-MM-DD') : '',
-      count: salaryHistoryStore.verifyItems.length,
-    },
+    latestDate,
+    count: salaryHistoryStore.verifyItems.length,
   }
 })
 
 /** 本年 1–12 月核对进度（截止上月，与核对页默认所属月一致） */
 const yearProgress = computed(() => buildYearVerifyProgress(salaryHistoryStore.verifyItems))
 
-const verifyFeature = computed(() => features.find(f => f.key === 'verify')!)
-const calcFeature = computed(() => features.find(f => f.key === 'calc')!)
+const knowledgeTips = SALARY_KNOWLEDGE_TIPS
+const knowledgeSwiperCurrent = ref(0)
+const showKnowledgeDetail = ref(false)
+const activeKnowledge = ref<SalaryKnowledgeTip | null>(null)
+
+/** 详情打开时暂停自动轮播，避免关闭弹层后当前页与刚读内容不一致 */
+const knowledgeSwiperAutoplay = computed(() => !showKnowledgeDetail.value)
+
+/** 核对卡底部状态行 */
+function verifyHint() {
+  const stats = verifyStats.value
+  if (stats.count <= 0 || !stats.latestDate)
+    return '拍工资条，30 秒看扣款对不对'
+  return '见下方进度'
+}
 
 /**
- * 功能卡底部一行状态：整卡唯一入口
- * 核对有记录时指同组下方进度，避免与进度摘要重复说「最近」
+ * 打开知识点详情弹层
+ * @note 先对齐当前滑块索引并关 autoplay，避免阅毕关闭时对不上卡片
  */
-function featureHint(featureKey: string) {
-  const stats = featureStats.value[featureKey as keyof typeof featureStats.value]
-  if (!stats || stats.count <= 0 || !stats.latestDate) {
-    return featureKey === 'verify' ? '拍工资条，30 秒看扣款对不对' : '谈薪前先算清全年到手'
-  }
-  if (featureKey === 'verify')
-    return '见下方进度'
-  return `${stats.count} 次测算 · ${stats.latestDate}`
+function openKnowledgeTip(tip: SalaryKnowledgeTip) {
+  const index = knowledgeTips.findIndex(t => t.id === tip.id)
+  if (index >= 0)
+    knowledgeSwiperCurrent.value = index
+  activeKnowledge.value = tip
+  showKnowledgeDetail.value = true
+}
+
+function knowledgeDetailTitle(tip: SalaryKnowledgeTip) {
+  return tip.detailTitle || tip.title
 }
 
 onLoad((options?: Record<string, string>) => {
@@ -126,9 +111,9 @@ onShow(async () => {
   }
 })
 
-function enterFeature(feature: HomeFeature) {
-  uni.setStorageSync(LAST_ENTRY_KEY, feature.key)
-  uni.navigateTo({ url: feature.url })
+function enterVerify() {
+  uni.setStorageSync(LAST_ENTRY_KEY, verifyFeature.key)
+  uni.navigateTo({ url: verifyFeature.url })
 }
 
 /** 进度头「对照表」：本年累计对照（与个税 App 逐月对） */
@@ -177,14 +162,13 @@ function onMonthClick(cell: YearMonthCell) {
       </view>
     </view>
 
-    <!-- 方案 A：核对模块（入口+进度同组紧贴）→ 测算次卡 -->
     <view class="content-panel px-24rpx pb-32rpx">
       <view class="verify-group">
         <view
           class="feature-card feature-card--primary card-rounded"
           hover-class="feature-card--pressed"
           :hover-stay-time="70"
-          @click="enterFeature(verifyFeature)"
+          @click="enterVerify"
         >
           <view class="feature-card__main flex items-center gap-20rpx">
             <view class="feature-card__icon feature-card__icon--green shrink-0">
@@ -209,7 +193,7 @@ function onMonthClick(cell: YearMonthCell) {
             </view>
           </view>
           <view class="feature-card__hint">
-            {{ featureHint('verify') }}
+            {{ verifyHint() }}
           </view>
         </view>
 
@@ -220,34 +204,75 @@ function onMonthClick(cell: YearMonthCell) {
         />
       </view>
 
-      <view
-        class="feature-card feature-card--secondary mt-16rpx card-rounded"
-        hover-class="feature-card--pressed"
-        :hover-stay-time="70"
-        @click="enterFeature(calcFeature)"
-      >
-        <view class="feature-card__main flex items-center gap-20rpx">
-          <view class="feature-card__icon feature-card__icon--blue shrink-0">
-            <wd-icon
-              :name="calcFeature.icon"
-              size="22px"
-              color="var(--wot-primary-6)"
-            />
-          </view>
-          <view class="min-w-0 flex-1">
-            <text class="feature-card__title feature-card__title--secondary">
-              {{ calcFeature.title }}
-            </text>
-            <view class="feature-card__desc feature-card__desc--secondary">
-              {{ calcFeature.desc }}
+      <view class="knowledge-section mt-32rpx">
+        <view class="knowledge-section__head flex items-center justify-between px-8rpx">
+          <text class="knowledge-section__title">
+            个税小知识
+          </text>
+        </view>
+        <wd-swiper
+          v-model:current="knowledgeSwiperCurrent"
+          :list="knowledgeTips"
+          :autoplay="knowledgeSwiperAutoplay"
+          :height="118"
+          :interval="6000"
+          :radius="16"
+          indicator
+          indicator-position="bottom"
+          custom-class="knowledge-swiper"
+        >
+          <template #default="{ item }">
+            <view
+              class="knowledge-card card-rounded"
+              hover-class="knowledge-card--pressed"
+              :hover-stay-time="60"
+              @click="openKnowledgeTip(item as SalaryKnowledgeTip)"
+            >
+              <text class="knowledge-card__title">
+                {{ (item as SalaryKnowledgeTip).title }}
+              </text>
+              <text class="knowledge-card__summary">
+                {{ (item as SalaryKnowledgeTip).summary }}
+              </text>
             </view>
-          </view>
-        </view>
-        <view class="feature-card__hint">
-          {{ featureHint('calc') }}
-        </view>
+          </template>
+        </wd-swiper>
+        <text class="knowledge-section__disclaimer">
+          内容仅供参考，具体以税务机关解释为准
+        </text>
       </view>
     </view>
+
+    <wd-popup
+      v-model="showKnowledgeDetail"
+      position="bottom"
+      :z-index="popupZIndex"
+      root-portal
+      :safe-area-inset-bottom="true"
+      closable
+      lock-scroll
+    >
+      <view
+        v-if="activeKnowledge"
+        class="knowledge-detail-sheet max-h-75vh flex flex-col rounded-t-24rpx bg-white"
+      >
+        <view class="shrink-0 border-b border-#edf0f6 p-32rpx text-center text-32rpx text-#333 font-600">
+          {{ knowledgeDetailTitle(activeKnowledge) }}
+        </view>
+        <scroll-view scroll-y class="knowledge-detail-sheet__scroll" :show-scrollbar="true">
+          <view class="px-32rpx py-24rpx pb-48rpx">
+            <text
+              v-for="(para, idx) in activeKnowledge.paragraphs"
+              :key="idx"
+              class="knowledge-detail__para"
+              :class="{ 'knowledge-detail__para--gap': idx > 0 }"
+            >
+              {{ para }}
+            </text>
+          </view>
+        </scroll-view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -289,7 +314,7 @@ function onMonthClick(cell: YearMonthCell) {
   z-index: 1;
 }
 
-/* 核对入口与进度同组：组内间距小于组与测算的间距 */
+/* 核对入口与进度同组 */
 .verify-group {
   display: flex;
   flex-direction: column;
@@ -311,14 +336,6 @@ function onMonthClick(cell: YearMonthCell) {
   box-shadow: 0 8rpx 32rpx rgba(16, 185, 129, 0.1);
 }
 
-/* 次路径：无描边，仅靠间距与字重分层 */
-.feature-card--secondary {
-  padding: 24rpx 28rpx 20rpx;
-  border: none;
-  background: #fff;
-  box-shadow: 0 2rpx 12rpx rgba(31, 35, 41, 0.03);
-}
-
 .feature-card--pressed {
   transform: scale(0.97);
   opacity: 0.96;
@@ -336,30 +353,12 @@ function onMonthClick(cell: YearMonthCell) {
   height: 96rpx;
 }
 
-.feature-card--secondary .feature-card__icon {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 20rpx;
-}
-
 .feature-card__icon--green {
   background: var(--wot-success-surface, #ecfdf5);
 }
 
-.feature-card__icon--blue {
-  background: var(--wot-primary-1);
-}
-
 .feature-card__title--primary {
   font-size: 34rpx;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  color: #1f2329;
-}
-
-.feature-card__title--secondary {
-  font-size: 30rpx;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;
@@ -383,13 +382,6 @@ function onMonthClick(cell: YearMonthCell) {
   line-height: 1.4;
 }
 
-.feature-card__desc--secondary {
-  margin-top: 6rpx;
-  font-size: 24rpx;
-  color: #8a9199;
-  line-height: 1.35;
-}
-
 .feature-card__hint {
   margin-top: 22rpx;
   font-size: 22rpx;
@@ -399,7 +391,80 @@ function onMonthClick(cell: YearMonthCell) {
   line-height: 1.35;
 }
 
-.feature-card--secondary .feature-card__hint {
+.knowledge-section__head {
+  margin-bottom: 16rpx;
+}
+
+.knowledge-section__title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2329;
+  line-height: 1.3;
+}
+
+.knowledge-section__action {
+  font-size: 22rpx;
+  color: #8a9199;
+}
+
+.knowledge-section__disclaimer {
+  display: block;
   margin-top: 16rpx;
+  padding: 0 8rpx;
+  font-size: 20rpx;
+  color: #b0b4bb;
+  line-height: 1.4;
+  text-align: center;
+}
+
+:deep(.knowledge-swiper .wd-swiper__item) {
+  padding: 0 4rpx;
+  box-sizing: border-box;
+}
+
+.knowledge-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: 28rpx 32rpx;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #fff 0%, var(--wot-primary-1) 100%);
+  border: 1rpx solid rgba(22, 136, 255, 0.12);
+  box-shadow: 0 4rpx 20rpx rgba(31, 35, 41, 0.04);
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.knowledge-card--pressed {
+  transform: scale(0.98);
+}
+
+.knowledge-card__title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2329;
+  line-height: 1.35;
+}
+
+.knowledge-card__summary {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  color: #5c6370;
+  line-height: 1.5;
+}
+
+.knowledge-detail-sheet__scroll {
+  max-height: calc(75vh - 112rpx);
+}
+
+.knowledge-detail__para {
+  display: block;
+  font-size: 26rpx;
+  color: #555;
+  line-height: 1.65;
+}
+
+.knowledge-detail__para--gap {
+  margin-top: 20rpx;
 }
 </style>

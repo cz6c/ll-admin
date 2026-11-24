@@ -9,11 +9,8 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { createDriveScore, getDriveScoreDetail, updateDriveScore } from '@/api/driveScore'
 import {
-  COMFORT_DIMENSIONS,
-  DRIVE_SCORE_CATEGORY_LABEL,
   DRIVE_SCORE_DIMENSIONS,
   getDriveScoreAnchorHint,
-  HARDWARE_DIMENSIONS,
 } from '@/constants/driveScoreDimensions'
 
 defineOptions({ name: 'DriveScoreEdit' })
@@ -28,15 +25,15 @@ const recordId = ref<number | null>(null)
 const submitting = ref(false)
 const loading = ref(false)
 
-const form = reactive({
+const form = reactive<DriveScorePayload>({
   vehicleName: '',
   remark: '',
-  scoreChassisSolidity: 0,
-  scoreHandling: 0,
-  scoreHighSpeedStability: 0,
-  scoreQuietness: 0,
-  scoreSeatingVisibility: 0,
-  scoreBlindOperation: 0,
+  scorePowerResponse: 0,
+  scoreChassisControl: 0,
+  scoreSteeringBraking: 0,
+  scoreNvhPosture: 0,
+  scoreHmiAdas: 0,
+  scoreEnergyRange: 0,
 })
 
 const expandedCodes = ref<string[]>([])
@@ -50,7 +47,6 @@ const canSubmit = computed(() => {
     const score = Number(form[item.scoreKey])
     if (!(score >= 0.5 && score <= 5))
       return false
-    // 与服务端 IsHalfStepScore 一致：仅允许 0.5 步进
     return Math.abs(score * 2 - Math.round(score * 2)) < 1e-8
   })
 })
@@ -74,13 +70,13 @@ function toggleGuide(code: string) {
 function buildPayload(): DriveScorePayload {
   return {
     vehicleName: form.vehicleName.trim(),
-    remark: form.remark.trim() || null,
-    scoreChassisSolidity: form.scoreChassisSolidity,
-    scoreHandling: form.scoreHandling,
-    scoreHighSpeedStability: form.scoreHighSpeedStability,
-    scoreQuietness: form.scoreQuietness,
-    scoreSeatingVisibility: form.scoreSeatingVisibility,
-    scoreBlindOperation: form.scoreBlindOperation,
+    remark: form.remark?.trim() || null,
+    scorePowerResponse: form.scorePowerResponse,
+    scoreChassisControl: form.scoreChassisControl,
+    scoreSteeringBraking: form.scoreSteeringBraking,
+    scoreNvhPosture: form.scoreNvhPosture,
+    scoreHmiAdas: form.scoreHmiAdas,
+    scoreEnergyRange: form.scoreEnergyRange,
   }
 }
 
@@ -91,12 +87,8 @@ async function loadDetail(id: number) {
     recordId.value = detail.driveScoreId
     form.vehicleName = detail.vehicleName
     form.remark = detail.remark || ''
-    form.scoreChassisSolidity = detail.scoreChassisSolidity
-    form.scoreHandling = detail.scoreHandling
-    form.scoreHighSpeedStability = detail.scoreHighSpeedStability
-    form.scoreQuietness = detail.scoreQuietness
-    form.scoreSeatingVisibility = detail.scoreSeatingVisibility
-    form.scoreBlindOperation = detail.scoreBlindOperation
+    for (const dim of DRIVE_SCORE_DIMENSIONS)
+      form[dim.scoreKey] = detail[dim.scoreKey]
     uni.setNavigationBarTitle({ title: '编辑打分' })
   }
   catch {
@@ -137,9 +129,6 @@ async function onSubmit() {
   }
 }
 
-const hardwareDims = HARDWARE_DIMENSIONS
-const comfortDims = COMFORT_DIMENSIONS
-
 function guideOpen(dim: DriveScoreDimension) {
   return expandedCodes.value.includes(dim.code)
 }
@@ -167,10 +156,9 @@ function guideOpen(dim: DriveScoreDimension) {
     </view>
 
     <view class="card">
-      <text class="card-title">{{ DRIVE_SCORE_CATEGORY_LABEL.hardware }}</text>
-      <view v-for="dim in hardwareDims" :key="dim.code" class="score-card">
+      <text class="card-title">驾驶体验六维</text>
+      <view v-for="dim in DRIVE_SCORE_DIMENSIONS" :key="dim.code" class="score-card">
         <text class="score-title">{{ dim.title }}</text>
-        <text class="score-question">{{ dim.question }}</text>
         <wd-rate
           :model-value="scoreOf(dim.scoreKey)"
           :num="5"
@@ -183,41 +171,14 @@ function guideOpen(dim: DriveScoreDimension) {
           {{ getDriveScoreAnchorHint(dim, scoreOf(dim.scoreKey)) }}
         </text>
         <text class="guide-toggle" @click="toggleGuide(dim.code)">
-          {{ guideOpen(dim) ? '收起怎么测' : '怎么测' }}
+          {{ guideOpen(dim) ? '收起评判标准' : '评判标准' }}
         </text>
         <view v-if="guideOpen(dim)" class="guide-body">
-          <text class="guide-label">观察点</text>
-          <text v-for="item in dim.checkpoints" :key="item" class="guide-item">· {{ item }}</text>
-          <text class="guide-label">试驾方法</text>
-          <text class="guide-item">{{ dim.method }}</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="card">
-      <text class="card-title">{{ DRIVE_SCORE_CATEGORY_LABEL.comfort }}</text>
-      <view v-for="dim in comfortDims" :key="dim.code" class="score-card">
-        <text class="score-title">{{ dim.title }}</text>
-        <text class="score-question">{{ dim.question }}</text>
-        <wd-rate
-          :model-value="scoreOf(dim.scoreKey)"
-          :num="5"
-          allow-half
-          clearable
-          size="22"
-          @change="(val: any) => onRateChange(dim.scoreKey, val)"
-        />
-        <text v-if="scoreOf(dim.scoreKey)" class="score-hint">
-          {{ getDriveScoreAnchorHint(dim, scoreOf(dim.scoreKey)) }}
-        </text>
-        <text class="guide-toggle" @click="toggleGuide(dim.code)">
-          {{ guideOpen(dim) ? '收起怎么测' : '怎么测' }}
-        </text>
-        <view v-if="guideOpen(dim)" class="guide-body">
-          <text class="guide-label">观察点</text>
-          <text v-for="item in dim.checkpoints" :key="item" class="guide-item">· {{ item }}</text>
-          <text class="guide-label">试驾方法</text>
-          <text class="guide-item">{{ dim.method }}</text>
+          <text class="guide-item">{{ dim.criteria }}</text>
+          <text class="guide-label">各档参考</text>
+          <text v-for="n in 5" :key="n" class="guide-item">
+            {{ n }} 分：{{ dim.anchors[n as 1|2|3|4|5] }}
+          </text>
         </view>
       </view>
     </view>
@@ -270,14 +231,7 @@ function guideOpen(dim: DriveScoreDimension) {
   font-size: 30rpx;
   font-weight: 600;
   color: #1d2129;
-}
-
-.score-question {
-  display: block;
-  margin: 8rpx 0 16rpx;
-  font-size: 24rpx;
-  color: #8a9199;
-  line-height: 1.5;
+  margin-bottom: 16rpx;
 }
 
 .score-hint {
@@ -304,7 +258,7 @@ function guideOpen(dim: DriveScoreDimension) {
 
 .guide-label {
   display: block;
-  margin-top: 8rpx;
+  margin-top: 12rpx;
   font-size: 24rpx;
   font-weight: 600;
   color: #4e5969;

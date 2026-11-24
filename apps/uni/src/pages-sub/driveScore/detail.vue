@@ -1,18 +1,16 @@
 <script lang="ts" setup>
 /**
  * 试驾体验打分详情（只读）
- * 顶部雷达图展示六维；下方总分/分类小计与锚点文案；可跳转编辑
+ * 顶部雷达图展示六维，中心叠放总分；下方各维锚点文案；可跳转编辑
  * 图表：短延时再挂载 qiun-data-charts，避开转场量尺寸错位（同薪资明细）
  */
 import type { DriveScoreRecord } from '@/api/driveScore'
+import type { DriveScoreScoreKey } from '@/constants/driveScoreDimensions'
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getDriveScoreDetail } from '@/api/driveScore'
 import {
-  COMFORT_DIMENSIONS,
-  DRIVE_SCORE_CATEGORY_LABEL,
   DRIVE_SCORE_DIMENSIONS,
-  HARDWARE_DIMENSIONS,
   getDriveScoreAnchorHint,
 } from '@/constants/driveScoreDimensions'
 
@@ -94,32 +92,51 @@ function openEdit() {
   uni.navigateTo({ url: `/pages-sub/driveScore/edit?id=${recordId.value}` })
 }
 
-const hardwareDims = HARDWARE_DIMENSIONS
-const comfortDims = COMFORT_DIMENSIONS
-
-function scoreOf(key: keyof DriveScoreRecord) {
+function scoreOf(key: DriveScoreScoreKey) {
   return Number(detail.value?.[key] || 0)
 }
 
-/** 雷达图：六维顺序与常量表一致 */
+/** 轴上分数展示：整星无小数，半分保留一位 */
+function formatRadarAxisScore(score: number) {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1)
+}
+
+/**
+ * 雷达图 categories[i] 与 series[0].data[i] 必须同序同下标，顶点与类目才一致
+ * 外圈：分数+短标题；顶点 dataLabel 再次标分，与下方分项同源字段
+ */
 const radarChartData = computed(() => {
   if (!detail.value) {
     return { categories: [] as string[], series: [] as { name: string, data: number[] }[] }
   }
+  const data = DRIVE_SCORE_DIMENSIONS.map(dim => scoreOf(dim.scoreKey))
+  const categories = DRIVE_SCORE_DIMENSIONS.map((dim, i) => {
+    const s = formatRadarAxisScore(data[i])
+    return `${dim.shortTitle}：${s}`
+  })
   return {
-    categories: DRIVE_SCORE_DIMENSIONS.map(item => item.title),
+    categories,
     series: [
       {
         name: '得分',
-        data: DRIVE_SCORE_DIMENSIONS.map(item => scoreOf(item.scoreKey)),
+        data,
       },
     ],
   }
 })
 
+/** 编辑回流后强制图表随明细分数重绘 */
+const radarChartKey = computed(() => {
+  if (!detail.value)
+    return `empty-${chartMountKey.value}`
+  const sig = DRIVE_SCORE_DIMENSIONS.map(dim => scoreOf(dim.scoreKey)).join(',')
+  return `${chartMountKey.value}-${sig}-${detail.value.updateTime || ''}`
+})
+
 const radarOpts = {
   color: ['#1688ff'],
-  padding: [0, 8, 0, 8],
+  padding: [0, 0, 0, 0],
+  fontSize: 13,
   dataLabel: false,
   legend: {
     show: false,
@@ -133,6 +150,10 @@ const radarOpts = {
       border: true,
       borderWidth: 2,
       labelShow: true,
+      labelColor: '#8a9199',
+    },
+    tooltip: {
+      showBox: false,
     },
   },
 }
@@ -147,7 +168,7 @@ const radarOpts = {
       <view class="radar-box">
         <qiun-data-charts
           v-if="chartReady"
-          :key="chartMountKey"
+          :key="radarChartKey"
           type="radar"
           :opts="radarOpts"
           :chart-data="radarChartData"
@@ -155,38 +176,15 @@ const radarOpts = {
           background="none"
         />
         <view v-else class="radar-skeleton" />
-      </view>
-
-      <view class="score-row">
-        <view class="score-block">
-          <text class="score-num">{{ detail.totalScore }}</text>
-          <text class="score-label">总分</text>
-        </view>
-        <view class="score-block">
-          <text class="score-num is-sub">{{ detail.hardwareScore }}</text>
-          <text class="score-label">硬件</text>
-        </view>
-        <view class="score-block">
-          <text class="score-num is-sub">{{ detail.comfortScore }}</text>
-          <text class="score-label">舒适</text>
+        <view v-if="chartReady" class="radar-center-score">
+          <text class="radar-center-score__num tabular-nums">{{ detail.totalScore }}</text>
         </view>
       </view>
     </view>
 
     <view v-if="detail" class="card">
-      <text class="card-title">{{ DRIVE_SCORE_CATEGORY_LABEL.hardware }}</text>
-      <view v-for="dim in hardwareDims" :key="dim.code" class="dim-row">
-        <view class="dim-head">
-          <text class="dim-title">{{ dim.title }}</text>
-          <text class="dim-score">{{ scoreOf(dim.scoreKey) }}</text>
-        </view>
-        <text class="dim-hint">{{ getDriveScoreAnchorHint(dim, scoreOf(dim.scoreKey)) }}</text>
-      </view>
-    </view>
-
-    <view v-if="detail" class="card">
-      <text class="card-title">{{ DRIVE_SCORE_CATEGORY_LABEL.comfort }}</text>
-      <view v-for="dim in comfortDims" :key="dim.code" class="dim-row">
+      <text class="card-title">分项得分</text>
+      <view v-for="dim in DRIVE_SCORE_DIMENSIONS" :key="dim.code" class="dim-row">
         <view class="dim-head">
           <text class="dim-title">{{ dim.title }}</text>
           <text class="dim-score">{{ scoreOf(dim.scoreKey) }}</text>
@@ -233,9 +231,29 @@ const radarOpts = {
 }
 
 .radar-box {
+  position: relative;
   width: 100%;
   height: 480rpx;
   margin-top: 16rpx;
+}
+
+.radar-center-score {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.radar-center-score__num {
+  font-size: 56rpx;
+  font-weight: 600;
+  color: var(--wot-primary-6, #1688ff);
+  line-height: 1.15;
 }
 
 .radar-skeleton {
@@ -244,36 +262,6 @@ const radarOpts = {
   border-radius: 16rpx;
   background: linear-gradient(90deg, #f2f3f5 25%, #e8e9eb 37%, #f2f3f5 63%);
   background-size: 400% 100%;
-}
-
-.score-row {
-  display: flex;
-  margin-top: 12rpx;
-}
-
-.score-block {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.score-num {
-  font-size: 48rpx;
-  font-weight: 600;
-  color: var(--wot-primary-6, #1688ff);
-  line-height: 1.2;
-}
-
-.score-num.is-sub {
-  font-size: 40rpx;
-  color: #1d2129;
-}
-
-.score-label {
-  margin-top: 4rpx;
-  font-size: 24rpx;
-  color: #8a9199;
 }
 
 .card-title {

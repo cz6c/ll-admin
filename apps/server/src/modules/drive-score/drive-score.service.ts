@@ -12,7 +12,7 @@ function toScoreNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** 六维或分类小计的算术平均，保留 1 位小数 */
+/** 六维算术平均，保留 1 位小数 */
 function averageScore(scores: number[]): number {
   const sum = scores.reduce((total, score) => total + score, 0);
   return Math.round((sum / scores.length) * 10) / 10;
@@ -20,7 +20,7 @@ function averageScore(scores: number[]): number {
 
 /**
  * 试驾体验打分：仅本人可读写自己的未删记录
- * 总分与分类小计由接口计算，不落库
+ * 总分由接口计算，不落库
  */
 @Injectable()
 export class DriveScoreService {
@@ -35,7 +35,7 @@ export class DriveScoreService {
     }
     const list = await this.driveScoreRep.find({
       where: { userId, delFlag: DelFlagEnum.NORMAL },
-      order: { updateTime: "DESC" }
+      order: { createTime: "DESC" }
     });
     return ResultData.ok(list.map(item => this.toItemDto(item)));
   }
@@ -114,37 +114,34 @@ export class DriveScoreService {
     return {
       vehicleName,
       remark,
-      scoreChassisSolidity: dto.scoreChassisSolidity,
-      scoreHandling: dto.scoreHandling,
-      scoreHighSpeedStability: dto.scoreHighSpeedStability,
-      scoreQuietness: dto.scoreQuietness,
-      scoreSeatingVisibility: dto.scoreSeatingVisibility,
-      scoreBlindOperation: dto.scoreBlindOperation
+      scorePowerResponse: dto.scorePowerResponse,
+      scoreChassisControl: dto.scoreChassisControl,
+      scoreSteeringBraking: dto.scoreSteeringBraking,
+      scoreNvhPosture: dto.scoreNvhPosture,
+      scoreHmiAdas: dto.scoreHmiAdas,
+      scoreEnergyRange: dto.scoreEnergyRange
     };
   }
 
   private toItemDto(record: DriveScoreRecordEntity): DriveScoreItemDto {
-    const scoreChassisSolidity = toScoreNumber(record.scoreChassisSolidity);
-    const scoreHandling = toScoreNumber(record.scoreHandling);
-    const scoreHighSpeedStability = toScoreNumber(record.scoreHighSpeedStability);
-    const scoreQuietness = toScoreNumber(record.scoreQuietness);
-    const scoreSeatingVisibility = toScoreNumber(record.scoreSeatingVisibility);
-    const scoreBlindOperation = toScoreNumber(record.scoreBlindOperation);
-    const hardwareScores = [scoreChassisSolidity, scoreHandling, scoreHighSpeedStability];
-    const comfortScores = [scoreQuietness, scoreSeatingVisibility, scoreBlindOperation];
+    const scorePowerResponse = toScoreNumber(record.scorePowerResponse);
+    const scoreChassisControl = toScoreNumber(record.scoreChassisControl);
+    const scoreSteeringBraking = toScoreNumber(record.scoreSteeringBraking);
+    const scoreNvhPosture = toScoreNumber(record.scoreNvhPosture);
+    const scoreHmiAdas = toScoreNumber(record.scoreHmiAdas);
+    const scoreEnergyRange = toScoreNumber(record.scoreEnergyRange);
+    const allScores = [scorePowerResponse, scoreChassisControl, scoreSteeringBraking, scoreNvhPosture, scoreHmiAdas, scoreEnergyRange];
     return {
       driveScoreId: record.driveScoreId,
       vehicleName: record.vehicleName,
       remark: record.remark,
-      scoreChassisSolidity,
-      scoreHandling,
-      scoreHighSpeedStability,
-      scoreQuietness,
-      scoreSeatingVisibility,
-      scoreBlindOperation,
-      totalScore: averageScore([...hardwareScores, ...comfortScores]),
-      hardwareScore: averageScore(hardwareScores),
-      comfortScore: averageScore(comfortScores),
+      scorePowerResponse,
+      scoreChassisControl,
+      scoreSteeringBraking,
+      scoreNvhPosture,
+      scoreHmiAdas,
+      scoreEnergyRange,
+      totalScore: averageScore(allScores),
       createTime: record.createTime,
       updateTime: record.updateTime
     };

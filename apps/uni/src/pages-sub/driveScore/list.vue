@@ -47,18 +47,6 @@ function openDetail(item: DriveScoreRecord) {
   uni.navigateTo({ url: `/pages-sub/driveScore/detail?id=${item.driveScoreId}` })
 }
 
-function formatTime(value?: string) {
-  if (!value)
-    return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime()))
-    return value
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 function confirmDelete(item: DriveScoreRecord) {
   uni.showModal({
     title: '删除记录',
@@ -94,7 +82,7 @@ function confirmDelete(item: DriveScoreRecord) {
         <wd-swipe-action v-for="item in list" :key="item.driveScoreId">
           <wd-cell
             :title="item.vehicleName"
-            :label="`${formatTime(item.updateTime)} · 硬件 ${item.hardwareScore} · 舒适 ${item.comfortScore}`"
+            :label="item.remark || '六维试驾打分'"
             is-link
             @click="openDetail(item)"
           >

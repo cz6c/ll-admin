@@ -15,7 +15,6 @@ import {
 
 /**
  * 评分须为 0.5～5、步进 0.5（与 uni wd-rate allow-half 对齐）
- * why：IsInt 会拒掉 3.5；仅 Min/Max 仍放行 1.2 等非法步进
  */
 function IsHalfStepScore(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
@@ -42,10 +41,20 @@ function IsHalfStepScore(validationOptions?: ValidationOptions) {
   };
 }
 
-/** 六维半分 0.5-5 的共用装饰 */
 function ScoreProperty(description: string) {
   return function (target: object, propertyKey: string) {
     ApiProperty({ description, example: 3.5, minimum: 0.5, maximum: 5, multipleOf: 0.5 })(target, propertyKey);
+  };
+}
+
+function HalfScoreField(description: string) {
+  return function (target: object, propertyKey: string) {
+    ScoreProperty(description)(target, propertyKey);
+    Type(() => Number)(target, propertyKey);
+    IsNumber({ maxDecimalPlaces: 1 })(target, propertyKey);
+    Min(0.5)(target, propertyKey);
+    Max(5)(target, propertyKey);
+    IsHalfStepScore()(target, propertyKey);
   };
 }
 
@@ -62,53 +71,23 @@ export class CreateDriveScoreDto {
   @MaxLength(255)
   remark?: string | null;
 
-  @ScoreProperty("底盘厚重感")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreChassisSolidity: number;
+  @HalfScoreField("动力响应与平顺性")
+  scorePowerResponse: number;
 
-  @ScoreProperty("操控感")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreHandling: number;
+  @HalfScoreField("底盘滤震与车身控制")
+  scoreChassisControl: number;
 
-  @ScoreProperty("高速稳定性")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreHighSpeedStability: number;
+  @HalfScoreField("转向与制动")
+  scoreSteeringBraking: number;
 
-  @ScoreProperty("静谧性")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreQuietness: number;
+  @HalfScoreField("NVH与驾驶坐姿")
+  scoreNvhPosture: number;
 
-  @ScoreProperty("坐姿与视野")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreSeatingVisibility: number;
+  @HalfScoreField("驾驶相关人机与辅助驾驶")
+  scoreHmiAdas: number;
 
-  @ScoreProperty("盲操便利性")
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 })
-  @Min(0.5)
-  @Max(5)
-  @IsHalfStepScore()
-  scoreBlindOperation: number;
+  @HalfScoreField("能耗/续航与补能")
+  scoreEnergyRange: number;
 }
 
 export class UpdateDriveScoreDto extends CreateDriveScoreDto {
@@ -130,32 +109,26 @@ export class DriveScoreItemDto {
   @ApiPropertyOptional({ description: "备注", nullable: true })
   remark: string | null;
 
-  @ApiProperty({ description: "底盘厚重感" })
-  scoreChassisSolidity: number;
+  @ApiProperty({ description: "动力响应与平顺性" })
+  scorePowerResponse: number;
 
-  @ApiProperty({ description: "操控感" })
-  scoreHandling: number;
+  @ApiProperty({ description: "底盘滤震与车身控制" })
+  scoreChassisControl: number;
 
-  @ApiProperty({ description: "高速稳定性" })
-  scoreHighSpeedStability: number;
+  @ApiProperty({ description: "转向与制动" })
+  scoreSteeringBraking: number;
 
-  @ApiProperty({ description: "静谧性" })
-  scoreQuietness: number;
+  @ApiProperty({ description: "NVH与驾驶坐姿" })
+  scoreNvhPosture: number;
 
-  @ApiProperty({ description: "坐姿与视野" })
-  scoreSeatingVisibility: number;
+  @ApiProperty({ description: "驾驶相关人机与辅助驾驶" })
+  scoreHmiAdas: number;
 
-  @ApiProperty({ description: "盲操便利性" })
-  scoreBlindOperation: number;
+  @ApiProperty({ description: "能耗/续航与补能" })
+  scoreEnergyRange: number;
 
   @ApiProperty({ description: "六维算术平均总分，保留 1 位小数", example: 3.8 })
   totalScore: number;
-
-  @ApiProperty({ description: "硬件三项平均，保留 1 位小数", example: 4.0 })
-  hardwareScore: number;
-
-  @ApiProperty({ description: "舒适三项平均，保留 1 位小数", example: 3.7 })
-  comfortScore: number;
 
   @ApiProperty({ description: "创建时间" })
   createTime: Date;

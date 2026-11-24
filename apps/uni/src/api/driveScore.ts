@@ -11,10 +11,6 @@ export interface DriveScoreRecord extends Record<DriveScoreScoreKey, number> {
   remark: string | null
   /** 六维算术平均，保留 1 位小数 */
   totalScore: number
-  /** 硬件三项平均，保留 1 位小数 */
-  hardwareScore: number
-  /** 舒适三项平均，保留 1 位小数 */
-  comfortScore: number
   createTime: string
   updateTime: string
 }
@@ -43,5 +39,5 @@ export function updateDriveScore(data: DriveScorePayload & { driveScoreId: numbe
 }
 
 export function deleteDriveScore(id: number) {
-  return http.post(`${DRIVE_SCORE_BASE}/delete/${id}`)
+  return http.post<void>(`${DRIVE_SCORE_BASE}/delete/${id}`)
 }

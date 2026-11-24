@@ -39,6 +39,7 @@ import {
   cloudListDisplayFilename,
   cloudStateLabel,
   cloudStateTagColor,
+  cloudStateTooltip,
   type IcloudSyncCloudListRow
 } from "@/utils/icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
@@ -165,6 +166,7 @@ function canSelectCloudRow(row: CloudListDisplayRow): boolean {
   const state = cloudListDisplayState(row);
   if (intent.value === "delete") return state === "synced";
   // 下载意图：待下载；失败行若仍在列表（活跃 job 外通常已回 cloud_only）也可勾
+  if (state === "sync_skipped") return false;
   return state === "cloud_only" || state === "download_failed";
 }
 
@@ -189,7 +191,14 @@ function toggleCloudRowSelect(row: CloudListDisplayRow) {
 function onCloudCellClick(row: CloudListDisplayRow) {
   if (!intent.value) return;
   if (!canSelectCloudRow(row)) {
-    $feedback.message.info(intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载");
+    const skipHint =
+      cloudListDisplayState(row) === "sync_skipped"
+        ? "他人贡献的共享图库项不可勾选下载"
+        : "";
+    $feedback.message.info(
+      skipHint ||
+        (intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载")
+    );
     return;
   }
   toggleCloudRowSelect(row);
@@ -636,7 +645,15 @@ onMounted(() => {
                 :data-row-key="p.rowKey"
                 :style="cloudPlacementStyle(p)"
                 :class="{ selected: selectMode && isCloudRowSelected(p.row), 'select-mode': selectMode }"
-                :title="`${p.row.displayFilename}\n${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`"
+                :title="
+                  [
+                    p.row.displayFilename,
+                    `${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`,
+                    cloudStateTooltip(p.row)
+                  ]
+                    .filter(Boolean)
+                    .join('\n')
+                "
                 @click="onCloudCellClick(p.row)"
               >
                 <ProtocolLazyThumb

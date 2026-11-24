@@ -116,7 +116,8 @@ fn enrich_live_pair_meta(
 
 fn cloud_display_rank(state: &str) -> u8 {
   match state {
-    "cloud_only" => 2,
+    "cloud_only" | "modified_cloud" => 2,
+    "sync_skipped" => 3,
     "synced" => 1,
     _ => 0,
   }
@@ -226,6 +227,7 @@ type CloudListRowRaw = (
   Option<i64>,
   Option<i64>,
   String,
+  Option<String>,
 );
 
 fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRowRaw> {
@@ -246,6 +248,7 @@ fn read_cloud_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CloudListRow
     row.get(13)?,
     row.get(14)?,
     row.get::<_, Option<String>>(15)?.unwrap_or_else(|| "library".to_string()),
+    row.get(16)?,
   ))
 }
 
@@ -272,6 +275,7 @@ fn build_sync_asset_row(
     last_synced_at,
     last_catalog_at,
     catalog_scope,
+    skip_reason,
   ) = raw;
   let cloud_state = CloudState::parse(&cloud_s).unwrap_or(CloudState::CloudOnly);
   let display = derive_list_display_state(conn, apple_id, &asset_id, &part, cloud_state)?;
@@ -301,6 +305,7 @@ fn build_sync_asset_row(
     last_synced_at,
     last_catalog_at,
     catalog_scope,
+    skip_reason,
   })
 }
 
@@ -376,7 +381,7 @@ pub fn load_sync_assets(
     SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at,
-           catalog_scope
+           catalog_scope, skip_reason
     FROM assets
     WHERE {where_clause}
     ORDER BY {CAPTURE_DATE_SQL} ASC,
@@ -466,7 +471,7 @@ fn load_sync_assets_download_failed(
     SELECT asset_id, part, sort_key, capture_at, added_at, latitude, longitude,
            original_filename, media_kind, live_pair_id,
            dest_path, cloud_state, download_status, last_synced_at, last_catalog_at,
-           catalog_scope
+           catalog_scope, skip_reason
     FROM assets
     WHERE {where_clause}
     ORDER BY {CAPTURE_DATE_SQL} ASC,
@@ -565,6 +570,7 @@ pub fn get_cloud_state_summary(
     cloud_only: 0,
     synced: 0,
     download_failed: 0,
+    sync_skipped: 0,
     last_catalog_at,
   };
   summary.download_failed = count_download_failed(conn, apple_id)?;
@@ -581,12 +587,18 @@ pub fn get_cloud_state_summary(
       match CloudState::parse(&state) {
         Some(CloudState::CloudOnly) => summary.cloud_only = summary.cloud_only.saturating_add(1),
         Some(CloudState::Synced) => summary.synced = summary.synced.saturating_add(1),
+        Some(CloudState::SyncSkipped) => {
+          summary.sync_skipped = summary.sync_skipped.saturating_add(1)
+        }
         None => {}
       }
     }
   }
-  // 「全部」= cloud_only + synced（与列表 Live 折合口径一致；不含派生 download_failed）
-  summary.total = summary.cloud_only.saturating_add(summary.synced);
+  // 「全部」= cloud_only + synced + sync_skipped（与列表 Live 折合口径一致；不含派生 download_failed）
+  summary.total = summary
+    .cloud_only
+    .saturating_add(summary.synced)
+    .saturating_add(summary.sync_skipped);
   Ok(summary)
 }
 

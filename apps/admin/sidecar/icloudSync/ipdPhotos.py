@@ -582,6 +582,113 @@ def catalog_location_from_photo(photo: Any) -> tuple[float | None, float | None]
     return lat, lng
 
 
+def _reference_record_name(value: Any) -> str | None:
+    """CloudKit RECORD_REFERENCE 或裸 dict 的 recordName。"""
+    if not isinstance(value, dict):
+        return None
+    name = str(value.get("recordName", "")).strip()
+    return name or None
+
+
+def _contributor_names_from_field_value(raw: Any) -> list[str]:
+    """解析 contributors / contributedBy 字段值为 recordName 列表。"""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        out: list[str] = []
+        for item in raw:
+            name = _reference_record_name(item)
+            if name:
+                out.append(name)
+        return out
+    name = _reference_record_name(raw)
+    return [name] if name else []
+
+
+def contributed_by_from_photo(photo: Any) -> str | None:
+    """
+    Shared Photo Library 贡献者 CloudKit user recordName。
+
+    @note contributors 表示谁把资源贡献进共享图库，不等于 EXIF 拍摄者
+    @returns 无字段或私库项时为 None
+    """
+    for record in (
+        getattr(photo, "_master_record", None),
+        getattr(photo, "_asset_record", None),
+    ):
+        if not isinstance(record, dict):
+            continue
+        for field in ("contributors", "contributedBy"):
+            raw = _cpl_record_field_value(record, field)
+            names = _contributor_names_from_field_value(raw)
+            if names:
+                return names[0]
+    return None
+
+
+def _zones_list_raw(photos: Any, library_type: str) -> list[dict[str, Any]]:
+    """CloudKit zones/list 原始列表（含 PrimarySync）。"""
+    kind = str(library_type).strip().lower()
+    if kind not in ("private", "shared"):
+        raise RuntimeError(f"unsupported library_type for zones/list: {library_type}")
+
+    get_endpoint = getattr(photos, "get_service_endpoint", None)
+    session = getattr(photos, "session", None)
+    if not callable(get_endpoint) or session is None:
+        raise RuntimeError("photos service missing zones/list API")
+
+    service_endpoint = str(get_endpoint(kind)).rstrip("/")
+    url = f"{service_endpoint}/zones/list"
+    request = session.post(url, data="{}", headers={"Content-type": "text/plain"})
+    status = int(getattr(request, "status_code", 0) or 0)
+    if status >= 400:
+        raise RuntimeError(f"{kind} zones/list HTTP {status}")
+
+    try:
+        response = request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"{kind} zones/list invalid JSON: {exc}") from exc
+    if not isinstance(response, dict):
+        raise RuntimeError(f"{kind} zones/list: unexpected payload")
+
+    reason = str(response.get("reason") or response.get("serverErrorCode") or "").strip()
+    if reason:
+        raise RuntimeError(f"{kind} zones/list: {reason}")
+
+    zones = response.get("zones")
+    if not isinstance(zones, list):
+        raise RuntimeError(f"{kind} zones/list missing zones array")
+
+    out: list[dict[str, Any]] = []
+    for zone in zones:
+        if not isinstance(zone, dict) or zone.get("deleted"):
+            continue
+        zone_id = zone.get("zoneID")
+        if not isinstance(zone_id, dict):
+            continue
+        out.append(zone)
+    return out
+
+
+def cloudkit_user_record_name_from_photos(photos: Any) -> str | None:
+    """
+    当前登录账号 CloudKit user recordName（private PrimarySync.ownerRecordName）。
+
+    @note catalog done 带回 Rust 设置，用于「仅下载本人贡献」判定
+    """
+    try:
+        zones = _zones_list_raw(photos, "private")
+    except RuntimeError:
+        return None
+    for zone in zones:
+        zone_id = zone.get("zoneID") or {}
+        if str(zone_id.get("zoneName") or "").strip() != "PrimarySync":
+            continue
+        owner = str(zone_id.get("ownerRecordName") or "").strip()
+        return owner or None
+    return None
+
+
 def cpl_asset_meta_from_photo(photo: Any) -> dict[str, str]:
     """
     从枚举得到的 PhotoAsset 提取删云元数据（供 catalog 落库）。

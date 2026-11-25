@@ -18,7 +18,8 @@ use tauri::{AppHandle, Emitter};
 use super::ensure_sidecar_authenticated;
 use super::catalog_diff::classify_catalog_rows;
 use super::db::{
-  apply_catalog_delta, count_assets_by_status, discard_sync_job, discard_task, enqueue_cloud_only_for_sync,
+  apply_catalog_delta, apply_shared_contributor_skip_policy, count_assets_by_status, discard_sync_job,
+  discard_task, enqueue_cloud_only_for_sync,
   enqueue_outstanding_for_full_sync,
   finalize_job_download, find_incomplete_task_for_apple, get_job,
   insert_job, job_has_assets, list_asset_tasks, list_failed_assets, list_pending_assets,
@@ -30,7 +31,7 @@ use super::db::{
 };
 use super::naming::sync_asset_filename;
 use super::settings::{
-  load_settings, resolve_output_dir,
+  load_settings, resolve_output_dir, save_settings,
 };
 use super::sidecar::{session_dir, SidecarClient, SidecarError, SidecarEvent};
 use super::task::{ensure_discardable, require_no_incomplete_task};
@@ -69,6 +70,8 @@ pub struct CatalogItem {
   pub catalog_scope: super::types::CatalogScope,
   pub library_type: super::types::LibraryType,
   pub library_zone: String,
+  /// Shared Photo Library 贡献者 CloudKit user recordName
+  pub contributed_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -274,6 +277,8 @@ pub fn catalog_to_asset_rows(
         catalog_scope: item.catalog_scope,
         library_type: item.library_type,
         library_zone: item.library_zone.clone(),
+        contributed_by: item.contributed_by.clone(),
+        skip_reason: None,
       });
     }
   }
@@ -364,6 +369,11 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| super::types::PRIMARY_SYNC_ZONE.to_string());
+      let contributed_by = value
+        .get("contributed_by")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
       Ok(CatalogItem {
         asset_id,
@@ -380,6 +390,7 @@ fn parse_catalog_items(items: &[Value]) -> Result<Vec<CatalogItem>, String> {
         catalog_scope,
         library_type,
         library_zone,
+        contributed_by,
       })
     })
     .collect()
@@ -645,6 +656,38 @@ fn is_auth_pause_error(code: &str) -> bool {
   )
 }
 
+/// catalog 拉取结果：资产列表 + 可选的本账号 CloudKit user recordName
+struct CatalogFetchResult {
+  items: Vec<CatalogItem>,
+  cloudkit_user_record_id: Option<String>,
+}
+
+fn parse_cloudkit_user_record_id(event: &super::sidecar::SidecarEvent) -> Option<String> {
+  event
+    .extra
+    .get("cloudkit_user_record_id")
+    .and_then(|v| v.as_str())
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .map(str::to_string)
+}
+
+fn maybe_persist_cloudkit_user_record_id(
+  app: &AppHandle,
+  record_id: Option<&str>,
+) -> Result<(), String> {
+  let Some(id) = record_id.map(str::trim).filter(|s| !s.is_empty()) else {
+    return Ok(());
+  };
+  let mut settings = load_settings(app)?;
+  if settings.cloudkit_user_record_id.as_deref() != Some(id) {
+    settings.cloudkit_user_record_id = Some(id.to_string());
+    save_settings(app, &settings)?;
+    log::info!("icloud catalog: persisted cloudkit_user_record_id");
+  }
+  Ok(())
+}
+
 fn fetch_catalog(
   client: &SidecarClient,
   app: &AppHandle,
@@ -653,7 +696,7 @@ fn fetch_catalog(
   session_path: &Path,
   include_hidden: bool,
   include_shared_library: bool,
-) -> Result<Vec<CatalogItem>, String> {
+) -> Result<CatalogFetchResult, String> {
   let cmd = serde_json::json!({
     "cmd": "catalog",
     "view": view.as_str(),
@@ -686,6 +729,7 @@ fn fetch_catalog(
     return Err(format!("catalog 意外响应: type={}", event.event_type));
   }
 
+  let cloudkit_user_record_id = parse_cloudkit_user_record_id(&event);
   let raw_items = event.items.ok_or_else(|| "catalog 响应缺少 items".to_string())?;
   let items = parse_catalog_items(&raw_items)?;
   let shared_n = items
@@ -705,7 +749,10 @@ fn fetch_catalog(
       "icloud catalog: sync_shared_library=true but 0 shared items (no SharedSync zones or empty library)"
     );
   }
-  Ok(items)
+  Ok(CatalogFetchResult {
+    items,
+    cloudkit_user_record_id,
+  })
 }
 
 fn emit_cloud_state_changed(app: &AppHandle) {
@@ -746,6 +793,18 @@ fn persist_catalog_delta(
   if reconciled > 0 {
     log::info!(
       "icloud catalog job {job_id}: {reconciled} synced assets missing on disk → cloud_only"
+    );
+  }
+  let settings = load_settings(app)?;
+  let skipped = apply_shared_contributor_skip_policy(
+    conn,
+    apple_id,
+    settings.cloudkit_user_record_id.as_deref(),
+    settings.sync_shared_only_own_contributions && settings.sync_shared_library,
+  )?;
+  if skipped > 0 {
+    log::info!(
+      "icloud catalog job {job_id}: shared contributor skip policy marked {skipped} rows"
     );
   }
   if enqueue {
@@ -1559,7 +1618,7 @@ pub async fn icloud_sync_refresh_catalog(
     thread::spawn(move || {
       let outcome = (|| -> Result<(), String> {
         client_bg.ensure_started(&app_bg).map_err(|e| e.to_string())?;
-        let catalog_items = fetch_catalog(
+        let catalog = fetch_catalog(
           &client_bg,
           &app_bg,
           view,
@@ -1567,6 +1626,10 @@ pub async fn icloud_sync_refresh_catalog(
           &session_path,
           include_hidden,
           include_shared_library,
+        )?;
+        maybe_persist_cloudkit_user_record_id(
+          &app_bg,
+          catalog.cloudkit_user_record_id.as_deref(),
         )?;
         let conn = open_db(&db_path)?;
         if get_job(&conn, job_id)?.is_none() {
@@ -1582,7 +1645,7 @@ pub async fn icloud_sync_refresh_catalog(
           job_id,
           &apple_id,
           view,
-          &catalog_items,
+          &catalog.items,
           false,
           include_hidden,
           include_shared_library,
@@ -1651,6 +1714,7 @@ mod tests {
       catalog_scope: CatalogScope::Library,
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
     }
   }
 
@@ -1670,6 +1734,7 @@ mod tests {
       catalog_scope: CatalogScope::Library,
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
     }
   }
 
@@ -1819,6 +1884,8 @@ mod tests {
       catalog_scope: super::super::types::CatalogScope::Library,
       library_type: super::super::types::LibraryType::Private,
       library_zone: super::super::types::PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
+      skip_reason: None,
     };
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", std::slice::from_ref(&asset)).expect("insert");
     asset.id = conn

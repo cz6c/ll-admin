@@ -66,6 +66,8 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       "library_zone",
       "TEXT NOT NULL DEFAULT 'PrimarySync'",
     )?;
+    ensure_assets_column(conn, "contributed_by", "TEXT")?;
+    ensure_assets_column(conn, "skip_reason", "TEXT")?;
   }
   Ok(())
 }
@@ -138,6 +140,8 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
         catalog_scope TEXT NOT NULL DEFAULT 'library',
         library_type TEXT NOT NULL DEFAULT 'private',
         library_zone TEXT NOT NULL DEFAULT 'PrimarySync',
+        contributed_by TEXT,
+        skip_reason TEXT,
         UNIQUE(apple_id, asset_id, part)
       );
 
@@ -287,7 +291,7 @@ pub fn load_existing_baselines(
       SELECT asset_id, part, sort_key, original_filename, media_kind,
              cpl_asset_record_name, cpl_asset_change_tag,
              capture_at, added_at, latitude, longitude,
-             catalog_scope, library_type, library_zone
+             catalog_scope, library_type, library_zone, contributed_by
       FROM assets WHERE apple_id = ?1
       "#,
     )
@@ -319,6 +323,7 @@ pub fn load_existing_baselines(
           library_zone: row
             .get::<_, Option<String>>(13)?
             .unwrap_or_else(|| super::types::PRIMARY_SYNC_ZONE.to_string()),
+          contributed_by: row.get(14)?,
         },
       ))
     })
@@ -364,8 +369,8 @@ pub fn apply_catalog_delta(
             part, download_status, active_job_id, cloud_state, last_catalog_at,
             cpl_asset_record_name, cpl_asset_change_tag,
             capture_at, added_at, latitude, longitude, catalog_scope,
-            library_type, library_zone
-          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+            library_type, library_zone, contributed_by
+          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
           ON CONFLICT(apple_id, asset_id, part) DO UPDATE SET
             sort_key = excluded.sort_key,
             original_filename = excluded.original_filename,
@@ -383,7 +388,8 @@ pub fn apply_catalog_delta(
             longitude = excluded.longitude,
             catalog_scope = excluded.catalog_scope,
             library_type = excluded.library_type,
-            library_zone = excluded.library_zone
+            library_zone = excluded.library_zone,
+            contributed_by = excluded.contributed_by
           "#,
           params![
             apple_id,
@@ -406,6 +412,7 @@ pub fn apply_catalog_delta(
             row.catalog_scope.as_str(),
             row.library_type.as_str(),
             row.library_zone,
+            row.contributed_by,
           ],
         )
         .map_err(|e| format!("写入 added asset 失败: {e}"))?;
@@ -434,8 +441,9 @@ pub fn apply_catalog_delta(
             longitude = ?13,
             catalog_scope = ?14,
             library_type = ?15,
-            library_zone = ?16
-          WHERE apple_id = ?17 AND asset_id = ?18 AND part = ?19
+            library_zone = ?16,
+            contributed_by = ?17
+          WHERE apple_id = ?18 AND asset_id = ?19 AND part = ?20
           "#,
           params![
             row.sort_key,
@@ -454,6 +462,7 @@ pub fn apply_catalog_delta(
             row.catalog_scope.as_str(),
             row.library_type.as_str(),
             row.library_zone,
+            row.contributed_by,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -475,8 +484,9 @@ pub fn apply_catalog_delta(
             longitude = ?7,
             catalog_scope = ?8,
             library_type = ?9,
-            library_zone = ?10
-          WHERE apple_id = ?11 AND asset_id = ?12 AND part = ?13
+            library_zone = ?10,
+            contributed_by = ?11
+          WHERE apple_id = ?12 AND asset_id = ?13 AND part = ?14
           "#,
           params![
             now,
@@ -489,6 +499,7 @@ pub fn apply_catalog_delta(
             row.catalog_scope.as_str(),
             row.library_type.as_str(),
             row.library_zone,
+            row.contributed_by,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -506,8 +517,9 @@ pub fn apply_catalog_delta(
             capture_at = ?3,
             added_at = ?4,
             latitude = ?5,
-            longitude = ?6
-          WHERE apple_id = ?7 AND asset_id = ?8 AND part = ?9
+            longitude = ?6,
+            contributed_by = ?7
+          WHERE apple_id = ?8 AND asset_id = ?9 AND part = ?10
           "#,
           params![
             now,
@@ -516,6 +528,7 @@ pub fn apply_catalog_delta(
             row.added_at,
             row.latitude,
             row.longitude,
+            row.contributed_by,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -635,6 +648,89 @@ pub fn enqueue_cloud_only_for_sync(
     total = total.saturating_add(u32::try_from(changed).unwrap_or(0));
   }
   Ok(total)
+}
+
+/**
+ * 共享图库「仅下载本人贡献」策略。
+ * @note 须在 catalog diff / reconcile 之后调用；关闭开关时还原 sync_skipped 为 cloud_only
+ * @returns 本次新标为跳过的行数（不含恢复行）
+ */
+pub fn apply_shared_contributor_skip_policy(
+  conn: &Connection,
+  apple_id: &str,
+  self_record_id: Option<&str>,
+  enabled: bool,
+) -> Result<u32, String> {
+  use super::types::{CatalogScope, SKIP_REASON_SHARED_OTHER_CONTRIBUTOR};
+
+  let reason = SKIP_REASON_SHARED_OTHER_CONTRIBUTOR;
+  if !enabled {
+    let changed = conn
+      .execute(
+        r#"
+        UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
+        WHERE apple_id = ?1
+          AND cloud_state = 'sync_skipped'
+          AND skip_reason = ?2
+        "#,
+        params![apple_id, reason],
+      )
+      .map_err(|e| format!("恢复共享跳过项失败: {e}"))?;
+    return Ok(u32::try_from(changed).unwrap_or(0));
+  }
+
+  let Some(self_id) = self_record_id.map(str::trim).filter(|s| !s.is_empty()) else {
+    log::warn!(
+      "icloud sync_shared_only_own_contributions=true but cloudkit_user_record_id missing; skip policy not applied"
+    );
+    return Ok(0);
+  };
+
+  conn
+    .execute(
+      r#"
+      UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
+      WHERE apple_id = ?1
+        AND catalog_scope = ?2
+        AND cloud_state = 'sync_skipped'
+        AND skip_reason = ?3
+        AND contributed_by = ?4
+      "#,
+      params![
+        apple_id,
+        CatalogScope::Shared.as_str(),
+        reason,
+        self_id,
+      ],
+    )
+    .map_err(|e| format!("恢复本人共享项失败: {e}"))?;
+
+  let changed = conn
+    .execute(
+      r#"
+      UPDATE assets SET
+        cloud_state = 'sync_skipped',
+        skip_reason = ?3,
+        download_status = NULL,
+        active_job_id = NULL
+      WHERE apple_id = ?1
+        AND catalog_scope = ?2
+        AND cloud_state IN ('cloud_only', 'modified_cloud')
+        AND (
+          contributed_by IS NULL
+          OR TRIM(contributed_by) = ''
+          OR contributed_by != ?4
+        )
+      "#,
+      params![
+        apple_id,
+        CatalogScope::Shared.as_str(),
+        reason,
+        self_id,
+      ],
+    )
+    .map_err(|e| format!("标记他人共享项跳过失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
 }
 
 /// catalog 中消失的行硬删除（覆盖模式）；进行中的云删队列行保留
@@ -1091,7 +1187,7 @@ fn list_assets_by_statuses(
            cloud_state, last_synced_at, last_catalog_at, last_error, attempt_count,
            cpl_asset_record_name, cpl_asset_change_tag,
            capture_at, added_at, latitude, longitude, catalog_scope,
-           library_type, library_zone
+           library_type, library_zone, contributed_by, skip_reason
     FROM assets
     WHERE active_job_id = ?1 AND download_status IN ({placeholders})
     ORDER BY sort_key ASC,
@@ -1156,6 +1252,8 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
     library_zone: row
       .get::<_, Option<String>>(24)?
       .unwrap_or_else(|| PRIMARY_SYNC_ZONE.to_string()),
+    contributed_by: row.get(25)?,
+    skip_reason: row.get(26)?,
   })
 }
 
@@ -1868,6 +1966,8 @@ mod tests {
         catalog_scope: CatalogScope::Library,
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
+        contributed_by: None,
+        skip_reason: None,
       },
       AssetRow {
         id: 0,
@@ -1895,6 +1995,8 @@ mod tests {
         catalog_scope: CatalogScope::Library,
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
+        contributed_by: None,
+        skip_reason: None,
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -1959,6 +2061,8 @@ mod tests {
         catalog_scope: CatalogScope::Library,
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
+        contributed_by: None,
+        skip_reason: None,
       },
       AssetRow {
         id: 0,
@@ -1986,6 +2090,8 @@ mod tests {
         catalog_scope: CatalogScope::Library,
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
+        contributed_by: None,
+        skip_reason: None,
       },
       AssetRow {
         id: 0,
@@ -2013,6 +2119,8 @@ mod tests {
         catalog_scope: CatalogScope::Library,
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
+        contributed_by: None,
+        skip_reason: None,
       },
     ];
     upsert_catalog_assets(&conn, job_id, "user@icloud.com", &assets).expect("insert");
@@ -2105,6 +2213,8 @@ mod tests {
       catalog_scope: CatalogScope::Library,
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
+      skip_reason: None,
     };
     let classified = vec![(row, CatalogDeltaKind::Unchanged)];
     let summary = apply_catalog_delta(&conn, new_job, "user@icloud.com", &classified, true).expect("delta");

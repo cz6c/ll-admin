@@ -3,6 +3,7 @@
  * 本年累计对照台账
  * 主流程：拉核对历史 → 按年生成台账 → 与个税 App 逐月对照；已核进详情、待核去核对
  * 入参：year=YYYY（缺省当年）、highlight=YYYY-MM（滚动定位）
+ * 隐藏入口：顶卡长按进入实用工具工作台（原历史页搜索彩蛋迁至此）
  */
 import type { YearLedgerRow } from '@/utils/salaryVerifyYearLedger'
 import { onLoad, onShow } from '@dcloudio/uni-app'
@@ -101,6 +102,11 @@ function goEmptyVerify() {
     url: `/pages/salary/verify?payPeriod=${encodeURIComponent(pp)}`,
   })
 }
+
+/** 顶卡长按：隐藏入口进入实用工具工作台 */
+function onHeaderLongPress() {
+  uni.navigateTo({ url: '/pages/workbench/workbench' })
+}
 </script>
 
 <template>
@@ -111,7 +117,7 @@ function goEmptyVerify() {
 
     <template v-else>
       <view class="px-24rpx pt-24rpx">
-        <view class="card-rounded p-28rpx">
+        <view class="card-rounded p-28rpx" @longpress="onHeaderLongPress">
           <text class="text-30rpx text-#333 font-600">
             {{ ledger.title }}
           </text>

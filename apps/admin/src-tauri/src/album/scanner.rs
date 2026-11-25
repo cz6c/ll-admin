@@ -108,6 +108,18 @@ const META_PARALLEL: usize = 4;
 /// 视频时长 ffprobe 并行度：单次只读容器头，进程启动为主要开销，4 路足够且不抢缩略图 CPU
 const VIDEO_PROBE_PARALLEL: usize = 4;
 
+// ---- 展示管线写库批量（大批量加载中断后只续跑剩余项；按单条成本取舍） ----
+/// ② 缩略图/HEIC 预览：解码+写盘较重
+const THUMB_CACHE_DB_FLUSH: usize = 8;
+/// ③ 元数据 EXIF：每批内 4 线程解析，16 条一提交
+const META_DB_FLUSH: usize = 16;
+/// ③ 图片尺寸：仅读文件头，可略大
+const DIMENSIONS_DB_FLUSH: usize = 32;
+/// ③ 视频 ffprobe：子进程开销，每 worker 批次落库
+const VIDEO_PROBE_DB_FLUSH: usize = 12;
+/// ④ 播放代理转码：极慢，段内并行、段间落库
+const PLAYBACK_PREWARM_SEGMENT: usize = 8;
+
 /// 缩略图已就绪后：EXIF/sync 仅补空字段，并总是落探测标记
 fn persist_meta_for_paths(
   app: &AppHandle,
@@ -171,28 +183,69 @@ fn has_post_thumb_work(conn: &rusqlite::Connection, root: &str) -> bool {
 }
 
 /// 对「已有缩略图但缺元数据」的行回填
-fn backfill_missing_meta(app: &AppHandle, conn: &rusqlite::Connection, root: &str) {
+fn backfill_missing_meta(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  root: &str,
+  cancel: &ScanCancelToken,
+  still_current: &(dyn Fn() -> bool + Sync),
+) {
   let Ok(paths) = db::list_paths_missing_meta(conn, root) else {
     return;
   };
-  const BATCH: usize = 64;
-  for chunk in paths.chunks(BATCH) {
+  for chunk in paths.chunks(META_DB_FLUSH) {
+    if !still_current() || cancel.is_cancelled() {
+      return;
+    }
     persist_meta_for_paths(app, conn, chunk);
   }
-  backfill_missing_image_dimensions(app, conn, root);
+  backfill_missing_image_dimensions(app, conn, root, cancel, still_current);
 }
 
-/// 非视频缺尺寸：轻量 `image_dimensions` + 批量写库
+/// 将已探测的图片尺寸写入 DB 并推送事件
+fn persist_image_dimensions_batch(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  updates: &[(String, u32, u32)],
+) {
+  if updates.is_empty() {
+    return;
+  }
+  let _ = db::update_dimensions_batch(conn, updates);
+  for (path, w, h) in updates {
+    emit_thumb_ready(
+      app,
+      path,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      Some(*w),
+      Some(*h),
+      None,
+    );
+  }
+}
+
+/// 非视频缺尺寸：轻量 `image_dimensions` + 分批发写库
 fn backfill_missing_image_dimensions(
   app: &AppHandle,
   conn: &rusqlite::Connection,
   root: &str,
+  cancel: &ScanCancelToken,
+  still_current: &(dyn Fn() -> bool + Sync),
 ) {
   let Ok(paths) = db::list_paths_missing_image_dimensions(conn, root) else {
     return;
   };
-  let mut updates: Vec<(String, u32, u32)> = Vec::new();
+  let mut updates: Vec<(String, u32, u32)> = Vec::with_capacity(DIMENSIONS_DB_FLUSH);
   for path in paths {
+    if !still_current() || cancel.is_cancelled() {
+      persist_image_dimensions_batch(app, conn, &updates);
+      return;
+    }
     // 优先文件头；HEIC 读不到时用已落盘的全尺寸预览 JPEG，避免为尺寸再解一遍
     let header = image::image_dimensions(std::path::Path::new(&path)).ok();
     let (w, h) = if let Some(dim) = header {
@@ -211,29 +264,41 @@ fn backfill_missing_image_dimensions(
       continue;
     }
     updates.push((path, w, h));
+    if updates.len() >= DIMENSIONS_DB_FLUSH {
+      persist_image_dimensions_batch(app, conn, &updates);
+      updates.clear();
+    }
   }
-  if updates.is_empty() {
+  persist_image_dimensions_batch(app, conn, &updates);
+}
+
+/// ffprobe 结果分批发写库（取消时也须调用，避免时长阶段整段丢失）
+fn persist_video_probe_batch(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  probed: &[(String, u64, Option<u32>, Option<u32>)],
+) {
+  if probed.is_empty() {
     return;
   }
-  let _ = db::update_dimensions_batch(conn, &updates);
-  for (path, w, h) in updates {
-    emit_thumb_ready(
-      app,
-      &path,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      Some(w),
-      Some(h),
-      None,
-    );
+  let durations: Vec<(String, u64)> = probed
+    .iter()
+    .map(|(p, d, _, _)| (p.clone(), *d))
+    .collect();
+  let _ = db::update_duration_batch(conn, &durations);
+  let dims: Vec<(String, u32, u32)> = probed
+    .iter()
+    .filter_map(|(p, _, w, h)| Some((p.clone(), (*w)?, (*h)?)))
+    .collect();
+  if !dims.is_empty() {
+    let _ = db::update_dimensions_batch(conn, &dims);
+  }
+  for (path, duration, width, height) in probed {
+    emit_video_probe_ready(app, path, *duration, *width, *height);
   }
 }
 
-/// 普通视频补时长：并行 ffprobe（顺带拿真实分辨率），批量写库后逐条推送
+/// 普通视频补时长：并行 ffprobe（顺带拿真实分辨率），分批发写库
 /// @note 探测失败写 0 占位，文件未变更前不再重试；无 ffprobe 时整段跳过、保持 NULL 待下次
 fn backfill_video_duration(
   app: &AppHandle,
@@ -253,52 +318,46 @@ fn backfill_video_duration(
     return;
   }
 
-  let parallelism = VIDEO_PROBE_PARALLEL.min(paths.len()).max(1);
-  let chunk_size = paths.len().div_ceil(parallelism);
-  // (path, duration_ms, width, height)
-  let mut probed: Vec<(String, u64, Option<u32>, Option<u32>)> = Vec::with_capacity(paths.len());
-
-  std::thread::scope(|s| {
-    let handles: Vec<_> = paths
-      .chunks(chunk_size)
-      .map(|chunk| {
-        let token = cancel.clone();
-        s.spawn(move || {
-          let mut out = Vec::with_capacity(chunk.len());
-          for path in chunk {
-            if token.is_cancelled() {
-              break;
-            }
-            let info = ffmpeg::probe_video_stream_info(ffprobe, Path::new(path));
-            let duration = info.as_ref().and_then(|i| i.duration_ms).unwrap_or(0);
-            let (width, height) = info
-              .map(|i| (i.width, i.height))
-              .unwrap_or((None, None));
-            out.push((path.clone(), duration, width, height));
-          }
-          out
-        })
-      })
-      .collect();
-    for handle in handles {
-      probed.extend(handle.join().unwrap_or_default());
+  let ffprobe_path = ffprobe.to_path_buf();
+  for paths_batch in paths.chunks(VIDEO_PROBE_DB_FLUSH) {
+    if !still_current() || cancel.is_cancelled() {
+      return;
     }
-  });
-
-  if !still_current() || cancel.is_cancelled() || probed.is_empty() {
-    return;
-  }
-
-  let durations: Vec<(String, u64)> = probed.iter().map(|(p, d, _, _)| (p.clone(), *d)).collect();
-  let _ = db::update_duration_batch(conn, &durations);
-  let dims: Vec<(String, u32, u32)> = probed
-    .iter()
-    .filter_map(|(p, _, w, h)| Some((p.clone(), (*w)?, (*h)?)))
-    .collect();
-  let _ = db::update_dimensions_batch(conn, &dims);
-
-  for (path, duration, width, height) in probed {
-    emit_video_probe_ready(app, &path, duration, width, height);
+    let parallelism = VIDEO_PROBE_PARALLEL.min(paths_batch.len()).max(1);
+    let worker_chunk = paths_batch.len().div_ceil(parallelism);
+    let token = cancel.clone();
+    let mut batch: Vec<(String, u64, Option<u32>, Option<u32>)> =
+      Vec::with_capacity(paths_batch.len());
+    std::thread::scope(|s| {
+      let handles: Vec<_> = paths_batch
+        .chunks(worker_chunk)
+        .map(|chunk| {
+          let token = token.clone();
+          let ffprobe_path = ffprobe_path.clone();
+          let chunk: Vec<String> = chunk.to_vec();
+          s.spawn(move || {
+            let mut out = Vec::with_capacity(chunk.len());
+            for path in chunk {
+              if token.is_cancelled() {
+                break;
+              }
+              let info =
+                ffmpeg::probe_video_stream_info(ffprobe_path.as_path(), Path::new(&path));
+              let duration = info.as_ref().and_then(|i| i.duration_ms).unwrap_or(0);
+              let (width, height) = info
+                .map(|i| (i.width, i.height))
+                .unwrap_or((None, None));
+              out.push((path, duration, width, height));
+            }
+            out
+          })
+        })
+        .collect();
+      for handle in handles {
+        batch.extend(handle.join().unwrap_or_default());
+      }
+    });
+    persist_video_probe_batch(app, conn, &batch);
   }
 }
 
@@ -378,6 +437,43 @@ fn ensure_live_proxy_file(
   Some(cache_file.to_string_lossy().into_owned())
 }
 
+/// 播放代理预热结果落库 + 推送（段末/取消后均需调用）
+fn flush_playback_prewarm_batch(
+  app: &AppHandle,
+  conn: &rusqlite::Connection,
+  ok: &[(String, String, String)],
+  failed: &[String],
+) {
+  if ok.is_empty() && failed.is_empty() {
+    return;
+  }
+  let playback_batch: Vec<(String, String)> = ok
+    .iter()
+    .map(|(_, mov, proxy)| (mov.clone(), proxy.clone()))
+    .collect();
+  if !playback_batch.is_empty() {
+    let _ = db::update_playback_path_batch(conn, &playback_batch);
+  }
+  for path in failed {
+    let _ = db::mark_thumb_failed(conn, path);
+  }
+  for (still_path, _, proxy) in ok {
+    emit_thumb_ready(
+      app,
+      still_path,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      None,
+      Some(proxy.clone()),
+    );
+  }
+}
+
 /// 实况 MOV 与普通 HEVC 的播放代理后台预热（限并发，不挡宫格）
 /// @note 邻项插在每条扫描任务之前；H.264 非 MOV 把源路径写入 playback_path，避免反复 ffprobe
 fn prewarm_live_playback(
@@ -404,96 +500,76 @@ fn prewarm_live_playback(
     emit_scan_progress(app, "live-proxy", 0, total);
   }
 
-  let parallelism = ffmpeg::transcode_parallelism(jobs.len());
-  let chunk_size = jobs.len().div_ceil(parallelism);
   let done_counter = AtomicU32::new(0);
   let done_ref = &done_counter;
-  let mut outcomes: Vec<(String, String, String)> = Vec::new();
-  let mut failed: Vec<String> = Vec::new();
 
   ffmpeg::set_prewarm_active(true);
-  std::thread::scope(|s| {
-    let handles: Vec<_> = jobs
-      .chunks(chunk_size)
-      .map(|chunk| {
-        let token = cancel.clone();
-        let app_progress = app.clone();
-        s.spawn(move || {
-          let mut ok: Vec<(String, String, String)> = Vec::new();
-          let mut bad: Vec<String> = Vec::new();
-          let mut rest = chunk.to_vec();
-          loop {
-            if token.is_cancelled() {
-              break;
-            }
-            if let Some(nudged) = ffmpeg::pop_playback_nudge() {
-              if let Some(proxy) =
-                resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &nudged)
-              {
-                ok.push((nudged.clone(), nudged, proxy));
-              } else {
-                bad.push(nudged);
-              }
-              continue;
-            }
-            let Some((still_path, mov_path)) = rest.pop() else {
-              break;
-            };
-            if let Some(proxy) =
-              resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &mov_path)
-            {
-              ok.push((still_path, mov_path, proxy));
-            } else {
-              bad.push(still_path);
-            }
-            let done = done_ref.fetch_add(1, Ordering::Relaxed) + 1;
-            if still_current() {
-              emit_scan_progress(&app_progress, "live-proxy", done, total);
-            }
-          }
-          (ok, bad)
-        })
-      })
-      .collect();
-    for handle in handles {
-      let (ok, bad) = handle.join().unwrap_or_default();
-      outcomes.extend(ok);
-      failed.extend(bad);
+  for segment in jobs.chunks(PLAYBACK_PREWARM_SEGMENT) {
+    if !still_current() || cancel.is_cancelled() {
+      break;
     }
-  });
+    let parallelism = ffmpeg::transcode_parallelism(segment.len());
+    let chunk_size = segment.len().div_ceil(parallelism);
+    let mut seg_ok: Vec<(String, String, String)> = Vec::new();
+    let mut seg_bad: Vec<String> = Vec::new();
+    std::thread::scope(|s| {
+      let handles: Vec<_> = segment
+        .chunks(chunk_size)
+        .map(|chunk| {
+          let token = cancel.clone();
+          let app_progress = app.clone();
+          s.spawn(move || {
+            let mut ok: Vec<(String, String, String)> = Vec::new();
+            let mut bad: Vec<String> = Vec::new();
+            let mut rest = chunk.to_vec();
+            loop {
+              if token.is_cancelled() {
+                break;
+              }
+              if let Some(nudged) = ffmpeg::pop_playback_nudge() {
+                if let Some(proxy) =
+                  resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &nudged)
+                {
+                  ok.push((nudged.clone(), nudged, proxy));
+                } else {
+                  bad.push(nudged);
+                }
+                continue;
+              }
+              let Some((still_path, mov_path)) = rest.pop() else {
+                break;
+              };
+              if let Some(proxy) =
+                resolve_playback_source(ffmpeg_bin, ffprobe_bin, cache_dir, &mov_path)
+              {
+                ok.push((still_path, mov_path, proxy));
+              } else {
+                bad.push(still_path);
+              }
+              let done = done_ref.fetch_add(1, Ordering::Relaxed) + 1;
+              if still_current() {
+                emit_scan_progress(&app_progress, "live-proxy", done, total);
+              }
+            }
+            (ok, bad)
+          })
+        })
+        .collect();
+      for handle in handles {
+        let (ok, bad) = handle.join().unwrap_or_default();
+        seg_ok.extend(ok);
+        seg_bad.extend(bad);
+      }
+    });
+  flush_playback_prewarm_batch(app, conn, &seg_ok, &seg_bad);
+  }
   ffmpeg::set_prewarm_active(false);
 
   if !still_current() || cancel.is_cancelled() {
     return;
   }
 
-  let playback_batch: Vec<(String, String)> = outcomes
-    .iter()
-    .map(|(_, mov, proxy)| (mov.clone(), proxy.clone()))
-    .collect();
-  let _ = db::update_playback_path_batch(conn, &playback_batch);
-  for path in &failed {
-    let _ = db::mark_thumb_failed(conn, path);
-  }
-
-  for (still_path, _, proxy) in &outcomes {
-    emit_thumb_ready(
-      app,
-      still_path,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      Some(proxy.clone()),
-    );
-  }
-  if still_current() {
-    emit_scan_progress(app, "live-proxy", total, total);
-  }
+  emit_scan_progress(app, "live-proxy", total, total);
 }
 
 /// 支持的图片扩展名
@@ -1024,6 +1100,34 @@ pub fn discover_groups(
   Ok(groups)
 }
 
+/// 缩略图 pipeline 批量写库；被取消 epoch 时也必须 flush，刷新后才能只排队剩余项
+fn flush_thumb_pipeline_writes(
+  app: &AppHandle,
+  conn: Option<&rusqlite::Connection>,
+  update_buf: &mut Vec<(String, Option<String>, Option<String>, Option<u32>, Option<u32>)>,
+  meta_buf: &mut Vec<String>,
+  fail_buf: &mut Vec<String>,
+) {
+  let Some(conn) = conn else {
+    update_buf.clear();
+    meta_buf.clear();
+    fail_buf.clear();
+    return;
+  };
+  if !update_buf.is_empty() {
+    let _ = db::update_cache_paths_batch(conn, update_buf);
+    persist_meta_for_paths(app, conn, meta_buf);
+    update_buf.clear();
+    meta_buf.clear();
+  }
+  if !fail_buf.is_empty() {
+    for p in fail_buf.iter() {
+      let _ = db::mark_thumb_failed(conn, p);
+    }
+    fail_buf.clear();
+  }
+}
+
 /// 第二阶段：后台生成缺失缩略图，逐条推送事件
 /// `pipeline_epoch` / `my_epoch`：被新扫描取代后立刻停止写库与 emit，避免超时残留任务污染
 /// `thumb_pending`：与同步入队共享；本轮会 seed 后循环 drain，避免「同步追加却开第二条管线」
@@ -1110,14 +1214,15 @@ pub fn run_thumbnail_pipeline(
       &cancel,
     );
 
-    const BATCH: usize = 64;
+    let batch_flush = THUMB_CACHE_DB_FLUSH;
     let mut update_buf: Vec<(String, Option<String>, Option<String>, Option<u32>, Option<u32>)> =
-      Vec::with_capacity(BATCH);
-    let mut meta_buf: Vec<String> = Vec::with_capacity(BATCH);
-    let mut fail_buf: Vec<String> = Vec::with_capacity(BATCH);
+      Vec::with_capacity(batch_flush);
+    let mut meta_buf: Vec<String> = Vec::with_capacity(batch_flush);
+    let mut fail_buf: Vec<String> = Vec::with_capacity(batch_flush);
 
     for (path, outcome) in pending.into_iter().zip(outcomes.into_iter()) {
       if !still_current() {
+        flush_thumb_pipeline_writes(&app, conn.as_ref(), &mut update_buf, &mut meta_buf, &mut fail_buf);
         return;
       }
       if outcome.cancelled {
@@ -1157,46 +1262,20 @@ pub fn run_thumbnail_pipeline(
         );
       }
 
-      let flush_updates = update_buf.len() >= BATCH;
-      let flush_fails = fail_buf.len() >= BATCH;
+      let flush_updates = update_buf.len() >= batch_flush;
+      let flush_fails = fail_buf.len() >= batch_flush;
       if flush_updates || flush_fails {
+        flush_thumb_pipeline_writes(&app, conn.as_ref(), &mut update_buf, &mut meta_buf, &mut fail_buf);
         if !still_current() {
           return;
-        }
-        if flush_updates {
-          if let Some(conn) = &conn {
-            let _ = db::update_cache_paths_batch(conn, &update_buf);
-            persist_meta_for_paths(&app, conn, &meta_buf);
-          }
-          update_buf.clear();
-          meta_buf.clear();
-        }
-        if flush_fails {
-          if let Some(conn) = &conn {
-            for p in &fail_buf {
-              let _ = db::mark_thumb_failed(conn, p);
-            }
-          }
-          fail_buf.clear();
         }
       }
     }
     if !still_current() {
+      flush_thumb_pipeline_writes(&app, conn.as_ref(), &mut update_buf, &mut meta_buf, &mut fail_buf);
       return;
     }
-    if !update_buf.is_empty() {
-      if let Some(conn) = &conn {
-        let _ = db::update_cache_paths_batch(conn, &update_buf);
-        persist_meta_for_paths(&app, conn, &meta_buf);
-      }
-    }
-    if !fail_buf.is_empty() {
-      if let Some(conn) = &conn {
-        for p in &fail_buf {
-          let _ = db::mark_thumb_failed(conn, p);
-        }
-      }
-    }
+    flush_thumb_pipeline_writes(&app, conn.as_ref(), &mut update_buf, &mut meta_buf, &mut fail_buf);
     // 本批结束后若同步又追加了 pending → 继续 drain，不新开管线
   }
 
@@ -1214,7 +1293,7 @@ pub fn run_thumbnail_pipeline(
   if still_current() {
     if let Some(conn) = &conn {
       if has_post_thumb_work(conn, &root) {
-        backfill_missing_meta(&app, conn, &root);
+        backfill_missing_meta(&app, conn, &root, &cancel, &still_current);
         // 时长探测轻量，排在 Live 重转码之前，宫格角标尽早出现
         let ffprobe_bin = ffmpeg::resolve_ffprobe_binary(&app);
         backfill_video_duration(

@@ -145,6 +145,8 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
 
   if (row.cloudState === "modified_cloud") return "cloud_only";
 
+  if (row.cloudState === "sync_skipped") return "sync_skipped";
+
   return row.cloudState;
 }
 
@@ -153,10 +155,11 @@ const CLOUD_STATE_LABELS: Record<string, string> = {
   modified_cloud: "待下载",
   downloading: "下载中",
   synced: "已下载",
-  download_failed: "失败"
+  download_failed: "失败",
+  sync_skipped: "他人共享"
 };
 
-/** iCloud 资产状态角标文案（四态） */
+/** iCloud 资产状态角标文案（含他人共享跳过态） */
 export function cloudStateLabel(state: string): string {
   return CLOUD_STATE_LABELS[state] ?? state;
 }
@@ -171,7 +174,19 @@ export function cloudStateTagColor(state: string): string {
   if (normalized === "cloud_only") return "processing";
   if (normalized === "downloading") return "processing";
   if (normalized === "download_failed") return "error";
+  if (normalized === "sync_skipped") return "default";
   return "default";
+}
+
+/**
+ * 角标悬停说明；sync_skipped 时解释跳过原因
+ */
+export function cloudStateTooltip(row: IcloudSyncSyncAssetRow): string | undefined {
+  if (row.cloudState !== "sync_skipped") return undefined;
+  if (row.skipReason === "shared_other_contributor") {
+    return "由其他账号贡献到共享图库；已开启「仅下载本人贡献」故不下载。";
+  }
+  return "已跳过下载";
 }
 
 /**

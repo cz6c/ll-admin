@@ -31,9 +31,6 @@ definePage({
 /** 路由锁定的记录类型；缺省 verify，避免误进「全部」 */
 type HistoryTab = SalaryHistoryEntryKind
 
-/** 搜索彩蛋：输入后进入工作台 */
-const WORKBENCH_KEY = '1111'
-
 const salaryHistoryStore = useSalaryHistoryStore()
 const { items } = storeToRefs(salaryHistoryStore)
 
@@ -135,14 +132,7 @@ onShow(async () => {
 })
 
 function onSearch({ value }: { value: string }) {
-  const val = value.trim()
-  if (val === WORKBENCH_KEY) {
-    searchInput.value = ''
-    searchKeyword.value = ''
-    uni.navigateTo({ url: '/pages/workbench/workbench' })
-    return
-  }
-  searchKeyword.value = val
+  searchKeyword.value = value.trim()
 }
 
 function onSearchClear() {

@@ -1344,6 +1344,9 @@ def _catalog_item_from_photo(
     if latitude is not None and longitude is not None:
         item["latitude"] = latitude
         item["longitude"] = longitude
+    contributed_by = ipd_photos.contributed_by_from_photo(photo)
+    if contributed_by:
+        item["contributed_by"] = contributed_by
     return item
 
 
@@ -2416,6 +2419,7 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
     include_hidden = _parse_include_hidden(cmd) and view == "library"
     include_shared_library = _parse_include_shared_library(cmd) and view == "library"
 
+    cloudkit_user_record_id: str | None = None
     try:
         if _is_mock_mode():
             items = [dict(item) for item in MOCK_CATALOG_ITEMS]
@@ -2430,6 +2434,9 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
                 str(cmd.get("session_dir", "")).strip(),
             )
             items = _collect_catalog_items(api, view, include_hidden, include_shared_library)
+            photos = getattr(api, "photos", None)
+            if photos is not None:
+                cloudkit_user_record_id = ipd_photos.cloudkit_user_record_name_from_photos(photos)
 
         ok, err_code = _validate_catalog_items(items, view)
         if not ok:
@@ -2457,7 +2464,10 @@ def _handle_catalog(cmd: dict[str, Any]) -> dict[str, Any]:
                 f"catalog completed: {len(items)} items "
                 f"(view={view}{scope_note}; hidden={hidden_n} shared={shared_n}{zones_note})",
             )
-        return done_event("catalog", items=items)
+        extra: dict[str, Any] = {"items": items}
+        if cloudkit_user_record_id:
+            extra["cloudkit_user_record_id"] = cloudkit_user_record_id
+        return done_event("catalog", **extra)
     except CatalogSortMissingError as exc:
         return error_event("catalog", CODE_CATALOG_SORT_MISSING, str(exc))
     except LiveBindMissingError as exc:

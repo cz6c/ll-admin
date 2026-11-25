@@ -34,6 +34,7 @@ pub struct ExistingAssetBaseline {
   pub catalog_scope: CatalogScope,
   pub library_type: LibraryType,
   pub library_zone: String,
+  pub contributed_by: Option<String>,
 }
 
 fn scope_changed(base: &ExistingAssetBaseline, row: &AssetRow) -> bool {
@@ -57,6 +58,7 @@ fn product_meta_changed(base: &ExistingAssetBaseline, row: &AssetRow) -> bool {
     || base.latitude != row.latitude
     || base.longitude != row.longitude
     || norm_tag(&base.cpl_asset_record_name) != norm_tag(&row.cpl_asset_record_name)
+    || norm_tag(&base.contributed_by) != norm_tag(&row.contributed_by)
 }
 
 /// 对单条 catalog 行分类
@@ -128,6 +130,8 @@ mod tests {
       catalog_scope: CatalogScope::Library,
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
+      skip_reason: None,
     }
   }
 
@@ -143,6 +147,7 @@ mod tests {
       catalog_scope: CatalogScope::Library,
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
+      contributed_by: None,
     }
   }
 

@@ -27,6 +27,12 @@ pub struct IcloudSyncSettings {
   /// 为 true 时 catalog 合并 Shared Photo Library（sidecar 多 zone 枚举）
   #[serde(default)]
   pub sync_shared_library: bool,
+  /// 为 true 时共享图库仅下载本人贡献项；他人贡献标 `sync_skipped`
+  #[serde(default)]
+  pub sync_shared_only_own_contributions: bool,
+  /// 最近一次 catalog 带回的本账号 CloudKit user recordName（PrimarySync.owner）
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub cloudkit_user_record_id: Option<String>,
 }
 
 fn default_icloud_domain() -> String {
@@ -41,9 +47,14 @@ impl Default for IcloudSyncSettings {
       remember_password: false,
       sync_hidden_album: false,
       sync_shared_library: false,
+      sync_shared_only_own_contributions: false,
+      cloudkit_user_record_id: None,
     }
   }
 }
+
+/// `assets.skip_reason`：共享图库跳过下载原因
+pub const SKIP_REASON_SHARED_OTHER_CONTRIBUTOR: &str = "shared_other_contributor";
 
 /// catalog 来源：个人图库 / Hidden / Shared Library（互斥成员，混排展示）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -233,6 +244,8 @@ pub enum CloudState {
   /// 待同步（含 catalog 新增与 iCloud 有更新）
   CloudOnly,
   Synced,
+  /// 策略跳过下载（如他人贡献的共享图库项）
+  SyncSkipped,
 }
 
 impl CloudState {
@@ -240,6 +253,7 @@ impl CloudState {
     match self {
       Self::CloudOnly => "cloud_only",
       Self::Synced => "synced",
+      Self::SyncSkipped => "sync_skipped",
     }
   }
 
@@ -247,6 +261,7 @@ impl CloudState {
     match s {
       "cloud_only" | "modified_cloud" => Some(Self::CloudOnly),
       "synced" => Some(Self::Synced),
+      "sync_skipped" => Some(Self::SyncSkipped),
       // 历史态：打开库 scrub；读到时先当 cloud_only，避免展示崩溃
       "deleted_cloud_pending" | "cloud_delete_queued" | "failed_delete" => Some(Self::CloudOnly),
       _ => None,
@@ -301,6 +316,9 @@ pub struct SyncAssetRow {
   /// `hidden` 表示来自 iCloud Hidden 相册（混排展示、独立落盘子目录）
   #[serde(default)]
   pub catalog_scope: String,
+  /// 跳过下载原因（`sync_skipped` 时；如 shared_other_contributor）
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub skip_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,6 +337,8 @@ pub struct IcloudSyncCloudStateSummary {
   pub synced: u32,
   /// 派生：活跃 sync job 内 download_status=failed 的行数；任务结束 finalize 后为 0
   pub download_failed: u32,
+  /// 共享图库「他人贡献」跳过下载的逻辑资产数
+  pub sync_skipped: u32,
   /// 最近一次 catalog 写入 assets 的时间（秒）；无记录时为 null
   #[serde(skip_serializing_if = "Option::is_none")]
   pub last_catalog_at: Option<i64>,
@@ -378,6 +398,10 @@ pub struct AssetRow {
   pub library_type: LibraryType,
   /// CloudKit zoneName；私库为 PrimarySync
   pub library_zone: String,
+  /// Shared Photo Library 贡献者 CloudKit user recordName
+  pub contributed_by: Option<String>,
+  /// 与 `cloud_state=sync_skipped` 配套
+  pub skip_reason: Option<String>,
 }
 
 /// 失败资产摘要（供同步页表格展示）

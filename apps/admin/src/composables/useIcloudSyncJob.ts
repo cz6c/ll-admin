@@ -115,6 +115,8 @@ function _useIcloudSyncJob() {
   let catalogTimer: ReturnType<typeof setInterval> | undefined;
   /** FAB 抽屉订阅 cloud-state-changed 时递增，供外部 watch 刷新列表 */
   const cloudStateTick = ref(0);
+  /** 抽屉内完成登录后须强制 catalog 一次（无视本地缓存） */
+  let catalogRefreshAfterLogin = false;
   /** 下载 progress 事件计数；抽屉云列表节流刷新 download_status */
   const downloadProgressTick = ref(0);
 
@@ -924,6 +926,7 @@ function _useIcloudSyncJob() {
 
   async function onLoggedIn(payload: { accountChanged: boolean }) {
     await loadAccountContext();
+    catalogRefreshAfterLogin = true;
     if (payload.accountChanged) {
       const jobId = activeJobId.value;
       if (jobId != null) {
@@ -942,8 +945,19 @@ function _useIcloudSyncJob() {
     }
   }
 
+  /**
+   * 消费「登录后须 catalog」标记（单次）
+   * @returns true 表示本次应强制刷新目录，与 SQLite 是否有缓存无关
+   */
+  function takeCatalogRefreshAfterLogin(): boolean {
+    if (!catalogRefreshAfterLogin) return false;
+    catalogRefreshAfterLogin = false;
+    return true;
+  }
+
   function onLoggedOut() {
     sessionReauthReady.value = false;
+    catalogRefreshAfterLogin = false;
     void loadAccountContext();
     clearActiveJob();
   }
@@ -1011,7 +1025,8 @@ function _useIcloudSyncJob() {
     confirmCancelJob,
     onLogoutAccount,
     onLoggedIn,
-    onLoggedOut
+    onLoggedOut,
+    takeCatalogRefreshAfterLogin
   };
 }
 

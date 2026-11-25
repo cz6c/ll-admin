@@ -75,10 +75,11 @@ settings.syncHiddenAlbum
 | **下载** | 工具栏；空闲 | 意图先行：筛待下载 → 勾选 → 再点 `start_job(assetIds)`；不强制 catalog |
 | **移除** | 工具栏；空闲 | 意图先行：筛已下载 → 勾选 → 再点；确认 Modal + 1.5s；一次性删云 |
 | **刷新状态** | 工具栏；无未完成任务 | catalog + diff + reconcile，**不**入队下载 |
+| **打开抽屉** | 已登录且无进行中任务 | 先读 SQLite 宫格；**刚在抽屉内登录/换号**后必自动「仅刷新状态」一次；否则仅 **无目录**（`total=0` 或尚无 `lastCatalogAt`）时自动刷新 |
 | **暂停 / 继续 / 取消** | 忙时底栏 | 与既有 job 控制一致 |
 | **重新开始** | 失败时底栏 | discard → 同步到本地 |
 | **同步 Hidden 相册** | CS 应用设置 | 开关保存到 `syncHiddenAlbum`；下次 catalog /「同步到本地」生效 |
-| **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard** |
+| **退出登录** | 抽屉标题栏 | 先 pause 运行中 worker → 清 session；**不 discard**；抽屉**内存宫格清空**（SQLite 仍保留，换号/重登后 catalog 再展示） |
 | **会话失效** | 下载中 auth 失败 | Rust → `paused_session`；**不 discard**；重登后续传 |
 | **换号登录** | 抽屉登录面板换 Apple ID | discard 旧 job + 清前端 jobId |
 

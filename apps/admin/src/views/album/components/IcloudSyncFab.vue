@@ -69,6 +69,7 @@ const {
   downloadProgressTick,
   canManageCloudSpace,
   refreshingCatalog,
+  isCataloging,
   starting,
   showSyncFooter,
   onRefreshCatalog,
@@ -78,7 +79,8 @@ const {
   onLogoutAccount,
   hydrateFromStorage,
   refreshAccountSettings,
-  reportBusinessError
+  reportBusinessError,
+  takeCatalogRefreshAfterLogin
 } = useIcloudSyncJob();
 
 const drawerOpen = ref(false);
@@ -104,6 +106,16 @@ const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
 function clearCloudSelection() {
   cloudSelectedKeys.value = [];
   cloudSelectedRowsByKey.value = new Map();
+}
+
+/** 退出登录后清空抽屉内存宫格；SQLite 注册表保留，重新登录后会 catalog 刷新 */
+function clearCloudDrawerCache() {
+  cloudRows.value = [];
+  cloudTotal.value = 0;
+  cloudSummary.value = null;
+  loadingCloud.value = false;
+  clearCloudSelection();
+  if (intent.value) exitIntent();
 }
 
 /** 从勾选中去掉指定 rowKey，不退出意图 */
@@ -425,6 +437,30 @@ function refreshCloudIfVisible(opts?: { silent?: boolean }) {
   void refreshCloudAssets(opts);
 }
 
+/**
+ * 抽屉打开时自动 catalog（仅 diff 落库，不下载）
+ * @note 重新登录后本次必刷一次；否则仅 total=0 或尚无 lastCatalogAt 时触发
+ */
+async function maybeAutoRefreshCatalogIfNeeded() {
+  if (!drawerOpen.value || !isLoggedIn.value || !canManageCloudSpace.value) return;
+  if (refreshingCatalog.value || isCataloging.value) return;
+  const forceAfterLogin = takeCatalogRefreshAfterLogin();
+  if (!forceAfterLogin) {
+    const s = cloudSummary.value;
+    const neverCataloged = s?.lastCatalogAt == null;
+    const emptyRegistry = (s?.total ?? 0) === 0;
+    if (!neverCataloged && !emptyRegistry) return;
+  }
+  await onRefreshCatalog();
+}
+
+/** 开抽屉：先读本地列表，必要时自动拉 iCloud 目录 */
+async function bootstrapCloudDrawer() {
+  if (!drawerOpen.value || !isLoggedIn.value) return;
+  await refreshCloudAssets();
+  await maybeAutoRefreshCatalogIfNeeded();
+}
+
 /** iCloud 移除说明：本地保留 + 最近删除（Modal 与提示共用） */
 const ICLOUD_REMOVE_HINT =
   "只删除 iCloud 上的副本，电脑里的文件会保留。照片会先进入 iCloud「最近删除」，通常约 30 天后才彻底释放空间；此期间可在 iPhone 或 iCloud.com 恢复。";
@@ -499,18 +535,34 @@ async function onCloudDeleteFinished(keepAssetIds: string[]) {
   }
 }
 
+const cloudGridEmptyHint = computed(() => {
+  if (isCataloging.value || refreshingCatalog.value) {
+    return "正在从 iCloud 拉取图库列表…";
+  }
+  if (cloudSummary.value?.lastCatalogAt == null && cloudTotal.value === 0) {
+    return "尚未拉取 iCloud 图库；可点右上角刷新，或等待自动更新";
+  }
+  return "当前筛选下暂无内容";
+});
+
 watch(drawerOpen, open => {
   if (open) {
     // A′：开抽屉只刷 settings 展示，不 auth_probe
     void refreshAccountSettings();
-    refreshCloudIfVisible();
+    void bootstrapCloudDrawer();
   } else if (intent.value) {
     intent.value = null;
     clearCloudSelection();
   }
 });
 
-watch(isLoggedIn, () => refreshCloudIfVisible());
+watch(isLoggedIn, loggedIn => {
+  if (!loggedIn) {
+    clearCloudDrawerCache();
+    return;
+  }
+  void bootstrapCloudDrawer();
+});
 
 /** catalog / 完成等态变更：静默回写角标，不打断浏览 */
 watch(cloudStateTick, () => refreshCloudIfVisible({ silent: true }));
@@ -652,8 +704,12 @@ onMounted(() => {
         </div>
 
         <div class="cloud-grid-wrap">
-          <div v-if="loadingCloud" class="cloud-grid-loading" aria-busy="true">
-            <a-spin />
+          <div
+            v-if="loadingCloud || (isCataloging && cloudRows.length === 0)"
+            class="cloud-grid-loading"
+            aria-busy="true"
+          >
+            <a-spin :tip="isCataloging ? '正在拉取 iCloud 图库…' : undefined" />
           </div>
           <div
             ref="cloudGridScrollRef"
@@ -699,7 +755,7 @@ onMounted(() => {
               </div>
               <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
             </div>
-            <a-empty v-else-if="!loadingCloud" description="当前筛选下暂无内容" :image="false" />
+            <a-empty v-else-if="!loadingCloud && !isCataloging" :description="cloudGridEmptyHint" :image="false" />
           </div>
           <div class="cloud-grid-foot">
             <span v-if="cloudTotal > 0" class="cloud-grid-count">

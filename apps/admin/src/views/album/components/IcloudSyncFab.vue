@@ -185,6 +185,29 @@ function toggleCloudRowSelect(row: CloudListDisplayRow) {
   cloudSelectedRowsByKey.value = nextMap;
 }
 
+/** 意图内快捷全选文案（download=待下载；delete=已下载） */
+const selectAllIntentLabel = computed(() =>
+  intent.value === "delete" ? "全选已下载" : intent.value === "download" ? "全选待下载" : "全选"
+);
+
+/**
+ * 勾选当前列表中全部符合意图的可选项（列表已按 cloudListState 筛过，仍过 canSelectCloudRow）
+ */
+function selectAllCloudRowsForIntent() {
+  if (!intent.value) return;
+  const eligible = cloudRows.value.filter(canSelectCloudRow);
+  if (eligible.length === 0) {
+    $feedback.message.info(intent.value === "delete" ? "当前没有可移除的已下载项" : "当前没有可下载的待下载项");
+    return;
+  }
+  const nextMap = new Map<string, CloudListDisplayRow>();
+  for (const row of eligible) {
+    nextMap.set(row.rowKey, row);
+  }
+  cloudSelectedKeys.value = [...nextMap.keys()];
+  cloudSelectedRowsByKey.value = nextMap;
+}
+
 /** 意图内点格切换勾选；空闲不预览（同步抽屉灯箱已去掉：非大图且无实况/视频） */
 function onCloudCellClick(row: CloudListDisplayRow) {
   if (!intent.value) return;
@@ -593,6 +616,13 @@ onMounted(() => {
                 >
                   {{ deleteIntentLabel }}
                 </a-button>
+              </a-tooltip>
+              <a-tooltip
+                v-if="intent"
+                :title="intent === 'delete' ? '勾选列表中全部已下载项' : '勾选列表中全部待下载项'"
+                placement="bottom"
+              >
+                <a-button @click="selectAllCloudRowsForIntent">{{ selectAllIntentLabel }}</a-button>
               </a-tooltip>
               <a-button v-if="intent" @click="exitIntent">取消</a-button>
             </div>

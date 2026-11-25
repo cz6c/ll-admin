@@ -57,7 +57,7 @@ function onCellClick(cell: YearMonthCell) {
         :hover-stay-time="60"
         @click.stop="emit('openLedger')"
       >
-        对照表
+        明细
       </view>
     </view>
 
@@ -127,9 +127,7 @@ function onCellClick(cell: YearMonthCell) {
 
 .year-progress__all {
   font-size: 24rpx;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--wot-primary-6);
+  color: #999;
 }
 
 .year-progress__legend {

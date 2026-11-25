@@ -238,7 +238,7 @@ function onMonthClick(cell: YearMonthCell) {
           </template>
         </wd-swiper>
         <text class="knowledge-section__disclaimer">
-          内容仅供参考，具体以税务机关解释为准
+          内容仅供参考
         </text>
       </view>
     </view>
@@ -256,14 +256,18 @@ function onMonthClick(cell: YearMonthCell) {
         v-if="activeKnowledge"
         class="knowledge-detail-sheet max-h-75vh flex flex-col rounded-t-24rpx bg-white"
       >
-        <view class="shrink-0 border-b border-#edf0f6 p-32rpx text-center text-32rpx text-#333 font-600">
-          {{ knowledgeDetailTitle(activeKnowledge) }}
+        <view class="shrink-0 border-b border-#edf0f6 p-32rpx text-center">
+          <!-- MP-WEIXIN：须 text + selectable 才可长按复制，view 内纯文本不可选 -->
+          <text selectable class="knowledge-detail__title">
+            {{ knowledgeDetailTitle(activeKnowledge) }}
+          </text>
         </view>
         <scroll-view scroll-y class="knowledge-detail-sheet__scroll" :show-scrollbar="true">
           <view class="px-32rpx py-24rpx pb-48rpx">
             <text
               v-for="(para, idx) in activeKnowledge.paragraphs"
               :key="idx"
+              selectable
               class="knowledge-detail__para"
               :class="{ 'knowledge-detail__para--gap': idx > 0 }"
             >
@@ -396,10 +400,8 @@ function onMonthClick(cell: YearMonthCell) {
 }
 
 .knowledge-section__title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1f2329;
-  line-height: 1.3;
+  font-size: 24rpx;
+  margin-left: 8rpx;
 }
 
 .knowledge-section__action {
@@ -455,6 +457,14 @@ function onMonthClick(cell: YearMonthCell) {
 
 .knowledge-detail-sheet__scroll {
   max-height: calc(75vh - 112rpx);
+}
+
+.knowledge-detail__title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.4;
 }
 
 .knowledge-detail__para {

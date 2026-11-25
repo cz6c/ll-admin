@@ -68,7 +68,7 @@ export class CreateDriveScoreDto {
   @ApiPropertyOptional({ description: "备注", example: "雨天城区+高速", nullable: true })
   @IsOptional()
   @IsString()
-  @MaxLength(255)
+  @MaxLength(500)
   remark?: string | null;
 
   @HalfScoreField("动力响应与平顺性")

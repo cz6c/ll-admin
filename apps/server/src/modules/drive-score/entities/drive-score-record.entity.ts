@@ -19,7 +19,7 @@ export class DriveScoreRecordEntity extends BaseEntity {
   @Column({ type: "varchar", name: "vehicle_name", length: 64, comment: "车辆名称/型号" })
   public vehicleName: string;
 
-  @Column({ type: "varchar", name: "remark", length: 255, nullable: true, default: null, comment: "备注" })
+  @Column({ type: "varchar", name: "remark", length: 500, nullable: true, default: null, comment: "备注" })
   public remark: string | null;
 
   @Column({ type: "decimal", name: "score_power_response", precision: 2, scale: 1, comment: "动力响应与平顺性 0.5-5" })

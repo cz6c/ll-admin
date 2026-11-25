@@ -12,6 +12,10 @@ import {
   DRIVE_SCORE_DIMENSIONS,
   getDriveScoreAnchorHint,
 } from '@/constants/driveScoreDimensions'
+import {
+  DRIVE_SCORE_REMARK_MAX_LENGTH,
+  DRIVE_SCORE_REMARK_TEMPLATE,
+} from '@/constants/driveScoreRemarkTemplate'
 
 defineOptions({ name: 'DriveScoreEdit' })
 
@@ -70,7 +74,7 @@ function toggleGuide(code: string) {
 function buildPayload(): DriveScorePayload {
   return {
     vehicleName: form.vehicleName.trim(),
-    remark: form.remark?.trim() || null,
+    remark: form.remark?.trim(),
     scorePowerResponse: form.scorePowerResponse,
     scoreChassisControl: form.scoreChassisControl,
     scoreSteeringBraking: form.scoreSteeringBraking,
@@ -101,8 +105,12 @@ async function loadDetail(id: number) {
 
 onLoad((options?: Record<string, string>) => {
   const id = Number(options?.id)
-  if (Number.isInteger(id) && id > 0)
+  if (Number.isInteger(id) && id > 0) {
     loadDetail(id)
+    return
+  }
+  // 新建：预填三档选项模版，编辑保留原备注
+  form.remark = DRIVE_SCORE_REMARK_TEMPLATE
 })
 
 async function onSubmit() {
@@ -137,7 +145,7 @@ function guideOpen(dim: DriveScoreDimension) {
 <template>
   <view class="page-shell">
     <view class="card">
-      <text class="card-title">车辆信息</text>
+      <text class="card-title">车辆信息：</text>
       <wd-input
         v-model="form.vehicleName"
         label="车辆名称"
@@ -146,17 +154,18 @@ function guideOpen(dim: DriveScoreDimension) {
         :maxlength="64"
         clearable
       />
-      <text class="field-label">备注</text>
+      <text class="field-label">备注：</text>
       <wd-textarea
         v-model="form.remark"
-        placeholder="可选，如路况、天气、对比车型"
-        :maxlength="255"
+        placeholder="按模版删留各【】中一项，或自由填写"
+        :maxlength="DRIVE_SCORE_REMARK_MAX_LENGTH"
         show-word-limit
+        auto-height
       />
     </view>
 
     <view class="card">
-      <text class="card-title">驾驶体验六维</text>
+      <text class="card-title">驾驶体验六维：</text>
       <view v-for="dim in DRIVE_SCORE_DIMENSIONS" :key="dim.code" class="score-card">
         <text class="score-title">{{ dim.title }}</text>
         <wd-rate
@@ -243,7 +252,7 @@ function guideOpen(dim: DriveScoreDimension) {
 }
 
 .guide-toggle {
-  display: inline-block;
+  display: block;
   margin-top: 12rpx;
   font-size: 24rpx;
   color: var(--wot-primary-6, #1688ff);

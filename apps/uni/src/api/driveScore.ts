@@ -17,7 +17,7 @@ export interface DriveScoreRecord extends Record<DriveScoreScoreKey, number> {
 
 export interface DriveScorePayload extends Record<DriveScoreScoreKey, number> {
   vehicleName: string
-  remark?: string | null
+  remark?: string
 }
 
 const DRIVE_SCORE_BASE = '/drive-score'

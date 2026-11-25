@@ -1,7 +1,7 @@
 <!--
   iCloud 下载浮动触发区
   职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
-  主流程：hydrate → FAB → 工具栏（同步到本地 / 下载 / 移除）→ 宫格；
+  主流程：hydrate → FAB → 工具栏（批量下载 / 移除 + 刷新）→ 宫格；
   意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消；删云失败项保留勾选
   @note 方案 3：全量轻量元数据进内存 + 虚拟宫格（仅挂视口）；框选按几何命中全量 placements
 -->
@@ -73,7 +73,6 @@ const {
   starting,
   showSyncFooter,
   onRefreshCatalog,
-  onSyncToLocal,
   onStartSelected,
   onLoggedIn,
   onLogoutAccount,
@@ -635,9 +634,6 @@ onMounted(() => {
         <div class="cloud-toolbar">
           <div class="toolbar-actions">
             <div class="toolbar-left">
-              <a-tooltip v-bind="canManageCloudSpace ? { title: '先更新状态，再同步全部待下载项' } : { title: TASK_BUSY_HINT }" placement="bottom">
-                <a-button type="primary" :loading="starting" :disabled="!canManageCloudSpace" @click="onSyncToLocal()">下载全部</a-button>
-              </a-tooltip>
               <a-tooltip
                 v-bind="
                   !canManageCloudSpace
@@ -650,7 +646,6 @@ onMounted(() => {
               >
                 <a-button
                   type="primary"
-                  :ghost="intent !== 'download'"
                   :loading="starting && intent === 'download'"
                   :disabled="!canManageCloudSpace || (!!intent && intent !== 'download')"
                   @click="onDownloadIntentClick"

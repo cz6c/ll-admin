@@ -6,6 +6,7 @@
 //! 一律 `pub async fn` + `tokio::task::spawn_blocking`，重活丢线程池，避免窗口「未响应」。
 //! `icloudimg` 协议已自行 `thread::spawn`；仍与 sidecar **单飞锁**互斥，登录时缩略图会排队但不堵主线程。
 
+mod account_book;
 mod catalog_diff;
 pub mod cloud_assets;
 pub mod cloud_delete;
@@ -328,37 +329,77 @@ pub async fn icloud_sync_set_credentials(
   .map_err(|e| format!("任务失败: {e}"))?
 }
 
-/// 仅在 settings.remember_password 为 true 时返回钥匙串密码，供登录面板回填
-/// @note 未勾选「记住我」时恒返回 None，避免无授权把明文送进前端
+/// 登录面板：曾用 Apple ID 列表（按最近使用排序）
 #[tauri::command]
-pub async fn icloud_sync_get_remembered_password(app: AppHandle) -> Result<Option<String>, String> {
-  tokio::task::spawn_blocking(move || -> Result<Option<String>, String> {
-    let settings = load_settings(&app)?;
-    if !settings.remember_password {
-      return Ok(None);
+pub async fn icloud_sync_list_account_book(
+  app: AppHandle,
+) -> Result<Vec<account_book::AccountBookEntry>, String> {
+  tokio::task::spawn_blocking(move || account_book::list_accounts_for_ui(&app))
+    .await
+    .map_err(|e| format!("任务失败: {e}"))?
+}
+
+/// 登录成功或更新「记住我」后写入名册；未记住时删该号钥匙串槽
+#[tauri::command]
+pub async fn icloud_sync_touch_account_book(
+  app: AppHandle,
+  apple_id: String,
+  remember_password: bool,
+) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    account_book::upsert_account(&app, &apple_id, remember_password)?;
+    if !remember_password {
+      keyring_store::delete_password(&app, &apple_id)?;
     }
-    keyring_store::get_password(&app)
+    Ok(())
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?
 }
 
-/// 勾选「记住我」时写入钥匙串；未勾选勿调用
+/// 指定账号在名册/设置中开启「记住我」时返回钥匙串密码，供登录面板回填
+/// @note 未记住时恒返回 None，避免无授权把明文送进前端
+#[tauri::command]
+pub async fn icloud_sync_get_remembered_password(
+  app: AppHandle,
+  apple_id: Option<String>,
+) -> Result<Option<String>, String> {
+  tokio::task::spawn_blocking(move || -> Result<Option<String>, String> {
+    let settings = load_settings(&app)?;
+    let target = apple_id
+      .as_deref()
+      .map(str::trim)
+      .filter(|s| !s.is_empty())
+      .unwrap_or(settings.apple_id.as_str());
+    if target.is_empty() {
+      return Ok(None);
+    }
+    keyring_store::get_password(&app, target)
+  })
+  .await
+  .map_err(|e| format!("任务失败: {e}"))?
+}
+
+/// 勾选「记住我」且登录成功后写入该账号钥匙串；须先 touch 名册
 #[tauri::command]
 pub async fn icloud_sync_save_remembered_password(
   app: AppHandle,
+  apple_id: String,
   password: String,
 ) -> Result<(), String> {
   tokio::task::spawn_blocking(move || -> Result<(), String> {
-    let settings = load_settings(&app)?;
-    if !settings.remember_password {
-      return Err("未勾选记住我，不能写入钥匙串".to_string());
+    let apple_id = apple_id.trim();
+    if apple_id.is_empty() {
+      return Err("Apple ID 不能为空".to_string());
+    }
+    if !account_book::remember_enabled_for(&app, apple_id)? {
+      return Err("该账号未勾选记住我，不能写入钥匙串".to_string());
     }
     let password = password.trim();
     if password.is_empty() {
       return Err("密码不能为空".to_string());
     }
-    keyring_store::set_password(&app, password)
+    keyring_store::set_password(&app, apple_id, password)
   })
   .await
   .map_err(|e| format!("任务失败: {e}"))?
@@ -522,7 +563,7 @@ pub async fn icloud_sync_auth_state(app: AppHandle) -> Result<IcloudSyncAuthStat
 
     Ok(IcloudSyncAuthStateResult {
       apple_id: settings.apple_id.clone(),
-      has_password: keyring_store::has_password(&app)?,
+      has_password: keyring_store::has_password_for_apple_id(&app, &apple_id)?,
       icloud_domain: normalize_icloud_domain(&settings.icloud_domain),
       session_present: session_has_files(&app)?,
       session_for_current_apple_id: has_files,

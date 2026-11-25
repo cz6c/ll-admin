@@ -1,7 +1,7 @@
 <!--
   iCloud 下载 — Apple ID 登录面板（抽屉内嵌）
   职责：凭据、2FA、「记住我」；账号前提 tip；根域固定中国大陆（cn）
-  主流程：密码直传 login 换 session；仅勾选记住我且成功后写入钥匙串供下次回填
+  主流程：密码直传 login 换 session；记住我按账号写钥匙串；accountBook 供 Apple ID 输入建议
   @note 面板回填只读 settings/钥匙串，不调 auth_state（探活见 hydrate / 写操作 ensure）
   @note 2FA 仅登录时推送一次；换码须点「重发验证码」，提交失败不自动再推
 -->
@@ -10,12 +10,15 @@ import {
   formatIcloudSyncError,
   getIcloudSyncRememberedPassword,
   getIcloudSyncSettings,
+  listIcloudSyncAccountBook,
   loginIcloudSync,
   resendIcloudSync2fa,
   saveIcloudSyncRememberedPassword,
   saveIcloudSyncSettings,
   setIcloudSyncCredentials,
   submitIcloudSync2fa,
+  touchIcloudSyncAccountBook,
+  type IcloudSyncAccountBookEntry,
   type IcloudSyncLoginResult,
   type IcloudSyncSettings
 } from "@/api/icloudSync";
@@ -54,6 +57,9 @@ const password = ref("");
 const rememberMe = ref(false);
 const initialAppleId = ref("");
 const pendingAccountChanged = ref(false);
+/** 曾用 Apple ID（accountBook）；供 AutoComplete 建议 */
+const accountBook = ref<IcloudSyncAccountBookEntry[]>([]);
+const accountOptions = computed(() => accountBook.value.map(row => ({ value: row.appleId, label: row.appleId })));
 
 const accountSwitchPending = computed(() => {
   const next = appleId.value.trim().toLowerCase();
@@ -130,14 +136,50 @@ async function persistLoginSettings() {
 }
 
 /**
- * 登录完全成功且勾选「记住我」时写入钥匙串；未勾选不碰钥匙串
- * @note 登录本身不经钥匙串
+ * 登录成功后更新名册；记住我时写入该号钥匙串（未勾选则由 touch 删槽）
+ * @note 登录 SRP 本身不经钥匙串
  */
 async function syncKeyringAfterSuccess() {
+  const id = appleId.value.trim();
+  await touchIcloudSyncAccountBook(id, rememberMe.value);
   if (rememberMe.value) {
-    await saveIcloudSyncRememberedPassword(password.value);
+    await saveIcloudSyncRememberedPassword(password.value, id);
   }
   password.value = "";
+  await reloadAccountBook();
+}
+
+/** 选中某账号：同步「记住我」并按名册/keyring 回填密码 */
+async function applyRememberedForAppleId(rawId: string) {
+  const id = rawId.trim();
+  if (!id) {
+    rememberMe.value = false;
+    password.value = "";
+    return;
+  }
+  const entry = accountBook.value.find(row => row.appleId.trim().toLowerCase() === id.toLowerCase());
+  rememberMe.value = !!entry?.rememberPassword;
+  if (rememberMe.value) {
+    password.value = (await getIcloudSyncRememberedPassword(id))?.trim() || "";
+  } else {
+    password.value = "";
+  }
+}
+
+async function onAccountSelect(value: string) {
+  appleId.value = value;
+  await applyRememberedForAppleId(value);
+}
+
+/** AutoComplete 模糊匹配已存 Apple ID */
+function filterAccountOption(input: string, option: { value: string }) {
+  const q = input.trim().toLowerCase();
+  if (!q) return true;
+  return option.value.toLowerCase().includes(q);
+}
+
+async function reloadAccountBook() {
+  accountBook.value = await listIcloudSyncAccountBook();
 }
 
 async function loadState() {
@@ -145,15 +187,11 @@ async function loadState() {
   loading.value = true;
   try {
     // 登录面板只读 settings / 钥匙串回填；不调 auth_state（避免开抽屉重复 probe）
+    await reloadAccountBook();
     const settings = await getIcloudSyncSettings();
     appleId.value = settings.appleId || "";
     initialAppleId.value = appleId.value.trim();
-    rememberMe.value = !!settings.rememberPassword;
-    if (rememberMe.value) {
-      password.value = (await getIcloudSyncRememberedPassword())?.trim() || "";
-    } else {
-      password.value = "";
-    }
+    await applyRememberedForAppleId(appleId.value);
   } catch (e) {
     $feedback.message.error(formatIcloudSyncError(e));
   } finally {
@@ -288,13 +326,13 @@ onBeforeUnmount(() => {
 
       <a-form layout="vertical" class="cred-form">
         <a-form-item label="Apple ID" class="form-item-tight">
-          <a-input
+          <a-auto-complete
             v-model:value="appleId"
-            type="email"
+            :options="accountOptions"
+            :filter-option="filterAccountOption"
             placeholder="中国大陆 Apple ID"
-            autocomplete="username"
-            spellcheck="false"
             :disabled="need2fa || loggingIn || loading"
+            @select="onAccountSelect"
           />
         </a-form-item>
         <a-form-item label="密码" class="form-item-tight">
@@ -312,7 +350,14 @@ onBeforeUnmount(() => {
         <template v-if="need2fa">
           <a-form-item label="验证码" class="form-item-tight">
             <a-alert type="info" show-icon class="mb-8px" :message="twoFaDetail" />
-            <a-input v-model:value="twoFaCode" placeholder="短信或设备上的 6 位数字" inputmode="numeric" :maxlength="6" autocomplete="one-time-code" />
+            <a-input
+              v-model:value="twoFaCode"
+              placeholder="短信或设备上的 6 位数字"
+              inputmode="numeric"
+              :maxlength="6"
+              autocomplete="one-time-code"
+              @keydown.enter="onSubmit2fa"
+            />
           </a-form-item>
         </template>
       </a-form>

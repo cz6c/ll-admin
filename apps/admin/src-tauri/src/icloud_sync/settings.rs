@@ -15,8 +15,8 @@ pub fn normalize_icloud_domain(_raw: &str) -> String {
   "cn".to_string()
 }
 
-/// pyicloud session 文件名 stem（与 sidecar agent.py 一致）
-fn apple_id_session_stem(apple_id: &str) -> String {
+/// pyicloud session 文件名 stem（与 sidecar agent.py 一致）；keyring user、密码回退文件名共用
+pub fn apple_id_session_stem(apple_id: &str) -> String {
   apple_id
     .chars()
     .filter(|c| c.is_alphanumeric() || *c == '_')

@@ -18,6 +18,13 @@ export type IcloudSyncJobStatus = "cataloging" | "pending" | "running" | "paused
 export type IcloudSyncTaskType = "sync" | "catalog";
 
 /** 非敏感配置（Apple ID 密码不在此结构） */
+/** 登录名册单条（明文 Apple ID；密码在钥匙串） */
+export interface IcloudSyncAccountBookEntry {
+  appleId: string;
+  rememberPassword: boolean;
+  lastUsedAt: number;
+}
+
 export interface IcloudSyncSettings {
   appleId: string;
   /** iCloud 根域：产品仅支持中国大陆 `cn`（icloud.com.cn） */
@@ -405,20 +412,33 @@ export function setIcloudSyncCredentials(appleId: string) {
   return invoke<boolean>("icloud_sync_set_credentials", { appleId });
 }
 
-/**
- * 读取「记住我」下的密码供登录面板回填
- * @note 未勾选记住我时 Rust 恒返回 null
- */
-export function getIcloudSyncRememberedPassword() {
-  return invoke<string | null>("icloud_sync_get_remembered_password");
+/** 登录面板：曾用 Apple ID 列表（最近使用优先） */
+export function listIcloudSyncAccountBook() {
+  return invoke<IcloudSyncAccountBookEntry[]>("icloud_sync_list_account_book");
 }
 
 /**
- * 勾选「记住我」且登录成功后写入钥匙串
- * @note 须先把 settings.rememberPassword 存为 true
+ * 登录成功或更新「记住我」：写入名册；未记住时删该号钥匙串
  */
-export function saveIcloudSyncRememberedPassword(password: string) {
-  return invoke<void>("icloud_sync_save_remembered_password", { password });
+export function touchIcloudSyncAccountBook(appleId: string, rememberPassword: boolean) {
+  return invoke<void>("icloud_sync_touch_account_book", { appleId, rememberPassword });
+}
+
+/**
+ * 读取指定账号在「记住我」下的密码供回填
+ * @param appleId 省略时用 settings 当前号
+ * @note 未记住时 Rust 恒返回 null
+ */
+export function getIcloudSyncRememberedPassword(appleId?: string) {
+  return invoke<string | null>("icloud_sync_get_remembered_password", { appleId: appleId ?? null });
+}
+
+/**
+ * 勾选「记住我」且登录成功后写入该账号钥匙串
+ * @note 须先 touch 名册且 rememberPassword 为 true
+ */
+export function saveIcloudSyncRememberedPassword(password: string, appleId: string) {
+  return invoke<void>("icloud_sync_save_remembered_password", { password, appleId });
 }
 
 /** 登出：清 sidecar 内存态与当前账号 session；保留 settings 中的 Apple ID */

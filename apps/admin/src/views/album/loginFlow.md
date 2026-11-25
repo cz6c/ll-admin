@@ -145,7 +145,7 @@ flowchart LR
 
 | 路径 | 内容 |
 |------|------|
-| keyring | 仅「记住我」成功登录后存密码，供下次回填；**登录 SRP 不读钥匙串** |
+| keyring | 按账号分槽存密码；名册 `accountBook.json` 供 Apple ID 建议；**登录 SRP 不读钥匙串** |
 | `{session_dir}/{appleId}.session` | pyicloud session |
 | `auth-diagnostic.json` | 最近一次认证/同步诊断（无密码/验证码） |
 

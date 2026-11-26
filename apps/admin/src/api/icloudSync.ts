@@ -6,7 +6,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { getAlbumRootDir } from "@/api/album";
-import { adjustCloudListTotal, prepareCloudListRows } from "@/utils/icloudSyncCloudList";
 
 /** 同步任务视图：Library 与 Recents 互斥 */
 export type IcloudSyncJobView = "library" | "recents";
@@ -549,32 +548,6 @@ export function loadIcloudSyncAssets(
     filenameKeyword: options.filenameKeyword?.trim() || null,
     checkLocalFile: options.checkLocalFile ?? true
   });
-}
-
-/** 抽屉列表：合并 Live 行 + 展示用 rowKey；raw 中 mov 行兜底并入 liveMovFilename */
-export async function loadIcloudSyncCloudList(options: Parameters<typeof loadIcloudSyncAssets>[0] = {}) {
-  const raw = await loadIcloudSyncAssets(options);
-  const movFilenameByAsset = new Map<string, string>();
-  const movDownloadByAsset = new Map<string, string>();
-  for (const row of raw.items) {
-    if (row.part === "mov") {
-      movFilenameByAsset.set(row.assetId, row.originalFilename);
-      if (row.downloadStatus) movDownloadByAsset.set(row.assetId, row.downloadStatus);
-    }
-  }
-  const items = prepareCloudListRows(raw.items).map(row => {
-    const movName = movFilenameByAsset.get(row.assetId);
-    const movDl = movDownloadByAsset.get(row.assetId);
-    return {
-      ...row,
-      liveMovFilename: row.liveMovFilename?.trim() || movName || row.liveMovFilename,
-      liveMovDownloadStatus: row.liveMovDownloadStatus ?? movDl ?? row.liveMovDownloadStatus
-    };
-  });
-  return {
-    items,
-    total: adjustCloudListTotal(raw.total, raw.items)
-  };
 }
 
 /** cloud_state 汇总 */

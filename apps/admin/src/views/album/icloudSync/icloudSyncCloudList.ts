@@ -150,34 +150,6 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
   return row.cloudState;
 }
 
-const CLOUD_STATE_LABELS: Record<string, string> = {
-  cloud_only: "待下载",
-  modified_cloud: "待下载",
-  downloading: "下载中",
-  synced: "已下载",
-  download_failed: "失败",
-  sync_skipped: "他人共享"
-};
-
-/** iCloud 资产状态角标文案（含他人共享跳过态） */
-export function cloudStateLabel(state: string): string {
-  return CLOUD_STATE_LABELS[state] ?? state;
-}
-
-/**
- * iCloud 资产状态角标 a-tag color
- * @note 与 QQ 宫格角标同一套语义色（success / processing / error）
- */
-export function cloudStateTagColor(state: string): string {
-  const normalized = state === "modified_cloud" ? "cloud_only" : state;
-  if (normalized === "synced") return "success";
-  if (normalized === "cloud_only") return "processing";
-  if (normalized === "downloading") return "processing";
-  if (normalized === "download_failed") return "error";
-  if (normalized === "sync_skipped") return "default";
-  return "default";
-}
-
 /**
  * 角标悬停说明；sync_skipped 时解释跳过原因
  */

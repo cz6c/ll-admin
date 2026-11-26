@@ -1,13 +1,13 @@
 <!--
   协议缩略图懒挂载（icloudimg / qzoneimg）
   职责：滚动容器 IO 门控后再解析协议 src；视觉层委托 ThumbVisual
-  适用：IcloudSyncFab / QzoneSyncFab 抽屉宫格缩略图（非本地相册灯箱）
+  适用：icloudSync / qzoneSync 抽屉宫格缩略图（非本地相册灯箱）
   @note 协议默认 rootMargin / CcImage.lazy 不同：iCloud 半屏预取且 IO 后不再叠 lazy，避免双重延迟
 -->
 <script setup lang="ts">
 import { icloudProxiedThumbSrc } from "@/api/icloudSync";
 import { qzoneProxiedSrc } from "@/api/qzoneSync";
-import ThumbVisual from "./ThumbVisual.vue";
+import ThumbVisual from "../../components/ThumbVisual.vue";
 
 defineOptions({ name: "ProtocolLazyThumb" });
 

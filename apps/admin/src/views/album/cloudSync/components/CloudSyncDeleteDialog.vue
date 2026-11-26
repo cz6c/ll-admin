@@ -5,12 +5,7 @@
 -->
 <script setup lang="ts">
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import {
-  keepIdsFromCloudSyncDelete,
-  summarizeCloudSyncDelete,
-  type CloudSyncDeleteNormalizedResult,
-  type CloudSyncDeleteProgress
-} from "../cloudSyncDelete";
+import { keepIdsFromCloudSyncDelete, summarizeCloudSyncDelete, type CloudSyncDeleteNormalizedResult, type CloudSyncDeleteProgress } from "../cloudSyncDelete";
 
 defineOptions({ name: "AlbumCloudSyncDeleteDialog" });
 
@@ -62,9 +57,7 @@ const progressText = computed(() => {
   return total > 0 ? `已处理 ${processed} / ${total} 项` : props.connectingTip;
 });
 
-const summary = computed(() =>
-  summarizeCloudSyncDelete(result.value, errorText.value, { warnOnNoDeletable: props.warnOnNoDeletable })
-);
+const summary = computed(() => summarizeCloudSyncDelete(result.value, errorText.value, { warnOnNoDeletable: props.warnOnNoDeletable }));
 
 async function run() {
   phase.value = "running";

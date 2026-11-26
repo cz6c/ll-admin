@@ -1,7 +1,7 @@
 /**
  * 云同步抽屉意图先行（下载 / 移除）
  * 职责：互斥进入、退出清勾选、批量按钮文案；忙时护栏由调用方 canManage 注入
- * 适用：IcloudSyncFab / QzoneSyncFab
+ * 适用：icloudSync/index.vue · qzoneSync/index.vue
  */
 import type { ComputedRef, Ref } from "vue";
 import $feedback from "@/utils/feedback";
@@ -36,12 +36,8 @@ export function useCloudSyncIntent(options: UseCloudSyncIntentOptions) {
   const selectMode = computed(() => intent.value != null);
   const busyHint = options.busyHint ?? DEFAULT_BUSY_HINT;
 
-  const downloadIntentLabel = computed(() =>
-    intent.value === "download" ? `批量下载 (${options.selectedCount.value})` : "批量下载"
-  );
-  const deleteIntentLabel = computed(() =>
-    intent.value === "delete" ? `批量移除 (${options.selectedCount.value})` : "批量移除"
-  );
+  const downloadIntentLabel = computed(() => (intent.value === "download" ? `批量下载 (${options.selectedCount.value})` : "批量下载"));
+  const deleteIntentLabel = computed(() => (intent.value === "delete" ? `批量移除 (${options.selectedCount.value})` : "批量移除"));
 
   /** @returns 可继续操作时 true */
   function guardManageAction(): boolean {

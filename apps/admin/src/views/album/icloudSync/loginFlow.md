@@ -1,12 +1,12 @@
 # iCloud 同步 — Apple ID 登录流程
 
 > **职责：** 用户显式登录一次 → 拿到 WEBAUTH → 同步只用 `auth_probe`（无密码）。  
-> **组件：** `components/IcloudSyncAuthPanel.vue`（抽屉内嵌）  
+> **组件：** `icloudSync/components/IcloudSyncAuthPanel.vue`（抽屉内嵌）  
 > **实现：** `icloud_sync/mod.rs` · sidecar `agent.py` / `icloudAuth.py`（pyicloud_ipd @ icloudpd v1.32.3）  
 > **第一优先级：锁号风险最低**（少打 Apple 登录 API）  
 > **对齐：** 2026-08-27
 
-姊妹文档：[云同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
+姊妹文档：[云同步](./cloudSyncFlow.md) · [本地扫描](../loadingFlow.md)
 
 ---
 

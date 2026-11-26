@@ -3,7 +3,7 @@
   职责：job 快照 → SyncJobFooter；暂停/继续/取消向外 emit
 -->
 <script setup lang="ts">
-import SyncJobFooter from "./SyncJobFooter.vue";
+import SyncJobFooter from "../../cloudSync/components/SyncJobFooter.vue";
 import type { QzoneJobSnapshot } from "@/api/qzoneSync";
 
 defineOptions({ name: "AlbumQzoneSyncFooter" });

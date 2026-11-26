@@ -32,8 +32,8 @@ import { buildAlbumDayLayout, DAY_HEADER_HEIGHT, findDaySectionAt, sliceVisibleD
 import type { AlbumFilePlacement } from "./albumFileLayout";
 import CaptureAtRewriteModal from "./components/CaptureAtRewriteModal.vue";
 import MediaViewer from "./components/MediaViewer.vue";
-import IcloudSyncFab from "./components/IcloudSyncFab.vue";
-import QzoneSyncFab from "./components/QzoneSyncFab.vue";
+import AlbumIcloudSync from "./icloudSync/index.vue";
+import AlbumQzoneSync from "./qzoneSync/index.vue";
 import DuplicateCleanupModal from "./components/DuplicateCleanupModal.vue";
 import { ALBUM_LAYOUT, computeAlbumGridLayout } from "./albumLayout";
 import { useAlbumModeSelect, type AlbumViewMode } from "./useAlbumModeSelect";
@@ -699,8 +699,8 @@ onBeforeUnmount(() => {
       @delete="onDeleteLocal"
     />
 
-    <IcloudSyncFab />
-    <QzoneSyncFab />
+    <AlbumIcloudSync />
+    <AlbumQzoneSync />
 
     <DuplicateCleanupModal v-model:open="duplicateModalOpen" @deleted="onDuplicatesDeleted" />
 

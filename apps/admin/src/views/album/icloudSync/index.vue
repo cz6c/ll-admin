@@ -1,19 +1,21 @@
 <!--
-  iCloud 下载浮动触发区
+  iCloud 同步模块入口（原 IcloudSyncFab）
   职责：右下角 FAB；抽屉工具栏 + 宫格四态；意图先行（下载/移除）；忙时底栏进度
   主流程：hydrate → FAB → 工具栏（批量下载 / 移除 + 刷新）→ 宫格；
   意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消；删云失败项保留勾选
   @note 方案 3：全量轻量元数据进内存 + 虚拟宫格（仅挂视口）；框选按几何命中全量 placements
 -->
 <script setup lang="ts">
-import CloudSyncDeleteDialog from "./CloudSyncDeleteDialog.vue";
-import IcloudSyncAuthPanel from "./IcloudSyncAuthPanel.vue";
-import IcloudSyncFooter from "./IcloudSyncFooter.vue";
-import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
-import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
-import SyncFabShell from "./SyncFabShell.vue";
-import type { CloudSyncDeleteNormalizedResult } from "../cloudSyncDelete";
-import { useCloudSyncIntent } from "../useCloudSyncIntent";
+import CloudSyncDeleteDialog from "../cloudSync/components/CloudSyncDeleteDialog.vue";
+import IcloudSyncAuthPanel from "./components/IcloudSyncAuthPanel.vue";
+import IcloudSyncFooter from "./components/IcloudSyncFooter.vue";
+import SyncFabWave from "../cloudSync/components/SyncFabWave.vue";
+import ProtocolLazyThumb from "../cloudSync/components/ProtocolLazyThumb.vue";
+import SyncFabShell from "../cloudSync/components/SyncFabShell.vue";
+import type { CloudSyncDeleteNormalizedResult } from "../cloudSync/cloudSyncDelete";
+import { useCloudSyncIntent } from "../cloudSync/useCloudSyncIntent";
+import { cloudStateLabel, cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
+import { loadIcloudSyncCloudList } from "./loadIcloudSyncCloudList";
 import { MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import {
   buildIcloudCloudLayout,
@@ -21,13 +23,12 @@ import {
   hitTestIcloudCloudPlacements,
   ICLOUD_CLOUD_GRID,
   sliceVisibleIcloudCloudPlacements
-} from "../icloudSyncCloudLayout";
+} from "./icloudSyncCloudLayout";
 import {
   deleteIcloudSyncAssets,
   formatIcloudSyncError,
   getIcloudSyncCloudStateSummary,
   isIcloudSessionAuthFailure,
-  loadIcloudSyncCloudList,
   ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT,
   type IcloudSyncCloudStateFilter,
   type IcloudSyncCloudStateSummary,
@@ -37,18 +38,16 @@ import {
   cloudListRowsToAssetItems,
   cloudListDisplayState,
   cloudListDisplayFilename,
-  cloudStateLabel,
-  cloudStateTagColor,
   cloudStateTooltip,
   type IcloudSyncCloudListRow
-} from "@/utils/icloudSyncCloudList";
+} from "./icloudSyncCloudList";
 import $feedback from "@/utils/feedback";
 import dayjs from "dayjs";
 import { useElementSize, useScroll, useThrottleFn } from "@vueuse/core";
-import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
+import { useIcloudSyncJob } from "./useIcloudSyncJob";
 import { isTauri } from "@/utils/tauri";
 
-defineOptions({ name: "AlbumIcloudSyncFab" });
+defineOptions({ name: "AlbumIcloudSync" });
 
 type CloudListDisplayRow = IcloudSyncCloudListRow & {
   displayFilename: string;
@@ -199,9 +198,7 @@ function toggleCloudRowSelect(row: CloudListDisplayRow) {
 }
 
 /** 意图内快捷全选文案（download=待下载；delete=已下载） */
-const selectAllIntentLabel = computed(() =>
-  intent.value === "delete" ? "全选已下载" : intent.value === "download" ? "全选待下载" : "全选"
-);
+const selectAllIntentLabel = computed(() => (intent.value === "delete" ? "全选已下载" : intent.value === "download" ? "全选待下载" : "全选"));
 
 /**
  * 勾选当前列表中全部符合意图的可选项（列表已按 cloudListState 筛过，仍过 canSelectCloudRow）
@@ -225,14 +222,8 @@ function selectAllCloudRowsForIntent() {
 function onCloudCellClick(row: CloudListDisplayRow) {
   if (!intent.value) return;
   if (!canSelectCloudRow(row)) {
-    const skipHint =
-      cloudListDisplayState(row) === "sync_skipped"
-        ? "他人贡献的共享图库项不可勾选下载"
-        : "";
-    $feedback.message.info(
-      skipHint ||
-        (intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载")
-    );
+    const skipHint = cloudListDisplayState(row) === "sync_skipped" ? "他人贡献的共享图库项不可勾选下载" : "";
+    $feedback.message.info(skipHint || (intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载"));
     return;
   }
   toggleCloudRowSelect(row);
@@ -244,9 +235,7 @@ const { width: cloudGridWidth, height: cloudViewportHeight } = useElementSize(cl
 const { y: cloudScrollTop } = useScroll(cloudGridScrollRef, { throttle: 60 });
 
 const cloudGridMetrics = computed(() => computeIcloudCloudGrid(Math.max(0, cloudGridWidth.value - 4)));
-const cloudFullLayout = computed(() =>
-  buildIcloudCloudLayout(cloudRows.value, cloudGridMetrics.value.cols, cloudGridMetrics.value.cellSize)
-);
+const cloudFullLayout = computed(() => buildIcloudCloudLayout(cloudRows.value, cloudGridMetrics.value.cols, cloudGridMetrics.value.cellSize));
 const cloudBufferPx = computed(() => Math.max(120, ICLOUD_CLOUD_GRID.bufferRows * (cloudGridMetrics.value.cellSize + ICLOUD_CLOUD_GRID.gap)));
 const cloudVisiblePlacements = computed(() =>
   sliceVisibleIcloudCloudPlacements(cloudFullLayout.value.placements, cloudScrollTop.value, cloudViewportHeight.value, cloudBufferPx.value)
@@ -600,7 +589,6 @@ async function onLogout() {
 onMounted(() => {
   if (isTauri()) void hydrateFromStorage();
 });
-
 </script>
 
 <template>
@@ -613,7 +601,7 @@ onMounted(() => {
   >
     <template #fab>
       <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
-        <IcloudSyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
+        <SyncFabWave v-if="showProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
         <CcIconifyIcon v-else :icon="iconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
       </a-button>
     </template>
@@ -673,11 +661,7 @@ onMounted(() => {
                   {{ deleteIntentLabel }}
                 </a-button>
               </a-tooltip>
-              <a-tooltip
-                v-if="intent"
-                :title="intent === 'delete' ? '勾选列表中全部已下载项' : '勾选列表中全部待下载项'"
-                placement="bottom"
-              >
+              <a-tooltip v-if="intent" :title="intent === 'delete' ? '勾选列表中全部已下载项' : '勾选列表中全部待下载项'" placement="bottom">
                 <a-button @click="selectAllCloudRowsForIntent">{{ selectAllIntentLabel }}</a-button>
               </a-tooltip>
               <a-button v-if="intent" @click="exitIntent">取消</a-button>
@@ -699,11 +683,7 @@ onMounted(() => {
         </div>
 
         <div class="cloud-grid-wrap">
-          <div
-            v-if="loadingCloud || (isCataloging && cloudRows.length === 0)"
-            class="cloud-grid-loading"
-            aria-busy="true"
-          >
+          <div v-if="loadingCloud || (isCataloging && cloudRows.length === 0)" class="cloud-grid-loading" aria-busy="true">
             <a-spin :tip="isCataloging ? '正在拉取 iCloud 图库…' : undefined" />
           </div>
           <div
@@ -713,12 +693,7 @@ onMounted(() => {
             @pointerdown="onCloudPointerDown"
             @dragstart="onCloudDragStart"
           >
-            <div
-              v-if="cloudRows.length"
-              ref="cloudGridFrameRef"
-              class="cloud-grid-canvas"
-              :style="{ height: `${cloudFullLayout.totalHeight}px` }"
-            >
+            <div v-if="cloudRows.length" ref="cloudGridFrameRef" class="cloud-grid-canvas" :style="{ height: `${cloudFullLayout.totalHeight}px` }">
               <div
                 v-for="p in cloudVisiblePlacements"
                 :key="p.rowKey"
@@ -727,11 +702,7 @@ onMounted(() => {
                 :style="cloudPlacementStyle(p)"
                 :class="{ selected: selectMode && isCloudRowSelected(p.row), 'select-mode': selectMode }"
                 :title="
-                  [
-                    p.row.displayFilename,
-                    `${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`,
-                    cloudStateTooltip(p.row)
-                  ]
+                  [p.row.displayFilename, `${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`, cloudStateTooltip(p.row)]
                     .filter(Boolean)
                     .join('\n')
                 "
@@ -762,7 +733,6 @@ onMounted(() => {
         <IcloudSyncFooter v-if="showSyncFooter" />
       </template>
     </div>
-
   </SyncFabShell>
   <CloudSyncDeleteDialog
     v-model:open="deleteDialogOpen"

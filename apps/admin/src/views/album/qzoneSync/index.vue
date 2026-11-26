@@ -1,5 +1,5 @@
 <!--
-  QQ 空间同步浮动入口（第二备份源）
+  QQ 空间同步模块入口（原 QzoneSyncFab）
   职责：扫码登录、左相册/右缩略图；意图先行（批量下载/移除）；忙时底栏；FAB 进度
   主流程：hydrate → FAB → 工具栏（全部下载 / 批量下载 / 批量移除）→ 宫格；
   意图：点功能 → 筛态 → 勾选/框选 → 再点执行；成功不自动退出；其它意图按钮禁用须先取消
@@ -8,37 +8,32 @@
 -->
 <script setup lang="ts">
 import {
-  cancelQzoneSyncJob,
   deleteQzonePhotos,
   getQzoneAuthState,
-  getQzoneJobStatus,
   isQzoneAuthExpiredError,
   getQzoneAlbumCloudStates,
   listQzoneAlbums,
   listQzonePhotos,
   logoutQzone,
-  pauseQzoneSyncJob,
   pollQzoneQrLogin,
-  resumeQzoneSyncJob,
   startQzoneQrLogin,
-  startQzoneSyncJob,
   uploadQzonePhotos,
   QZONE_CLOUD_DELETE_PROGRESS_EVENT,
   type QzoneAlbumSummary,
   type QzoneDeletePhotoItem,
-  type QzoneJobSnapshot,
   type QzonePhotoView,
   type QzoneQrStatus
 } from "@/api/qzoneSync";
-import CloudSyncDeleteDialog from "./CloudSyncDeleteDialog.vue";
-import IcloudSyncFabWave from "./IcloudSyncFabWave.vue";
-import ProtocolLazyThumb from "./ProtocolLazyThumb.vue";
-import QzoneSyncFooter from "./QzoneSyncFooter.vue";
-import SyncFabShell from "./SyncFabShell.vue";
-import type { CloudSyncDeleteNormalizedResult } from "../cloudSyncDelete";
-import { useCloudSyncIntent } from "../useCloudSyncIntent";
+import CloudSyncDeleteDialog from "../cloudSync/components/CloudSyncDeleteDialog.vue";
+import SyncFabWave from "../cloudSync/components/SyncFabWave.vue";
+import ProtocolLazyThumb from "../cloudSync/components/ProtocolLazyThumb.vue";
+import QzoneSyncFooter from "./components/QzoneSyncFooter.vue";
+import SyncFabShell from "../cloudSync/components/SyncFabShell.vue";
+import type { CloudSyncDeleteNormalizedResult } from "../cloudSync/cloudSyncDelete";
+import { useCloudSyncIntent } from "../cloudSync/useCloudSyncIntent";
+import { cloudStateLabel, cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
-import { cloudStateLabel, cloudStateTagColor } from "@/utils/icloudSyncCloudList";
+import { useQzoneSyncJob, type UseQzoneSyncJobOptions } from "./useQzoneSyncJob";
 import $feedback from "@/utils/feedback";
 import { isTauri } from "@/utils/tauri";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -46,7 +41,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useThrottleFn } from "@vueuse/core";
 import dayjs from "dayjs";
 
-defineOptions({ name: "AlbumQzoneSyncFab" });
+defineOptions({ name: "AlbumQzoneSync" });
 
 const UNKNOWN_DAY = "__unknown__";
 
@@ -77,30 +72,30 @@ const deletingCloud = ref(false);
 const deleteDialogOpen = ref(false);
 const deleteDialogItems = ref<QzoneDeletePhotoItem[]>([]);
 const uploadingAlbum = ref(false);
-const starting = ref(false);
-const pausing = ref(false);
-const resuming = ref(false);
-const cancelling = ref(false);
 
-const job = ref<QzoneJobSnapshot>({
-  status: "idle",
-  done: 0,
-  total: 0,
-  message: "",
-  updated: 0,
-  skipped: 0,
-  failed: 0
-});
+const qzoneJobHooks: UseQzoneSyncJobOptions = {};
+const {
+  job,
+  busy,
+  showSyncFooter,
+  starting,
+  pausing,
+  resuming,
+  cancelling,
+  fabState,
+  showFabProgress,
+  fabIconName,
+  refreshJob,
+  startSyncAll,
+  startSyncAlbum,
+  startSyncBatch,
+  pause: onPause,
+  resume: onResume,
+  cancel: onCancel,
+  hydrateJobFromTauri
+} = useQzoneSyncJob(qzoneJobHooks);
 
-const busy = computed(() => ["cataloging", "downloading", "paused"].includes(job.value.status));
 const canManageCloudSpace = computed(() => !busy.value);
-const percent = computed(() => {
-  if (job.value.total <= 0) return 0;
-  return Math.min(100, Math.round((job.value.done / job.value.total) * 100));
-});
-
-/** 忙时或失败时展示底栏（对齐 iCloud：done/idle 不挂） */
-const showSyncFooter = computed(() => busy.value || job.value.status === "failed" || starting.value);
 
 const activeAlbum = computed(() => albums.value.find(a => a.topicId === activeAlbumId.value));
 const selectedCount = computed(() => selectedIds.value.size);
@@ -261,16 +256,13 @@ async function onDownloadIntentClick() {
     $feedback.message.warning("请先勾选要下载的照片");
     return;
   }
-  starting.value = true;
   try {
     const ids = picked.map(p => p.assetId);
-    job.value = await startQzoneSyncJob({ albumId: activeAlbumId.value, assetIds: ids });
+    await startSyncBatch(activeAlbumId.value, ids);
     removeSelectionKeys(ids);
     $feedback.message.success(`已开始下载所选 ${ids.length} 项`);
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
-  } finally {
-    starting.value = false;
   }
 }
 
@@ -381,10 +373,6 @@ async function refreshAuth() {
   const s = await getQzoneAuthState();
   loggedIn.value = !!s.loggedIn;
   uin.value = s.uin || "";
-}
-
-async function refreshJob() {
-  job.value = await getQzoneJobStatus();
 }
 
 let applyingAuthExpired = false;
@@ -557,14 +545,11 @@ async function onLogout() {
 
 async function onSyncAll() {
   if (!guardCloudManageAction()) return;
-  starting.value = true;
   try {
-    job.value = await startQzoneSyncJob();
+    await startSyncAll();
     $feedback.message.success("已开始全部下载");
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
-  } finally {
-    starting.value = false;
   }
 }
 
@@ -574,14 +559,11 @@ async function onSyncAlbum() {
     $feedback.message.warning("请先选择相册");
     return;
   }
-  starting.value = true;
   try {
-    job.value = await startQzoneSyncJob({ albumId: activeAlbumId.value });
+    await startSyncAlbum(activeAlbumId.value);
     $feedback.message.success(`已开始下载：${activeAlbum.value?.name || "本相册"}`);
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
-  } finally {
-    starting.value = false;
   }
 }
 
@@ -633,89 +615,6 @@ async function onUploadToAlbum() {
   }
 }
 
-async function onPause() {
-  pausing.value = true;
-  try {
-    job.value = await pauseQzoneSyncJob();
-  } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "暂停失败");
-  } finally {
-    pausing.value = false;
-  }
-}
-
-async function onResume() {
-  resuming.value = true;
-  try {
-    job.value = await resumeQzoneSyncJob();
-  } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "继续失败");
-  } finally {
-    resuming.value = false;
-  }
-}
-
-async function onCancel() {
-  try {
-    await $feedback.confirm("将丢弃当前下载进度", {
-      title: "取消任务？",
-      okText: "取消任务"
-    });
-  } catch {
-    return;
-  }
-  cancelling.value = true;
-  try {
-    job.value = await cancelQzoneSyncJob();
-  } catch (e) {
-    $feedback.message.error(e instanceof Error ? e.message : String(e) || "取消失败");
-  } finally {
-    cancelling.value = false;
-  }
-}
-
-/** FAB：下载中水波进度；其余按任务态图标 */
-const fabState = computed(() => {
-  const status = job.value.status;
-  const p = percent.value;
-  if (status === "downloading" || status === "cataloging") {
-    return { icon: "cloud" as const, color: "processing" as const, label: statusHeadlineForFab(status), percent: p, breathing: false };
-  }
-  if (status === "paused") {
-    return { icon: "pause" as const, color: "warning" as const, label: "已暂停", percent: p, breathing: false };
-  }
-  if (status === "failed") {
-    return { icon: "warning" as const, color: "error" as const, label: "同步失败", percent: 0, breathing: false };
-  }
-  if (status === "done") {
-    return { icon: "check" as const, color: "success" as const, label: "本轮已完成", percent: 100, breathing: false };
-  }
-  return { icon: "qq" as const, color: "default" as const, label: "QQ 空间同步", percent: 0, breathing: false };
-});
-
-function statusHeadlineForFab(status: string) {
-  return status === "cataloging" ? "正在枚举相册…" : "正在下载到本地";
-}
-
-const showFabProgress = computed(
-  () => fabState.value.percent > 0 && fabState.value.percent < 100 && (job.value.status === "downloading" || job.value.status === "cataloging")
-);
-
-const fabIconName = computed(() => {
-  switch (fabState.value.icon) {
-    case "check":
-      return "mdi:check-circle";
-    case "warning":
-      return "mdi:alert-circle";
-    case "pause":
-      return "mdi:pause-circle";
-    case "cloud":
-      return "mdi:cloud-outline";
-    default:
-      return "ri:qq-fill";
-  }
-});
-
 /**
  * 就地合并四态到现有宫格行（不清 photos、不打 QQ 网）
  * @note 进度回写专用；整表重拉会空白闪一下
@@ -749,39 +648,41 @@ async function patchPhotosCloudStates() {
 }
 
 /** 下载进度驱动宫格角标就地更新（节流） */
-const throttledPatchPhotosOnProgress = useThrottleFn(() => {
-  if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
-    void patchPhotosCloudStates();
-  }
-}, 800, true, true);
+const throttledPatchPhotosOnProgress = useThrottleFn(
+  () => {
+    if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
+      void patchPhotosCloudStates();
+    }
+  },
+  800,
+  true,
+  true
+);
 
-let unlisten: UnlistenFn | undefined;
+qzoneJobHooks.onJobDone = updated => {
+  if (updated > 0) {
+    $feedback.message.info(`有 ${updated} 张新照片已下载到本地，点击「刷新」可在相册中查看`);
+  }
+};
+
+qzoneJobHooks.onJobEvent = (payload, prev) => {
+  const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
+  if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
+    if (payload.status === "downloading" || payload.status === "cataloging") {
+      throttledPatchPhotosOnProgress();
+    } else if (wasActive && (payload.status === "done" || payload.status === "failed" || payload.status === "idle" || payload.status === "paused")) {
+      void patchPhotosCloudStates();
+    }
+  }
+};
+
 let unlistenAuthExpired: UnlistenFn | undefined;
 
 onMounted(async () => {
   if (!isTauri()) return;
   try {
     await refreshAuth();
-    await refreshJob();
-    unlisten = await listen<QzoneJobSnapshot>("qzone-sync://progress", ev => {
-      const prev = job.value.status;
-      job.value = ev.payload;
-      const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
-      if (wasActive && ev.payload.status === "done") {
-        const n = ev.payload.updated ?? 0;
-        if (n > 0) {
-          $feedback.message.info(`有 ${n} 张新照片已下载到本地，点击「刷新」可在相册中查看`);
-        }
-      }
-      // 进度/终态一律就地 patch，禁止 selectAlbum 整表清空
-      if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
-        if (ev.payload.status === "downloading" || ev.payload.status === "cataloging") {
-          throttledPatchPhotosOnProgress();
-        } else if (wasActive && (ev.payload.status === "done" || ev.payload.status === "failed" || ev.payload.status === "idle" || ev.payload.status === "paused")) {
-          void patchPhotosCloudStates();
-        }
-      }
-    });
+    await hydrateJobFromTauri();
     unlistenAuthExpired = await listen("qzone-sync://auth-expired", () => {
       void applyAuthExpiredUi(true);
     });
@@ -792,7 +693,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopQrPoll();
-  unlisten?.();
   unlistenAuthExpired?.();
 });
 
@@ -826,7 +726,7 @@ watch(drawerOpen, open => {
   >
     <template #fab>
       <a-button class="fab-btn" :class="`fab-${fabState.color}`" shape="circle" size="large" :title="fabState.label">
-        <IcloudSyncFabWave v-if="showFabProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
+        <SyncFabWave v-if="showFabProgress" :percent="fabState.percent" :tone="fabState.color" :size="46" />
         <CcIconifyIcon v-else :icon="fabIconName" :class="{ breathing: fabState.breathing }" width="28" height="28" />
       </a-button>
     </template>

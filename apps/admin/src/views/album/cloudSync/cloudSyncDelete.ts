@@ -70,10 +70,7 @@ export function summarizeCloudSyncDelete(
 /**
  * 结束后应保留勾选的 assetId
  */
-export function keepIdsFromCloudSyncDelete(
-  result: CloudSyncDeleteNormalizedResult | null,
-  itemAssetIds: string[]
-): string[] {
+export function keepIdsFromCloudSyncDelete(result: CloudSyncDeleteNormalizedResult | null, itemAssetIds: string[]): string[] {
   if (!result) return [...new Set(itemAssetIds)];
   const keep = [...(result.failedAssetIds ?? []), ...(result.rejectedAssetIds ?? [])];
   return [...new Set(keep)];

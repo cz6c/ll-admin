@@ -1,7 +1,7 @@
 <!--
-  iCloud 下载 FAB 水波球进度
-  职责：echarts-liquidfill 渲染 46px 圆内液体进度，仅下载中使用
-  适用：IcloudSyncFab 替换 a-progress circle
+  双云同步 FAB 水波球进度
+  职责：echarts-liquidfill 渲染圆内液体进度，下载/枚举中使用
+  适用：icloudSync / qzoneSync 模块 index.vue
 -->
 <script setup lang="ts">
 import type { ECharts, EChartsOption } from "echarts";
@@ -21,7 +21,7 @@ import {
   COLOR_WARNING_HOVER
 } from "@/utils/theme";
 
-defineOptions({ name: "IcloudSyncFabWave" });
+defineOptions({ name: "AlbumSyncFabWave" });
 
 /** FAB 状态色，与 fabState.color 对齐；processing 等同 primary */
 type FabWaveTone = "primary" | "processing" | "success" | "warning" | "error" | "default";

@@ -3,8 +3,8 @@
   职责：从 useIcloudSyncJob 取态，交给 SyncJobFooter 展示；主按钮/暂停/取消留在此
 -->
 <script setup lang="ts">
-import SyncJobFooter from "./SyncJobFooter.vue";
-import { useIcloudSyncJob } from "@/composables/useIcloudSyncJob";
+import SyncJobFooter from "../../cloudSync/components/SyncJobFooter.vue";
+import { useIcloudSyncJob } from "../useIcloudSyncJob";
 
 defineOptions({ name: "AlbumIcloudSyncFooter" });
 

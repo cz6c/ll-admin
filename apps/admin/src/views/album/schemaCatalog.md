@@ -3,7 +3,7 @@
 > **职责：** 陈列 `media.db` / `state.db` 各表作用（给人与可视化工具对照用）。  
 > **不合并：** 两库职责分离，见下文边界。  
 > **对齐：** 2026-10-16  
-> 流程：[本地扫描](./loadingFlow.md) · [云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md)
+> 流程：[本地扫描](./loadingFlow.md) · [云同步](./icloudSync/cloudSyncFlow.md) · [登录](./icloudSync/loginFlow.md) · [QQ 空间](./qzoneSync/qzoneSyncFlow.md)
 
 SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 

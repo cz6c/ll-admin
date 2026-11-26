@@ -6,7 +6,7 @@
 > **前置：** 设置页已配 `rootDir`；HEIC/视频建议捆绑 `ffmpeg` + `ffprobe`  
 > **对齐：** 2026-10-16
 
-姊妹文档：[云同步](./cloudSyncFlow.md) · [登录](./loginFlow.md) · [表目录](./schemaCatalog.md)
+姊妹文档：[云同步](./icloudSync/cloudSyncFlow.md) · [登录](./icloudSync/loginFlow.md) · [QQ 空间](./qzoneSync/qzoneSyncFlow.md) · [表目录](./schemaCatalog.md)
 
 
 ---

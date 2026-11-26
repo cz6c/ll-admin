@@ -501,11 +501,7 @@ function _useIcloudSyncJob() {
         /* 已完成任务不再持久化 */
       }
       // 下载任务完成：轻提示刷新本地相册（同步中静默入库，不启出图、不改宫格）
-      if (
-        normalizeTaskType(status.taskType) === "sync" &&
-        toastedDoneJobId !== status.jobId &&
-        status.done > 0
-      ) {
+      if (normalizeTaskType(status.taskType) === "sync" && toastedDoneJobId !== status.jobId && status.done > 0) {
         toastedDoneJobId = status.jobId;
         $feedback.message.info(`有 ${status.done} 张照片已下载到本地，点击「刷新」可在相册中查看`);
       }

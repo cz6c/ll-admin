@@ -17,7 +17,7 @@ import { message, notification } from "ant-design-vue";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
-import { useIcloudSyncBackgroundNotify } from "@/composables/useIcloudSyncBackgroundAlert";
+import { useIcloudSyncBackgroundNotify } from "@/views/album/icloudSync/useIcloudSyncBackgroundAlert";
 import { useSettingsStore } from "@/store/modules/settings";
 import { isTauri, ensureCsWindowMinInnerSize } from "@/utils/tauri";
 import { FONT_FAMILY, COLOR_PRIMARY, handleThemeStyle } from "@/utils/theme";

@@ -167,8 +167,7 @@ async function applyRememberedForAppleId(rawId: string) {
     rememberMe.value = !!entry.rememberPassword;
   } else {
     const settings = await getIcloudSyncSettings();
-    rememberMe.value =
-      !!settings.rememberPassword && settings.appleId.trim().toLowerCase() === id.toLowerCase();
+    rememberMe.value = !!settings.rememberPassword && settings.appleId.trim().toLowerCase() === id.toLowerCase();
   }
   if (rememberMe.value) {
     password.value = (await getIcloudSyncRememberedPassword(id))?.trim() || "";

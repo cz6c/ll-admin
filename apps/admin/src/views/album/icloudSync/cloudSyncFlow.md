@@ -2,13 +2,13 @@
 
 > **产品目的：** iCloud 空间不够 → **单向同步到本地** → **显式删云腾空间** → 再 **同步到本地**，如此往复。  
 > **职责：** catalog 落库 → 可续传下载 → 抽屉云管理 → 用户显式删云。  
-> **页面：** `index.vue` + `IcloudSyncFab.vue` · `IcloudSyncFooter` / `SyncJobFooter` · `CloudSyncDeleteDialog` · `useIcloudSyncJob` · `useCloudSyncIntent`  
+> **页面：** `album/index.vue` + **`icloudSync/index.vue`** · `icloudSync/components/IcloudSyncFooter` · 双云共用 `album/cloudSync/`（`SyncJobFooter`、`useCloudSyncIntent` 等）· `useIcloudSyncJob`  
 > **UI：** 忙时底栏；意图先行「下载/移除」；宫格四态；抽屉**无灯箱**；`start_job` 可选 `assetIds`  
 > **实现：** `src-tauri/src/icloud_sync/*` · sidecar · `api/icloudSync.ts`  
 > **前置：** Apple ID 已登录（[loginFlow](./loginFlow.md)）  
 > **不涉及：** `src-tauri/src/album/*`（相册纯本地）；**不做**双向冲突 / 上传 / 本地改动比对。
 
-姊妹：[登录](./loginFlow.md) · [本地扫描](./loadingFlow.md) · [QQ 空间](./qzoneSyncFlow.md) · [表目录](./schemaCatalog.md)
+姊妹：[登录](./loginFlow.md) · [本地扫描](../loadingFlow.md) · [QQ 空间](../qzoneSync/qzoneSyncFlow.md) · [表目录](../schemaCatalog.md)
 
 > **运行真相：** 硬规则 / 不变量以本文 + 代码为准。
 
@@ -314,13 +314,13 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 
 | 组件 | 职责 |
 |------|------|
-| `IcloudSyncFab` | FAB；抽屉宫格 + 意图工具栏；虚拟列表/框选 |
+| `icloudSync/index.vue` | FAB；抽屉宫格 + 意图工具栏；虚拟列表/框选 |
 | `useCloudSyncIntent` | 下载/移除意图互斥与按钮文案（与 QQ 共用） |
 | `IcloudSyncFooter` → `SyncJobFooter` | 忙时底栏展示壳 + iCloud 主按钮/暂停/取消 |
 | `CloudSyncDeleteDialog` | 删云进度/结果弹窗（与 QQ 共用；适配层映射结果） |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
-| `icloudSyncCloudList.ts` | 状态文案 / Live 行合并 / `download_failed` 展示覆盖 |
+| `icloudSyncCloudList.ts` / `loadIcloudSyncCloudList.ts` | Live 行合并 / 抽屉取数；角标文案见 `cloudSync/cloudSyncStateDisplay.ts` |
 
 ---
 

@@ -1,12 +1,12 @@
 # QQ 空间同步 — 第二备份源（MVP）
 
 > **产品目的：** 与 iCloud 并列，把 **本人** QQ 空间相册与本地互通：云端原图/视频可下载到本地；也可将本机图片上传到指定相册。  
-> **页面：** `index.vue` + `QzoneSyncFab.vue` · `useCloudSyncIntent` · `CloudSyncDeleteDialog` · `QzoneSyncFooter`/`SyncJobFooter`  
+> **页面：** `album/index.vue` + **`qzoneSync/index.vue`** · `qzoneSync/useQzoneSyncJob` · 双云共用 `album/cloudSync/` · `QzoneSyncFooter`/`SyncJobFooter`  
 > **实现：** `src-tauri/src/qzone_sync/*` · `api/qzoneSync.ts`  
 > **不涉及：** 好友相册、动态；**不嵌入** GPL 第三方客户端源码。  
 > **删云：** 勾选移除；**本机文件与 media.db 保留**；抽屉**无灯箱**（预览走本地相册）。  
 
-姊妹：[iCloud 同步](./cloudSyncFlow.md) · [本地扫描](./loadingFlow.md)
+姊妹：[iCloud 同步](../icloudSync/cloudSyncFlow.md) · [本地扫描](../loadingFlow.md)
 
 ---
 

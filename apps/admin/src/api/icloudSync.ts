@@ -305,6 +305,10 @@ export function formatIcloudSyncError(err: unknown, options?: FormatIcloudSyncEr
   const raw = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "未知错误");
 
   const lower = raw.toLowerCase();
+  // sidecar 旧版在 Hidden 相册不可用时误标 auth_failed；勿提示改密码
+  if (lower.includes("hidden album unavailable")) {
+    return "已跳过「已隐藏」相册（当前账号未开放该 API）。可在设置关闭「同步已隐藏」后刷新；更新 sidecar 后即使开启也会自动跳过";
+  }
   if (lower.includes("without pending challenge") || lower.includes("无 pending challenge")) {
     return "二次验证已失效，请退出后重新登录一次（勿连点）";
   }

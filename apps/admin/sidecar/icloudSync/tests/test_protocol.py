@@ -131,6 +131,24 @@ def test_list_shared_library_zones_http_error_raises() -> None:
         assert "HTTP 500" in str(exc)
 
 
+def test_iter_hidden_assets_returns_empty_when_album_missing() -> None:
+    """Hidden 相册未开放时不应抛错，避免整次 catalog 被标成 auth_failed。"""
+    agent = _load_agent(mock=False)
+
+    class _Api:
+        photos = None
+
+    assert list(agent._iter_hidden_assets(_Api())) == []
+
+    class _Photos:
+        albums = {"Recents": object()}
+
+    class _Api2:
+        photos = _Photos()
+
+    assert list(agent._iter_hidden_assets(_Api2())) == []
+
+
 def test_iter_shared_library_assets_raises_when_zones_unopenable() -> None:
     """有 zone 但 PhotoLibrary 全打不开时必须失败，禁止静默 0 条。"""
     agent = _load_agent(mock=False)

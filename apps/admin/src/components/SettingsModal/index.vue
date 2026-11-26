@@ -115,8 +115,7 @@ async function saveAlbumSettings(): Promise<boolean> {
       ...icloudSettings,
       syncHiddenAlbum: syncHiddenAlbum.value,
       syncSharedLibrary: syncSharedLibrary.value,
-      syncSharedOnlyOwnContributions:
-        syncSharedLibrary.value && syncSharedOnlyOwnContributions.value
+      syncSharedOnlyOwnContributions: syncSharedLibrary.value && syncSharedOnlyOwnContributions.value
     });
     return true;
   } catch (e: unknown) {
@@ -220,7 +219,7 @@ watch(visible, open => {
 
                 <a-form-item label="落盘目录">
                   <p class="mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；隐藏相册在 …/Hidden/ 子目录；共享图库在 …/Shared/ 子目录
+                    固定路径：相册根/iCloudSync/&lt;Apple ID&gt;/；隐藏相册在 …/Hidden/；共享图库在 …/Shared/
                   </p>
                 </a-form-item>
 
@@ -230,15 +229,15 @@ watch(visible, open => {
                 </a-form-item>
 
                 <a-form-item label="同步共享图库">
-                  <a-checkbox v-model:checked="syncSharedLibrary">一并同步 Shared Photo Library</a-checkbox>
+                  <a-checkbox v-model:checked="syncSharedLibrary" @change="() => (syncSharedOnlyOwnContributions = true)">
+                    一并同步 Shared Photo Library
+                  </a-checkbox>
                   <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">开启后与个人图库混排展示；关闭后不再刷新，已下载文件保留</p>
                 </a-form-item>
 
-                <a-form-item v-if="syncSharedLibrary" label="共享去重">
+                <a-form-item v-if="syncSharedLibrary" label="共享图库去重">
                   <a-checkbox v-model:checked="syncSharedOnlyOwnContributions">仅下载本人贡献到共享图库的照片</a-checkbox>
-                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    双账号互开共享时，跳过他人贡献项（抽屉标「他人共享」）；需先刷新 iCloud 状态后生效
-                  </p>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">双账号互开共享时，跳过他人贡献项（抽屉标「他人共享」）</p>
                 </a-form-item>
 
                 <a-divider orientation="left">QQ 空间同步</a-divider>

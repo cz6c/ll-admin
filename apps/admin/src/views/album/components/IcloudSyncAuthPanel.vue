@@ -143,7 +143,12 @@ async function syncKeyringAfterSuccess() {
   const id = appleId.value.trim();
   await touchIcloudSyncAccountBook(id, rememberMe.value);
   if (rememberMe.value) {
-    await saveIcloudSyncRememberedPassword(password.value, id);
+    try {
+      await saveIcloudSyncRememberedPassword(password.value, id);
+    } catch (e) {
+      // 登录已成功；钥匙串写入失败不阻断进入图库（避免 refresh/catalog 误判未登录）
+      $feedback.message.warning(formatIcloudSyncError(e));
+    }
   }
   password.value = "";
   await reloadAccountBook();
@@ -158,7 +163,13 @@ async function applyRememberedForAppleId(rawId: string) {
     return;
   }
   const entry = accountBook.value.find(row => row.appleId.trim().toLowerCase() === id.toLowerCase());
-  rememberMe.value = !!entry?.rememberPassword;
+  if (entry) {
+    rememberMe.value = !!entry.rememberPassword;
+  } else {
+    const settings = await getIcloudSyncSettings();
+    rememberMe.value =
+      !!settings.rememberPassword && settings.appleId.trim().toLowerCase() === id.toLowerCase();
+  }
   if (rememberMe.value) {
     password.value = (await getIcloudSyncRememberedPassword(id))?.trim() || "";
   } else {

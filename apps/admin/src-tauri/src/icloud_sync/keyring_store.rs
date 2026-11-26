@@ -1,25 +1,17 @@
 //! Apple ID 密码凭据存取（按账号分槽）
-//! 职责：优先 OS keyring；不可用时回退应用数据目录按 stem 分文件
-//! 适用：仅「记住我」勾选且登录成功后写入；下次选中该账号时回填
-//!
-//! @note 登录 SRP 的密码由 `icloud_sync_login(password)` 直传 sidecar，不经本模块
-//! @note 明文回填经 `get_password(apple_id)`，且账号须在该号开启 remember
-//! @note 未勾选记住我不读写该账号槽位
-//! @note SERVICE 与 AI API Key 隔离；禁止写入日志 / settings.json / SQLite
+//! 职责：优先 OS keyring；不可用时回退 `icloud-sync-password.{stem}.local`
+//! 适用：「记住我」且登录成功后写入；旧版单槽密码不迁移，用户重新登录即可
 
 use std::fs;
 use std::path::PathBuf;
 
 use keyring::Entry;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use super::account_book::remember_enabled_for;
-use super::settings::{apple_id_session_stem, icloud_sync_dir, load_settings};
+use super::settings::{apple_id_session_stem, icloud_sync_dir};
 
 const SERVICE: &str = "com.ll.admin.icloud-sync";
-/// 旧版单槽 user；读后迁移到当前 settings.apple_id 对应槽
-const LEGACY_USER: &str = "password";
-const LEGACY_FALLBACK_FILE: &str = "icloud-sync-password.local";
 
 fn entry_for_user(user: &str) -> Result<Entry, String> {
   Entry::new(SERVICE, user).map_err(|e| format!("打开凭据库失败: {e}"))
@@ -28,14 +20,6 @@ fn entry_for_user(user: &str) -> Result<Entry, String> {
 fn fallback_path_for_stem(app: &AppHandle, stem: &str) -> Result<PathBuf, String> {
   let base = icloud_sync_dir(app)?;
   Ok(base.join(format!("icloud-sync-password.{stem}.local")))
-}
-
-fn legacy_fallback_path(app: &AppHandle) -> Result<PathBuf, String> {
-  let base = app
-    .path()
-    .app_data_dir()
-    .map_err(|e| format!("无法解析应用数据目录: {e}"))?;
-  Ok(base.join(LEGACY_FALLBACK_FILE))
 }
 
 fn read_fallback_file(path: &PathBuf) -> Result<Option<String>, String> {
@@ -132,36 +116,26 @@ fn set_password_for_user(app: &AppHandle, user: &str, fallback: &PathBuf, passwo
   Ok(())
 }
 
-/// 将旧版单槽密码迁移到指定 Apple ID 槽（一次性）
-fn migrate_legacy_password(app: &AppHandle, apple_id: &str) -> Result<(), String> {
-  let legacy = get_password_for_user(app, LEGACY_USER, &legacy_fallback_path(app)?)?;
-  let Some(password) = legacy else {
-    return Ok(());
-  };
-  let stem = apple_id_session_stem(apple_id);
-  let user = format!("pwd:{stem}");
-  let fallback = fallback_path_for_stem(app, &stem)?;
-  if get_password_for_user(app, &user, &fallback)?.is_some() {
-    let _ = set_password_for_user(app, LEGACY_USER, &legacy_fallback_path(app)?, "");
-    return Ok(());
-  }
-  set_password_for_user(app, &user, &fallback, &password)?;
-  let _ = set_password_for_user(app, LEGACY_USER, &legacy_fallback_path(app)?, "");
-  log::info!("icloud keyring: migrated legacy password slot to account stem");
-  Ok(())
-}
-
 fn keyring_user_for_apple_id(apple_id: &str) -> String {
-  format!("pwd:{}", apple_id_session_stem(apple_id))
+  apple_id_session_stem(apple_id)
 }
 
-/// 指定账号是否已在钥匙串/回退文件中有密码
+fn read_account_slot(app: &AppHandle, apple_id: &str) -> Result<Option<String>, String> {
+  let user = keyring_user_for_apple_id(apple_id);
+  let fallback = fallback_path_for_stem(app, &user)?;
+  get_password_for_user(app, &user, &fallback)
+}
+
+/// 指定账号是否已配置非空密码（须 remember 开启）
 pub fn has_password_for_apple_id(app: &AppHandle, apple_id: &str) -> Result<bool, String> {
   let apple_id = apple_id.trim();
   if apple_id.is_empty() {
     return Ok(false);
   }
-  Ok(get_password(app, apple_id)?.is_some())
+  if !remember_enabled_for(app, apple_id)? {
+    return Ok(false);
+  }
+  Ok(read_account_slot(app, apple_id)?.is_some())
 }
 
 /// 读取某账号密码；未记住或未设置时返回 None
@@ -173,15 +147,7 @@ pub fn get_password(app: &AppHandle, apple_id: &str) -> Result<Option<String>, S
   if !remember_enabled_for(app, apple_id)? {
     return Ok(None);
   }
-
-  let settings = load_settings(app)?;
-  if settings.apple_id.trim().eq_ignore_ascii_case(apple_id) {
-    migrate_legacy_password(app, apple_id)?;
-  }
-
-  let user = keyring_user_for_apple_id(apple_id);
-  let fallback = fallback_path_for_stem(app, &apple_id_session_stem(apple_id))?;
-  get_password_for_user(app, &user, &fallback)
+  read_account_slot(app, apple_id)
 }
 
 /// 写入或清空某账号密码（空字符串时删除）
@@ -191,7 +157,7 @@ pub fn set_password(app: &AppHandle, apple_id: &str, password: &str) -> Result<(
     return Err("Apple ID 不能为空".into());
   }
   let user = keyring_user_for_apple_id(apple_id);
-  let fallback = fallback_path_for_stem(app, &apple_id_session_stem(apple_id))?;
+  let fallback = fallback_path_for_stem(app, &user)?;
   set_password_for_user(app, &user, &fallback, password)
 }
 

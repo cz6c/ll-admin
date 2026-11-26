@@ -1290,14 +1290,17 @@ def _iter_shared_library_assets(api: Any) -> list[tuple[str, str, Any]]:
 
 
 def _iter_hidden_assets(api: Any) -> Any:
-    """Hidden 智能相册枚举（与 library 互斥，需单独 CloudKit 查询）。"""
+    """
+    Hidden 智能相册枚举（与 library 互斥，需单独 CloudKit 查询）。
+    @note 部分账号/网页端未开放 Hidden 相册 API 时返回空，勿拖垮整次 catalog
+    """
     photos = getattr(api, "photos", None)
     if photos is None:
-        raise RuntimeError("photos service unavailable")
+        return []
     albums = getattr(photos, "albums", None) or {}
     album = albums.get("Hidden")
     if not album:
-        raise RuntimeError("hidden album unavailable")
+        return []
     return album
 
 

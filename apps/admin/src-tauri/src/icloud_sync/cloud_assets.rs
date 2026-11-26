@@ -565,12 +565,19 @@ pub fn get_cloud_state_summary(
       .push((part, cloud_state));
   }
 
+  let shared_scope_total = super::db::count_logical_assets_by_catalog_scope(
+    conn,
+    apple_id,
+    super::types::CatalogScope::Shared,
+  )?;
+
   let mut summary = IcloudSyncCloudStateSummary {
     total: 0,
     cloud_only: 0,
     synced: 0,
     download_failed: 0,
     sync_skipped: 0,
+    shared_scope_total,
     last_catalog_at,
   };
   summary.download_failed = count_download_failed(conn, apple_id)?;

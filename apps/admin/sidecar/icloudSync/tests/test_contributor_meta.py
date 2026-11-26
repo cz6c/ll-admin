@@ -25,6 +25,23 @@ def test_contributed_by_from_master_contributors_list() -> None:
     assert ipd_photos.contributed_by_from_photo(photo) == "__defaultOwner__"
 
 
+def test_contributors_from_photo_merges_all_names() -> None:
+    photo = type("P", (), {})()
+    photo._master_record = _record(  # noqa: SLF001
+        {
+            "contributors": [
+                {"recordName": "__defaultOwner__"},
+                {"recordName": "_abc123def"},
+            ]
+        }
+    )
+    photo._asset_record = None  # noqa: SLF001
+    assert ipd_photos.contributors_from_photo(photo) == [
+        "__defaultOwner__",
+        "_abc123def",
+    ]
+
+
 def test_contributed_by_from_contributed_by_single_ref() -> None:
     photo = type("P", (), {})()
     photo._asset_record = _record(  # noqa: SLF001

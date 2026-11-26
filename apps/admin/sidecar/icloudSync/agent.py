@@ -67,6 +67,17 @@ MOCK_SHARED_CATALOG_ITEMS: list[dict[str, Any]] = [
         "catalog_scope": "shared",
         "library_type": "shared",
         "library_zone": "SharedLibrary-MOCK",
+        "zone_owner_record_name": "_mockZoneOwner",
+        "contributors": ["__defaultOwner__"],
+        "contributed_by": "__defaultOwner__",
+        "catalog_sources": [
+            {
+                "catalog_scope": "shared",
+                "library_type": "shared",
+                "library_zone": "SharedLibrary-MOCK",
+            }
+        ],
+        "seen_in_primary_sync": False,
     }
 ]
 
@@ -1216,7 +1227,7 @@ def _enumerate_zone_photos(
     params = getattr(photos, "params", {}) or {}
     session = photos.session
 
-    out: list[tuple[str, str, Any]] = []
+    out: list[tuple[str, str, Any, str | None]] = []
     opened: dict[str, Any] = {}
     zone_errors: list[str] = []
 
@@ -1225,6 +1236,7 @@ def _enumerate_zone_photos(
         zone_name = str(zone_id.get("zoneName") or "").strip()
         if not zone_name:
             continue
+        zone_owner = _zone_owner_record_name(zone)
         try:
             library = photo_library_cls(
                 service_endpoint, params, session, zone_id, library_type
@@ -1235,18 +1247,18 @@ def _enumerate_zone_photos(
         opened[zone_name] = library
         try:
             for photo in library.all:
-                out.append((zone_name, library_type, photo))
+                out.append((zone_name, library_type, photo, zone_owner))
         except Exception as exc:  # noqa: BLE001
             zone_errors.append(f"{library_type}/{zone_name} enumerate: {exc}")
 
     return out, opened, zone_errors
 
 
-def _iter_shared_library_assets(api: Any) -> list[tuple[str, str, Any]]:
+def _iter_shared_library_assets(api: Any) -> list[tuple[str, str, Any, str | None]]:
     """
     Shared Photo Library：private + shared 两端 zones/list，跳过 PrimarySync，逐 zone 枚举 .all。
 
-    @returns (zone_name, library_type, photo)；无额外 zone 时返回 []
+    @returns (zone_name, library_type, photo, zone_owner_record_name)；无额外 zone 时返回 []
     @raises RuntimeError zones/list 失败，或有 zone 但全部无法打开/枚举
     @note library_type 必须与 CloudKit endpoint 一致，供 download/delete 路由
     """
@@ -1304,12 +1316,22 @@ def _iter_hidden_assets(api: Any) -> Any:
     return album
 
 
+def _zone_owner_record_name(zone: dict[str, Any]) -> str | None:
+    """CloudKit zoneID.ownerRecordName（共享区创建者/主账号 recordName）。"""
+    zone_id = zone.get("zoneID")
+    if not isinstance(zone_id, dict):
+        return None
+    owner = str(zone_id.get("ownerRecordName") or "").strip()
+    return owner or None
+
+
 def _catalog_item_from_photo(
     photo: Any,
     view: str,
     catalog_scope: str = "library",
     library_type: str = "private",
     library_zone: str = "PrimarySync",
+    zone_owner_record_name: str | None = None,
 ) -> dict[str, Any]:
     """将 pyicloud_ipd PhotoAsset 转换为 sidecar catalog item。"""
     if not ipd_photos.is_ipd_photo_asset(photo):
@@ -1347,9 +1369,21 @@ def _catalog_item_from_photo(
     if latitude is not None and longitude is not None:
         item["latitude"] = latitude
         item["longitude"] = longitude
-    contributed_by = ipd_photos.contributed_by_from_photo(photo)
+    contributors = ipd_photos.contributors_from_photo(photo)
+    if contributors:
+        item["contributors"] = contributors
+    contributed_by = contributors[0] if contributors else None
     if contributed_by:
         item["contributed_by"] = contributed_by
+    if zone_owner_record_name:
+        item["zone_owner_record_name"] = zone_owner_record_name
+    item["catalog_sources"] = [
+        {
+            "catalog_scope": catalog_scope,
+            "library_type": library_type,
+            "library_zone": library_zone,
+        }
+    ]
     return item
 
 
@@ -2366,20 +2400,104 @@ def _parse_include_shared_library(cmd: dict[str, Any]) -> bool:
     return _parse_bool_flag(cmd, "include_shared_library")
 
 
+def _merge_catalog_sources(group: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """合并同 asset_id 多枚举来源，去重 catalog_sources。"""
+    seen: set[tuple[str, str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for item in group:
+        sources = item.get("catalog_sources")
+        if not isinstance(sources, list):
+            continue
+        for src in sources:
+            if not isinstance(src, dict):
+                continue
+            key = (
+                str(src.get("catalog_scope") or "").strip().lower(),
+                str(src.get("library_type") or "").strip().lower(),
+                str(src.get("library_zone") or "").strip(),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "catalog_scope": src.get("catalog_scope"),
+                    "library_type": src.get("library_type"),
+                    "library_zone": src.get("library_zone"),
+                }
+            )
+    return out
+
+
+def _seen_in_primary_sync_from_sources(sources: list[dict[str, Any]]) -> bool:
+    """本次 catalog 是否在 PrimarySync（photos.all / library+PrimarySync）出现过。"""
+    for src in sources:
+        scope = str(src.get("catalog_scope") or "library").strip().lower()
+        zone = str(src.get("library_zone") or "PrimarySync").strip()
+        if scope == "library" and zone in ("", "PrimarySync"):
+            return True
+    return False
+
+
 def _dedupe_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """同 asset_id 多 scope 冲突时保留 shared > hidden > library。"""
+    """同 asset_id 多 scope 冲突时保留 shared > hidden > library，并合并研判字段。"""
     priority = {"shared": 3, "hidden": 2, "library": 1}
-    best: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item.get("catalog_sources"), list) or not item["catalog_sources"]:
+            item["catalog_sources"] = [
+                {
+                    "catalog_scope": item.get("catalog_scope", "library"),
+                    "library_type": item.get("library_type", "private"),
+                    "library_zone": item.get("library_zone", "PrimarySync"),
+                }
+            ]
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         asset_id = str(item.get("asset_id", "")).strip()
         if not asset_id:
             continue
-        scope = str(item.get("catalog_scope") or "library").strip().lower()
-        score = priority.get(scope, 0)
-        prev = best.get(asset_id)
-        if prev is None or score > priority.get(str(prev.get("catalog_scope") or "library").lower(), 0):
-            best[asset_id] = item
-    return list(best.values())
+        grouped.setdefault(asset_id, []).append(item)
+
+    out: list[dict[str, Any]] = []
+    for group in grouped.values():
+        winner = max(
+            group,
+            key=lambda i: priority.get(
+                str(i.get("catalog_scope") or "library").strip().lower(), 0
+            ),
+        )
+        merged = dict(winner)
+        sources = _merge_catalog_sources(group)
+        if sources:
+            merged["catalog_sources"] = sources
+            merged["seen_in_primary_sync"] = _seen_in_primary_sync_from_sources(sources)
+        else:
+            merged["seen_in_primary_sync"] = False
+
+        if not merged.get("zone_owner_record_name"):
+            for item in group:
+                zone_owner = str(item.get("zone_owner_record_name") or "").strip()
+                if zone_owner:
+                    merged["zone_owner_record_name"] = zone_owner
+                    break
+
+        contrib_seen: set[str] = set()
+        merged_contributors: list[str] = []
+        for item in group:
+            raw = item.get("contributors")
+            if not isinstance(raw, list):
+                continue
+            for name in raw:
+                s = str(name or "").strip()
+                if not s or s in contrib_seen:
+                    continue
+                contrib_seen.add(s)
+                merged_contributors.append(s)
+        if merged_contributors:
+            merged["contributors"] = merged_contributors
+            merged["contributed_by"] = merged_contributors[0]
+        out.append(merged)
+    return out
 
 
 def _collect_catalog_items(
@@ -2402,9 +2520,16 @@ def _collect_catalog_items(
             for photo in _iter_hidden_assets(api)
         )
     if include_shared_library and view == "library":
-        for zone_name, library_type, photo in _iter_shared_library_assets(api):
+        for zone_name, library_type, photo, zone_owner in _iter_shared_library_assets(api):
             items.append(
-                _catalog_item_from_photo(photo, "library", "shared", library_type, zone_name)
+                _catalog_item_from_photo(
+                    photo,
+                    "library",
+                    "shared",
+                    library_type,
+                    zone_name,
+                    zone_owner_record_name=zone_owner,
+                )
             )
     return _dedupe_catalog_items(items)
 

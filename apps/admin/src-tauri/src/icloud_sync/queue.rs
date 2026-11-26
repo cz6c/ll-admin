@@ -18,7 +18,7 @@ use tauri::{AppHandle, Emitter};
 use super::ensure_sidecar_authenticated;
 use super::catalog_diff::classify_catalog_rows;
 use super::db::{
-  apply_catalog_delta, apply_shared_contributor_skip_policy, count_assets_by_status, discard_sync_job,
+  apply_catalog_delta, count_assets_by_status, discard_sync_job,
   discard_task, enqueue_cloud_only_for_sync,
   enqueue_outstanding_for_full_sync,
   finalize_job_download, find_incomplete_task_for_apple, get_job,
@@ -659,6 +659,8 @@ fn is_auth_pause_error(code: &str) -> bool {
 /// catalog 拉取结果：资产列表 + 可选的本账号 CloudKit user recordName
 struct CatalogFetchResult {
   items: Vec<CatalogItem>,
+  /// sidecar catalog 原始 item，供 catalog_observations 留存全字段
+  raw_items: Vec<serde_json::Value>,
   cloudkit_user_record_id: Option<String>,
 }
 
@@ -751,6 +753,7 @@ fn fetch_catalog(
   }
   Ok(CatalogFetchResult {
     items,
+    raw_items,
     cloudkit_user_record_id,
   })
 }
@@ -786,25 +789,30 @@ fn persist_catalog_delta(
       }
     }
   }
-  summary.deleted =
-    mark_catalog_deletions(conn, apple_id, include_hidden, include_shared_library)?;
+  let catalog_includes_hidden = catalog_items
+    .iter()
+    .any(|i| i.catalog_scope == super::types::CatalogScope::Hidden);
+  let catalog_includes_shared = catalog_items
+    .iter()
+    .any(|i| i.catalog_scope == super::types::CatalogScope::Shared);
+  let purge_hidden_scope = include_hidden && catalog_includes_hidden;
+  let purge_shared_scope = include_shared_library && catalog_includes_shared;
+  if include_hidden && !catalog_includes_hidden {
+    log::warn!(
+      "icloud catalog: sync_hidden_album=true but 0 hidden in catalog response; skip mark deletions for hidden scope"
+    );
+  }
+  if include_shared_library && !catalog_includes_shared {
+    log::warn!(
+      "icloud catalog: sync_shared_library=true but 0 shared in catalog response; skip mark deletions for shared scope"
+    );
+  }
+  summary.deleted = mark_catalog_deletions(conn, apple_id, purge_hidden_scope, purge_shared_scope)?;
   // 本地文件缺失的 synced 行降级为 cloud_only，须在 enqueue 前完成以便本次 job 可下载
   let reconciled = reconcile_synced_missing_local_files_in_catalog(conn, apple_id)?;
   if reconciled > 0 {
     log::info!(
       "icloud catalog job {job_id}: {reconciled} synced assets missing on disk → cloud_only"
-    );
-  }
-  let settings = load_settings(app)?;
-  let skipped = apply_shared_contributor_skip_policy(
-    conn,
-    apple_id,
-    settings.cloudkit_user_record_id.as_deref(),
-    settings.sync_shared_only_own_contributions && settings.sync_shared_library,
-  )?;
-  if skipped > 0 {
-    log::info!(
-      "icloud catalog job {job_id}: shared contributor skip policy marked {skipped} rows"
     );
   }
   if enqueue {
@@ -1651,6 +1659,21 @@ pub async fn icloud_sync_refresh_catalog(
           include_shared_library,
           output_dir_ref,
         )?;
+        let observed_at = chrono::Utc::now().timestamp();
+        match super::db::append_catalog_observations(
+          &conn,
+          &apple_id,
+          job_id,
+          observed_at,
+          catalog.cloudkit_user_record_id.as_deref(),
+          &catalog.raw_items,
+        ) {
+          Ok(n) if n > 0 => {
+            log::info!("icloud catalog job {job_id}: appended {n} catalog observations");
+          }
+          Ok(_) => {}
+          Err(e) => log::warn!("icloud catalog job {job_id}: catalog_observations skipped: {e}"),
+        }
         set_task_status(&app_bg, &conn, job_id, JobStatus::Done)?;
         Ok(())
       })();

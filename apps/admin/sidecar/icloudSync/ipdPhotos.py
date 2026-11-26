@@ -605,12 +605,11 @@ def _contributor_names_from_field_value(raw: Any) -> list[str]:
     return [name] if name else []
 
 
-def contributed_by_from_photo(photo: Any) -> str | None:
+def contributors_from_photo(photo: Any) -> list[str]:
     """
-    Shared Photo Library 贡献者 CloudKit user recordName。
+    Shared Photo Library contributors 全量 recordName 列表（研究/研判用）。
 
-    @note contributors 表示谁把资源贡献进共享图库，不等于 EXIF 拍摄者
-    @returns 无字段或私库项时为 None
+    @note 顺序与 CloudKit 字段一致；可含 __defaultOwner__；不等于拍摄者
     """
     for record in (
         getattr(photo, "_master_record", None),
@@ -622,8 +621,19 @@ def contributed_by_from_photo(photo: Any) -> str | None:
             raw = _cpl_record_field_value(record, field)
             names = _contributor_names_from_field_value(raw)
             if names:
-                return names[0]
-    return None
+                return names
+    return []
+
+
+def contributed_by_from_photo(photo: Any) -> str | None:
+    """
+    Shared Photo Library 贡献者 CloudKit user recordName。
+
+    @note contributors 表示谁把资源贡献进共享图库，不等于 EXIF 拍摄者
+    @returns 无字段或私库项时为 None
+    """
+    names = contributors_from_photo(photo)
+    return names[0] if names else None
 
 
 def _zones_list_raw(photos: Any, library_type: str) -> list[dict[str, Any]]:
@@ -674,7 +684,7 @@ def cloudkit_user_record_name_from_photos(photos: Any) -> str | None:
     """
     当前登录账号 CloudKit user recordName（private PrimarySync.ownerRecordName）。
 
-    @note catalog done 带回 Rust 设置，用于「仅下载本人贡献」判定
+    @note catalog done 带回 Rust 落库 cloudkit_user_record_id（观测 / 诊断）
     """
     try:
         zones = _zones_list_raw(photos, "private")

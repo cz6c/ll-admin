@@ -34,8 +34,6 @@ export interface IcloudSyncSettings {
   syncHiddenAlbum: boolean;
   /** 为 true 时 catalog 合并 Shared Photo Library */
   syncSharedLibrary: boolean;
-  /** 为 true 时共享图库仅下载本人贡献项 */
-  syncSharedOnlyOwnContributions?: boolean;
   /** 为 true 时 iCloud 批量移除自动跳过近一年内资源 */
   batchRemoveSkipRecentYear?: boolean;
   /** catalog 带回的本账号 CloudKit user recordName */
@@ -150,7 +148,7 @@ export interface IcloudSyncSyncAssetRow {
   lastCatalogAt?: number | null;
   /** `library` | `hidden`；hidden 项混排展示并落盘 Hidden 子目录 */
   catalogScope?: string;
-  /** 跳过下载原因（如 shared_other_contributor） */
+  /** 跳过下载原因（历史存量 sync_skipped 行） */
   skipReason?: string | null;
 }
 
@@ -171,6 +169,8 @@ export interface IcloudSyncCloudStateSummary {
   lastCatalogAt?: number | null;
   /** 他人贡献共享项（策略跳过下载） */
   syncSkipped?: number;
+  /** 库内登记为共享图库的逻辑资产数 */
+  sharedScopeTotal?: number;
 }
 
 export type IcloudSyncCloudStateFilter = "all" | "cloud_only" | "synced" | "download_failed";

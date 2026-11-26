@@ -10,7 +10,7 @@ const CLOUD_STATE_LABELS: Record<string, string> = {
   downloading: "下载中",
   synced: "已下载",
   download_failed: "失败",
-  sync_skipped: "他人共享"
+  sync_skipped: "跳过下载"
 };
 
 /** 云态角标中文文案 */

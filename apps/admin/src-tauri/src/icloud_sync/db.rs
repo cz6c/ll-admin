@@ -1,7 +1,7 @@
 //! iCloud 同步 SQLite 断点库
-//! 职责：assets 注册表、pending/done 查询与状态更新
+//! 职责：assets 注册表、pending/done 查询与状态更新；`catalog_observations` 追加 catalog 快照供共享图库研判分析
 //! 适用：队列 catalog 落库；下载进度只在本次进程内，重启不续传
-//! @note 不看 `user_version`，也不再建 `jobs` 表。无 `assets` 才建表；已有表直接打开、不改结构。任务状态只在进程内存。
+//! @note 不看 `user_version`，也不再建 `jobs` 表。无 `assets` 才建表；已有表直接打开、只做 ADD COLUMN / 新表。任务状态只在进程内存。
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -69,7 +69,178 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
     ensure_assets_column(conn, "contributed_by", "TEXT")?;
     ensure_assets_column(conn, "skip_reason", "TEXT")?;
   }
+  ensure_catalog_observations_schema(conn)?;
+  migrate_clear_legacy_shared_skip_tags(conn)?;
   Ok(())
+}
+
+/// 清掉已下线的 shared_other_contributor 误标（打开库时幂等执行）
+fn migrate_clear_legacy_shared_skip_tags(conn: &Connection) -> Result<(), String> {
+  let changed = conn
+    .execute(
+      r#"
+      UPDATE assets
+      SET cloud_state = 'cloud_only', skip_reason = NULL
+      WHERE cloud_state = 'sync_skipped' AND skip_reason = 'shared_other_contributor'
+      "#,
+      [],
+    )
+    .map_err(|e| format!("清理历史 shared 跳过标失败: {e}"))?;
+  if changed > 0 {
+    log::info!("icloud sync: cleared {changed} legacy shared_other_contributor rows");
+  }
+  Ok(())
+}
+
+/// 研究用：每次 catalog 追加 sidecar 原始 item，用于多轮同步比对「本人/他人」可判定字段
+fn ensure_catalog_observations_schema(conn: &Connection) -> Result<(), String> {
+  if !table_exists(conn, "catalog_observations")? {
+    conn
+      .execute_batch(
+        r#"
+        CREATE TABLE catalog_observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          apple_id TEXT NOT NULL,
+          catalog_job_id INTEGER,
+          observed_at INTEGER NOT NULL,
+          cloudkit_user_record_id TEXT,
+          asset_id TEXT NOT NULL,
+          catalog_scope TEXT,
+          library_type TEXT,
+          library_zone TEXT,
+          contributed_by TEXT,
+          contributors_json TEXT,
+          zone_owner_record_name TEXT,
+          seen_in_primary_sync INTEGER,
+          catalog_sources_json TEXT,
+          media_kind TEXT,
+          capture_at TEXT,
+          added_at TEXT,
+          item_json TEXT NOT NULL
+        );
+        CREATE INDEX idx_catalog_obs_apple_time ON catalog_observations(apple_id, observed_at);
+        CREATE INDEX idx_catalog_obs_apple_asset ON catalog_observations(apple_id, asset_id, observed_at);
+        CREATE INDEX idx_catalog_obs_scope ON catalog_observations(apple_id, catalog_scope, observed_at);
+        "#,
+      )
+      .map_err(|e| format!("创建 catalog_observations 失败: {e}"))?;
+  }
+  ensure_catalog_observations_column(conn, "contributors_json", "TEXT")?;
+  ensure_catalog_observations_column(conn, "zone_owner_record_name", "TEXT")?;
+  ensure_catalog_observations_column(conn, "seen_in_primary_sync", "INTEGER")?;
+  ensure_catalog_observations_column(conn, "catalog_sources_json", "TEXT")?;
+  Ok(())
+}
+
+fn ensure_catalog_observations_column(
+  conn: &Connection,
+  name: &str,
+  definition: &str,
+) -> Result<(), String> {
+  let mut stmt = conn
+    .prepare("PRAGMA table_info(catalog_observations)")
+    .map_err(|e| format!("读取 catalog_observations 表结构失败: {e}"))?;
+  let cols = stmt
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("读取 catalog_observations 表结构失败: {e}"))?;
+  let exists = cols.filter_map(Result::ok).any(|col| col == name);
+  if exists {
+    return Ok(());
+  }
+  conn
+    .execute_batch(&format!(
+      "ALTER TABLE catalog_observations ADD COLUMN {name} {definition};"
+    ))
+    .map_err(|e| format!("迁移 catalog_observations.{name} 失败: {e}"))?;
+  Ok(())
+}
+
+fn json_trimmed_string(value: &serde_json::Value, key: &str) -> Option<String> {
+  value
+    .get(key)
+    .and_then(|v| v.as_str())
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .map(str::to_string)
+}
+
+fn json_nested_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
+  value.get(key).and_then(|v| {
+    if v.is_null() {
+      return None;
+    }
+    serde_json::to_string(v).ok()
+  })
+}
+
+fn json_bool_as_i32(value: &serde_json::Value, key: &str) -> Option<i32> {
+  value
+    .get(key)
+    .and_then(|v| v.as_bool())
+    .map(|b| i32::from(b))
+}
+
+/**
+ * 追加本轮 catalog 全量观测（sidecar item 原文 JSON + 常用列便于 SQL）。
+ * @returns 写入行数
+ * @note 不改变 assets / 跳过策略；仅用于线下分析后再定「他人共享」规则
+ */
+pub fn append_catalog_observations(
+  conn: &Connection,
+  apple_id: &str,
+  catalog_job_id: i64,
+  observed_at: i64,
+  cloudkit_user_record_id: Option<&str>,
+  raw_items: &[serde_json::Value],
+) -> Result<u32, String> {
+  if raw_items.is_empty() {
+    return Ok(0);
+  }
+  let tx = conn
+    .unchecked_transaction()
+    .map_err(|e| format!("开启 catalog_observations 事务失败: {e}"))?;
+  let mut inserted = 0u32;
+  for item in raw_items {
+    let Some(asset_id) = json_trimmed_string(item, "asset_id") else {
+      continue;
+    };
+    let item_json = serde_json::to_string(item)
+      .map_err(|e| format!("序列化 catalog observation 失败: {e}"))?;
+    tx.execute(
+      r#"
+      INSERT INTO catalog_observations(
+        apple_id, catalog_job_id, observed_at, cloudkit_user_record_id,
+        asset_id, catalog_scope, library_type, library_zone, contributed_by,
+        contributors_json, zone_owner_record_name, seen_in_primary_sync, catalog_sources_json,
+        media_kind, capture_at, added_at, item_json
+      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+      "#,
+      params![
+        apple_id,
+        catalog_job_id,
+        observed_at,
+        cloudkit_user_record_id,
+        asset_id,
+        json_trimmed_string(item, "catalog_scope"),
+        json_trimmed_string(item, "library_type"),
+        json_trimmed_string(item, "library_zone"),
+        json_trimmed_string(item, "contributed_by"),
+        json_nested_json_string(item, "contributors"),
+        json_trimmed_string(item, "zone_owner_record_name"),
+        json_bool_as_i32(item, "seen_in_primary_sync"),
+        json_nested_json_string(item, "catalog_sources"),
+        json_trimmed_string(item, "media_kind"),
+        json_trimmed_string(item, "capture_at"),
+        json_trimmed_string(item, "added_at"),
+        item_json,
+      ],
+    )
+    .map_err(|e| format!("写入 catalog_observations 失败: {e}"))?;
+    inserted = inserted.saturating_add(1);
+  }
+  tx.commit()
+    .map_err(|e| format!("提交 catalog_observations 失败: {e}"))?;
+  Ok(inserted)
 }
 
 fn ensure_assets_column(conn: &Connection, name: &str, definition: &str) -> Result<(), String> {
@@ -650,87 +821,20 @@ pub fn enqueue_cloud_only_for_sync(
   Ok(total)
 }
 
-/**
- * 共享图库「仅下载本人贡献」策略。
- * @note 须在 catalog diff / reconcile 之后调用；关闭开关时还原 sync_skipped 为 cloud_only
- * @returns 本次新标为跳过的行数（不含恢复行）
- */
-pub fn apply_shared_contributor_skip_policy(
+/// 按 catalog_scope 统计逻辑资产数（Live still+mov 按 asset_id 去重）
+pub fn count_logical_assets_by_catalog_scope(
   conn: &Connection,
   apple_id: &str,
-  self_record_id: Option<&str>,
-  enabled: bool,
+  scope: super::types::CatalogScope,
 ) -> Result<u32, String> {
-  use super::types::{CatalogScope, SKIP_REASON_SHARED_OTHER_CONTRIBUTOR};
-
-  let reason = SKIP_REASON_SHARED_OTHER_CONTRIBUTOR;
-  if !enabled {
-    let changed = conn
-      .execute(
-        r#"
-        UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
-        WHERE apple_id = ?1
-          AND cloud_state = 'sync_skipped'
-          AND skip_reason = ?2
-        "#,
-        params![apple_id, reason],
-      )
-      .map_err(|e| format!("恢复共享跳过项失败: {e}"))?;
-    return Ok(u32::try_from(changed).unwrap_or(0));
-  }
-
-  let Some(self_id) = self_record_id.map(str::trim).filter(|s| !s.is_empty()) else {
-    log::warn!(
-      "icloud sync_shared_only_own_contributions=true but cloudkit_user_record_id missing; skip policy not applied"
-    );
-    return Ok(0);
-  };
-
-  conn
-    .execute(
-      r#"
-      UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
-      WHERE apple_id = ?1
-        AND catalog_scope = ?2
-        AND cloud_state = 'sync_skipped'
-        AND skip_reason = ?3
-        AND contributed_by = ?4
-      "#,
-      params![
-        apple_id,
-        CatalogScope::Shared.as_str(),
-        reason,
-        self_id,
-      ],
+  let count: i64 = conn
+    .query_row(
+      "SELECT COUNT(DISTINCT asset_id) FROM assets WHERE apple_id = ?1 AND catalog_scope = ?2",
+      params![apple_id, scope.as_str()],
+      |row| row.get(0),
     )
-    .map_err(|e| format!("恢复本人共享项失败: {e}"))?;
-
-  let changed = conn
-    .execute(
-      r#"
-      UPDATE assets SET
-        cloud_state = 'sync_skipped',
-        skip_reason = ?3,
-        download_status = NULL,
-        active_job_id = NULL
-      WHERE apple_id = ?1
-        AND catalog_scope = ?2
-        AND cloud_state IN ('cloud_only', 'modified_cloud')
-        AND (
-          contributed_by IS NULL
-          OR TRIM(contributed_by) = ''
-          OR contributed_by != ?4
-        )
-      "#,
-      params![
-        apple_id,
-        CatalogScope::Shared.as_str(),
-        reason,
-        self_id,
-      ],
-    )
-    .map_err(|e| format!("标记他人共享项跳过失败: {e}"))?;
-  Ok(u32::try_from(changed).unwrap_or(0))
+    .map_err(|e| format!("统计 catalog_scope 失败: {e}"))?;
+  Ok(u32::try_from(count.max(0)).unwrap_or(0))
 }
 
 /// catalog 中消失的行硬删除（覆盖模式）；进行中的云删队列行保留

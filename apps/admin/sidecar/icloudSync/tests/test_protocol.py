@@ -251,7 +251,8 @@ def test_iter_shared_library_assets_reads_private_sharedsync() -> None:
 
     rows = agent._iter_shared_library_assets(_Api())
     assert len(rows) == 1
-    zone_name, library_type, photo = rows[0]
+    zone_name, library_type, photo, zone_owner = rows[0]
+    assert zone_owner is None
     assert zone_name == "SharedSync-ABC"
     assert library_type == "private"
     assert isinstance(photo, _Photo)

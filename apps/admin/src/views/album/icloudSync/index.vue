@@ -235,7 +235,7 @@ function selectAllCloudRowsForIntent() {
 function onCloudCellClick(row: CloudListDisplayRow) {
   if (!intent.value) return;
   if (!canSelectCloudRow(row)) {
-    const skipHint = cloudListDisplayState(row) === "sync_skipped" ? "他人贡献的共享图库项不可勾选下载" : "";
+    const skipHint = cloudListDisplayState(row) === "sync_skipped" ? "已标记跳过下载，不可勾选" : "";
     $feedback.message.info(skipHint || (intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载"));
     return;
   }

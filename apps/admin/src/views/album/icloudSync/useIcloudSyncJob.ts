@@ -21,7 +21,7 @@ import {
   ICLOUD_SYNC_JOB_STATUS_EVENT,
   ICLOUD_SYNC_PROGRESS_EVENT,
   isIcloudSessionAuthFailure,
-  loadIcloudSyncAssets,
+  getIcloudSyncCloudStateSummary,
   logoutIcloudSync,
   pauseIcloudSyncJob,
   refreshIcloudSyncCatalog,
@@ -430,18 +430,17 @@ function _useIcloudSyncJob() {
   }
 
   /**
-   * 开关已开但 catalog 无 shared 行：给用户可操作的诊断（勿当失败）
+   * 开关已开且库内也无 shared 登记：轻提示（不拦截刷新/下载）
    * @note SharedSync 常在 private zones；参与者账号 API 也可能列不出
    */
   async function tipSharedLibraryEmptyIfNeeded() {
     try {
       const settings = await getIcloudSyncSettings();
       if (!settings.syncSharedLibrary) return;
-      const page = await loadIcloudSyncAssets({ offset: 0, limit: 200 });
-      const hasShared = page.items.some(row => row.catalogScope === "shared");
-      if (hasShared) return;
-      $feedback.message.warning(
-        "已开启「同步共享图库」，但未发现 SharedSync zone。请确认是 Shared Photo Library（非共享相册）；若仅为参与者而非创建者，Apple API 可能列不出。"
+      const summary = await getIcloudSyncCloudStateSummary();
+      if ((summary.sharedScopeTotal ?? 0) > 0) return;
+      $feedback.message.info(
+        "已开启「同步共享图库」，但本次 catalog 未枚举到 SharedSync 项。若为参与者账号，Apple API 可能列不出；库内历史登记已保留，可稍后再刷新。"
       );
     } catch {
       /* 诊断失败不挡主路径 */

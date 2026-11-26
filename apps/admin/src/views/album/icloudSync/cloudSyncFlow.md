@@ -223,7 +223,7 @@ flowchart LR
 | `icloud_sync_resume_job` / `pause_job` | 续传 / 暂停 |
 | `icloud_sync_discard_job` | 取消/丢弃任务（`discard_task` 按 task_type 分支） |
 | `icloud_sync_logout` | 清 sidecar + session（**不**清内存 job；换号 discard） |
-| `icloud_sync_get_settings` / `save_settings` | 含 `syncHiddenAlbum` / `syncSharedLibrary` / `syncSharedOnlyOwnContributions`；catalog 带回 `cloudkitUserRecordId` |
+| `icloud_sync_get_settings` / `save_settings` | 含 `syncHiddenAlbum` / `syncSharedLibrary`；catalog 带回 `cloudkitUserRecordId` |
 | `icloud_sync_load_assets` | 抽屉云列表（`cloud_state` 筛选；`checkLocalFile=false` 全量轻量元数据；前端虚拟宫格） |
 | `icloud_sync_get_cloud_state_summary` | summary 计数（逻辑资产；Live=1） |
 | `icloud_sync_delete_assets` | 一次性删云所选（本机保留） |
@@ -251,8 +251,7 @@ sidecar catalog 全量枚举（library；syncHiddenAlbum 时 sidecar 追加 Hidd
   → apply_catalog_delta（刷新：不入队；仅更新 cloud_state）
   → mark_catalog_deletions（NOT EXISTS temp；OFF 时仅删 catalog_scope=library 行）
   → reconcile_synced_missing_local_files_in_catalog（仅 temp 内 synced 行 + is_file）
-  → apply_shared_contributor_skip_policy（可选：他人贡献 shared 项 → cloud_state=sync_skipped）
-  →（开始同步时）enqueue_cloud_only_for_sync（不含 sync_skipped）
+  →（开始同步时）enqueue_cloud_only_for_sync（不含 sync_skipped 存量行）
   → set_job_catalog_counts → emit cloud-state-changed
 ```
 

@@ -155,9 +155,6 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
  */
 export function cloudStateTooltip(row: IcloudSyncSyncAssetRow): string | undefined {
   if (row.cloudState !== "sync_skipped") return undefined;
-  if (row.skipReason === "shared_other_contributor") {
-    return "由其他账号贡献到共享图库；已开启「仅下载本人贡献」故不下载。";
-  }
   return "已跳过下载";
 }
 

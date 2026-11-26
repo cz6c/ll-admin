@@ -26,7 +26,7 @@ use std::sync::Mutex;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 pub use queue::SidecarClientHandle;
 /// 供 album 扫描识别同步命名 vs 异物
@@ -239,24 +239,7 @@ pub async fn icloud_sync_save_settings(
   app: AppHandle,
   settings: IcloudSyncSettings,
 ) -> Result<(), String> {
-  tokio::task::spawn_blocking(move || {
-    save_settings(&app, &settings)?;
-    let apple_id = settings.apple_id.trim();
-    if !apple_id.is_empty() {
-      if let Ok(db_path) = db::state_db_path(&app) {
-        if let Ok(conn) = db::open_db(&db_path) {
-          let _ = db::apply_shared_contributor_skip_policy(
-            &conn,
-            apple_id,
-            settings.cloudkit_user_record_id.as_deref(),
-            settings.sync_shared_only_own_contributions && settings.sync_shared_library,
-          );
-          let _ = app.emit(queue::CLOUD_STATE_CHANGED_EVENT, ());
-        }
-      }
-    }
-    Ok(())
-  })
+  tokio::task::spawn_blocking(move || save_settings(&app, &settings))
   .await
   .map_err(|e| format!("任务失败: {e}"))?
 }

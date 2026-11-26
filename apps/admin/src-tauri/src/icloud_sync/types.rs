@@ -27,9 +27,6 @@ pub struct IcloudSyncSettings {
   /// 为 true 时 catalog 合并 Shared Photo Library（sidecar 多 zone 枚举）
   #[serde(default)]
   pub sync_shared_library: bool,
-  /// 为 true 时共享图库仅下载本人贡献项；他人贡献标 `sync_skipped`
-  #[serde(default)]
-  pub sync_shared_only_own_contributions: bool,
   /// 批量从 iCloud 移除时自动跳过近一年内资源（拍摄时间优先，否则 sortKey）
   #[serde(default)]
   pub batch_remove_skip_recent_year: bool,
@@ -50,15 +47,11 @@ impl Default for IcloudSyncSettings {
       remember_password: false,
       sync_hidden_album: false,
       sync_shared_library: false,
-      sync_shared_only_own_contributions: false,
       batch_remove_skip_recent_year: false,
       cloudkit_user_record_id: None,
     }
   }
 }
-
-/// `assets.skip_reason`：共享图库跳过下载原因
-pub const SKIP_REASON_SHARED_OTHER_CONTRIBUTOR: &str = "shared_other_contributor";
 
 /// catalog 来源：个人图库 / Hidden / Shared Library（互斥成员，混排展示）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -320,7 +313,7 @@ pub struct SyncAssetRow {
   /// `hidden` 表示来自 iCloud Hidden 相册（混排展示、独立落盘子目录）
   #[serde(default)]
   pub catalog_scope: String,
-  /// 跳过下载原因（`sync_skipped` 时；如 shared_other_contributor）
+  /// 跳过下载原因（`sync_skipped` 时；历史存量，当前产品不写）
   #[serde(skip_serializing_if = "Option::is_none")]
   pub skip_reason: Option<String>,
 }
@@ -343,6 +336,8 @@ pub struct IcloudSyncCloudStateSummary {
   pub download_failed: u32,
   /// 共享图库「他人贡献」跳过下载的逻辑资产数
   pub sync_skipped: u32,
+  /// SQLite 中 catalog_scope=shared 的逻辑资产数（诊断用）
+  pub shared_scope_total: u32,
   /// 最近一次 catalog 写入 assets 的时间（秒）；无记录时为 null
   #[serde(skip_serializing_if = "Option::is_none")]
   pub last_catalog_at: Option<i64>,

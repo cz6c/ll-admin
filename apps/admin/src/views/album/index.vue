@@ -7,10 +7,9 @@
   右键：在资源管理器中显示 / 删除本地
 -->
 <script setup lang="ts">
-import { invoke } from "@tauri-apps/api/core";
 import $feedback from "@/utils/feedback";
 import { dateUtil } from "@llcz/common";
-import { deleteAlbumLocal, revealAlbumInExplorer, type AlbumPathRename } from "@/api/album";
+import { deleteAlbumLocal, getAlbumSettings, revealAlbumInExplorer, type AlbumPathRename } from "@/api/album";
 import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
 import { useElementSize, useScroll } from "@vueuse/core";
@@ -200,7 +199,7 @@ async function onRevealInExplorer(file: MediaFile) {
 
 async function loadSettings() {
   try {
-    const settings = await invoke<{ rootDir: string }>("album_get_settings");
+    const settings = await getAlbumSettings();
     rootDir.value = settings.rootDir || "";
   } catch (e) {
     console.error("Failed to load album settings:", e);

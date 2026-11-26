@@ -27,6 +27,7 @@ import {
 import {
   deleteIcloudSyncAssets,
   formatIcloudSyncError,
+  getIcloudSyncSettings,
   getIcloudSyncCloudStateSummary,
   isIcloudSessionAuthFailure,
   ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT,
@@ -41,6 +42,7 @@ import {
   cloudStateTooltip,
   type IcloudSyncCloudListRow
 } from "./icloudSyncCloudList";
+import { isIcloudRemoveRecentYearProtected } from "./icloudRemoveRecentFilter";
 import $feedback from "@/utils/feedback";
 import dayjs from "dayjs";
 import { useElementSize, useScroll, useThrottleFn } from "@vueuse/core";
@@ -97,6 +99,8 @@ const loadingCloud = ref(false);
 const deletingCloud = ref(false);
 const deleteDialogOpen = ref(false);
 const deleteDialogItems = ref<IcloudSyncDeleteAssetItem[]>([]);
+/** 批量移除时跳过近一年内资源（icloud-sync/settings.json） */
+const batchRemoveSkipRecentYear = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
 /** 勾选 row 快照（按 id；虚拟列表下 DOM 不全） */
 const cloudSelectedRowsByKey = ref(new Map<string, CloudListDisplayRow>());
@@ -169,6 +173,15 @@ const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
   if (intent.value === "delete") return "synced";
   return "all";
 });
+
+async function refreshIcloudRemoveGuard() {
+  try {
+    const settings = await getIcloudSyncSettings();
+    batchRemoveSkipRecentYear.value = settings.batchRemoveSkipRecentYear === true;
+  } catch {
+    batchRemoveSkipRecentYear.value = false;
+  }
+}
 
 /** 当前意图下该行是否可勾选 */
 function canSelectCloudRow(row: CloudListDisplayRow): boolean {
@@ -408,7 +421,13 @@ async function refreshCloudAssets(opts?: { silent?: boolean }) {
   try {
     const summary = await getIcloudSyncCloudStateSummary();
     cloudSummary.value = summary;
-    const rows = await fetchAllCloudMeta();
+    let rows = await fetchAllCloudMeta();
+    if (intent.value === "delete") {
+      await refreshIcloudRemoveGuard();
+      if (batchRemoveSkipRecentYear.value) {
+        rows = rows.filter(row => !isIcloudRemoveRecentYearProtected(row));
+      }
+    }
     cloudRows.value = rows;
     cloudTotal.value = rows.length;
     refreshSelectedRowsFromPage(cloudRows.value);

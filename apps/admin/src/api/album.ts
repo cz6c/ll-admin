@@ -5,6 +5,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DuplicateGroup } from "@/views/album/types";
 
+/** `album/settings.json` 相册本地设置 */
+export interface AlbumSettings {
+  rootDir: string;
+}
+
 /** `album_ensure_playback` 返回：可播路径 + 可选编码分辨率 */
 export interface AlbumPlaybackResult {
   path: string;
@@ -88,11 +93,16 @@ export function setAlbumCaptureAt(request: AlbumSetCaptureAtRequest): Promise<Al
  */
 export async function getAlbumRootDir(): Promise<string> {
   try {
-    const settings = await invoke<{ rootDir: string }>("album_get_settings");
+    const settings = await invoke<AlbumSettings>("album_get_settings");
     return settings.rootDir?.trim() ?? "";
   } catch {
     return "";
   }
+}
+
+/** 读取相册本地设置 */
+export function getAlbumSettings(): Promise<AlbumSettings> {
+  return invoke<AlbumSettings>("album_get_settings");
 }
 
 /**

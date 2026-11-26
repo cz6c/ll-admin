@@ -36,6 +36,8 @@ export interface IcloudSyncSettings {
   syncSharedLibrary: boolean;
   /** 为 true 时共享图库仅下载本人贡献项 */
   syncSharedOnlyOwnContributions?: boolean;
+  /** 为 true 时 iCloud 批量移除自动跳过近一年内资源 */
+  batchRemoveSkipRecentYear?: boolean;
   /** catalog 带回的本账号 CloudKit user recordName */
   cloudkitUserRecordId?: string | null;
 }

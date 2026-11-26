@@ -30,6 +30,9 @@ pub struct IcloudSyncSettings {
   /// 为 true 时共享图库仅下载本人贡献项；他人贡献标 `sync_skipped`
   #[serde(default)]
   pub sync_shared_only_own_contributions: bool,
+  /// 批量从 iCloud 移除时自动跳过近一年内资源（拍摄时间优先，否则 sortKey）
+  #[serde(default)]
+  pub batch_remove_skip_recent_year: bool,
   /// 最近一次 catalog 带回的本账号 CloudKit user recordName（PrimarySync.owner）
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub cloudkit_user_record_id: Option<String>,
@@ -48,6 +51,7 @@ impl Default for IcloudSyncSettings {
       sync_hidden_album: false,
       sync_shared_library: false,
       sync_shared_only_own_contributions: false,
+      batch_remove_skip_recent_year: false,
       cloudkit_user_record_id: None,
     }
   }

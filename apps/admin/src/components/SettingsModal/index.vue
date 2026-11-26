@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getAppSettings, hasAppAiApiKey, saveAppSettings, setAppAiApiKey, type AppSettings } from "@/api/appSettings";
+import { type AlbumSettings, getAlbumSettings } from "@/api/album";
 import { formatIcloudSyncError, getIcloudSyncSettings, saveIcloudSyncSettings } from "@/api/icloudSync";
 import { useCsSettingsModal } from "@/composables/useCsSettingsModal";
 import { isTauri } from "@/utils/tauri";
@@ -30,6 +31,7 @@ const form = reactive<AppSettings>({
 });
 
 const rootDir = ref("");
+const batchRemoveSkipRecentYear = ref(false);
 /** iCloud 是否合并同步 Hidden 相册（sidecar 双枚举、Rust 单 diff） */
 const syncHiddenAlbum = ref(false);
 /** iCloud 是否合并同步 Shared Photo Library */
@@ -54,11 +56,12 @@ async function load() {
 
 async function loadAlbumSettings() {
   try {
-    const [albumSettings, icloudSettings] = await Promise.all([invoke<{ rootDir: string }>("album_get_settings"), getIcloudSyncSettings()]);
+    const [albumSettings, icloudSettings] = await Promise.all([getAlbumSettings(), getIcloudSyncSettings()]);
     rootDir.value = albumSettings.rootDir || "";
     syncHiddenAlbum.value = icloudSettings.syncHiddenAlbum === true;
     syncSharedLibrary.value = icloudSettings.syncSharedLibrary === true;
     syncSharedOnlyOwnContributions.value = icloudSettings.syncSharedOnlyOwnContributions === true;
+    batchRemoveSkipRecentYear.value = icloudSettings.batchRemoveSkipRecentYear === true;
   } catch (e) {
     console.error("Failed to load album settings:", e);
     if (isTauri()) {
@@ -105,17 +108,17 @@ async function saveAlbumSettings(): Promise<boolean> {
     return false;
   }
   try {
-    await invoke("album_save_settings", {
-      settings: {
-        rootDir: rootDir.value.trim()
-      }
-    });
+    const albumPayload: AlbumSettings = {
+      rootDir: rootDir.value.trim()
+    };
+    await invoke("album_save_settings", { settings: albumPayload });
     const icloudSettings = await getIcloudSyncSettings();
     await saveIcloudSyncSettings({
       ...icloudSettings,
       syncHiddenAlbum: syncHiddenAlbum.value,
       syncSharedLibrary: syncSharedLibrary.value,
-      syncSharedOnlyOwnContributions: syncSharedLibrary.value && syncSharedOnlyOwnContributions.value
+      syncSharedOnlyOwnContributions: syncSharedLibrary.value && syncSharedOnlyOwnContributions.value,
+      batchRemoveSkipRecentYear: batchRemoveSkipRecentYear.value
     });
     return true;
   } catch (e: unknown) {
@@ -238,6 +241,13 @@ watch(visible, open => {
                 <a-form-item v-if="syncSharedLibrary" label="共享图库去重">
                   <a-checkbox v-model:checked="syncSharedOnlyOwnContributions">仅下载本人贡献到共享图库的照片</a-checkbox>
                   <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">双账号互开共享时，跳过他人贡献项（抽屉标「他人共享」）</p>
+                </a-form-item>
+
+                <a-form-item label="批量移除">
+                  <a-checkbox v-model:checked="batchRemoveSkipRecentYear">自动跳过近一年内的照片与视频</a-checkbox>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                    开启后 iCloud「批量移除」不处理近一年内项（优先拍摄时间，无则按目录排序时间）
+                  </p>
                 </a-form-item>
 
                 <a-divider orientation="left">QQ 空间同步</a-divider>

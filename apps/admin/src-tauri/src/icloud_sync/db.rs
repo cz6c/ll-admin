@@ -1,5 +1,5 @@
 //! iCloud 同步 SQLite 断点库
-//! 职责：assets 注册表、pending/done 查询与状态更新；`catalog_observations` 追加 catalog 快照供共享图库研判分析
+//! 职责：assets 同步资源注册表、pending/done 查询与状态更新
 //! 适用：队列 catalog 落库；下载进度只在本次进程内，重启不续传
 //! @note 不看 `user_version`，也不再建 `jobs` 表。无 `assets` 才建表；已有表直接打开、只做 ADD COLUMN / 新表。任务状态只在进程内存。
 
@@ -67,180 +67,11 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
       "TEXT NOT NULL DEFAULT 'PrimarySync'",
     )?;
     ensure_assets_column(conn, "contributed_by", "TEXT")?;
+    ensure_assets_column(conn, "contributors_json", "TEXT")?;
+    ensure_assets_column(conn, "zone_owner_record_name", "TEXT")?;
     ensure_assets_column(conn, "skip_reason", "TEXT")?;
   }
-  ensure_catalog_observations_schema(conn)?;
-  migrate_clear_legacy_shared_skip_tags(conn)?;
   Ok(())
-}
-
-/// 清掉已下线的 shared_other_contributor 误标（打开库时幂等执行）
-fn migrate_clear_legacy_shared_skip_tags(conn: &Connection) -> Result<(), String> {
-  let changed = conn
-    .execute(
-      r#"
-      UPDATE assets
-      SET cloud_state = 'cloud_only', skip_reason = NULL
-      WHERE cloud_state = 'sync_skipped' AND skip_reason = 'shared_other_contributor'
-      "#,
-      [],
-    )
-    .map_err(|e| format!("清理历史 shared 跳过标失败: {e}"))?;
-  if changed > 0 {
-    log::info!("icloud sync: cleared {changed} legacy shared_other_contributor rows");
-  }
-  Ok(())
-}
-
-/// 研究用：每次 catalog 追加 sidecar 原始 item，用于多轮同步比对「本人/他人」可判定字段
-fn ensure_catalog_observations_schema(conn: &Connection) -> Result<(), String> {
-  if !table_exists(conn, "catalog_observations")? {
-    conn
-      .execute_batch(
-        r#"
-        CREATE TABLE catalog_observations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          apple_id TEXT NOT NULL,
-          catalog_job_id INTEGER,
-          observed_at INTEGER NOT NULL,
-          cloudkit_user_record_id TEXT,
-          asset_id TEXT NOT NULL,
-          catalog_scope TEXT,
-          library_type TEXT,
-          library_zone TEXT,
-          contributed_by TEXT,
-          contributors_json TEXT,
-          zone_owner_record_name TEXT,
-          seen_in_primary_sync INTEGER,
-          catalog_sources_json TEXT,
-          media_kind TEXT,
-          capture_at TEXT,
-          added_at TEXT,
-          item_json TEXT NOT NULL
-        );
-        CREATE INDEX idx_catalog_obs_apple_time ON catalog_observations(apple_id, observed_at);
-        CREATE INDEX idx_catalog_obs_apple_asset ON catalog_observations(apple_id, asset_id, observed_at);
-        CREATE INDEX idx_catalog_obs_scope ON catalog_observations(apple_id, catalog_scope, observed_at);
-        "#,
-      )
-      .map_err(|e| format!("创建 catalog_observations 失败: {e}"))?;
-  }
-  ensure_catalog_observations_column(conn, "contributors_json", "TEXT")?;
-  ensure_catalog_observations_column(conn, "zone_owner_record_name", "TEXT")?;
-  ensure_catalog_observations_column(conn, "seen_in_primary_sync", "INTEGER")?;
-  ensure_catalog_observations_column(conn, "catalog_sources_json", "TEXT")?;
-  Ok(())
-}
-
-fn ensure_catalog_observations_column(
-  conn: &Connection,
-  name: &str,
-  definition: &str,
-) -> Result<(), String> {
-  let mut stmt = conn
-    .prepare("PRAGMA table_info(catalog_observations)")
-    .map_err(|e| format!("读取 catalog_observations 表结构失败: {e}"))?;
-  let cols = stmt
-    .query_map([], |row| row.get::<_, String>(1))
-    .map_err(|e| format!("读取 catalog_observations 表结构失败: {e}"))?;
-  let exists = cols.filter_map(Result::ok).any(|col| col == name);
-  if exists {
-    return Ok(());
-  }
-  conn
-    .execute_batch(&format!(
-      "ALTER TABLE catalog_observations ADD COLUMN {name} {definition};"
-    ))
-    .map_err(|e| format!("迁移 catalog_observations.{name} 失败: {e}"))?;
-  Ok(())
-}
-
-fn json_trimmed_string(value: &serde_json::Value, key: &str) -> Option<String> {
-  value
-    .get(key)
-    .and_then(|v| v.as_str())
-    .map(str::trim)
-    .filter(|s| !s.is_empty())
-    .map(str::to_string)
-}
-
-fn json_nested_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
-  value.get(key).and_then(|v| {
-    if v.is_null() {
-      return None;
-    }
-    serde_json::to_string(v).ok()
-  })
-}
-
-fn json_bool_as_i32(value: &serde_json::Value, key: &str) -> Option<i32> {
-  value
-    .get(key)
-    .and_then(|v| v.as_bool())
-    .map(|b| i32::from(b))
-}
-
-/**
- * 追加本轮 catalog 全量观测（sidecar item 原文 JSON + 常用列便于 SQL）。
- * @returns 写入行数
- * @note 不改变 assets / 跳过策略；仅用于线下分析后再定「他人共享」规则
- */
-pub fn append_catalog_observations(
-  conn: &Connection,
-  apple_id: &str,
-  catalog_job_id: i64,
-  observed_at: i64,
-  cloudkit_user_record_id: Option<&str>,
-  raw_items: &[serde_json::Value],
-) -> Result<u32, String> {
-  if raw_items.is_empty() {
-    return Ok(0);
-  }
-  let tx = conn
-    .unchecked_transaction()
-    .map_err(|e| format!("开启 catalog_observations 事务失败: {e}"))?;
-  let mut inserted = 0u32;
-  for item in raw_items {
-    let Some(asset_id) = json_trimmed_string(item, "asset_id") else {
-      continue;
-    };
-    let item_json = serde_json::to_string(item)
-      .map_err(|e| format!("序列化 catalog observation 失败: {e}"))?;
-    tx.execute(
-      r#"
-      INSERT INTO catalog_observations(
-        apple_id, catalog_job_id, observed_at, cloudkit_user_record_id,
-        asset_id, catalog_scope, library_type, library_zone, contributed_by,
-        contributors_json, zone_owner_record_name, seen_in_primary_sync, catalog_sources_json,
-        media_kind, capture_at, added_at, item_json
-      ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
-      "#,
-      params![
-        apple_id,
-        catalog_job_id,
-        observed_at,
-        cloudkit_user_record_id,
-        asset_id,
-        json_trimmed_string(item, "catalog_scope"),
-        json_trimmed_string(item, "library_type"),
-        json_trimmed_string(item, "library_zone"),
-        json_trimmed_string(item, "contributed_by"),
-        json_nested_json_string(item, "contributors"),
-        json_trimmed_string(item, "zone_owner_record_name"),
-        json_bool_as_i32(item, "seen_in_primary_sync"),
-        json_nested_json_string(item, "catalog_sources"),
-        json_trimmed_string(item, "media_kind"),
-        json_trimmed_string(item, "capture_at"),
-        json_trimmed_string(item, "added_at"),
-        item_json,
-      ],
-    )
-    .map_err(|e| format!("写入 catalog_observations 失败: {e}"))?;
-    inserted = inserted.saturating_add(1);
-  }
-  tx.commit()
-    .map_err(|e| format!("提交 catalog_observations 失败: {e}"))?;
-  Ok(inserted)
 }
 
 fn ensure_assets_column(conn: &Connection, name: &str, definition: &str) -> Result<(), String> {
@@ -312,6 +143,8 @@ fn create_final_schema(conn: &Connection) -> Result<(), String> {
         library_type TEXT NOT NULL DEFAULT 'private',
         library_zone TEXT NOT NULL DEFAULT 'PrimarySync',
         contributed_by TEXT,
+        contributors_json TEXT,
+        zone_owner_record_name TEXT,
         skip_reason TEXT,
         UNIQUE(apple_id, asset_id, part)
       );
@@ -462,7 +295,8 @@ pub fn load_existing_baselines(
       SELECT asset_id, part, sort_key, original_filename, media_kind,
              cpl_asset_record_name, cpl_asset_change_tag,
              capture_at, added_at, latitude, longitude,
-             catalog_scope, library_type, library_zone, contributed_by
+             catalog_scope, library_type, library_zone, contributed_by,
+             contributors_json, zone_owner_record_name
       FROM assets WHERE apple_id = ?1
       "#,
     )
@@ -495,6 +329,8 @@ pub fn load_existing_baselines(
             .get::<_, Option<String>>(13)?
             .unwrap_or_else(|| super::types::PRIMARY_SYNC_ZONE.to_string()),
           contributed_by: row.get(14)?,
+          contributors_json: row.get(15)?,
+          zone_owner_record_name: row.get(16)?,
         },
       ))
     })
@@ -540,8 +376,9 @@ pub fn apply_catalog_delta(
             part, download_status, active_job_id, cloud_state, last_catalog_at,
             cpl_asset_record_name, cpl_asset_change_tag,
             capture_at, added_at, latitude, longitude, catalog_scope,
-            library_type, library_zone, contributed_by
-          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
+            library_type, library_zone, contributed_by,
+            contributors_json, zone_owner_record_name
+          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)
           ON CONFLICT(apple_id, asset_id, part) DO UPDATE SET
             sort_key = excluded.sort_key,
             original_filename = excluded.original_filename,
@@ -560,7 +397,9 @@ pub fn apply_catalog_delta(
             catalog_scope = excluded.catalog_scope,
             library_type = excluded.library_type,
             library_zone = excluded.library_zone,
-            contributed_by = excluded.contributed_by
+            contributed_by = excluded.contributed_by,
+            contributors_json = excluded.contributors_json,
+            zone_owner_record_name = excluded.zone_owner_record_name
           "#,
           params![
             apple_id,
@@ -584,6 +423,8 @@ pub fn apply_catalog_delta(
             row.library_type.as_str(),
             row.library_zone,
             row.contributed_by,
+            row.contributors_json,
+            row.zone_owner_record_name,
           ],
         )
         .map_err(|e| format!("写入 added asset 失败: {e}"))?;
@@ -613,8 +454,10 @@ pub fn apply_catalog_delta(
             catalog_scope = ?14,
             library_type = ?15,
             library_zone = ?16,
-            contributed_by = ?17
-          WHERE apple_id = ?18 AND asset_id = ?19 AND part = ?20
+            contributed_by = ?17,
+            contributors_json = ?18,
+            zone_owner_record_name = ?19
+          WHERE apple_id = ?20 AND asset_id = ?21 AND part = ?22
           "#,
           params![
             row.sort_key,
@@ -634,6 +477,8 @@ pub fn apply_catalog_delta(
             row.library_type.as_str(),
             row.library_zone,
             row.contributed_by,
+            row.contributors_json,
+            row.zone_owner_record_name,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -656,8 +501,10 @@ pub fn apply_catalog_delta(
             catalog_scope = ?8,
             library_type = ?9,
             library_zone = ?10,
-            contributed_by = ?11
-          WHERE apple_id = ?12 AND asset_id = ?13 AND part = ?14
+            contributed_by = ?11,
+            contributors_json = ?12,
+            zone_owner_record_name = ?13
+          WHERE apple_id = ?14 AND asset_id = ?15 AND part = ?16
           "#,
           params![
             now,
@@ -671,6 +518,8 @@ pub fn apply_catalog_delta(
             row.library_type.as_str(),
             row.library_zone,
             row.contributed_by,
+            row.contributors_json,
+            row.zone_owner_record_name,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -689,8 +538,10 @@ pub fn apply_catalog_delta(
             added_at = ?4,
             latitude = ?5,
             longitude = ?6,
-            contributed_by = ?7
-          WHERE apple_id = ?8 AND asset_id = ?9 AND part = ?10
+            contributed_by = ?7,
+            contributors_json = ?8,
+            zone_owner_record_name = ?9
+          WHERE apple_id = ?10 AND asset_id = ?11 AND part = ?12
           "#,
           params![
             now,
@@ -700,6 +551,8 @@ pub fn apply_catalog_delta(
             row.latitude,
             row.longitude,
             row.contributed_by,
+            row.contributors_json,
+            row.zone_owner_record_name,
             apple_id,
             row.asset_id,
             row.part.as_str(),
@@ -819,6 +672,91 @@ pub fn enqueue_cloud_only_for_sync(
     total = total.saturating_add(u32::try_from(changed).unwrap_or(0));
   }
   Ok(total)
+}
+
+/**
+ * 共享图库「仅下载本人贡献」：仅当 `contributed_by` 明确存在且不等于本账号 CloudKit id 时标他人。
+ * @note `contributed_by` 为空不标（兼容未刷新 catalog / 主账号）；须在 catalog diff 之后调用
+ * @returns 本次新标为 sync_skipped 的行数
+ */
+pub fn apply_shared_contributor_skip_policy(
+  conn: &Connection,
+  apple_id: &str,
+  self_record_id: Option<&str>,
+  enabled: bool,
+) -> Result<u32, String> {
+  use super::types::{CatalogScope, SKIP_REASON_SHARED_OTHER_CONTRIBUTOR};
+
+  let reason = SKIP_REASON_SHARED_OTHER_CONTRIBUTOR;
+  if !enabled {
+    let changed = conn
+      .execute(
+        r#"
+        UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
+        WHERE apple_id = ?1
+          AND cloud_state = 'sync_skipped'
+          AND skip_reason = ?2
+        "#,
+        params![apple_id, reason],
+      )
+      .map_err(|e| format!("恢复共享跳过项失败: {e}"))?;
+    return Ok(u32::try_from(changed).unwrap_or(0));
+  }
+
+  let Some(self_id) = self_record_id.map(str::trim).filter(|s| !s.is_empty()) else {
+    log::warn!(
+      "icloud sync_shared_only_own_contributions=true but cloudkit_user_record_id missing; skip policy not applied"
+    );
+    return Ok(0);
+  };
+
+  conn
+    .execute(
+      r#"
+      UPDATE assets SET cloud_state = 'cloud_only', skip_reason = NULL
+      WHERE apple_id = ?1
+        AND catalog_scope = ?2
+        AND cloud_state = 'sync_skipped'
+        AND skip_reason = ?3
+        AND (
+          contributed_by IS NULL
+          OR TRIM(contributed_by) = ''
+          OR contributed_by = ?4
+        )
+      "#,
+      params![
+        apple_id,
+        CatalogScope::Shared.as_str(),
+        reason,
+        self_id,
+      ],
+    )
+    .map_err(|e| format!("恢复本人/未知贡献共享项失败: {e}"))?;
+
+  let changed = conn
+    .execute(
+      r#"
+      UPDATE assets SET
+        cloud_state = 'sync_skipped',
+        skip_reason = ?3,
+        download_status = NULL,
+        active_job_id = NULL
+      WHERE apple_id = ?1
+        AND catalog_scope = ?2
+        AND cloud_state IN ('cloud_only', 'modified_cloud')
+        AND contributed_by IS NOT NULL
+        AND TRIM(contributed_by) != ''
+        AND contributed_by != ?4
+      "#,
+      params![
+        apple_id,
+        CatalogScope::Shared.as_str(),
+        reason,
+        self_id,
+      ],
+    )
+    .map_err(|e| format!("标记他人共享项失败: {e}"))?;
+  Ok(u32::try_from(changed).unwrap_or(0))
 }
 
 /// 按 catalog_scope 统计逻辑资产数（Live still+mov 按 asset_id 去重）
@@ -1291,7 +1229,8 @@ fn list_assets_by_statuses(
            cloud_state, last_synced_at, last_catalog_at, last_error, attempt_count,
            cpl_asset_record_name, cpl_asset_change_tag,
            capture_at, added_at, latitude, longitude, catalog_scope,
-           library_type, library_zone, contributed_by, skip_reason
+           library_type, library_zone, contributed_by,
+           contributors_json, zone_owner_record_name, skip_reason
     FROM assets
     WHERE active_job_id = ?1 AND download_status IN ({placeholders})
     ORDER BY sort_key ASC,
@@ -1357,7 +1296,9 @@ fn map_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetRow> {
       .get::<_, Option<String>>(24)?
       .unwrap_or_else(|| PRIMARY_SYNC_ZONE.to_string()),
     contributed_by: row.get(25)?,
-    skip_reason: row.get(26)?,
+    contributors_json: row.get(26)?,
+    zone_owner_record_name: row.get(27)?,
+    skip_reason: row.get(28)?,
   })
 }
 
@@ -2071,6 +2012,8 @@ mod tests {
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
         contributed_by: None,
+        contributors_json: None,
+        zone_owner_record_name: None,
         skip_reason: None,
       },
       AssetRow {
@@ -2100,6 +2043,8 @@ mod tests {
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
         contributed_by: None,
+        contributors_json: None,
+        zone_owner_record_name: None,
         skip_reason: None,
       },
     ];
@@ -2166,6 +2111,8 @@ mod tests {
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
         contributed_by: None,
+        contributors_json: None,
+        zone_owner_record_name: None,
         skip_reason: None,
       },
       AssetRow {
@@ -2195,6 +2142,8 @@ mod tests {
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
         contributed_by: None,
+        contributors_json: None,
+        zone_owner_record_name: None,
         skip_reason: None,
       },
       AssetRow {
@@ -2224,6 +2173,8 @@ mod tests {
         library_type: LibraryType::Private,
         library_zone: PRIMARY_SYNC_ZONE.to_string(),
         contributed_by: None,
+        contributors_json: None,
+        zone_owner_record_name: None,
         skip_reason: None,
       },
     ];
@@ -2318,6 +2269,8 @@ mod tests {
       library_type: LibraryType::Private,
       library_zone: PRIMARY_SYNC_ZONE.to_string(),
       contributed_by: None,
+      contributors_json: None,
+      zone_owner_record_name: None,
       skip_reason: None,
     };
     let classified = vec![(row, CatalogDeltaKind::Unchanged)];

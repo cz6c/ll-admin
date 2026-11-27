@@ -8,7 +8,12 @@
 
  */
 
-import type { IcloudSyncDeleteAssetItem, IcloudSyncSyncAssetRow } from "@/api/icloudSync";
+import {
+  ICLOUD_SKIP_REASON_SHARED_OTHER_CONTRIBUTOR,
+  type IcloudSyncDeleteAssetItem,
+  type IcloudSyncSyncAssetRow
+} from "@/api/icloudSync";
+import { cloudStateLabel } from "../cloudSync/cloudSyncStateDisplay";
 
 /** 抽屉列表行（rowKey 已归一） */
 
@@ -150,11 +155,23 @@ export function cloudListDisplayState(row: IcloudSyncSyncAssetRow): string {
   return row.cloudState;
 }
 
+/** 角标文案：他人贡献共享项展示「他人共享」 */
+export function cloudStateLabelForRow(row: IcloudSyncSyncAssetRow): string {
+  const state = cloudListDisplayState(row);
+  if (state === "sync_skipped" && row.skipReason === ICLOUD_SKIP_REASON_SHARED_OTHER_CONTRIBUTOR) {
+    return "他人共享";
+  }
+  return cloudStateLabel(state);
+}
+
 /**
  * 角标悬停说明；sync_skipped 时解释跳过原因
  */
 export function cloudStateTooltip(row: IcloudSyncSyncAssetRow): string | undefined {
   if (row.cloudState !== "sync_skipped") return undefined;
+  if (row.skipReason === ICLOUD_SKIP_REASON_SHARED_OTHER_CONTRIBUTOR) {
+    return "共享图库中由他人添加；已开启「仅下载本人贡献」，不会入队下载";
+  }
   return "已跳过下载";
 }
 

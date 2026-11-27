@@ -1432,11 +1432,13 @@ def _ensure_api(apple_id: str = "", session_dir: str = "") -> Any:
         and _AUTH_STATE.session_dir.strip() == sd
         and not _AUTH_STATE.waiting_2fa
     ):
+        ipd_photos.ensure_shared_sync_contributor_keys_patch()
         return _AUTH_STATE.api
 
     if _AUTH_STATE.api is not None and _AUTH_STATE.apple_id.strip() != aid:
         _reset_auth_state()
 
+    ipd_photos.ensure_shared_sync_contributor_keys_patch()
     api = _build_api(
         apple_id=aid,
         password="",

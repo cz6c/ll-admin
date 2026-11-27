@@ -36,6 +36,8 @@ const batchRemoveSkipRecentYear = ref(false);
 const syncHiddenAlbum = ref(false);
 /** iCloud 是否合并同步 Shared Photo Library */
 const syncSharedLibrary = ref(false);
+/** 共享图库仅下载本人贡献（依赖 catalog 带回 contributed_by） */
+const syncSharedOnlyOwnContributions = ref(false);
 async function load() {
   if (!isTauri()) return;
   loading.value = true;
@@ -57,6 +59,7 @@ async function loadAlbumSettings() {
     rootDir.value = albumSettings.rootDir || "";
     syncHiddenAlbum.value = icloudSettings.syncHiddenAlbum === true;
     syncSharedLibrary.value = icloudSettings.syncSharedLibrary === true;
+    syncSharedOnlyOwnContributions.value = icloudSettings.syncSharedOnlyOwnContributions === true;
     batchRemoveSkipRecentYear.value = icloudSettings.batchRemoveSkipRecentYear === true;
   } catch (e) {
     console.error("Failed to load album settings:", e);
@@ -113,6 +116,7 @@ async function saveAlbumSettings(): Promise<boolean> {
       ...icloudSettings,
       syncHiddenAlbum: syncHiddenAlbum.value,
       syncSharedLibrary: syncSharedLibrary.value,
+      syncSharedOnlyOwnContributions: syncSharedOnlyOwnContributions.value,
       batchRemoveSkipRecentYear: batchRemoveSkipRecentYear.value
     });
     return true;
@@ -231,6 +235,15 @@ watch(visible, open => {
                     一并同步 Shared Photo Library
                   </a-checkbox>
                   <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">开启后与个人图库混排展示；关闭后不再刷新，已下载文件保留</p>
+                </a-form-item>
+
+                <a-form-item label="共享图库范围">
+                  <a-checkbox v-model:checked="syncSharedOnlyOwnContributions" :disabled="!syncSharedLibrary">
+                    仅下载本人贡献的照片与视频
+                  </a-checkbox>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
+                    他人添加的共享项将标记为「他人共享」并跳过下载；须已重建 sidecar 并刷新目录后才有贡献者标识
+                  </p>
                 </a-form-item>
 
                 <a-form-item label="批量移除">

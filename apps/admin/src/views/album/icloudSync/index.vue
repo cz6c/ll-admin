@@ -14,7 +14,7 @@ import SyncFabShell from "../cloudSync/components/SyncFabShell.vue";
 import type { CloudSyncDeleteNormalizedResult } from "../cloudSync/cloudSyncDelete";
 import { useIcloudCloudDeleteRunner } from "../cloudSync/useCloudSyncDeleteRunner";
 import { useCloudSyncIntent } from "../cloudSync/useCloudSyncIntent";
-import { cloudStateLabel, cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
+import { cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
 import { loadIcloudSyncCloudList } from "./loadIcloudSyncCloudList";
 import { MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
 import {
@@ -39,6 +39,7 @@ import {
   cloudListRowsToAssetItems,
   cloudListDisplayState,
   cloudListDisplayFilename,
+  cloudStateLabelForRow,
   cloudStateTooltip,
   type IcloudSyncCloudListRow
 } from "./icloudSyncCloudList";
@@ -420,7 +421,7 @@ function toDisplayRow(row: IcloudSyncCloudListRow): CloudListDisplayRow {
   return {
     ...displayRow,
     displayFilename: cloudListDisplayFilename(displayRow),
-    displayStateLabel: cloudStateLabel(state),
+    displayStateLabel: cloudStateLabelForRow(displayRow),
     displayStateTagColor: cloudStateTagColor(state),
     isHidden: row.catalogScope === "hidden",
     isShared: row.catalogScope === "shared"

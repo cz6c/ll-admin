@@ -34,6 +34,11 @@ export interface IcloudSyncSettings {
   syncHiddenAlbum: boolean;
   /** 为 true 时 catalog 合并 Shared Photo Library */
   syncSharedLibrary: boolean;
+  /**
+   * 为 true 时共享图库仅下载本人贡献；他人项标 sync_skipped
+   * @note 须 sidecar 带回 contributed_by 且刷新 catalog 后生效
+   */
+  syncSharedOnlyOwnContributions?: boolean;
   /** 为 true 时 iCloud 批量移除自动跳过近一年内资源 */
   batchRemoveSkipRecentYear?: boolean;
   /** catalog 带回的本账号 CloudKit user recordName */
@@ -174,6 +179,9 @@ export interface IcloudSyncCloudStateSummary {
 }
 
 export type IcloudSyncCloudStateFilter = "all" | "cloud_only" | "synced" | "download_failed";
+
+/** 与 Rust `SKIP_REASON_SHARED_OTHER_CONTRIBUTOR` 对齐 */
+export const ICLOUD_SKIP_REASON_SHARED_OTHER_CONTRIBUTOR = "shared_other_contributor";
 
 export const ICLOUD_SYNC_PROGRESS_EVENT = "icloud-sync://progress";
 

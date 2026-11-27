@@ -136,6 +136,71 @@ LOOKUP_DESIRED_KEYS: list[str] = [
     "isKeyAsset",
 ]
 
+# SharedSync-only：CloudKit 仅在 desiredKeys 显式请求时返回 contributors（见 synctoken-reference）
+SHARED_SYNC_CONTRIBUTOR_DESIRED_KEYS: tuple[str, ...] = ("contributors", "contributedBy")
+
+_PATCHED_PHOTO_ALBUM_LIST_QUERY = False
+
+
+def zone_name_from_zone_id(zone_id: Any) -> str:
+    """从 CloudKit zoneID 取 zoneName。"""
+    if not isinstance(zone_id, dict):
+        return ""
+    return str(zone_id.get("zoneName") or "").strip()
+
+
+def is_shared_sync_zone(zone_id: Any) -> bool:
+    """是否为 iCloud 共享图库 SharedSync-{UUID} 区。"""
+    name = zone_name_from_zone_id(zone_id)
+    return name.startswith("SharedSync")
+
+
+def lookup_desired_keys_for_zone(zone_id: Any) -> list[str]:
+    """
+    按 zone 返回 lookup desiredKeys；SharedSync 追加 contributors 字段。
+    @note PrimarySync 无 contributors，追加无害
+    """
+    keys = list(LOOKUP_DESIRED_KEYS)
+    if is_shared_sync_zone(zone_id):
+        for key in SHARED_SYNC_CONTRIBUTOR_DESIRED_KEYS:
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def ensure_shared_sync_contributor_keys_patch() -> None:
+    """
+    为 pyicloud_ipd PhotoAlbum._list_query_gen 打补丁：SharedSync 枚举请求 contributors。
+    @note 幂等；vendor 解压重建后仍生效，无需改 vendor/photos.py
+    """
+    global _PATCHED_PHOTO_ALBUM_LIST_QUERY
+    if _PATCHED_PHOTO_ALBUM_LIST_QUERY:
+        return
+    _ensure_vendor_path()
+    from pyicloud_ipd.services.photos import PhotoAlbum  # type: ignore
+
+    original = PhotoAlbum._list_query_gen
+
+    def _list_query_gen_with_shared_contributors(
+        self: Any,
+        offset: int,
+        list_type: str,
+        query_filter: Any = None,
+    ) -> dict[str, Any]:
+        payload = original(self, offset, list_type, query_filter)
+        zone_id = getattr(self, "_zone_id", None)
+        if not is_shared_sync_zone(zone_id):
+            return payload
+        desired = list(payload.get("desiredKeys") or [])
+        for key in SHARED_SYNC_CONTRIBUTOR_DESIRED_KEYS:
+            if key not in desired:
+                desired.append(key)
+        payload["desiredKeys"] = desired
+        return payload
+
+    PhotoAlbum._list_query_gen = _list_query_gen_with_shared_contributors  # type: ignore[method-assign]
+    _PATCHED_PHOTO_ALBUM_LIST_QUERY = True
+
 
 def _load_ipd_types() -> tuple[Any, Any, Any, Any]:
     """延迟加载 pyicloud_ipd 枚举，避免 Mock 模式强依赖 vendor。"""
@@ -436,7 +501,7 @@ def _lookup_master_records(photos_service: Any, record_names: Sequence[str]) -> 
     url = f"{service_endpoint}/records/lookup?{urlencode(params)}"
     payload = {
         "records": [{"recordName": name} for name in names],
-        "desiredKeys": LOOKUP_DESIRED_KEYS,
+        "desiredKeys": lookup_desired_keys_for_zone(zone_id),
         "zoneID": zone_id,
     }
     response = session.post(

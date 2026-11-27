@@ -27,6 +27,9 @@ pub struct IcloudSyncSettings {
   /// 为 true 时 catalog 合并 Shared Photo Library（sidecar 多 zone 枚举）
   #[serde(default)]
   pub sync_shared_library: bool,
+  /// 为 true 时共享图库仅下载本人贡献；他人项标 sync_skipped（须 catalog 带回 contributed_by）
+  #[serde(default)]
+  pub sync_shared_only_own_contributions: bool,
   /// 批量从 iCloud 移除时自动跳过近一年内资源（拍摄时间优先，否则 sortKey）
   #[serde(default)]
   pub batch_remove_skip_recent_year: bool,
@@ -47,11 +50,15 @@ impl Default for IcloudSyncSettings {
       remember_password: false,
       sync_hidden_album: false,
       sync_shared_library: false,
+      sync_shared_only_own_contributions: false,
       batch_remove_skip_recent_year: false,
       cloudkit_user_record_id: None,
     }
   }
 }
+
+/// `assets.skip_reason`：共享图库跳过下载原因
+pub const SKIP_REASON_SHARED_OTHER_CONTRIBUTOR: &str = "shared_other_contributor";
 
 /// catalog 来源：个人图库 / Hidden / Shared Library（互斥成员，混排展示）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -397,8 +404,12 @@ pub struct AssetRow {
   pub library_type: LibraryType,
   /// CloudKit zoneName；私库为 PrimarySync
   pub library_zone: String,
-  /// Shared Photo Library 贡献者 CloudKit user recordName
+  /// Shared Photo Library 贡献者 CloudKit user recordName（多贡献者时取首个，与 sidecar 一致）
   pub contributed_by: Option<String>,
+  /// sidecar `contributors` 数组 JSON；排查多贡献者 / 与 contributed_by 不一致时用
+  pub contributors_json: Option<String>,
+  /// 枚举所在 CloudKit zone 的 owner recordName（共享图库诊断）
+  pub zone_owner_record_name: Option<String>,
   /// 与 `cloud_state=sync_skipped` 配套
   pub skip_reason: Option<String>,
 }

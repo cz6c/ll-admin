@@ -231,25 +231,19 @@ watch(visible, open => {
                 </a-form-item>
 
                 <a-form-item label="同步共享图库">
-                  <a-checkbox v-model:checked="syncSharedLibrary">
-                    一并同步 Shared Photo Library
-                  </a-checkbox>
+                  <a-checkbox v-model:checked="syncSharedLibrary"> 一并同步 Shared Photo Library </a-checkbox>
                   <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">开启后与个人图库混排展示；关闭后不再刷新，已下载文件保留</p>
                 </a-form-item>
 
                 <a-form-item label="共享图库范围">
-                  <a-checkbox v-model:checked="syncSharedOnlyOwnContributions" :disabled="!syncSharedLibrary">
-                    仅下载本人贡献的照片与视频
-                  </a-checkbox>
-                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    他人添加的共享项将标记为「他人共享」并跳过下载；须已重建 sidecar 并刷新目录后才有贡献者标识
-                  </p>
+                  <a-checkbox v-model:checked="syncSharedOnlyOwnContributions" :disabled="!syncSharedLibrary"> 仅下载本人贡献的照片与视频 </a-checkbox>
+                  <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">他人添加的共享项将标记为「他人共享」并跳过下载</p>
                 </a-form-item>
 
-                <a-form-item label="批量移除">
+                <a-form-item label="批量下载 / 移除">
                   <a-checkbox v-model:checked="batchRemoveSkipRecentYear">自动跳过近一年内的照片与视频</a-checkbox>
                   <p class="mt-8px mb-0 text-12px leading-normal text-[var(--color-text-tertiary)]">
-                    开启后 iCloud「批量移除」不处理近一年内项（优先拍摄时间，无则按目录排序时间）
+                    「批量下载」「批量移除」不展示、不可勾选近一年内项（优先拍摄时间，无则按目录排序时间）
                   </p>
                 </a-form-item>
 

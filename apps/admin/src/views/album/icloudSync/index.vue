@@ -103,7 +103,7 @@ const deletingCloud = ref(false);
 const deleteRunner = useIcloudCloudDeleteRunner();
 /** 底栏会话：下载/移除开始后置 true，关抽屉清零 */
 const footerSessionActive = ref(false);
-/** 批量移除时跳过近一年内资源（icloud-sync/settings.json） */
+/** 批量下载/移除时跳过近一年内资源（icloud-sync/settings.json · batchRemoveSkipRecentYear） */
 const batchRemoveSkipRecentYear = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
 /** 勾选 row 快照（按 id；虚拟列表下 DOM 不全） */
@@ -186,7 +186,7 @@ const cloudListState = computed<IcloudSyncCloudStateFilter>(() => {
   return "all";
 });
 
-async function refreshIcloudRemoveGuard() {
+async function refreshIcloudRecentYearGuard() {
   try {
     const settings = await getIcloudSyncSettings();
     batchRemoveSkipRecentYear.value = settings.batchRemoveSkipRecentYear === true;
@@ -198,6 +198,7 @@ async function refreshIcloudRemoveGuard() {
 /** 当前意图下该行是否可勾选 */
 function canSelectCloudRow(row: CloudListDisplayRow): boolean {
   if (!canManageCloudSpace.value || !intent.value) return false;
+  if (batchRemoveSkipRecentYear.value && isIcloudRemoveRecentYearProtected(row)) return false;
   const state = cloudListDisplayState(row);
   if (intent.value === "delete") return state === "synced";
   // 下载意图：待下载；失败行若仍在列表（活跃 job 外通常已回 cloud_only）也可勾
@@ -247,6 +248,10 @@ function selectAllCloudRowsForIntent() {
 function onCloudCellClick(row: CloudListDisplayRow) {
   if (!intent.value) return;
   if (!canSelectCloudRow(row)) {
+    if (batchRemoveSkipRecentYear.value && isIcloudRemoveRecentYearProtected(row)) {
+      $feedback.message.info("已开启跳过近一年内资源，该项不可勾选");
+      return;
+    }
     const skipHint = cloudListDisplayState(row) === "sync_skipped" ? "已标记跳过下载，不可勾选" : "";
     $feedback.message.info(skipHint || (intent.value === "delete" ? "仅已下载到本地的项可勾选移除" : "仅待下载项可勾选下载"));
     return;
@@ -264,23 +269,22 @@ const cloudFullLayout = computed(() => buildIcloudCloudLayout(cloudRows.value, c
 const cloudBufferPx = computed(() => Math.max(120, ICLOUD_CLOUD_GRID.bufferRows * (cloudGridMetrics.value.cellSize + ICLOUD_CLOUD_GRID.gap)));
 const cloudVisiblePlacements = computed(() => {
   const viewH = cloudViewportHeight.value || cloudGridScrollRef.value?.clientHeight || 0;
-  return sliceVisibleIcloudCloudPlacements(
-    cloudFullLayout.value.placements,
-    cloudScrollTop.value,
-    viewH,
-    cloudBufferPx.value
-  );
+  return sliceVisibleIcloudCloudPlacements(cloudFullLayout.value.placements, cloudScrollTop.value, viewH, cloudBufferPx.value);
 });
+
+/** 宫格滚回顶并同步 useScroll，便于 loading 文案出现在可视区顶部 */
+function scrollCloudGridToTop() {
+  const el = cloudGridScrollRef.value;
+  if (!el) return;
+  el.scrollTop = 0;
+  cloudScrollTop.value = 0;
+}
 
 /** catalog/首屏数据就绪后对齐滚动与视口，避免虚拟宫格空屏 */
 async function syncCloudGridViewport() {
+  scrollCloudGridToTop();
   await nextTick();
-  requestAnimationFrame(() => {
-    const el = cloudGridScrollRef.value;
-    if (!el) return;
-    el.scrollTop = 0;
-    cloudScrollTop.value = 0;
-  });
+  requestAnimationFrame(() => scrollCloudGridToTop());
 }
 
 watch(
@@ -291,7 +295,12 @@ watch(
 );
 
 watch(isCataloging, (cur, prev) => {
-  if (prev && !cur) void syncCloudGridViewport();
+  if (cur && !prev) void syncCloudGridViewport();
+  else if (prev && !cur) void syncCloudGridViewport();
+});
+
+watch(loadingCloud, (cur, prev) => {
+  if (cur && !prev) void syncCloudGridViewport();
 });
 
 function cloudPlacementStyle(p: { left: number; top: number; width: number; height: number }): Record<string, string> {
@@ -366,8 +375,25 @@ function onCloudPointerDown(event: PointerEvent) {
 /** 工具栏禁用提示（与 useCloudSyncIntent 默认文案一致） */
 const TASK_BUSY_HINT = "有任务进行中，请取消或等待结束后再操作";
 
+/** 工具栏：目录 lastCatalogAt 展示（catalog 进行中则覆盖为进行中文案） */
+const cloudToolbarCatalogHint = computed(() => {
+  if (isCataloging.value || refreshingCatalog.value) return "目录刷新中…";
+  const at = cloudSummary.value?.lastCatalogAt;
+  if (at == null || at <= 0) return "目录尚未刷新";
+  // Rust 侧为 Unix 秒；兼容误传毫秒
+  const d = at > 1e12 ? dayjs(at) : dayjs.unix(at);
+  return d.isValid() ? `最近刷新于 ${d.format("YYYY-MM-DD HH:mm")}` : "目录尚未刷新";
+});
+
+/** 工具栏：当前筛选下列表条数（原宫格底栏「共 N 条」） */
+const cloudToolbarCountHint = computed(() => {
+  if (cloudTotal.value <= 0) return "";
+  return `共 ${cloudTotal.value} 条`;
+});
+
 function onRefreshCatalogClick() {
   if (!guardCloudManageAction()) return;
+  scrollCloudGridToTop();
   void onRefreshCatalog();
 }
 
@@ -458,16 +484,17 @@ async function fetchAllCloudMeta(): Promise<CloudListDisplayRow[]> {
 async function refreshCloudAssets(opts?: { silent?: boolean }) {
   if (!isLoggedIn.value) return;
   const silent = opts?.silent === true;
-  if (!silent) loadingCloud.value = true;
+  if (!silent) {
+    scrollCloudGridToTop();
+    loadingCloud.value = true;
+  }
   try {
     const summary = await getIcloudSyncCloudStateSummary();
     cloudSummary.value = summary;
+    await refreshIcloudRecentYearGuard();
     let rows = await fetchAllCloudMeta();
-    if (intent.value === "delete") {
-      await refreshIcloudRemoveGuard();
-      if (batchRemoveSkipRecentYear.value) {
-        rows = rows.filter(row => !isIcloudRemoveRecentYearProtected(row));
-      }
+    if (batchRemoveSkipRecentYear.value && (intent.value === "delete" || intent.value === "download")) {
+      rows = rows.filter(row => !isIcloudRemoveRecentYearProtected(row));
     }
     cloudRows.value = rows;
     cloudTotal.value = rows.length;
@@ -748,6 +775,17 @@ onMounted(() => {
               <a-button v-if="intent" @click="exitIntent">取消</a-button>
             </div>
             <div class="toolbar-right">
+              <p class="toolbar-meta">
+                <template v-if="batchRemoveSkipRecentYear && intent">
+                  <span class="toolbar-meta-on">已排除近一年图片</span>
+                  <span class="toolbar-meta-sep">·</span>
+                </template>
+                <span>{{ cloudToolbarCatalogHint }}</span>
+                <template v-if="cloudToolbarCountHint">
+                  <span class="toolbar-meta-sep">·</span>
+                  <span>{{ cloudToolbarCountHint }}</span>
+                </template>
+              </p>
               <a-button
                 shape="circle"
                 :loading="refreshingCatalog"
@@ -764,50 +802,50 @@ onMounted(() => {
         </div>
 
         <div class="cloud-grid-wrap">
-          <div v-if="loadingCloud || isCataloging" class="cloud-grid-loading" aria-busy="true">
-            <a-spin :tip="isCataloging ? '正在拉取 iCloud 图库…' : undefined" />
-          </div>
+          <!-- scroll 须在外层：a-spin 包裹会破坏 flex 高度链，虚拟列表依赖本节点 clientHeight -->
           <div
             ref="cloudGridScrollRef"
             class="cloud-grid-scroll"
             :class="{ 'is-marquee': cloudMarqueeActive }"
+            :aria-busy="loadingCloud || isCataloging"
             @pointerdown="onCloudPointerDown"
             @dragstart="onCloudDragStart"
           >
-            <div v-if="cloudRows.length" ref="cloudGridFrameRef" class="cloud-grid-canvas" :style="{ height: `${cloudFullLayout.totalHeight}px` }">
-              <div
-                v-for="p in cloudVisiblePlacements"
-                :key="p.rowKey"
-                class="cloud-cell"
-                :data-row-key="p.rowKey"
-                :style="cloudPlacementStyle(p)"
-                :class="{ selected: selectMode && isCloudRowSelected(p.row), 'select-mode': selectMode }"
-                :title="
-                  [p.row.displayFilename, `${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`, cloudStateTooltip(p.row)]
-                    .filter(Boolean)
-                    .join('\n')
-                "
-                @click="onCloudCellClick(p.row)"
-              >
-                <ProtocolLazyThumb
-                  protocol="icloudimg"
-                  :asset-id="p.row.assetId"
-                  :scroll-root="cloudGridScrollRef"
-                  :kind="p.row.mediaKind === 'video' ? 'video' : p.row.mediaKind === 'live' ? 'livephoto' : 'image'"
-                  :ext="p.row.displayFilename?.split('.').pop()"
-                />
-                <a-tag class="cell-state" :color="p.row.displayStateTagColor" :bordered="false">{{ p.row.displayStateLabel }}</a-tag>
-                <span v-if="p.row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
-                <span v-if="p.row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
+            <a-spin
+              class="cloud-grid-spin"
+              :spinning="loadingCloud || isCataloging"
+              :tip="isCataloging ? '正在拉取 iCloud 图库…' : loadingCloud ? '正在加载列表…' : undefined"
+            >
+              <div v-if="cloudRows.length" ref="cloudGridFrameRef" class="cloud-grid-canvas" :style="{ height: `${cloudFullLayout.totalHeight}px` }">
+                <div
+                  v-for="p in cloudVisiblePlacements"
+                  :key="p.rowKey"
+                  class="cloud-cell"
+                  :data-row-key="p.rowKey"
+                  :style="cloudPlacementStyle(p)"
+                  :class="{ selected: selectMode && isCloudRowSelected(p.row), 'select-mode': selectMode }"
+                  :title="
+                    [p.row.displayFilename, `${formatSortKeyTime(p.row.captureAt ?? p.row.sortKey)} · ${p.row.displayStateLabel}`, cloudStateTooltip(p.row)]
+                      .filter(Boolean)
+                      .join('\n')
+                  "
+                  @click="onCloudCellClick(p.row)"
+                >
+                  <ProtocolLazyThumb
+                    protocol="icloudimg"
+                    :asset-id="p.row.assetId"
+                    :scroll-root="cloudGridScrollRef"
+                    :kind="p.row.mediaKind === 'video' ? 'video' : p.row.mediaKind === 'live' ? 'livephoto' : 'image'"
+                    :ext="p.row.displayFilename?.split('.').pop()"
+                  />
+                  <a-tag class="cell-state" :color="p.row.displayStateTagColor" :bordered="false">{{ p.row.displayStateLabel }}</a-tag>
+                  <span v-if="p.row.isHidden" class="cell-hidden" title="iCloud 隐藏相册">🔒</span>
+                  <span v-if="p.row.isShared" class="cell-shared" title="iCloud 共享图库">👥</span>
+                </div>
+                <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
               </div>
-              <div v-if="cloudMarqueeStyle" class="sync-marquee" :style="cloudMarqueeStyle" />
-            </div>
-            <a-empty v-else-if="!loadingCloud && !isCataloging" :description="cloudGridEmptyHint" :image="false" />
-          </div>
-          <div class="cloud-grid-foot">
-            <span v-if="cloudTotal > 0" class="cloud-grid-count">
-              {{ selectMode && selectedCloudCount ? `共 ${cloudTotal} 条，已选 ${selectedCloudCount} 项` : `共 ${cloudTotal} 条` }}
-            </span>
+              <a-empty v-else-if="!loadingCloud && !isCataloging" :description="cloudGridEmptyHint" :image="false" />
+            </a-spin>
           </div>
         </div>
 
@@ -903,6 +941,24 @@ onMounted(() => {
   gap: 8px;
   flex-wrap: wrap;
 }
+.toolbar-meta {
+  margin: 0;
+  max-width: min(480px, 52vw);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toolbar-meta-sep {
+  margin: 0 4px;
+  opacity: 0.65;
+}
+.toolbar-meta-on {
+  color: var(--color-primary);
+}
 .cloud-grid-wrap {
   flex: 1 1 0;
   min-height: 0;
@@ -910,16 +966,6 @@ onMounted(() => {
   flex-direction: column;
   position: relative;
   overflow: hidden;
-}
-.cloud-grid-loading {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-mask);
-  pointer-events: none;
 }
 .cloud-grid-scroll {
   flex: 1 1 0;
@@ -931,6 +977,15 @@ onMounted(() => {
   user-select: none;
   &.is-marquee {
     cursor: crosshair;
+  }
+}
+/** 空态/加载时蒙层仍盖住可视区（随 scroll 外层，不顶开 flex 链） */
+.cloud-grid-spin {
+  display: block;
+  min-height: 100%;
+  :deep(.ant-spin-nested-loading),
+  :deep(.ant-spin-container) {
+    min-height: 100%;
   }
 }
 .cloud-grid-canvas {
@@ -1023,16 +1078,5 @@ onMounted(() => {
   line-height: 1;
   pointer-events: none;
   text-shadow: 0 0 2px var(--color-bg-mask-strong);
-}
-.cloud-grid-foot {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 8px;
-  min-height: 24px;
-}
-.cloud-grid-count {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
 }
 </style>

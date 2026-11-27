@@ -1,7 +1,7 @@
 /**
- * iCloud 批量移除 — 近一年保护
+ * iCloud 批量下载 / 移除 — 近一年保护
  * 职责：按 captureAt / sortKey 判断是否落在近一年内
- * 适用：设置 batchRemoveSkipRecentYear 开启时，移除意图列表在「已同步」筛上再滤近一年
+ * 适用：设置 batchRemoveSkipRecentYear 开启时，下载/移除意图宫格再滤近一年项
  */
 import { dateUtil } from "@llcz/common";
 import type { IcloudSyncSyncAssetRow } from "@/api/icloudSync";

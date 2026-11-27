@@ -192,7 +192,7 @@ SQLite 无标准表/列 COMMENT；用本文当描述 SSOT。
 | `syncHiddenAlbum` | `true` 时 catalog 合并 Hidden 相册；关闭后不再刷新 hidden scope，已下载保留 |
 | `syncSharedLibrary` | `true` 时 catalog 合并 Shared Photo Library（SharedSync 等 zone） |
 | `syncSharedOnlyOwnContributions` | `true` 且上项为真时：共享项中 `contributed_by` 非空且 ≠ `cloudkitUserRecordId` → `assets` 标 `sync_skipped`；**`contributed_by` 为空不误标** |
-| `batchRemoveSkipRecentYear` | iCloud 批量移除时跳过近一年内资源 |
+| `batchRemoveSkipRecentYear` | iCloud 批量下载/移除时跳过近一年内资源 |
 | `cloudkitUserRecordId` | 本账号 CloudKit **user recordName**（如 `_2115399d…`）。catalog 完成时 sidecar `PrimarySync.ownerRecordName` → Rust **自动写入**；「仅本人贡献」策略的比对基准。**不在 `assets` 表** |
 
 落盘目录**不在**此文件：写死 `{albumRoot}/iCloudSync`（相册根来自 CS 应用设置；hidden/shared 子目录见 `assets.dest_path`）。

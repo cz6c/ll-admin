@@ -63,7 +63,7 @@
 | 批量下载所选 | 意图先行「批量下载」→ 筛未下载 → 勾选/框选 → 再点执行 → `qzone_sync_start_job`（`albumId` + `assetIds`） |
 | 本相册下载 | 右侧标题旁「下载本相册」→ `qzone_sync_start_job`（传入 `albumId`） |
 | 上传到本相册 | 右侧标题旁「上传到本相册」→ 系统文件框 → `qzone_sync_upload_photos`（`cgi_upload_image`；当前仅图片） |
-| 从 QQ 空间移除 | 意图先行「批量移除」→ 筛已下载 → 确认（1.5s 冷却）→ `CloudSyncDeleteDialog` + `qzone_sync_delete_photos`；**只删云端**，本机保留；失败项保留勾选 |
+| 从 QQ 空间移除 | 意图先行「批量移除」→ 筛已下载 → 确认（1.5s 冷却）→ 底栏 `useQzoneCloudDeleteRunner` + `qzone_sync_delete_photos`；**只删云端**，本机保留；失败项保留勾选 |
 
 > **删图：** `cgi_delpic_multi_v2` 对齐 qzone_api——**每张单独 POST**（多张拼 `codelist` 常只删第一张仍返回成功）。
 

@@ -6,13 +6,13 @@
   @note 方案 3：全量轻量元数据进内存 + 虚拟宫格（仅挂视口）；框选按几何命中全量 placements
 -->
 <script setup lang="ts">
-import CloudSyncDeleteDialog from "../cloudSync/components/CloudSyncDeleteDialog.vue";
 import IcloudSyncAuthPanel from "./components/IcloudSyncAuthPanel.vue";
 import IcloudSyncFooter from "./components/IcloudSyncFooter.vue";
 import SyncFabWave from "../cloudSync/components/SyncFabWave.vue";
 import ProtocolLazyThumb from "../cloudSync/components/ProtocolLazyThumb.vue";
 import SyncFabShell from "../cloudSync/components/SyncFabShell.vue";
 import type { CloudSyncDeleteNormalizedResult } from "../cloudSync/cloudSyncDelete";
+import { useIcloudCloudDeleteRunner } from "../cloudSync/useCloudSyncDeleteRunner";
 import { useCloudSyncIntent } from "../cloudSync/useCloudSyncIntent";
 import { cloudStateLabel, cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
 import { loadIcloudSyncCloudList } from "./loadIcloudSyncCloudList";
@@ -68,11 +68,13 @@ const {
   maskedCurrentAppleId,
   cloudStateTick,
   downloadProgressTick,
-  canManageCloudSpace,
+  canManageCloudSpace: canManageCloudSpaceFromJob,
   refreshingCatalog,
   isCataloging,
+  isSyncTask,
   starting,
-  showSyncFooter,
+  isDone,
+  hasIncompleteTask,
   onRefreshCatalog,
   onStartSelected,
   onLoggedIn,
@@ -97,8 +99,9 @@ const cloudRows = ref<CloudListDisplayRow[]>([]);
 const cloudSummary = ref<IcloudSyncCloudStateSummary | null>(null);
 const loadingCloud = ref(false);
 const deletingCloud = ref(false);
-const deleteDialogOpen = ref(false);
-const deleteDialogItems = ref<IcloudSyncDeleteAssetItem[]>([]);
+const deleteRunner = useIcloudCloudDeleteRunner();
+/** 底栏会话：下载/移除开始后置 true，关抽屉清零 */
+const footerSessionActive = ref(false);
 /** 批量移除时跳过近一年内资源（icloud-sync/settings.json） */
 const batchRemoveSkipRecentYear = ref(false);
 const cloudSelectedKeys = ref<string[]>([]);
@@ -146,6 +149,14 @@ function selectedCloudRows(): CloudListDisplayRow[] {
 }
 
 const selectedCloudCount = computed(() => cloudSelectedKeys.value.length);
+
+const canManageCloudSpace = computed(() => {
+  if (!canManageCloudSpaceFromJob.value) return false;
+  if (deleteRunner.isRunning.value) return false;
+  if (footerSessionActive.value && deleteRunner.phase.value === "done") return false;
+  if (footerSessionActive.value && isDone.value && isSyncTask.value) return false;
+  return true;
+});
 
 const {
   intent,
@@ -250,9 +261,37 @@ const { y: cloudScrollTop } = useScroll(cloudGridScrollRef, { throttle: 60 });
 const cloudGridMetrics = computed(() => computeIcloudCloudGrid(Math.max(0, cloudGridWidth.value - 4)));
 const cloudFullLayout = computed(() => buildIcloudCloudLayout(cloudRows.value, cloudGridMetrics.value.cols, cloudGridMetrics.value.cellSize));
 const cloudBufferPx = computed(() => Math.max(120, ICLOUD_CLOUD_GRID.bufferRows * (cloudGridMetrics.value.cellSize + ICLOUD_CLOUD_GRID.gap)));
-const cloudVisiblePlacements = computed(() =>
-  sliceVisibleIcloudCloudPlacements(cloudFullLayout.value.placements, cloudScrollTop.value, cloudViewportHeight.value, cloudBufferPx.value)
+const cloudVisiblePlacements = computed(() => {
+  const viewH = cloudViewportHeight.value || cloudGridScrollRef.value?.clientHeight || 0;
+  return sliceVisibleIcloudCloudPlacements(
+    cloudFullLayout.value.placements,
+    cloudScrollTop.value,
+    viewH,
+    cloudBufferPx.value
+  );
+});
+
+/** catalog/首屏数据就绪后对齐滚动与视口，避免虚拟宫格空屏 */
+async function syncCloudGridViewport() {
+  await nextTick();
+  requestAnimationFrame(() => {
+    const el = cloudGridScrollRef.value;
+    if (!el) return;
+    el.scrollTop = 0;
+    cloudScrollTop.value = 0;
+  });
+}
+
+watch(
+  () => cloudRows.value.length,
+  (n, prev) => {
+    if (n > 0 && (prev ?? 0) === 0) void syncCloudGridViewport();
+  }
 );
+
+watch(isCataloging, (cur, prev) => {
+  if (prev && !cur) void syncCloudGridViewport();
+});
 
 function cloudPlacementStyle(p: { left: number; top: number; width: number; height: number }): Record<string, string> {
   return {
@@ -347,6 +386,7 @@ async function onDownloadIntentClick() {
   const keys = selected.map(r => r.rowKey);
   const ok = await onStartSelected(ids);
   if (ok) {
+    footerSessionActive.value = true;
     // 已入队项移出勾选，保留下载意图，便于继续挑下一批（任务占用时执行仍会被挡）
     removeCloudSelectionKeys(keys);
     void refreshCloudAssets();
@@ -503,10 +543,24 @@ function confirmDeleteCloud() {
     title: `从 iCloud 移除所选 ${selected.length} 项？`,
     content: ICLOUD_REMOVE_HINT,
     onConfirm: async () => {
-      if (deletingCloud.value) return;
+      if (deletingCloud.value || deleteRunner.isRunning.value) return;
       deletingCloud.value = true;
-      deleteDialogItems.value = cloudListRowsToAssetItems(selected);
-      deleteDialogOpen.value = true;
+      footerSessionActive.value = true;
+      const items = cloudListRowsToAssetItems(selected);
+      await deleteRunner.start(
+        {
+          progressEvent: ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT,
+          items,
+          deleteFn: runIcloudCloudDelete,
+          formatError: formatIcloudSyncError,
+          isAuthFailure: isIcloudSessionAuthFailure,
+          onAuthFailure: reportBusinessError,
+          warnOnNoDeletable: true,
+          connectingTip: "正在校验并连接 iCloud…",
+          runningHeadline: "正在从 iCloud 移除…"
+        },
+        keepIds => void onCloudDeleteFinished(keepIds)
+      );
     }
   });
 }
@@ -556,10 +610,17 @@ watch(drawerOpen, open => {
   if (open) {
     // A′：开抽屉只刷 settings 展示，不 auth_probe
     void refreshAccountSettings();
+    if (hasIncompleteTask.value && isSyncTask.value && !isCataloging.value) {
+      footerSessionActive.value = true;
+    }
     void bootstrapCloudDrawer();
-  } else if (intent.value) {
-    intent.value = null;
-    clearCloudSelection();
+  } else {
+    footerSessionActive.value = false;
+    deleteRunner.reset();
+    if (intent.value) {
+      intent.value = null;
+      clearCloudSelection();
+    }
   }
 });
 
@@ -702,7 +763,7 @@ onMounted(() => {
         </div>
 
         <div class="cloud-grid-wrap">
-          <div v-if="loadingCloud || (isCataloging && cloudRows.length === 0)" class="cloud-grid-loading" aria-busy="true">
+          <div v-if="loadingCloud || isCataloging" class="cloud-grid-loading" aria-busy="true">
             <a-spin :tip="isCataloging ? '正在拉取 iCloud 图库…' : undefined" />
           </div>
           <div
@@ -749,23 +810,10 @@ onMounted(() => {
           </div>
         </div>
 
-        <IcloudSyncFooter v-if="showSyncFooter" />
+        <IcloudSyncFooter :session-active="footerSessionActive" />
       </template>
     </div>
   </SyncFabShell>
-  <CloudSyncDeleteDialog
-    v-model:open="deleteDialogOpen"
-    title="从 iCloud 移除"
-    connecting-tip="正在校验并连接 iCloud…"
-    :progress-event="ICLOUD_SYNC_CLOUD_DELETE_PROGRESS_EVENT"
-    :items="deleteDialogItems"
-    :delete-fn="runIcloudCloudDelete"
-    :format-error="formatIcloudSyncError"
-    :is-auth-failure="isIcloudSessionAuthFailure"
-    :on-auth-failure="reportBusinessError"
-    warn-on-no-deletable
-    @finished="onCloudDeleteFinished"
-  />
 </template>
 
 <style scoped lang="scss">

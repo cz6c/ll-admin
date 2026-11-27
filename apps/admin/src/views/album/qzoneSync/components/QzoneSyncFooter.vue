@@ -1,34 +1,36 @@
 <!--
-  QQ 空间同步忙时底栏
-  职责：job 快照 → SyncJobFooter；暂停/继续/取消向外 emit
+  QQ 空间抽屉底栏（只读）
+  职责：下载 job 与删云 runner 聚合展示
 -->
 <script setup lang="ts">
-import SyncJobFooter from "../../cloudSync/components/SyncJobFooter.vue";
+import CloudSyncDrawerFooter from "../../cloudSync/components/CloudSyncDrawerFooter.vue";
+import { useQzoneCloudDeleteRunner } from "../../cloudSync/useCloudSyncDeleteRunner";
 import type { QzoneJobSnapshot } from "@/api/qzoneSync";
 
 defineOptions({ name: "AlbumQzoneSyncFooter" });
 
 const props = defineProps<{
   job: QzoneJobSnapshot;
-  pausing?: boolean;
-  resuming?: boolean;
-  cancelling?: boolean;
+  sessionActive: boolean;
+  starting?: boolean;
 }>();
 
-const emit = defineEmits<{
-  pause: [];
-  resume: [];
-  cancel: [];
-}>();
+const deleteRunner = useQzoneCloudDeleteRunner();
 
-const percent = computed(() => {
-  if (props.job.total <= 0) return 0;
-  return Math.min(100, Math.round((props.job.done / props.job.total) * 100));
+const showDownloadFooter = computed(() => {
+  if (!props.sessionActive) return false;
+  if (props.job.status === "cataloging") return false;
+  if (props.starting) return true;
+  return ["downloading", "paused", "done", "failed"].includes(props.job.status);
 });
 
-const busy = computed(() => ["cataloging", "downloading", "paused"].includes(props.job.status));
+const visible = computed(() => {
+  if (!props.sessionActive) return false;
+  if (deleteRunner.showFooter.value) return true;
+  return showDownloadFooter.value;
+});
 
-const statusHeadline = computed(() => {
+const downloadHeadline = computed(() => {
   switch (props.job.status) {
     case "cataloging":
       return "正在枚举相册…";
@@ -39,43 +41,61 @@ const statusHeadline = computed(() => {
     case "failed":
       return "同步失败";
     case "done":
-      return "本轮已完成";
+      return "下载完成";
     default:
-      return "准备就绪";
+      return props.starting ? "正在开始下载…" : "准备就绪";
   }
 });
 
-const statusDescription = computed(() => props.job.message?.trim() || "");
+const downloadDescription = computed(() => {
+  const j = props.job;
+  if (j.status === "done") {
+    if (j.failed > 0) return `完成 ${j.done} 项 · 失败 ${j.failed} 项`;
+    return `完成 ${j.done} 项`;
+  }
+  if (j.status === "failed") return j.message?.trim() || "同步失败";
+  if (j.status === "downloading" && j.total > 0) return `进度 ${j.done}/${j.total}`;
+  return j.message?.trim() || "";
+});
+
+const percent = computed(() => {
+  if (props.job.total <= 0) return 0;
+  return Math.min(100, Math.round((props.job.done / props.job.total) * 100));
+});
 
 const progressStatsText = computed(() => {
+  if (deleteRunner.showFooter.value) return "";
   const j = props.job;
   if (j.total <= 0) return "";
   return `完成 ${j.done} · 新增 ${j.updated} · 跳过 ${j.skipped} · 失败 ${j.failed}`;
 });
 
-const showProgressBar = computed(() => busy.value || props.job.total > 0);
-const canPause = computed(() => props.job.status === "downloading");
-const canResume = computed(() => props.job.status === "paused");
-const canCancel = computed(() => busy.value);
-const isCataloging = computed(() => props.job.status === "cataloging");
-const isFailed = computed(() => props.job.status === "failed");
+const footerHeadline = computed(() => (deleteRunner.showFooter.value ? deleteRunner.statusHeadline.value : downloadHeadline.value));
+const footerDescription = computed(() =>
+  deleteRunner.showFooter.value ? deleteRunner.statusDescription.value : downloadDescription.value
+);
+const footerPercent = computed(() => (deleteRunner.showFooter.value ? deleteRunner.percent.value : percent.value));
+const footerShowBar = computed(() => {
+  if (deleteRunner.showFooter.value) return deleteRunner.phase.value === "running";
+  return props.job.status === "downloading" && props.job.total > 0;
+});
+const footerShowPercent = computed(
+  () => footerShowBar.value && (deleteRunner.showFooter.value ? deleteRunner.progress.value.total > 0 : props.job.total > 0)
+);
+const footerFailed = computed(() =>
+  deleteRunner.showFooter.value ? deleteRunner.isFailedFooter.value : props.job.status === "failed"
+);
 </script>
 
 <template>
-  <SyncJobFooter
-    :status-headline="statusHeadline"
-    :status-description="statusDescription"
-    :percent="percent"
-    :show-progress-bar="showProgressBar"
-    :show-percent="showProgressBar && job.total > 0"
+  <CloudSyncDrawerFooter
+    :visible="visible"
+    :status-headline="footerHeadline"
+    :status-description="footerDescription"
+    :percent="footerPercent"
+    :show-progress-bar="footerShowBar"
+    :show-percent="footerShowPercent"
     :progress-stats-text="progressStatsText"
-    :is-failed="isFailed"
-  >
-    <a-button v-if="canPause" size="small" danger :loading="pausing" @click="emit('pause')">暂停</a-button>
-    <a-button v-if="canResume" size="small" type="primary" :loading="resuming" @click="emit('resume')">继续</a-button>
-    <a-tooltip v-if="isCataloging" title="扫描相册中，请稍候再取消">
-      <a-button size="small" disabled>取消任务</a-button>
-    </a-tooltip>
-    <a-button v-else-if="canCancel" size="small" danger :loading="cancelling" @click="emit('cancel')">取消任务</a-button>
-  </SyncJobFooter>
+    :is-failed="footerFailed"
+  />
 </template>

@@ -24,12 +24,12 @@ import {
   type QzonePhotoView,
   type QzoneQrStatus
 } from "@/api/qzoneSync";
-import CloudSyncDeleteDialog from "../cloudSync/components/CloudSyncDeleteDialog.vue";
 import SyncFabWave from "../cloudSync/components/SyncFabWave.vue";
 import ProtocolLazyThumb from "../cloudSync/components/ProtocolLazyThumb.vue";
 import QzoneSyncFooter from "./components/QzoneSyncFooter.vue";
 import SyncFabShell from "../cloudSync/components/SyncFabShell.vue";
 import type { CloudSyncDeleteNormalizedResult } from "../cloudSync/cloudSyncDelete";
+import { useQzoneCloudDeleteRunner } from "../cloudSync/useCloudSyncDeleteRunner";
 import { useCloudSyncIntent } from "../cloudSync/useCloudSyncIntent";
 import { cloudStateLabel, cloudStateTagColor } from "../cloudSync/cloudSyncStateDisplay";
 import { hitTestMarqueeKeys, MIN_MARQUEE_PX, useMarqueeDrag } from "../useMarqueeDrag";
@@ -69,19 +69,15 @@ const photoScrollRef = ref<HTMLElement | null>(null);
 
 const selectedIds = ref<Set<string>>(new Set());
 const deletingCloud = ref(false);
-const deleteDialogOpen = ref(false);
-const deleteDialogItems = ref<QzoneDeletePhotoItem[]>([]);
+const deleteRunner = useQzoneCloudDeleteRunner();
+const footerSessionActive = ref(false);
 const uploadingAlbum = ref(false);
 
 const qzoneJobHooks: UseQzoneSyncJobOptions = {};
 const {
   job,
   busy,
-  showSyncFooter,
   starting,
-  pausing,
-  resuming,
-  cancelling,
   fabState,
   showFabProgress,
   fabIconName,
@@ -89,13 +85,18 @@ const {
   startSyncAll,
   startSyncAlbum,
   startSyncBatch,
-  pause: onPause,
-  resume: onResume,
-  cancel: onCancel,
   hydrateJobFromTauri
 } = useQzoneSyncJob(qzoneJobHooks);
 
-const canManageCloudSpace = computed(() => !busy.value);
+const canManageCloudSpace = computed(() => {
+  if (busy.value) return false;
+  if (deleteRunner.isRunning.value) return false;
+  if (footerSessionActive.value && deleteRunner.phase.value === "done") return false;
+  if (footerSessionActive.value && (job.value.status === "done" || job.value.status === "failed")) return false;
+  return true;
+});
+
+const photoPaneBusy = computed(() => photosLoading.value || job.value.status === "cataloging");
 
 const activeAlbum = computed(() => albums.value.find(a => a.topicId === activeAlbumId.value));
 const selectedCount = computed(() => selectedIds.value.size);
@@ -259,8 +260,8 @@ async function onDownloadIntentClick() {
   try {
     const ids = picked.map(p => p.assetId);
     await startSyncBatch(activeAlbumId.value, ids);
+    footerSessionActive.value = true;
     removeSelectionKeys(ids);
-    $feedback.message.success(`已开始下载所选 ${ids.length} 项`);
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
   }
@@ -299,15 +300,27 @@ function confirmDeleteCloud() {
     } catch {
       return;
     }
-    if (deletingCloud.value) return;
+    if (deletingCloud.value || deleteRunner.isRunning.value) return;
     deletingCloud.value = true;
-    deleteDialogItems.value = picked.map(p => ({
+    footerSessionActive.value = true;
+    const items = picked.map(p => ({
       albumId: p.albumId || albumId,
       assetId: p.assetId,
       sloc: p.sloc || p.assetId,
       albumPriv: album?.albumPriv ?? 1
     }));
-    deleteDialogOpen.value = true;
+    await deleteRunner.start(
+      {
+        progressEvent: QZONE_CLOUD_DELETE_PROGRESS_EVENT,
+        items,
+        deleteFn: runQzoneCloudDelete,
+        isAuthFailure: isQzoneAuthExpiredError,
+        onAuthFailure: () => applyAuthExpiredUi(true),
+        connectingTip: "正在连接 QQ 空间…",
+        runningHeadline: "正在从 QQ 空间移除…"
+      },
+      keepIds => void onCloudDeleteFinished(keepIds)
+    );
   })();
 }
 
@@ -547,7 +560,7 @@ async function onSyncAll() {
   if (!guardCloudManageAction()) return;
   try {
     await startSyncAll();
-    $feedback.message.success("已开始全部下载");
+    footerSessionActive.value = true;
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
   }
@@ -561,7 +574,7 @@ async function onSyncAlbum() {
   }
   try {
     await startSyncAlbum(activeAlbumId.value);
-    $feedback.message.success(`已开始下载：${activeAlbum.value?.name || "本相册"}`);
+    footerSessionActive.value = true;
   } catch (e) {
     await handleQzoneApiError(e, "启动失败");
   }
@@ -659,12 +672,6 @@ const throttledPatchPhotosOnProgress = useThrottleFn(
   true
 );
 
-qzoneJobHooks.onJobDone = updated => {
-  if (updated > 0) {
-    $feedback.message.info(`有 ${updated} 张新照片已下载到本地，点击「刷新」可在相册中查看`);
-  }
-};
-
 qzoneJobHooks.onJobEvent = (payload, prev) => {
   const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
   if (drawerOpen.value && loggedIn.value && activeAlbumId.value) {
@@ -699,6 +706,9 @@ onBeforeUnmount(() => {
 watch(drawerOpen, open => {
   if (!isTauri()) return;
   if (open) {
+    if (job.value.status === "downloading" || job.value.status === "paused" || job.value.status === "failed") {
+      footerSessionActive.value = true;
+    }
     // 关抽屉再开：保留已加载相册/宫格，不重拉；仅未登录或首开无数据时取数
     if (loggedIn.value) {
       if (!albums.value.length) void loadAlbums();
@@ -710,6 +720,8 @@ watch(drawerOpen, open => {
     }
     void refreshJob();
   } else {
+    footerSessionActive.value = false;
+    deleteRunner.reset();
     stopQrPoll();
     if (intent.value) exitIntent();
   }
@@ -862,7 +874,7 @@ watch(drawerOpen, open => {
             @pointerdown="onPhotoPointerDown"
             @dragstart="onQzoneDragStart"
           >
-            <a-spin :spinning="photosLoading">
+            <a-spin :spinning="photoPaneBusy" :tip="job.status === 'cataloging' ? '正在枚举相册…' : undefined">
               <div v-if="photoGroups.length" ref="photoFrameRef" class="timeline">
                 <section v-for="g in photoGroups" :key="g.key" class="day-group">
                   <h4 class="day-label">{{ g.label }}</h4>
@@ -906,29 +918,9 @@ watch(drawerOpen, open => {
         </section>
       </div>
 
-      <QzoneSyncFooter
-        v-if="showSyncFooter"
-        :job="job"
-        :pausing="pausing"
-        :resuming="resuming"
-        :cancelling="cancelling"
-        @pause="onPause"
-        @resume="onResume"
-        @cancel="onCancel"
-      />
+      <QzoneSyncFooter :job="job" :session-active="footerSessionActive" :starting="starting" />
     </div>
   </SyncFabShell>
-  <CloudSyncDeleteDialog
-    v-model:open="deleteDialogOpen"
-    title="从 QQ 空间移除"
-    connecting-tip="正在连接 QQ 空间…"
-    :progress-event="QZONE_CLOUD_DELETE_PROGRESS_EVENT"
-    :items="deleteDialogItems"
-    :delete-fn="runQzoneCloudDelete"
-    :is-auth-failure="isQzoneAuthExpiredError"
-    @finished="onCloudDeleteFinished"
-    @auth-expired="applyAuthExpiredUi(true)"
-  />
 </template>
 
 <style scoped lang="scss">

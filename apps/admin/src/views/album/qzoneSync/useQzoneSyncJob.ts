@@ -1,23 +1,20 @@
 /**
  * QQ 空间同步任务与 FAB 进度态
- * 职责：job 快照、启停、进度事件；FAB 文案/图标与水波条件
- * 适用：qzoneSync/index.vue（宫格与删云仍留在页面）
+ * 职责：job 快照、启动同步、进度事件；底栏只读展示由 QzoneSyncFooter 负责
+ * 适用：qzoneSync/index.vue
  */
 
-import { cancelQzoneSyncJob, getQzoneJobStatus, pauseQzoneSyncJob, resumeQzoneSyncJob, startQzoneSyncJob, type QzoneJobSnapshot } from "@/api/qzoneSync";
-import $feedback from "@/utils/feedback";
+import { getQzoneJobStatus, startQzoneSyncJob, type QzoneJobSnapshot } from "@/api/qzoneSync";
 import { isTauri } from "@/utils/tauri";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export interface UseQzoneSyncJobOptions {
   /** progress 事件：上一 status 与当前 payload */
   onJobEvent?: (payload: QzoneJobSnapshot, previousStatus: QzoneJobSnapshot["status"]) => void;
-  /** 本轮 done 且 updated>0 时提示（由页面决定是否弹） */
-  onJobDone?: (updated: number) => void;
 }
 
 /**
- * @returns QQ 同步 job 状态、FAB 展示与任务控制
+ * @returns QQ 同步 job 状态与 FAB 展示
  */
 export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
   const job = ref<QzoneJobSnapshot>({
@@ -31,9 +28,6 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
   });
 
   const starting = ref(false);
-  const pausing = ref(false);
-  const resuming = ref(false);
-  const cancelling = ref(false);
 
   const busy = computed(() => ["cataloging", "downloading", "paused"].includes(job.value.status));
 
@@ -41,8 +35,6 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
     if (job.value.total <= 0) return 0;
     return Math.min(100, Math.round((job.value.done / job.value.total) * 100));
   });
-
-  const showSyncFooter = computed(() => busy.value || job.value.status === "failed" || starting.value);
 
   async function refreshJob() {
     job.value = await getQzoneJobStatus();
@@ -75,47 +67,6 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
       return job.value;
     } finally {
       starting.value = false;
-    }
-  }
-
-  async function pause() {
-    pausing.value = true;
-    try {
-      job.value = await pauseQzoneSyncJob();
-    } catch (e) {
-      $feedback.message.error(e instanceof Error ? e.message : String(e) || "暂停失败");
-    } finally {
-      pausing.value = false;
-    }
-  }
-
-  async function resume() {
-    resuming.value = true;
-    try {
-      job.value = await resumeQzoneSyncJob();
-    } catch (e) {
-      $feedback.message.error(e instanceof Error ? e.message : String(e) || "继续失败");
-    } finally {
-      resuming.value = false;
-    }
-  }
-
-  async function cancel() {
-    try {
-      await $feedback.confirm("将丢弃当前下载进度", {
-        title: "取消任务？",
-        okText: "取消任务"
-      });
-    } catch {
-      return;
-    }
-    cancelling.value = true;
-    try {
-      job.value = await cancelQzoneSyncJob();
-    } catch (e) {
-      $feedback.message.error(e instanceof Error ? e.message : String(e) || "取消失败");
-    } finally {
-      cancelling.value = false;
     }
   }
 
@@ -167,11 +118,6 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
     unlistenProgress = await listen<QzoneJobSnapshot>("qzone-sync://progress", ev => {
       const prev = job.value.status;
       job.value = ev.payload;
-      const wasActive = prev === "cataloging" || prev === "downloading" || prev === "paused";
-      if (wasActive && ev.payload.status === "done") {
-        const n = ev.payload.updated ?? 0;
-        if (n > 0) options.onJobDone?.(n);
-      }
       options.onJobEvent?.(ev.payload, prev);
     });
   }
@@ -195,11 +141,7 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
     job,
     busy,
     percent,
-    showSyncFooter,
     starting,
-    pausing,
-    resuming,
-    cancelling,
     fabState,
     showFabProgress,
     fabIconName,
@@ -207,9 +149,6 @@ export function useQzoneSyncJob(options: UseQzoneSyncJobOptions = {}) {
     startSyncAll,
     startSyncAlbum,
     startSyncBatch,
-    pause,
-    resume,
-    cancel,
     hydrateJobFromTauri,
     unbindProgressListener
   };

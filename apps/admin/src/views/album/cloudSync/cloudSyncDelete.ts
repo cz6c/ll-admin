@@ -1,6 +1,6 @@
 /**
  * 云同步删云弹窗：结果摘要与归一化结果形态
- * 适用：CloudSyncDeleteDialog；iCloud / QQ 在适配层映射到此结构
+ * 适用：useCloudSyncDeleteRunner 底栏结果态；iCloud / QQ 在适配层映射到此结构
  */
 
 /** 进度事件 payload 最小字段 */

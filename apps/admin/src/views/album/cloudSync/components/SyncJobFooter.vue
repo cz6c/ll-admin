@@ -1,7 +1,7 @@
 <!--
-  云同步忙时底栏展示壳
-  职责：标题 / 进度条 / 统计 / 描述；操作区用默认插槽
-  适用：IcloudSyncFooter / QzoneSyncFooter 薄封装
+  云同步抽屉底栏展示壳（只读）
+  职责：标题 / 进度条 / 统计 / 描述
+  适用：CloudSyncDrawerFooter
 -->
 <script setup lang="ts">
 defineOptions({ name: "AlbumSyncJobFooter" });
@@ -41,9 +41,6 @@ withDefaults(
       </div>
       <p v-if="statusDescription" class="footer-desc">{{ statusDescription }}</p>
     </div>
-    <div class="footer-actions">
-      <slot />
-    </div>
   </footer>
 </template>
 
@@ -52,7 +49,6 @@ withDefaults(
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
   border-radius: 8px;
@@ -103,12 +99,5 @@ withDefaults(
   font-size: 12px;
   color: var(--color-text-secondary);
   line-height: 1.5;
-}
-.footer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-shrink: 0;
 }
 </style>

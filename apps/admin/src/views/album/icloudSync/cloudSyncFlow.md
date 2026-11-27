@@ -316,7 +316,7 @@ icloud catalog delta job {id}: added=… modified=… meta_refresh=… unchanged
 | `icloudSync/index.vue` | FAB；抽屉宫格 + 意图工具栏；虚拟列表/框选 |
 | `useCloudSyncIntent` | 下载/移除意图互斥与按钮文案（与 QQ 共用） |
 | `IcloudSyncFooter` → `SyncJobFooter` | 忙时底栏展示壳 + iCloud 主按钮/暂停/取消 |
-| `CloudSyncDeleteDialog` | 删云进度/结果弹窗（与 QQ 共用；适配层映射结果） |
+| `useIcloudCloudDeleteRunner` + 抽屉底栏 | 删云进度/结果（只读）；确认仍在 `$feedback.confirm` |
 | `useIcloudSyncJob` | 共享 **单任务** 状态（`icloud_sync_active_task`）、事件、按钮逻辑 |
 | `IcloudSyncAuthPanel` | 抽屉内登录/2FA；换号 discard；退出在抽屉标题栏 |
 | `icloudSyncCloudList.ts` / `loadIcloudSyncCloudList.ts` | Live 行合并 / 抽屉取数；角标文案见 `cloudSync/cloudSyncStateDisplay.ts` |
